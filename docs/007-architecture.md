@@ -24,7 +24,7 @@ flowchart TB
   effects --> store
 ```
 
-`Runtime` (`src/app/runtime.ts`) constructs the application, supplies dependencies, and owns startup and shutdown. `Engine` constructs its own internal parts. The Executor and Assessor call back into the Engine, so Runtime gives them getters rather than requiring construction in a circular order.
+`assemble` (`src/app/assembly.ts`) constructs the application in one explicit dependency order, and `Runtime` (`src/app/runtime.ts`) owns the state directory, startup and shutdown. `Engine` constructs its own internal parts. The Executor and Assessor call back into the Engine, so Runtime gives them getters rather than requiring construction in a circular order.
 
 ### Runtime
 
@@ -316,6 +316,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/kernel/src/memory.ts` | `MemoryRepositories`: the Store's repositories in memory, in the Store's order and with its nested rollback, for domain tests |
 | `packages/kernel/src/index.ts` | The core's exports |
 | `src/app/runtime.ts` | The Runtime, the composition root, with its start and stop |
+| `src/app/assembly.ts` | The builder `Runtime` runs, in dependency order: the Engine, the host services, the Executor and the Assessor, each wired with the interfaces it uses, returned as one read-only graph |
 | `src/app/setup.ts` | Setup, and `setupChanged`, whether a save changes a field setup reads |
 | `src/app/passes.ts` | Passes, the pass scheduler |
 | `src/app/outbox.ts` | The Outbox: the Engine's `Outbox` port, the receipts and the `reply` effects that send them |
@@ -406,6 +407,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | Test | Covers |
 | --- | --- |
 | `tests/kernel-boundary.spec.ts` | The kernel package as a boundary: it imports only its own files and Node built-ins, never reaches out of the package, and declares no dependency |
+| `tests/layers.spec.ts` | The dependency rules of this document, read off the imports: Sources never import the host, the panel takes only types and whitelisted plain values, `packages/` is reached only as `@superagent/kernel`, and the browser half uses no Node built-in |
 | `tests/core-engine.spec.ts` | Domain rules on in-memory repositories: receiving, Eval, fan-out, resume and stop, interrupted Assignments, the pause, Policy changes, reports and outcomes, attaching, replies, failed deliveries and dismissed problems |
 | `tests/stage.spec.ts` | The Ticket stages, row by row |
 | `tests/policy.spec.ts` | Source scope, the gate, the admission table, Mandate revalidation, the Policy version, settings migrations and assessment outcomes |
