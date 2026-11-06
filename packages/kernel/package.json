@@ -1,0 +1,13 @@
+{
+  "name": "@superagent/kernel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The domain kernel: Triggers, Threads, Evals, Tickets, Assignments, and the Engine that alone mutates them. It imports no host package, so its rules can be tested and reused without DSH.",
+  "type": "module",
+  "sideEffects": false,
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  }
+}

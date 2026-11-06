@@ -1,6 +1,6 @@
 /** GitHub outbound channel: posts issue/PR comments and review thread replies under the agent account. */
 import { z } from 'zod'
-import type { OutboundMessage } from '../core/index.ts'
+import type { OutboundMessage } from '@superagent/kernel'
 import { CliError } from '../infra/commands.ts'
 import { sameName } from '../infra/text.ts'
 import type { SourceContext } from './host.ts'

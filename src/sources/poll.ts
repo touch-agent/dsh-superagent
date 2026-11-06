@@ -1,5 +1,5 @@
 /** Shared polling helpers for subscribed threads, overlap-safe cursors, and timer-friendly delays. */
-import { liveTicket, type Thread } from '../core/index.ts'
+import { liveTicket, type Thread } from '@superagent/kernel'
 import type { SourceContext } from './host.ts'
 
 /** How long a subscribed Thread with no live Ticket continues to be polled after its last Trigger or Ticket end. */

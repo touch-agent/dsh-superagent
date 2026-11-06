@@ -1,7 +1,7 @@
 /** Pass scheduling, coalescing, and runtime health reporting. */
 import { expect, it, vi } from 'vitest'
 import { Passes } from '../src/app/passes.ts'
-import type { Trigger } from '../src/core/index.ts'
+import type { Trigger } from '@superagent/kernel'
 import { HealthBoard } from '../src/infra/health.ts'
 
 function passes(closing = () => false) {

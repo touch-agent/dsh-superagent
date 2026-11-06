@@ -1,5 +1,5 @@
 /** Source status view: health, 24-hour trigger counts, and recently filtered or dropped messages per Source instance. */
-import { threadKey } from '../../core/index.ts'
+import { threadKey } from '@superagent/kernel'
 import type { Deployment } from '../../deployment.ts'
 import type { Health } from '../../sources/host.ts'
 import type { SourceInstance } from '../../sources/kind.ts'

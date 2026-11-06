@@ -17,13 +17,19 @@
     "types": [
       "node"
     ],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "@superagent/kernel": [
+        "./packages/kernel/src/index.ts"
+      ]
+    }
   },
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
     "tests/**/*.ts",
     "tests/**/*.tsx",
+    "packages/**/*.ts",
     "tsdown.config.ts"
   ]
 }

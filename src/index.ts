@@ -24,4 +24,4 @@ export async function apply(ctx: Context, config: DeploymentConfig): Promise<voi
   ctx.logger.info(runtime.configured() ? 'dsh-superagent ready; the Superagent sidebar entry opens the management panel' : `dsh-superagent is waiting for setup: ${runtime.setupProblem?.detail ?? ''}`)
 }
 export type { Deployment, DeploymentConfig } from './deployment.ts'
-export * from './core/index.ts'
+export * from '@superagent/kernel'

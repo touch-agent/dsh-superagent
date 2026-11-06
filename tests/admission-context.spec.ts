@@ -6,7 +6,7 @@ import type { ContextMessage } from '../src/sources/kind.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
 import { SettingsSchema } from '../src/policy.ts'
 import { testDeployment } from './fixtures/deployment.ts'
-import type { Trigger } from '../src/core/index.ts'
+import type { Trigger } from '@superagent/kernel'
 const message = (index: number): ContextMessage => ({ id: `om_${index}`, from: 'ou_user', at: String(index), text: `Message ${index}` })
 /** The same message as a Feishu topic page lists it. */
 const listed = (index: number) => ({ message_id: `om_${index}`, chat_id: 'oc_chat', content: `Message ${index}`, msg_type: 'text',

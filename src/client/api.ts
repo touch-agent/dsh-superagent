@@ -1,8 +1,8 @@
 /** Same-origin client and polling hook for the orchestrator management API. */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Api, ApiRequest, ApiResponse } from '../app/api.ts'
-import { USER_ERRORS, type UserErrorCode } from '../core/errors.ts'
-import type { TicketStage } from '../core/stage.ts'
+import { USER_ERRORS, type UserErrorCode } from '@superagent/kernel'
+import type { TicketStage } from '@superagent/kernel'
 import type { SetupProblem } from '../setup.ts'
 
 /** Host rejection identified by a structured user error code and interpolation values. */

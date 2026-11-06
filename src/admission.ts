@@ -2,7 +2,7 @@
  * Per-scope admission matrix classifying incoming messages as explicit requests, inferred candidates, or ignored.
  * A listed sender who addresses the agent always makes an explicit request (no table cell); an unaddressed message cannot be explicit.
  */
-import type { AdmissionCell } from './core/model.ts'
+import type { AdmissionCell } from '@superagent/kernel'
 
 export type { AdmissionCell }
 export type Admission = 'explicit' | 'inferred' | 'ignore'

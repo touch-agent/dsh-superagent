@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canRetry, ticketStage, type Assignment, type ReportState, type Ticket } from '../src/core/index.ts'
+import { canRetry, ticketStage, type Assignment, type ReportState, type Ticket } from '@superagent/kernel'
 
 const assignment = (overrides: Partial<Assignment> = {}): Assignment => ({ id: 'a', state: 'running', createdAt: '', ...overrides })
 const reported = (state: ReportState, overrides: Partial<Assignment> = {}) => assignment({ report: { state, summary: '', at: '' }, ...overrides })

@@ -1,6 +1,6 @@
 /** Normalizes GitHub issues, pull requests, comments, reviews, and CI transitions into domain Triggers. */
 import { z } from 'zod'
-import { key, type ChannelRef, type Trigger } from '../core/index.ts'
+import { key, type ChannelRef, type Trigger } from '@superagent/kernel'
 import { escapeRegExp, sameName } from '../infra/text.ts'
 
 export const SOURCE = 'github'

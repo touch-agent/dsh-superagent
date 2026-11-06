@@ -15,7 +15,7 @@ import { feishuKind, feishuTrigger } from '../../src/sources/feishu.ts'
 import { githubKind } from '../../src/sources/github.ts'
 import { Commands } from '../../src/infra/commands.ts'
 import { credentialHelper, workerGitConfig } from '../../src/infra/environment.ts'
-import type { Trigger } from '../../src/core/index.ts'
+import type { Trigger } from '@superagent/kernel'
 import { testMachine } from './deployment.ts'
 
 export const MEMBER = 'ou_alice'

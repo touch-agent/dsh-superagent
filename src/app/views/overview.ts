@@ -1,5 +1,5 @@
 /** Overview view: active system problems, tickets awaiting human action, executor load, and 24-hour trigger flow. */
-import { reasonText, ticketStage, type Decision, type Thread } from '../../core/index.ts'
+import { reasonText, ticketStage, type Decision, type Thread } from '@superagent/kernel'
 import type { Health } from '../../sources/host.ts'
 import type { SetupProblem } from '../../setup.ts'
 import { anyoneAllowed } from '../../policy.ts'

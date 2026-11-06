@@ -1,7 +1,7 @@
 /**
  * Bilingual UI dictionaries (`[zh, en]`) and glossary groupings, following the domain terms in `docs/001-domain.md`.
  */
-import { USER_ERRORS } from '../core/errors.ts'
+import { USER_ERRORS } from '@superagent/kernel'
 import { SETUP_PROBLEMS } from '../setup.ts'
 import { HEALTH_TEXT } from '../sources/host.ts'
 

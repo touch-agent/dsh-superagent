@@ -1,5 +1,5 @@
 /** Reliable outbound message delivery backed by persistent receipts and retried reply effects. */
-import type { OutboundMessage, Outbox as OutboxPort, ReplyStatus } from '../core/index.ts'
+import type { OutboundMessage, Outbox as OutboxPort, ReplyStatus } from '@superagent/kernel'
 import type { Commands } from '../infra/commands.ts'
 import { checkedImText } from '../infra/text.ts'
 import type { SourceRegistry } from '../sources/registry.ts'

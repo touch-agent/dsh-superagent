@@ -1,6 +1,6 @@
 /** Trigger-scoped Feishu context reader; retrieved messages are returned for model inspection without entering intake. */
 import { z } from 'zod'
-import type { Trigger } from '../core/index.ts'
+import type { Trigger } from '@superagent/kernel'
 import { validItems, type Commands } from '../infra/commands.ts'
 import { admissionImageKeys, readAdmissionImage } from './feishu-image.ts'
 import { feishuRef, feishuTime, HistoricalMessageSchema, HistoryPageSchema, historyText, withMentionNames, type HistoricalMessage }

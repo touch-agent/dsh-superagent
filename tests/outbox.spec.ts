@@ -1,7 +1,7 @@
 /** Outbox delivery when processing is paused or a Source kind registers late. */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { OutboundMessage } from '../src/core/index.ts'
+import type { OutboundMessage } from '@superagent/kernel'
 import { Commands } from '../src/infra/commands.ts'
 import type { SourceKind } from '../src/sources/kind.ts'
 import { feishu, startRuntime, type Host } from './fixtures/host.ts'

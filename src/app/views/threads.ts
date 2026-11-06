@@ -1,5 +1,5 @@
 /** Thread list, timeline detail, cross-entity search, and decision list views. */
-import { threadKey, type Thread, type Ticket, type Trigger } from '../../core/index.ts'
+import { threadKey, type Thread, type Ticket, type Trigger } from '@superagent/kernel'
 import type { ThreadFilter } from '../api.ts'
 import type { TextCache } from '../cache.ts'
 import { awaitingEval, channelLink, dayAgo, decisionView, newestFirst, page, snapshot, threadSummary, threadTitle, ticketLine,

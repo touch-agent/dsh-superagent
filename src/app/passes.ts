@@ -1,5 +1,5 @@
 /** Coordinates periodic and on-demand orchestration passes that drive due effects and Engine evaluations. */
-import type { Engine, ReceiveResult, Trigger } from '../core/index.ts'
+import type { Engine, ReceiveResult, Trigger } from '@superagent/kernel'
 import type { HealthEntry } from '../infra/health.ts'
 import type { Effects } from './effects.ts'
 

@@ -3,7 +3,7 @@ import { masterPrompt, workerPrompt } from '../src/app/context.ts'
 import { composePrompt, defaultPrompts } from '../src/app/prompts.ts'
 import { bundledSkills, promptFile } from '../src/app/skill-files.ts'
 import { TICKET_STATES, decisionCard, decisionDetails, ticketCard, ticketDetails, triggerCard, threadCard } from '../src/app/cards.ts'
-import { key, said, type Decision, type Thread, type Ticket, type Trigger } from '../src/core/index.ts'
+import { key, said, type Decision, type Thread, type Ticket, type Trigger } from '@superagent/kernel'
 
 /**
  * Built-in prompt and skill contract: target file (`skill <name>` for a bundled skill, `*` for both composed prompts),

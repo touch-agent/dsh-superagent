@@ -57,7 +57,7 @@ describe('documentation', () => {
   })
   it('lists every module of src in the module table of 007 Architecture, and only files that exist', () => {
     const modules = listed('Modules')
-    expect(files('src').filter(path => !modules.includes(path))).toEqual([])
+    expect([...files('src'), ...files('packages')].filter(path => /\.tsx?$/.test(path) && !modules.includes(path))).toEqual([])
     expect(modules.filter(path => !existsSync(join(ROOT, path)))).toEqual([])
   })
   it('lists every test in the test table of 007 Architecture, and only files that exist', () => {

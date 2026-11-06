@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { SettingsSchema, assessmentOutcome, policyEffects, settingsPolicy, policyVersion, allowedSender, anyoneAllowed, type Settings } from '../src/policy.ts'
-import type { MandateBasis } from '../src/core/index.ts'
+import type { MandateBasis } from '@superagent/kernel'
 import { migrateSettings } from '../src/app/migration.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
 import { feishuKind } from '../src/sources/feishu.ts'
 import { githubKind } from '../src/sources/github.ts'
-import type { Thread, Ticket, Trigger } from '../src/core/index.ts'
+import type { Thread, Ticket, Trigger } from '@superagent/kernel'
 
 const MEMBER = 'ou_alice'
 const CHAT = 'oc_team'

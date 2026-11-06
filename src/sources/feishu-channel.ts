@@ -1,5 +1,5 @@
 /** Feishu outbound channel: posts threaded bot replies and constructs chat deep links. */
-import type { OutboundMessage } from '../core/index.ts'
+import type { OutboundMessage } from '@superagent/kernel'
 import { CliError } from '../infra/commands.ts'
 import { checkedImText } from '../infra/text.ts'
 import type { SourceContext } from './host.ts'

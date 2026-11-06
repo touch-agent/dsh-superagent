@@ -4,7 +4,7 @@ import type { DshSuperagentKey } from './locales.ts'
 import type { Localized } from '../sources/kind.ts'
 import type { SetupProblem } from '../setup.ts'
 import type { Health } from '../sources/host.ts'
-import { reasonText, type Reason } from '../core/reasons.ts'
+import { reasonText, type Reason } from '@superagent/kernel'
 
 export type T = Translate<DshSuperagentKey>
 export const errorText = (failure: unknown): string => failure instanceof Error ? failure.message : String(failure)

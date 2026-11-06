@@ -1,6 +1,6 @@
 /** Execution environment variables exposed to prepare commands and documented in worker Session instructions; never contains credentials. */
 import { join } from 'node:path'
-import type { Ticket, Trigger } from '../core/index.ts'
+import type { Ticket, Trigger } from '@superagent/kernel'
 import type { Deployment } from '../deployment.ts'
 import type { Settings } from '../policy.ts'
 import type { Localized, VariableSpec } from '../sources/kind.ts'
