@@ -1,0 +1,23 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The version comes from `packageManager` in package.json.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # The lockfile also guards the workspace shape: `packages/kernel` is an importer, and the run fails if a manifest
+      # and the lockfile disagree. The kernel boundary and the layer rules are tests, so `pnpm test` is what refuses a
+      # host dependency inside `packages/kernel` or a Source that imports `src/app`; nothing here needs a separate job.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
