@@ -49,6 +49,12 @@ describe('the conversation Source', () => {
       scope: 'Fix the test', basis: { source: SOURCE, scope: {}, via: 'local' } })).toBe(true)
   })
 
+  it('does not admit a trusted Source that stopped listening', () => {
+    const scope = { scope: () => ({ listened: false as const, reason: 'source_disabled' }), trusted: (id: string) => id === SOURCE }
+    const policy = settingsPolicy(SettingsSchema.parse({}), scope)
+    expect(policy.gate(conversationTrigger(request()), {} as never, [])).toEqual({ admissible: false, reason: 'source_disabled' })
+  })
+
   it('registers as a built-in definition', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}), new HealthBoard())
     sources.registerDefinition(conversationDefinition)

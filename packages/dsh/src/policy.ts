@@ -192,6 +192,8 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
       if (!trigger.human) return machineGate(trigger)
       // A built-in local Source authenticates its user itself; it has no roster to consult.
       if (sources.trusted?.(trigger.source)) {
+        const own = sources.scope({ source: trigger.source, meta: trigger.meta })
+        if (!own.listened) return { admissible: false, reason: own.reason }
         return { admissible: true, strength: 'explicit', basis: { source: trigger.source, scope: trigger.meta, via: 'local',
           ...trigger.addressed ? { addressed: trigger.addressed } : {} } }
       }
