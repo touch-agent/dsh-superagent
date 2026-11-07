@@ -1,0 +1,152 @@
+# 009 Conversation tasks and multi-source work
+
+Status: proposal for review. Nothing in this document is implemented; the decisions it needs are listed in §10.
+It uses the terms of [001 Domain model](001-domain.md), [002 Authorization](002-authorization.md) and [007 Architecture](007-architecture.md).
+
+## 1. The gap
+
+Work enters dsh-superagent only through a Source: an external event stream with a read position, its own identity, admission rules and Thread/Channel mappings. The main Session is a person-facing router, not a Source; its chat messages are DSH session messages, not Triggers. That has two consequences today:
+
+- A person cannot assign work by talking to the main agent. Only a message in a Source Thread (GitHub, Feishu, a webhook queue) enters Eval and can become a Ticket.
+- A Ticket has one origin Trigger and the Channels of the Triggers it was accepted with. It can follow other Sources' Threads for context, but it has no first-class way to report into, or be advanced by, a Source it did not start from. The "one task across several Sources" story exists in the data model but not in the product.
+
+## 2. Requirements
+
+| # | Requirement |
+| --- | --- |
+| R1 | A person can assign a task by talking to the main agent, and see it accepted. |
+| R2 | A person can chat, ask questions, ask for status and discuss without every message becoming work. |
+| R3 | A task can span Sources: started in one, advanced by events in others, reported where people are. |
+| R4 | A Source event (PR merged, issue closed, document approved) can be the state change that moves a task on. |
+| R5 | Audit, idempotence and authorization stay: every Ticket still comes from an Eval on Triggers, and a person's identity is never mapped across Sources. |
+| R6 | The main agent coordinates (dispatch, attach, stop, answer); Executors still do technical work. |
+
+## 3. Principles
+
+1. **A conversation message becomes a Trigger before it becomes work.** The main Session never creates a Ticket. It records a Trigger from a built-in conversation Source, and Eval decides as it does for every Source. This keeps duplicate suppression, Decision history, Mandates and audit in one place.
+2. **Chat is not a Trigger by default.** Only an explicit dispatch creates one. "What is the status?" or "thanks" must not create candidates, Eval batches or Tickets.
+3. **A conversation Source is trusted and local, but still a Source.** Its actor is the authenticated local user, its admission row is fixed (the user is explicit by definition), and it has no roster or external credentials. It is built in so that identity and channel delivery cannot be configured away by a team.
+4. **The Ticket remains the task aggregate.** Channels, Subscriptions, Assignments and Inputs already express a task that spans Sources; no second Task entity is introduced in this phase.
+5. **The main agent routes and coordinates; it does not implement.** It may dispatch a request, attach a follow-up, ask a Ticket's Executor, answer a status question, or stop work. It does not read code, design a solution or operate a Source directly.
+6. **Outbound actions keep their own authorization.** A Ticket replies through its Channels; the agent acts with its own bot identity on each Source. The person's identity is not reused on GitHub or Feishu, which keeps the policy model intact (001 rejects cross-Source identity mapping).
+
+## 4. Design
+
+### 4.1 A built-in conversation Source
+
+A new Source kind, `conversation`, whose instance is the main Session's conversation. It is not a plugin a team installs; the runtime registers it with the main Session.
+
+| Domain concept | Conversation mapping |
+| --- | --- |
+| Trigger | One dispatched request (message id as the stable id; an edit version if edits must count) |
+| Thread | The task thread: the request message and the replies under it. Recommended over one Thread per conversation, so status questions and follow-ups reach exactly one task |
+| Actor | The authenticated local user |
+| Channel address | The session and the task thread; `send` delivers into the conversation |
+| Receiving scope | The conversation; every dispatched message is listened to and observed |
+| Admission | One fixed row, "you", with explicit strength. No team-editable roster |
+
+`scope` listens to every Trigger this Source produces (they exist only when dispatched). `threadContext` reads the task thread from the session transcript, so Eval and Executors see the request and its discussion. `health` is one entry, `conversation`.
+
+Two flows use the Source:
+
+- **Dispatch.** The main agent calls a new tool, `orchestrator_dispatch`, with the current message (or a referenced one), an optional title and an optional existing Ticket. The host stores the conversation Trigger and calls `Engine.receive`. The normal path continues: candidate, Eval, Decision, Mandate, Ticket. For this Source Eval may be deterministic: the local user is explicit by definition, so it can accept without a model call while still recording the Decision, the Mandate and the origin. The alternative, an ordinary model Eval, stays available behind a setting.
+- **Follow-up and status.** A reply in the task thread can be attached to the task's Ticket by `orchestrator_route attach` (or by the dispatch tool's existing-Ticket form). Then the Executor answers in the conversation. A pure status question may be answered by the main agent from `orchestrator_read` without touching the Ticket.
+
+### 4.2 The dispatch tool
+
+`orchestrator_dispatch` is available only to the main Session. Its input is a message reference (default: the message that triggered the current turn), a title, and optionally a Ticket id to attach to. It:
+
+1. verifies the message was written by the local user in this conversation;
+2. records the conversation Trigger once (message id dedupes a repeated call);
+3. calls `Engine.receive`, which stores the Trigger and schedules Eval;
+4. returns the Trigger id and, when Eval completed synchronously, the Ticket id.
+
+It does not accept work itself, does not decide scope, and cannot dispatch a message authored by the agent or a different person. A refused dispatch leaves the conversation unchanged and reports why.
+
+### 4.3 Task threads and chat
+
+One conversation hosts many tasks. A task is a thread: the request message is its root, replies under it belong to it. This keeps "status of task A" away from task B and lets a Ticket's Channel address one thread instead of the whole conversation.
+
+Chat stays chat: a message with no dispatch is visible to the main Session only. The main agent answers it, and nothing is stored as a Trigger. The product must make the difference visible (an explicit Dispatch action; the agent's acknowledgement names the Ticket), because "I said something and nothing happened" is the failure mode of an implicit model.
+
+### 4.4 Multi-source tasks
+
+The existing aggregate already holds several Threads and Channels. Two additions make multi-source work first class:
+
+- **Bind a Channel when the task starts using another Source.** Today a Ticket gets the Channels of the Triggers it was accepted with; `bindThread` adds context but no Channel. Add `Engine.bindChannel(ticketId, channel)` (or an `orchestrator_ticket_bind` tool) so a task started in conversation can report into the GitHub PR it opens or the Feishu chat it was discussed in. Constraints: the Channel's Source must be enabled; the Channel must belong to a Thread the Ticket follows or is about to follow; the Ticket must be live. The operation is recorded as an Input for audit.
+- **Treat external anchors as state points.** A PR, an Issue, a document and a chat thread are Threads with a lifecycle. `bindThread(..., own)` plus `threadClosed` already ends a Ticket when its own PR merges; the panel should surface these anchors, their state and the last event on the task card, and the main agent should read them for status answers.
+
+Source events then advance a task without a new decision: a person's message on a subscribed Thread reaches the Executor, and a Thread close is a state change. Neither grants authority; the Mandate still limits scope.
+
+### 4.5 Authorization and audit
+
+- The local user is the actor on every conversation Trigger. The conversation Source's admission row is fixed (the signed-in user, explicit); the Policy table does not let a team admit other people through it.
+- A conversation Mandate records the same facts as any Mandate: Policy version, scope, strength, rule matches, the actor's identity on this Source and how the Source received the Trigger.
+- The agent's outbound identity on GitHub or Feishu is its bot identity, not the person's. Replies to the conversation use the conversation Channel.
+- Every dispatch, attach, bind and stop is an Input on the Ticket or a Decision with its Trigger id, so audit answers "who asked for this" without a new log.
+
+## 5. Flows
+
+**Assign.** "Fix the flaky test in acme/widgets." → main agent calls `orchestrator_dispatch` → conversation Trigger → Eval accepts (explicit, local user) → Ticket with the conversation Channel → Executor works, opens a PR, `bindThread` and `bindChannel` (GitHub) → reports go to the conversation; the PR's events also reach the Ticket.
+
+**Chat.** "Thanks, and what does the policy say about bots?" → no dispatch; the main agent answers. No Trigger, no candidate.
+
+**Status.** "How is the flaky test going?" in the task thread → the message is attached to that Ticket → the Executor answers in the thread, or the main agent answers from the ticket snapshot if the Executor is idle.
+
+**State change.** The PR merges → `threadClosed(own)` ends the Ticket → the panel and the conversation show the state, and the main agent can summarize it. A person's later message on the task thread resumes the Ticket under the same Mandate unless a person stopped it.
+
+**Stop.** "Stop the flaky test work." → the main agent routes the message as a stop with its Trigger id, as it does for a Source stop today.
+
+## 6. Product changes
+
+| Area | Change |
+| --- | --- |
+| Conversation | Task threads (root request + replies), a task card per accepted Ticket, a visible Dispatch action and acknowledgement |
+| Main agent prompt | From "only routes" to "dispatches, coordinates and answers"; explicit rules for when not to dispatch (chat, status, duplicates) |
+| Panel | A task view grouped by conversation, with the Sources a task touches, each anchor's state and the last event; a link from every Ticket to its conversation thread |
+| Sources settings | The conversation Source is shown as built-in and not configurable beyond enabling it |
+| Notifications | The conversation is a Channel: reports, questions and terminal notices land in the task thread, not only in the ticket's external Source |
+| Metrics | Dispatch-to-accept latency, tasks per conversation, dispatch refusals, status answers, Source events per task |
+
+Product decisions to make explicitly:
+
+1. **Thread shape.** Per-task thread (recommended) versus one Thread per conversation. The former gives clean fan-out and status routing; the latter is simpler to render but mixes tasks.
+2. **Auto-accept.** Deterministic acceptance for the local user (recommended, still recorded) versus a model Eval on every dispatch. Auto-accept removes latency but must stay auditable and must not bypass dedupe.
+3. **Direct outbound.** Whether the main agent may post to an external Source on the person's behalf outside a Ticket. Recommendation: no; a Ticket and its Channel own outbound work, so authorization and idempotence stay in one place.
+4. **Multi-user.** DSH sessions are local today. If a team shares a conversation, it is no longer a trusted local Source and needs the ordinary Source policy (roster, admission) or a real external Source.
+
+## 7. Alternatives rejected
+
+| Alternative | Why not |
+| --- | --- |
+| Let the main Session create Tickets directly | Breaks "only Eval creates a Ticket"; duplicates, Mandate and audit would need a second path that diverges |
+| Treat every chat message as a Trigger | Every message would be assessed; chat and status become candidates and noise |
+| A new `Task` entity beside Ticket | Ticket already holds Channels, Subscriptions, Assignments and Inputs; a parallel aggregate would duplicate state and end conditions |
+| Map the local user onto GitHub/Feishu identities | 001 rejects cross-Source identity mapping; the agent's bot identity is the outbound actor |
+| A configurable `conversation` plugin | Identity and channel delivery are security-relevant; the built-in Source keeps them out of team configuration |
+
+## 8. Rollout
+
+| Phase | Work | Exit |
+| --- | --- | --- |
+| 0 | Decide §6.1–§6.4; define the local principal and its audit id | Decisions recorded |
+| 1 | `conversation` Source, `orchestrator_dispatch`, deterministic Eval path, Channel delivery | Assign from chat creates one Ticket; repeated calls create none; chat creates none |
+| 2 | Task threads, status answers, task card in the conversation, panel task view | The person can assign, ask and stop without leaving the conversation |
+| 3 | `bindChannel`, multi-source state points, anchor view on the task card | A conversation task reports into GitHub and is advanced by its PR events |
+| 4 | Hardening: replay, duplicate dispatch, prompt-injection review, privacy of transcripts | Audit and failure cases covered by tests |
+
+## 9. Risks
+
+- **Implicit work.** If dispatch is inferred from chat, small talk becomes Tickets. Keep dispatch explicit and observable.
+- **Duplicate origin.** A conversation request that duplicates an existing Source request must be caught by Eval or by the main agent's ticket list; the conversation Source does not dedupe across Sources.
+- **Transcript exposure.** `threadContext` reads the session transcript; the panel and logs must respect the same redaction as other resources.
+- **Channel accumulation.** Binding every Source a task touches can leak reports to unintended chats; `bindChannel` needs the same `allowed` check a normal send uses.
+- **Prompt injection in conversation.** Local chat is trusted for identity, not for instructions that override policy; the same untrusted-data rules as `meta` and `text` apply.
+
+## 10. Open decisions
+
+1. Per-task Thread or per-conversation Thread.
+2. Deterministic acceptance or model Eval for conversation requests.
+3. Whether the main agent may send to external Sources outside a Ticket.
+4. How a conversation request names an existing Ticket for attach (explicit id, quoted title, or the main agent's judgement).
+5. Whether the conversation Source appears under **Eval → On each Source** at all, or in its own panel section.
