@@ -3,7 +3,7 @@
 > 基线：`touch-agent/dsh-superagent` @ `26cd395`（`main`）· 运行宿主 DSH `0.2.1-rc.5`
 > 输入：工单「主会话是『一个进程一个体系』」①主会话/普通会话入口 ②主会话页内系统视图 + 右侧事件侧栏 ③工作目录分级
 > 配套：`PLATFORM-EVOLUTION.zh.md`（为什么）、`TASK-PLAN.zh.md` §10.2（做什么）、本文（宿主能力核验与设计）
-> 状态：设计已核验；S-01…S-03 已随本 PR 落地，S-04…S-08 待宿主界面任务排期
+> 状态：设计已核验；S-01…S-03 已随前置 PR #2 落地，S-04…S-08 已在本 PR 完成
 
 ---
 
@@ -180,13 +180,33 @@ domain event ──► ActivityLog（全部入库）
 | S-01 | 事件分级 + `activity` 表（schema 13）+ `GET activity` + 测试 | 1.5 | **本 PR 完成** |
 | S-02 | 单一通知预算：`endCoveredBy` 接入 `eventNotice`，更新报告相关测试 | 0.5 | **本 PR 完成** |
 | S-03 | 目录分级：`systemRoot`、默认 `<stateDir>/system/work`、启动创建、设置文案/文档 | 1 | **本 PR 完成** |
-| S-04 | 主会话入口：hero option + 会话行标记 + `openSession` + 回退按钮 | 2 | 待排期 |
-| S-05 | 页内「体系」视图：`conversation.view`、仅主会话、复用数据 hooks | 3 | 待排期 |
-| S-06 | 右侧「事件」栏：tab + 未读标题 + 轮询 + 自动打开一次 | 3 | 待排期 |
-| S-07 | SSE 推送：exact 路由、`Last-Event-ID` 补拉、心跳、同源校验 | 1.5 | 待排期 |
-| S-08 | 端到端与宿主版本矩阵：slot 存在性守卫、截图/演示、操作手册 | 2 | 待排期 |
+| S-04 | 主会话入口：hero option + 会话行标记 + `openSession` + 回退按钮 | 2 | **本 PR 完成** |
+| S-05 | 页内「体系」视图：`conversation.view`、仅主会话、复用数据 hooks | 3 | **本 PR 完成** |
+| S-06 | 右侧「事件」栏：tab + 未读标题 + 轮询 + 自动打开一次 | 3 | **本 PR 完成** |
+| S-07 | SSE 推送：exact 路由、`Last-Event-ID` 补拉、心跳、同源校验 | 1.5 | **本 PR 完成** |
+| S-08 | 端到端与宿主版本矩阵：slot 存在性守卫、截图/演示、操作手册 | 2 | **本 PR 完成**（截图见 `docs/images/session-entry/`） |
 
 **合计 14.5 人日**。S-01…S-03 与宿主界面解耦，先落地；S-04…S-08 依赖宿主 slot，按 DSH 版本做守卫。
+
+### 4.1 S-04…S-08 实现说明（本 PR）
+
+宿主基线提升到 `0.2.1-rc.5`，只使用该版本确实声明的 seat：
+
+| seat | 用途 | 缺失时 |
+| --- | --- | --- |
+| `conversation.hero.options` | 新建会话行右侧「主会话」按钮 | `slots.inject` 静默跳过；面板头部「打开主会话」回退按钮仍在 |
+| `sidebar.session.row.leading` | 会话行「主」标记 | 无标记；主会话仍可从入口打开 |
+| `conversation.view` | 主会话页内「体系」只读视图 | 管理面板 Overview 继续提供同一数据 |
+| `sidebar.right.pane.tab` / `.title` | 右侧「事件」tab 与未读标题 | 无事件栏；页内视图仍显示最近事件 |
+| `conversation.session.header.utilities` | 无渲染的自动打开桥 | 不自动打开，仍可从右侧栏手动打开 |
+
+rc.5 的会话行只有 leading 装饰，没有 `sidebar.session.row.trailing`，因此「主」标记落在 leading；这是有意的宿主适配，不新增未声明的 slot。
+会话页内的视图/侧栏位于管理面板之外，样式表因此在插件加载时挂到 `document.head`（仅 `.dt-` 命名空间），不只注入管理面板。
+SSE 是 `GET /orchestrator/api/activity/stream` 的 exact 路由：`Last-Event-ID` 优先于 `?after=`，首连从当前 head 开始、不回放历史；
+每条记录带 `id: <seq>`，`ready` 报告 head/backfill 游标，15 秒心跳注释；EventSource 不能带自定义头，所以该路由只校验 loopback Host、
+端口、`Origin` 与 `Sec-Fetch-Site`，不要求 `x-orchestrator-request`。连接失败时客户端退回 5 秒游标轮询，15 秒后重连 SSE。
+未读游标存 `localStorage['dsh-superagent/activity-seen']`，记录最后一次已读的 notice 序列；首次打开使用当前 notice head 作为基线，
+因此不会把历史事件全部算成未读。
 
 ---
 
@@ -220,7 +240,8 @@ domain event ──► ActivityLog（全部入库）
 - `packages/dsh/src/app/activity.ts`：`gradeEvent`、`endCoveredBy`、`ActivityLog`、`activityFeed`。
 - `packages/dsh/src/app/store.ts`：schema 13 的 `activity` 表、`Store.activity`、保留窗口。
 - `packages/dsh/src/app/assembly.ts`：emit 时入库；`eventNotice` 用预算。
-- `packages/dsh/src/app/http.ts`、`api.ts`：`GET activity`。
+- `packages/dsh/src/app/http.ts`、`api.ts`：`GET activity` 与 SSE `GET activity/stream`。
 - `packages/dsh/src/app/execution-environment.ts`、`runtime.ts`：`systemRoot`、主会话 cwd、默认工单根。
-- `tests/activity.spec.ts` 与报告/目录/迁移相关断言。
-- 本文与 `TASK-PLAN.zh.md` §10.2、`docs/003`、`docs/006`、`docs/007`。
+- `packages/dsh/src/client/{index.tsx,system.tsx,activity-feed.ts,master.ts,panel.ts}`：主会话入口、体系视图、事件栏、SSE/轮询客户端。
+- `tests/activity.spec.ts`、`tests/http.spec.ts`、`tests/activity-feed.spec.ts`、`tests/client.spec.tsx` 与报告/目录/迁移相关断言。
+- 本文与 `TASK-PLAN.zh.md` §10.2、`docs/003`、`docs/005`、`docs/006`、`docs/007`。

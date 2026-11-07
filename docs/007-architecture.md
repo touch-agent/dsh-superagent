@@ -398,7 +398,12 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/sources/feishu-doc-read.ts` | The comment and reply reads of a document, and `feishuDocThreadContext`, which gives a comment card to assessments |
 | `packages/dsh/src/sources/feishu-doc-channel.ts` | The Feishu document comment Channel: one reply per outbound message, `sent` or `gone` |
 | `packages/dsh/src/sources/feishu-doc-loops.ts` | The Feishu document loop: polling each document's new comment replies, document titles, and subscribed comment cards |
-| `packages/dsh/src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel and the page in DeepSeek Harness's Plugin Manager |
+| `packages/dsh/src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel, the main-Session entry and row badge, the System view, the Events tab and the page in DeepSeek Harness's Plugin Manager |
+| `packages/dsh/src/client/master.ts` | The shared read-only main-Session identity that the entry, row badge, System view and Events tab follow, with one poller for all of them |
+| `packages/dsh/src/client/activity-feed.ts` | The same-origin activity reader: first page, SSE with a cursor-polling fallback, dedupe by sequence, unread notice count and the persisted last-seen cursor |
+| `packages/dsh/src/client/system.tsx` | The main-Session surfaces: the New Session entry, the row badge, the read-only System view, the Events tab and title, and the first-notice auto-open bridge |
+| `packages/dsh/src/client/panel.ts` | Selects the management panel at a route requested by a Conversation surface, remembering it for a panel that mounts later |
+| `packages/dsh/src/client/styles.ts` | Installs the plugin stylesheet in the document head so surfaces outside the management panel share its tokens and classes |
 | `packages/dsh/src/client/app.tsx` | The panel: header, search, glossary, tabs and the page of the current route |
 | `packages/dsh/src/client/provider.tsx` | What every page reads from its host: copy, calls, navigation, notices, the state poll, and `restart`, which reads the state quickly while dsh-superagent restarts |
 | `packages/dsh/src/client/api.ts` | Calls and polls of the management API, typed by `packages/dsh/src/app/api.ts`, and the Decision filters of the Eval status |
@@ -477,7 +482,8 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/model-surface.spec.ts` | Everything models read: tools, prompts, skills and inputs, checked against the tool schemas, the execution environment and the glossary, within a size budget per role |
 | `tests/deployment.spec.ts`, `tests/environment.spec.ts`, `tests/index.spec.ts` | The plugin configuration and setup, the agent's process environment, the plugin entry |
 | `tests/service-script.spec.ts` | `scripts/dsh-superagent` against fake `ps`, `tmux` and `dsh` |
-| `tests/client.spec.tsx`, `tests/navigation.spec.ts`, `tests/controls.spec.tsx` | The client plugin's registration and polling, Session navigation and route memory, the local controls, and the panel's imports, which have no cycle |
+| `tests/client.spec.tsx`, `tests/navigation.spec.ts`, `tests/controls.spec.tsx` | The client plugin's registration, main-Session surfaces and slot guards, polling, Session navigation and route memory, the local controls, and the panel's imports, which have no cycle |
+| `tests/activity-feed.spec.ts` | The activity reader: first page and unread baseline, sequence dedupe and notice listeners, SSE failure to polling, and polling without `EventSource` |
 | `tests/panel-overview.spec.tsx`, `panel-source.spec.tsx`, `panel-trigger.spec.tsx`, `panel-eval.spec.tsx`, `panel-execution.spec.tsx` | Each page of the panel, against a fake management API answered by route |
 | `tests/panel-settings.spec.tsx`, `panel-prompts.spec.tsx`, `panel-deployment.spec.tsx`, `panel-panel.spec.tsx` | The settings groups, drafts and history, the prompts, the Deployment page, and the panel's search, glossary and route memory |
 | `tests/draft.spec.ts`, `tests/prompt-config.spec.ts`, `tests/markdown.spec.ts`, `tests/marks.spec.ts` | Draft states, merges and the save bar's line; the prompt configuration by section and the line diff; the Markdown subset and its links; the mark of every state the views classify |
