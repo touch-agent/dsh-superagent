@@ -98,6 +98,24 @@ it('marks the built-in conversation Source and a Ticket dispatched from it', () 
   expect(settingsView(store, host.sources, {}, {}, directory).sources.find(source => source.id === 'conversation')?.builtin).toBe(true)
 })
 
+it('shows a bound Channel and a followed Thread as anchors on the Ticket page', () => {
+  const host = views()
+  const channel: ChannelRef = { source: 'conversation', thread: 'conversation:m1', address: { session: 'orchestrator-1', root: 'm1', messageId: 'm1' } }
+  const closed = { at, outcome: 'merged' as const }
+  store.threads.save({ key: 'conversation:m1', ref: { source: 'conversation', id: 'm1' }, createdAt: at, subscriptions: ['t1'], correlated: [],
+    pending: [], meta: {} })
+  store.threads.save({ key: 'github:7', ref: { source: 'github', id: '7' }, createdAt: at, subscriptions: ['t1'], correlated: [], pending: [],
+    meta: {} })
+  store.tickets.save({ id: 't1', title: 'Fix', decisionId: 'd', channels: [channel], undelivered: [], createdAt: at, updatedAt: at,
+    mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'local', source: 'conversation' }, actor: { source: 'conversation',
+      id: 'local-user' }, scope: 'Fix it' }, origin: { triggerId: 'm1', triggerIds: ['m1'] }, assignments: [],
+    follows: [{ thread: 'github:7', own: true, closed }], inputs: [{ id: 'b1', kind: 'binding', channel, at }] })
+  const page = ticketDetail(host, 't1')!
+  expect(page.threads.find(thread => thread.key === 'conversation:m1')?.anchor).toEqual({ own: false })
+  expect(page.threads.find(thread => thread.key === 'github:7')?.anchor).toEqual({ own: true, closed })
+  expect(page.inputs[0]).toMatchObject({ kind: 'binding', channel })
+})
+
 it('classifies a Thread by what it is doing, and offers a filtered Trigger of a person to Eval again', () => {
   const host = views()
   store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: [],
