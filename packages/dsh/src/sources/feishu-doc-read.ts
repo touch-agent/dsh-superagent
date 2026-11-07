@@ -107,12 +107,24 @@ export const feishuDocThreadContext: ThreadContext<FeishuDocConfig> = {
       return { messages, body: { status: messages.length ? 'root' : 'empty', document: ref.document, commentId: ref.commentId, messages } }
     }
     if (part === 'parent') {
-      const page = await replyPage(commands, ref.document, ref.commentId, undefined, PAGE_SIZE)
-      const all = page.items.flatMap(item => { const parsed = DocReplySchema.safeParse(item); return parsed.success ? [parsed.data] : [] })
-      const index = all.findIndex(reply => docTriggerId(reply.reply_id) === feishuDocThreadContext.messageId(trigger))
-      const parent = index > 0 ? all[index - 1] : undefined
-      const messages = parent ? [contextMessage(parent, reader)] : []
-      return { messages, body: { status: messages.length ? 'parent' : 'no_parent', document: ref.document, commentId: ref.commentId, messages } }
+      // A comment card can outgrow one page; page until the Trigger's reply is found, so a long card still has a parent.
+      let cursor: string | undefined
+      let previous: DocReply | undefined
+      for (let pages = 0; pages < MAX_REPLY_PAGES; pages += 1) {
+        const page = await replyPage(commands, ref.document, ref.commentId, cursor, PAGE_SIZE)
+        for (const item of page.items) {
+          const parsed = DocReplySchema.safeParse(item)
+          if (!parsed.success) continue
+          if (docTriggerId(parsed.data.reply_id) === feishuDocThreadContext.messageId(trigger)) {
+            const messages = previous ? [contextMessage(previous, reader)] : []
+            return { messages, body: { status: messages.length ? 'parent' : 'no_parent', document: ref.document, commentId: ref.commentId, messages } }
+          }
+          previous = parsed.data
+        }
+        if (!page.has_more || !page.page_token) break
+        cursor = page.page_token
+      }
+      return { messages: [], body: { status: 'no_parent', document: ref.document, commentId: ref.commentId, messages: [] } }
     }
     const page = await replyPage(commands, ref.document, ref.commentId, cursor)
     const messages = page.items.flatMap(item => { const parsed = DocReplySchema.safeParse(item); return parsed.success ? [contextMessage(parsed.data, reader)] : [] })

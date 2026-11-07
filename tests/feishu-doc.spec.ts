@@ -110,6 +110,12 @@ it('reads the comment itself, the card around the Trigger, and the reply before 
   const parentTrigger = docTrigger(reply('r3', MEMBER, [text('again')]), card, document, BOT)!
   const parent = await feishuDocThreadContext.read(stub([answers]).commands, parentTrigger, 'parent', undefined, noDocuments)
   expect(parent.messages.map(item => item.id)).toEqual([docTriggerId('r2')])
+  const parentOnLaterPage = docTrigger(reply('r3', MEMBER, [text('third')]), card, document, BOT)!
+  const long = stub([{ items: [reply('r1', MEMBER, [text('root')])], has_more: true, page_token: 'p2' },
+    { items: [reply('r2', MEMBER, [text('second')]), reply('r3', MEMBER, [text('third')])], has_more: false }])
+  const parentLater = await feishuDocThreadContext.read(long.commands, parentOnLaterPage, 'parent', undefined, noDocuments)
+  expect(parentLater.messages.map(item => item.id)).toEqual([docTriggerId('r2')])
+  expect(parentLater.body).toMatchObject({ status: 'parent' })
   const page = await feishuDocThreadContext.read(stub([{ ...answers, has_more: true, page_token: 'p2' }]).commands, trigger, 'thread', undefined, noDocuments)
   expect(page.messages.map(item => item.from)).toEqual([MEMBER, MEMBER, BOT.botId])
   expect(page.messages[2]!.bot).toBe(true)

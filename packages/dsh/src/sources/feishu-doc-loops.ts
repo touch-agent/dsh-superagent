@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { threadKey, type Thread, type Trigger } from '@superagent/kernel'
 import { validItems, type Tally } from '../infra/commands.ts'
 import type { FeishuBot } from '../deployment.ts'
-import { readComments, readReplies, MAX_COMMENT_PAGES } from './feishu-doc-read.ts'
+import { readComments, readReplies } from './feishu-doc-read.ts'
 import { docRef, docThreadRef, docTime, docTrigger, SOURCE, type DocCard, type DocComment, type DocRef, type DocTarget, type DocReply }
   from './feishu-doc-trigger.ts'
 import { health, type SourceContext } from './host.ts'
@@ -66,8 +66,14 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
     const check = setInterval(() => { if (!enabled(ctx)) running.abort() }, 5000)
     const stop = () => running.abort()
     signal.addEventListener('abort', stop, { once: true })
-    try { await pollRound(ctx, config, running.signal); failures = 0 }
-    catch (error) {
+    try {
+      const problems = await pollRound(ctx, config, running.signal)
+      if (problems.length) {
+        failures += 1
+        const failed = pollFailure(failures, config.failuresBeforeError, problems.join('\n'))
+        if (failed) ctx.report(HEALTH, failed)
+      } else failures = 0
+    } catch (error) {
       if (!running.signal.aborted) {
         failures += 1
         const failed = pollFailure(failures, config.failuresBeforeError, error)
@@ -78,14 +84,14 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   }
 }
 /** One polling round: new replies of every document, then the subscribed comment cards whose replies the live API cannot deliver. */
-export async function pollRound(ctx: SourceContext, config: FeishuDocConfig, signal?: AbortSignal): Promise<void> {
-  if (!enabled(ctx)) return
+export async function pollRound(ctx: SourceContext, config: FeishuDocConfig, signal?: AbortSignal): Promise<string[]> {
+  if (!enabled(ctx)) return []
   const started = new Date().toISOString()
   const tally: Tally = { skipped: 0 }
   const known = { ...labels(ctx) }
   const problems: string[] = []
   for (const doc of config.documents) {
-    if (signal?.aborted) return
+    if (signal?.aborted) return problems
     // A new document has no stored title yet; one read per round names it and its Threads.
     if (!known[doc.url]) {
       known[doc.url] = await title(ctx.commands, doc.url, doc.name)
@@ -98,29 +104,33 @@ export async function pollRound(ctx: SourceContext, config: FeishuDocConfig, sig
     try {
       const page = await readComments(ctx.commands.withSignal(signal), doc.url, tally)
       const target: DocTarget = { url: doc.url, title: known[doc.url], token: page.token, type: page.type }
-      if (page.truncated) problems.push(`${target.title}: more than ${MAX_COMMENT_PAGES} pages of unresolved comments; later ones wait for the next round`)
+      // A truncated page or reply list means replies exist that this round did not see; hold the cursor so none is skipped.
+      let complete = !page.truncated
       for (const card of page.cards) {
-        if (signal?.aborted) return
+        if (signal?.aborted) return problems
         const replies = card.comment.has_more
-          ? (await readReplies(ctx.commands.withSignal(signal), doc.url, card.comment.comment_id, tally)).replies
-          : card.replies
-        await ingest(ctx, target, card.comment, replies, since)
+          ? await readReplies(ctx.commands.withSignal(signal), doc.url, card.comment.comment_id, tally)
+          : undefined
+        if (replies?.truncated) complete = false
+        await ingest(ctx, target, card.comment, replies?.replies ?? card.replies, since)
       }
-      if (!signal?.aborted) ctx.state.set(cursor, cursorAt(started))
+      if (!complete) problems.push(`${target.title}: more comments or replies than the source can page through; the cursor is held so none is skipped`)
+      else if (!signal?.aborted) ctx.state.set(cursor, cursorAt(started))
     } catch (error) {
       if (!signal?.aborted) problems.push(`${known[doc.url] ?? doc.url}: ${String(error)}`)
     }
   }
-  await pollThreads(ctx, signal, tally, known)
-  if (signal?.aborted) return
+  await pollThreads(ctx, signal, tally, known, problems)
+  if (signal?.aborted) return problems
   const skipped = tally.skipped ? `; ${tally.skipped} unreadable items skipped` : ''
-  ctx.report(HEALTH, problems.length ? { state: 'error', detail: problems.join('\n') }
-    : { state: 'ready', detail: `Configured documents polled for new comment replies${skipped}`, at: new Date().toISOString() })
+  if (!problems.length) ctx.report(HEALTH, { state: 'ready', detail: `Configured documents polled for new comment replies${skipped}`, at: new Date().toISOString() })
+  return problems
 }
 /** Polls the subscribed comment cards, which the comment list cannot follow after their first page. */
 export async function pollThreads(ctx: SourceContext, signal?: AbortSignal, tally: Tally = { skipped: 0 },
-  known: Record<string, string> = labels(ctx)): Promise<void> {
-  await pollEach(ctx, SOURCE, () => !!signal?.aborted, thread => pollThread(ctx, thread, signal, known, tally))
+  known: Record<string, string> = labels(ctx), problems: string[] = []): Promise<string[]> {
+  await pollEach(ctx, SOURCE, () => !!signal?.aborted, thread => pollThread(ctx, thread, signal, known, tally, problems))
+  return problems
 }
 /** Turns the replies of one comment card into Triggers, oldest first, skipping the bot's own replies and anything before `since`. */
 async function ingest(ctx: SourceContext, target: DocTarget, comment: DocComment, replies: readonly DocReply[], since: string): Promise<void> {
@@ -153,7 +163,8 @@ function threadRef(ctx: SourceContext, thread: Thread): DocRef | undefined {
  * Polls one subscribed comment card for replies the Source missed, marking the replies present at subscription as seen so the
  * Thread's older context is not ingested as new work.
  */
-async function pollThread(ctx: SourceContext, thread: Thread, signal: AbortSignal | undefined, known: Record<string, string>, tally: Tally): Promise<void> {
+async function pollThread(ctx: SourceContext, thread: Thread, signal: AbortSignal | undefined, known: Record<string, string>, tally: Tally,
+  problems: string[]): Promise<void> {
   if (!enabled(ctx)) return
   const ref = threadRef(ctx, thread)
   if (!ref) throw new Error('A subscribed Feishu document Thread has no comment to poll')
@@ -163,6 +174,7 @@ async function pollThread(ctx: SourceContext, thread: Thread, signal: AbortSigna
   const initialized = ctx.state.get(KV.feishuDoc.initialized(thread.key))
   const since = Date.parse(thread.createdAt)
   const page = await readReplies(commands, ref.document, ref.commentId, tally)
+  if (page.truncated) problems.push(`${known[ref.document] ?? ref.document}: more replies on comment ${ref.commentId} than the source can page through; the unread ones stay pending`)
   const target: DocTarget = { url: ref.document, title: known[ref.document], token: page.token, type: page.type }
   const card: DocCard = { commentId: ref.commentId, rootReplyId: page.replies[0]?.reply_id }
   for (const reply of page.replies) {

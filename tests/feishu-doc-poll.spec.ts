@@ -78,6 +78,48 @@ describe('polling document comments', () => {
     expect(h.health).toMatchObject({ state: 'ready', detail: expect.stringContaining('polled') })
   })
 
+  it('returns a failed document and holds its cursor, leaving the error threshold to the watch loop', async () => {
+    const h = open = harness()
+    h.store.set(KV.feishuDoc.since(DOC), SINCE)
+    vi.spyOn(h.commands, 'lark').mockImplementation(async args => {
+      if (args[1] === '+inspect') return { token: 'DOC1', type: 'docx', title: 'Handbook' }
+      if (args[1] === '+list-comments') throw new Error('network down')
+      return {}
+    })
+    expect(await pollRound(h.ctx, config)).toEqual([expect.stringContaining('network down')])
+    expect(h.store.get(KV.feishuDoc.since(DOC))).toBe(SINCE)
+    expect(h.health).toMatchObject({ state: 'starting' })
+  })
+
+  it('holds the cursor when the comment pages are cut off, so no reply is skipped', async () => {
+    const h = open = harness()
+    h.store.set(KV.feishuDoc.since(DOC), SINCE)
+    let pages = 0
+    vi.spyOn(h.commands, 'lark').mockImplementation(async args => {
+      if (args[1] === '+inspect') return { token: 'DOC1', type: 'docx', title: 'Handbook' }
+      if (args[1] === '+list-comments') { pages += 1; return { file_token: 'DOC1', file_type: 'docx', items: [], has_more: true, page_token: `p${pages + 1}` } }
+      return {}
+    })
+    expect(await pollRound(h.ctx, config)).toEqual([expect.stringContaining('cursor is held')])
+    expect(pages).toBe(20)
+    expect(h.store.get(KV.feishuDoc.since(DOC))).toBe(SINCE)
+  })
+
+  it('holds the cursor when a comment card has more replies than one read returns', async () => {
+    const h = open = harness()
+    h.store.set(KV.feishuDoc.since(DOC), SINCE)
+    let pages = 0
+    vi.spyOn(h.commands, 'lark').mockImplementation(async args => {
+      if (args[1] === '+inspect') return { token: 'DOC1', type: 'docx', title: 'Handbook' }
+      if (args[1] === '+list-comments') return page([{ comment_id: 'c1', has_more: true, reply_list: { replies: [] } }])
+      if (args[1] === '+list-replies') { pages += 1; return { file_token: 'DOC1', file_type: 'docx', items: [], has_more: true, page_token: `q${pages + 1}` } }
+      return {}
+    })
+    expect(await pollRound(h.ctx, config)).toEqual([expect.stringContaining('cursor is held')])
+    expect(pages).toBe(10)
+    expect(h.store.get(KV.feishuDoc.since(DOC))).toBe(SINCE)
+  })
+
   it('reads from the moment a document is saved, not its earlier comments', async () => {
     const h = open = harness()
     vi.spyOn(h.commands, 'lark').mockImplementation(async args => {
