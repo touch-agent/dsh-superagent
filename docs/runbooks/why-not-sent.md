@@ -22,7 +22,7 @@ Every Trigger's row carries a **Why** button. That is the whole of step 2.
 | Stage | What it means |
 | --- | --- |
 | Received | The Source handed the message over, and it was stored as a Trigger |
-| Deduplicated | The Store already had this Trigger; nothing new happened |
+| Deduplicated | The Store already had this Trigger; nothing new happened. This is a stop, not an unfinished trace |
 | Queued | The Thread was put in line for an Eval |
 | Gate | The deterministic half of the Eval judged it: allowed sender, mention, admission cell |
 | Admitted to an Eval | The Thread entered an Eval; the gate's strength and route are in its facts |

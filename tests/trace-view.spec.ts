@@ -59,3 +59,16 @@ it('reports the gate\'s refusal as the reason the Trigger stopped', () => {
   expect(triggerTrace({ store }, 't2')).toMatchObject({ stages: [{ kind: 'ingest' }, { kind: 'gate' }],
     stop: { stage: 'gate', reason: 'not_a_member' } })
 })
+
+it('ends a duplicate at the dedupe stage instead of calling it incomplete', () => {
+  const store = new Store(path())
+  stage(store, 't4', 'ingest', 0)
+  stage(store, 't4', 'dedupe', 0, { duplicate: true })
+  expect(triggerTrace({ store }, 't4')).toMatchObject({ stages: [{ kind: 'ingest' }, { kind: 'dedupe' }],
+    stop: { stage: 'dedupe' } })
+  // A first sighting of the same Trigger is not a duplicate, so it is still in flight.
+  const first = new Store(join(directory, 'first.sqlite'))
+  stage(first, 't5', 'ingest', 0)
+  stage(first, 't5', 'dedupe', 0, { duplicate: false })
+  expect(triggerTrace({ store: first }, 't5').partial).toBe(true)
+})
