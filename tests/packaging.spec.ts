@@ -3,9 +3,11 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import * as bundleEntry from '../meta/index.ts'
 import * as feishuEntry from '../meta/feishu-watch.ts'
+import * as feishuDocEntry from '../meta/feishu-doc-watch.ts'
 import * as githubEntry from '../meta/github-watch.ts'
 import * as runtimeEntry from '@superagent/dsh/index.ts'
 import * as runtimeFeishu from '@superagent/dsh/feishu-watch'
+import * as runtimeFeishuDoc from '@superagent/dsh/feishu-doc-watch'
 import * as runtimeGithub from '@superagent/dsh/github-watch'
 
 interface Manifest {
@@ -20,9 +22,9 @@ const bundle = manifest('package.json')
 const runtime = manifest('packages/dsh/package.json')
 
 describe('the split between the bundle and the runtime', () => {
-  it('keeps the bundle name and the three entry names its patch rows resolve', () => {
+  it('keeps the bundle name and the four entry names its patch rows resolve', () => {
     expect(bundle.name).toBe('dsh-superagent')
-    expect(Object.keys(bundle.exports)).toEqual(expect.arrayContaining(['.', './client', './github-watch', './feishu-watch']))
+    expect(Object.keys(bundle.exports)).toEqual(expect.arrayContaining(['.', './client', './github-watch', './feishu-watch', './feishu-doc-watch']))
     expect(bundle.dsh?.bundle?.patch).toBe('./cordis.patch.yml')
   })
   it('installs the runtime as a dependency and keeps the packaged content with its reader', () => {
@@ -39,5 +41,6 @@ describe('the split between the bundle and the runtime', () => {
     expect(bundleEntry.inject).toEqual(runtimeEntry.inject)
     expect(githubEntry.apply).toBe(runtimeGithub.apply)
     expect(feishuEntry.apply).toBe(runtimeFeishu.apply)
+    expect(feishuDocEntry.apply).toBe(runtimeFeishuDoc.apply)
   })
 })

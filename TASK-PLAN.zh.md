@@ -185,12 +185,14 @@ graph LR
 - **交付**：`tests/conformance/`：一组可被任何 adapter 复用 `describe` 的用例：幂等键生成、游标回退 5 秒、health claim 命名、`probe` 语义、scope 裁决、出站 `sent/gone` 两态。
 - **验收**：GitHub 与 Feishu 都跑通；故意写错幂等键的假 adapter 必须失败。
 - **依赖**：T1-04、T1-05。
+- **状态**：实现完成（2026-11-07，PR #1 待合并）。`tests/conformance/suite.ts` 由任何 Source 的 fixture 驱动；GitHub 与 Feishu 各有一个 spec，`tests/conformance/suite.spec.ts` 证明写错幂等键、漏掉 5 秒游标回退、丢掉出站幂等键的假 adapter 必红。probe 用例已留好，等 T2-06 给 adapter 加 `probe` 后填入。
 
 ### T1-07 / T1-08 / T1-09 三个新源：Gmail、飞书文档、日历 · Connector · 5 / 5 / 6 人日
 
 - **交付**：每个 = manifest + adapter + 环境变量注册 + conformance 通过。
 - **验收**：新增一个源的总改动 ≤ 2 人日可复现（用 T1-09 的日历作为计时样本）；面板无手写表单。
 - **依赖**：T1-06。
+- **状态**：T1-08 实现完成（2026-11-07，PR 待合并）。`feishu-doc` = manifest `feishuDocManifest` + adapter `feishuDocAdapter` + 两个环境变量 + `tests/conformance/feishu-doc.spec.ts`；新插件 `./feishu-doc-watch` 在 `cordis.patch.yml` 里默认关闭，沿用飞书来源配置的机器人。未改 app 与内核。T1-07、T1-09 未开始。
 
 ### T1-10 `kind.ts` 退役与等价证明 · Connector · 2 人日
 
@@ -354,7 +356,7 @@ graph LR
 | X-08 | 安装/卸载 E2E：临时 `DSH_HOME` → `dsh plugin add` → 起进程 → 面板可用 → 卸载后 stateDir 仍在 | 5 | 这是「能被组织安装」的唯一证据；M1 结束前 |
 | X-09 | 入口首页三区（待我处理 / 正在跑 / 最近历史）+ 侧边栏角标 | 5 | 详见 `PLUGIN-PACKAGING.zh.md` §4；M3 前 |
 | X-10 | 宿主兼容矩阵：CI 跑两个 alpha 版本，断言必需服务齐备 | 3 | 对应 R7；每个里程碑跑一次 |
-| X-11 | `dump-config` 断言：patch 5 行齐全 | 2 | 防「装了没生效」的静默失败；随 X-07 一起做 |
+| X-11 | `dump-config` 断言：patch 6 行齐全 | 2 | 防「装了没生效」的静默失败；随 X-07 一起做 |
 
 **X-07 与 X-11 是 M1 的前置**（5 人日）：M1 要写 `SourceManifest` 与新源，这些代码落在哪个包取决于切分结果；切晚了等于搬两次。X-08 是 M1 的退出证据——没有它，M1 交付的「三个源」只在本机跑过。
 

@@ -58,6 +58,7 @@ For an unlisted person, an explicit admission cell takes precedence even on a Th
 Each Source's Policy has an admission table. Its rows are receiving scopes:
 
 - **Feishu:** each configured chat, other chats the bot receives mentions from, and direct messages. Other chats are received only when **其他群** is set to **仅 @** on the Feishu card.
+- **Feishu documents:** each configured document URL. Comments the bot receives without a mention are rowed by the document; `listen: all` makes them inferable, `listen: mentions` leaves them unadmitted.
 - **GitHub:** new Issues, new pull requests, comments and the default branch's CI.
 
 A row has up to three cells. Each cell decides whether a message becomes an explicit request, an inferred candidate or nothing:

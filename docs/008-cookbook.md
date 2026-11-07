@@ -419,6 +419,18 @@ it('takes in what the queue holds after the cursor, once, and moves the cursor a
 - the plugin: `apply` registers the definition and reports `setupPending` while setup waits, its disposers unregister it, and a failure that escapes the loop becomes the Source's health instead of an unhandled rejection;
 - the Source's part of the Policy and its admission rows, as `tests/registry.spec.ts` and `tests/policy.spec.ts` check the Feishu Source's.
 
+#### Run the adapter conformance suite
+
+`tests/conformance/suite.ts` holds the contract every Source adapter passes, and `tests/conformance/github.ts` and `tests/conformance/feishu.ts` show how to feed it. Add `tests/conformance/<kind>.ts` with a `ConformanceSubject` and one `describeConformance(subject)` call in `tests/conformance/<kind>.spec.ts`. The subject supplies what only the Source knows:
+
+- `definition` and one valid `config`;
+- `events`: at least two real Trigger builders, with `replay` reading one of them through a second read path or a repeated poll, and the agent's own event marked `ignored`;
+- `scope`: the decisions under the configurations that change them (listed, unlisted, direct, each observed switch);
+- `sends`: one `sent`, one `gone` and one `throw` case, each with a fresh `Commands` stub whose `calls` keep what reached the remote service;
+- `cursor`: the newest event time (or round start) and the Source's own step, which must be five seconds earlier.
+
+The suite checks the Trigger id stays one per event, the cursor overlap, the health claims, the scope answers against the Policy rows, and that a successful send passes the outbound idempotency key. Probe cases join automatically once T2-06 adds `probe`; `tests/conformance/suite.spec.ts` proves the suite reports each broken fixture.
+
 ### Checklist
 
 1. Map Triggers, Threads, actors, Channel addresses and receiving scopes.
@@ -431,4 +443,4 @@ it('takes in what the queue holds after the cursor, once, and moves the cursor a
 8. Register its execution environment variables.
 9. Write the plugin entry and a loop that waits for setup, follows the switch, moves cursors after `receive`, keeps errors per item, reports health and stops on abort; name the cursors in `KV`.
 10. Add the build entry, the export and the `cordis.patch.yml` insert, and list the module and its spec in the tables of 007.
-11. Test it as `tests/sources.spec.ts` tests the other Sources.
+11. Test it as `tests/sources.spec.ts` tests the other Sources, and add its `tests/conformance/<kind>.spec.ts` to the shared suite.
