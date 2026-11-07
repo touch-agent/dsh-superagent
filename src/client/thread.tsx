@@ -1,6 +1,6 @@
 /** Thread detail page: Trigger timeline with gap-free pagination, Decisions, subscribed Tickets, and correlated Threads. */
 import { useEffect, useState, type ReactNode } from 'react'
-import { ApiError, usePoll, type ThreadPageView, type TriggerRow } from './api.ts'
+import { ApiError, usePoll, type ThreadPageView, type TriggerRow, type TriggerTraceView } from './api.ts'
 import { Button, DisclosureRow, Icon, Tag } from './controls.tsx'
 import { decisionMark } from './marks.ts'
 import { useAction, usePanel } from './provider.tsx'
@@ -45,6 +45,7 @@ function TriggerItem({ trigger, earlier, target, subscribed, requeue }: {
       reason: item.reason })}</Hint>)}
     <div className="dt-event-foot">
       {triggerTags(t, trigger, subscribed)}
+      <TraceDetail triggerId={trigger.id} />
       {ticketId && !subscribed.has(ticketId) && <button type="button" className="dt-textlink dt-icon-link"
         onClick={() => navigate({ page: 'execution', id: ticketId })}>{t('openTicket')}</button>}
       {requeue && <button type="button" className="dt-textlink dt-icon-link dt-reveal" disabled={requeue.busy} aria-busy={requeue.busy}
@@ -54,6 +55,37 @@ function TriggerItem({ trigger, earlier, target, subscribed, requeue }: {
     </div>
   </li>
 }
+/**
+ * The stages one Trigger went through, fetched only when someone asks why it did what it did. Collapsed by default so the
+ * timeline stays quiet, and never polled: a trace stops changing once its Trigger is settled.
+ */
+function TraceDetail({ triggerId }: { triggerId: string }) {
+  const { t, call, notify } = usePanel()
+  const [open, setOpen] = useState(false)
+  const [trace, setTrace] = useState<TriggerTraceView>()
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    call('GET triggers/:id/trace', { id: triggerId })
+      .then(value => { if (active) setTrace(value) }, (failure: unknown) => { if (active) notify(errorText(failure)) })
+    return () => { active = false }
+  }, [open, triggerId, call, notify])
+  return <>
+    <button type="button" className="dt-textlink dt-icon-link dt-reveal dt-trace-toggle" aria-expanded={open}
+      onClick={() => setOpen(value => !value)}>{t('traceWhy')}</button>
+    {open && (trace
+      ? trace.stages.length
+        ? <div className="dt-row-meta">{trace.stages.map(stage => <span key={stage.kind} className="dt-chip">
+          <span className="dt-chip-source">{t(`span.${stage.kind}`)}</span>
+          <span className="dt-chip-fact"><When at={stage.at} /></span>
+        </span>)}
+        {trace.stop?.stage === 'gate' && trace.stop.reason ? <span className="dt-error-text">{reasonLabel(t, trace.stop.reason)}</span>
+          : trace.stop ? <span className="dt-line-text">{t('traceStoppedAt', { stage: t(`span.${trace.stop.stage}`) })}</span> : null}</div>
+        : <Hint>{t('traceNone')}</Hint>
+      : <Hint>{t('traceLoading')}</Hint>)}
+  </>
+}
+
 interface Older { triggers: TriggerRow[]; cursor: string | null }
 const overlaps = (some: TriggerRow[], others: TriggerRow[]) => some.some(item => others.some(other => other.id === item.id))
 const byTime = (triggers: TriggerRow[]) => [...new Map(triggers.map(item => [item.id, item])).values()]

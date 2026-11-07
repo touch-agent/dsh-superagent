@@ -325,6 +325,12 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     server.threads = []
     return { removed, thread: params.key, context_delivery: 'injected' }
   } },
+  'GET triggers/:id/trace': { answer: ({ params }) => ({
+    trigger: params.id, source: 'feishu',
+    stages: [{ kind: 'ingest', at: '2026-01-01T00:00:00.000Z' }, { kind: 'gate', at: '2026-01-01T00:00:01.000Z',
+      facts: { admitted: false, reason: 'not_a_member' } }],
+    stop: { stage: 'gate', reason: 'not_a_member' },
+  }) },
   'POST triggers/:id/requeue': { answer: ({ params }) => { server.queued.add(params.id); return { queued: true } } },
   'GET decisions': { query: ['kind', 'window', 'offset', 'limit'], answer: ({ query }) =>
     ({ items: query.kind === 'ignore' ? [] : [acceptDecision()], next_offset: null }) },

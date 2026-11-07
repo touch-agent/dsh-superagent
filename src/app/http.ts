@@ -28,6 +28,7 @@ import { settingsView } from './views/settings.ts'
 import { sourcesStatus, type SetupState } from './views/sources.ts'
 import { decisionList, search, threadDetail, threadList } from './views/threads.ts'
 import { executorLoad, ticketDetail, ticketList } from './views/tickets.ts'
+import { triggerTrace } from './views/trace.ts'
 
 export interface HttpHost {
   readonly store: Store
@@ -181,6 +182,7 @@ function routes(runtime: HttpHost): Routes {
       runtime.requestPass()
       return { queued }
     },
+    'GET triggers/:id/trace': ({ params }) => triggerTrace(views(runtime), params.id),
     'GET decisions': ({ query }) => {
       const { kind, window, offset, limit } = DecisionsQuery.parse(query)
       const since = window ? new Date(Date.now() - 86_400_000).toISOString() : ''

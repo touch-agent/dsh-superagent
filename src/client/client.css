@@ -338,6 +338,7 @@ div.dt-preview-head { color: var(--dsw-alias-label-secondary); }
 .dt-row-meta.dt-line { flex-wrap: nowrap; }
 .dt-line-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dt-error-text { color: var(--dsw-alias-state-error-primary); }
+.dt-trace-toggle[aria-expanded="true"] { color: var(--dsw-alias-brand-primary); }
 .dt-stage { display: inline-flex; align-items: flex-start; gap: 5px; font-size: 12px; line-height: 18px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
 .dt-stage svg { flex: none; margin-top: 2px; }
 .dt-stage[data-state='warning'] { color: var(--dsw-alias-state-warn-primary); }

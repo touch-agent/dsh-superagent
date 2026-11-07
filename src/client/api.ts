@@ -126,6 +126,7 @@ export type TicketRow = ApiResponse<'GET tickets'>['items'][number]
 export type TicketPageView = ApiResponse<'GET tickets/:id'>
 export type ThreadRow = ApiResponse<'GET threads'>['items'][number]
 export type ThreadPageView = ApiResponse<'GET threads/:key'>
+export type TriggerTraceView = ApiResponse<'GET triggers/:id/trace'>
 export type TriggerRow = ThreadPageView['timeline'][number]
 export type DecisionRow = ApiResponse<'GET decisions'>['items'][number]
 export type Problem = ApiResponse<'GET overview'>['problems'][number]
