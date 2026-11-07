@@ -85,7 +85,7 @@ it('keeps spans across a reopen, because a trace outlives the process that recor
   second.close()
 })
 
-it('opens a schema-11 database at schema 12 with its records and no spans', () => {
+it('opens a schema-11 database at the current schema with its records and no spans', () => {
   const store = new Store(path())
   store.triggers.save({ id: 't1', source: 'feishu', threads: [{ source: 'feishu', id: 'oc_1:om_1' }],
     actor: { source: 'feishu', id: 'u' }, human: true, at: '2026-11-07T10:00:00.000Z', text: 'fix it', meta: {} })

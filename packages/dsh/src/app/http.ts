@@ -29,6 +29,7 @@ import { sourcesStatus, type SetupState } from './views/sources.ts'
 import { decisionList, search, threadDetail, threadList } from './views/threads.ts'
 import { executorLoad, ticketDetail, ticketList } from './views/tickets.ts'
 import { triggerTrace } from './views/trace.ts'
+import { activityFeed } from './activity.ts'
 
 export interface HttpHost {
   readonly store: Store
@@ -150,6 +151,7 @@ const PromptsQuery = z.object({ revision: count.optional(), offset: count.defaul
 const SourceBlock = z.templateLiteral(['source:', z.string().regex(/^[a-z][a-z0-9-]*$/)])
 const SettingsBlockSchema = z.union([z.enum(['policy', 'eval', 'executor']), SourceBlock])
 const SaveRequest = z.object({ value: z.unknown(), revision: z.number().int().nonnegative() })
+const ActivityQuery = z.object({ after: offset, limit: limit(50, 200), level: z.enum(['quiet', 'feed', 'notice']).optional().catch(undefined) })
 
 function routes(runtime: HttpHost): Routes {
   const { store } = runtime
@@ -160,6 +162,10 @@ function routes(runtime: HttpHost): Routes {
     'GET overview': () => overview(views(runtime), runtime.health, policyVersion(store.settings()),
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
     'GET metrics': () => metrics(store),
+    'GET activity': ({ query }) => {
+      const { after, limit, level } = ActivityQuery.parse(query)
+      return activityFeed(store.activity, after, limit, level)
+    },
     'GET search': ({ query }) => search(views(runtime), query.q ?? '', runtime.sourceLinks),
     'GET sources': () => sourcesStatus(views(runtime), runtime.health, setupState(runtime)),
     'GET settings': () => settingsView(store, runtime.sources, runtime.health, setupState(runtime), runtime.machine.stateDir),

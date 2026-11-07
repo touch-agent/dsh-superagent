@@ -67,6 +67,25 @@ it('decodes path parameters and parses each route\'s query', async () => {
   expect(seen).toEqual(['feishu:oc_1:om/root', { filter: { kinds: ['accept', 'reopen'], since: expect.any(String) }, offset: 0, limit: 200 }])
 })
 
+it('serves the activity feed by cursor and minimum level, defaulting or clamping a bad page', async () => {
+  const seen: unknown[] = []
+  const item = { seq: 4, at: '', event: 'trigger.received', level: 'feed', summary: 'Trigger x received' }
+  const call = serve({ store: { activity: {
+    latest: (level?: string) => level === 'feed' ? 4 : 7,
+    recent: (limit: number, level?: string) => { seen.push({ after: 0, limit, level }); return [item] },
+    after: (after: number, limit: number, level?: string) => { seen.push({ after, limit, level }); return [] },
+  } } })
+  expect(await call('GET', 'activity?after=3&limit=20&level=feed')).toEqual({ status: 200, body: { items: [], latest: 4, next: 3 } })
+  // Once the cursor reaches the feed head, a quiet event behind it does not invent a backlog.
+  expect(await call('GET', 'activity?after=4&level=feed')).toEqual({ status: 200, body: { items: [], latest: 4, next: 4 } })
+  // A first load starts at the head, even when its page is smaller than the feed.
+  expect(await call('GET', 'activity')).toEqual({ status: 200, body: { items: [item], latest: 7, next: 7 } })
+  expect(seen).toEqual([{ after: 3, limit: 20, level: 'feed' }, { after: 4, limit: 50, level: 'feed' }, { after: 0, limit: 50, level: undefined }])
+  expect(await call('GET', 'activity?limit=500')).toMatchObject({ status: 200 })
+  expect(await call('GET', 'activity?after=x&level=loud')).toMatchObject({ status: 200 })
+  expect(seen.slice(-2)).toEqual([{ after: 0, limit: 200, level: undefined }, { after: 0, limit: 50, level: undefined }])
+})
+
 it('answers only a same-origin request from the panel on the loopback address', async () => {
   const call = serve({ sessions: { delivery: async () => 'injected' }, engine: { unsubscribe: () => true } })
   const post = (headers: Headers) => call('POST', 'threads/github%3A1/unsubscribe', undefined, headers)

@@ -18,7 +18,7 @@ import { assemble, type Assembled } from './assembly.ts'
 import type { Setup } from './setup.ts'
 import { Commands } from '../infra/commands.ts'
 import type { Deployment, Machine } from '../deployment.ts'
-import { ticketEnvironment, type Variable } from './execution-environment.ts'
+import { systemRoot, ticketEnvironment, type Variable } from './execution-environment.ts'
 import { sourceTrigger, workerSessionId } from '../executor/dsh.ts'
 import type { DshExecutor } from '../executor/dsh.ts'
 import type { MasterAssessor } from './assessment.ts'
@@ -136,7 +136,10 @@ export class Runtime extends Service implements SourceHost {
     }
     this.sessions.install()
     this.executor.install()
-    await this.sessions.ensure(this.masterId, this.machine.stateDir, 'dsh-superagent orchestrator', 'orchestrator')
+    // The main Session's workspace is the system root: one process is one system, and every worker directory sits under it.
+    const root = systemRoot(this.machine.stateDir)
+    mkdirSync(root, { recursive: true, mode: 0o700 })
+    await this.sessions.ensure(this.masterId, root, 'dsh-superagent orchestrator', 'orchestrator')
     for (const id of this.settings.syncable()) await this.settings.sync(id).catch(() => { /* sync() records its failure in health. */ })
     // If stop() was called while awaiting setup, session creation, or policy sync, do not start background loops.
     if (this.closing()) return
