@@ -162,17 +162,19 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
       false, (resource, offset, limit, signal) => readResource(resources, resource, offset, limit, undefined, signal)),
     tool({
       name: 'orchestrator_dispatch',
-      description: 'Start work from the person\'s latest message after they clearly asked for it. Use it once per request, when the message is theirs and asks for work rather than a question or small talk. A repeated call for the same message dispatches nothing twice. Do not use it for a ticket notice, status question, or a message the agent wrote.',
+      description: 'Start work from the person\'s latest message, or attach it to a ticket with ticket_id. Use only when the message is theirs and asks for work or names a ticket; repeats do nothing. Never for small talk, a ticket notice, or the agent\'s own message.',
       schema: z.object({
-        title: z.string().trim().min(1).max(200).describe('A short label of the person\'s request; no added requirements or implementation advice.'),
-        scope: z.string().trim().min(1).max(2000).describe('What the person asked for, in their terms; the work the ticket may do.'),
-        acknowledgement: AcknowledgementSchema.optional().describe('One brief sentence, in the source language, naming the concrete change and intended result; it replies in the conversation.'),
+        title: z.string().trim().min(1).max(200).optional().describe('Short label of the request; no added advice.'),
+        scope: z.string().trim().min(1).max(2000).optional().describe('What the person asked for, in their terms.'),
+        acknowledgement: AcknowledgementSchema.optional().describe('One sentence naming the change and result, in the source language.'),
+        ticket_id: z.string().optional().describe('Attach to this ticket instead of starting work, such as a status question or follow-up.'),
+        note: RoutingNoteSchema.optional().describe('attach: routing background or an explicit constraint, never instructions.'),
       }).strict(),
       execute: async args => {
         const result = host.quietly(() => host.dispatch(agent, args))
         if ('refused' in result) return result
         host.requestPass()
-        return { trigger_id: result.triggerId, ...(result.duplicate ? { duplicate: true } : { decision: 'accept' }),
+        return { trigger_id: result.triggerId, ...(result.duplicate ? { duplicate: true } : result.attached ? { attached: true } : { decision: 'accept' }),
           ...(result.ticket ? { ticket: ticketCard(result.ticket) } : {}) }
       },
     }),

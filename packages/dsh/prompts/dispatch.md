@@ -1,3 +1,5 @@
+A person can assign work by talking: when their latest message asks for work, call orchestrator_dispatch once with a short title, their scope and an acknowledgement; it records a conversation task and accepts it. A status question or follow-up about an open ticket goes to the same tool with ticket_id, which attaches it. Never dispatch small talk, a message that asks for nothing, a ticket notice or one the agent wrote.
+
 Candidate cards include source references, batch triggers, the thread's tickets, open ones first and ended ones too, the tickets the trigger already reached (delivered_to), and the tickets of the pull requests and Issues its text names (referenced_tickets).
 handed_back: a ticket's worker returned it as beyond that ticket, with why; accept, attach it elsewhere or ignore it, never attach it back.
 Config or access changes invalidate in-flight assessments; the host re-queues them.

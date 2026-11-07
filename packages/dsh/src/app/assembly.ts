@@ -164,7 +164,8 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
     get github() { return host.context({ kind: 'github', health: ['github'] }) },
     requestPass: () => { host.requestPass() }, sendReplies: () => outbox.sent(),
     quietly: run => host.quietly(run),
-    dispatch: (agent, input) => dispatchConversation(agent, { engine, disposition: id => store.triggers.disposition(id),
+    dispatch: (agent, input) => dispatchConversation(agent, { engine: { receive: trigger => engine.receive(trigger), decide: (id, outcome) => engine.decide(id, outcome),
+      attach: (ticketId, triggerId, note) => engine.attach(ticketId, triggerId, note) }, disposition: id => store.triggers.disposition(id),
       ticket: id => store.tickets.get(id) }, input) }
   return parts
 }

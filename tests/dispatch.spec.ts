@@ -13,7 +13,8 @@ const agent = (...events: SessionEvent[]): ConversationAgent => ({ id: 'orchestr
 const ticket = { id: 'ticket-1' } as Ticket
 
 function host(received: 'stored' | 'duplicate' | 'filtered' = 'stored', disposition?: TriggerDisposition) {
-  return { engine: { receive: vi.fn((_trigger: Trigger) => received), decide: vi.fn((_id: string, _outcome: unknown) => ({ ticketId: 'ticket-1' } as Decision)) },
+  return { engine: { receive: vi.fn((_trigger: Trigger) => received), decide: vi.fn((_id: string, _outcome: unknown) => ({ ticketId: 'ticket-1' } as Decision)),
+    attach: vi.fn((_ticketId: string, _triggerId: string, _note?: string) => ticket) },
     disposition: vi.fn(() => disposition), ticket: vi.fn(() => ticket) }
 }
 
@@ -28,6 +29,21 @@ describe('conversation dispatch', () => {
       channel: { source: 'conversation', thread: 'conversation:msg_1' }, actor: { source: 'conversation', id: 'local-user' } })
     expect(target.engine.decide).toHaveBeenCalledWith(trigger.id, { kind: 'accept', title: 'Fix the flaky test', scope: 'Make the test stable.',
       reason: 'Dispatched from the conversation', acknowledgement: 'I will fix the flaky test.' })
+  })
+
+  it('attaches a follow-up or status question to an existing ticket instead of accepting it', () => {
+    const target = host()
+    const result = dispatchConversation(agent(user('How is it going?')), target, { ticketId: 'ticket-1', note: 'Status question' })
+    expect(result).toMatchObject({ duplicate: false, attached: true, ticket })
+    const trigger = target.engine.receive.mock.calls[0]![0]
+    expect(target.engine.attach).toHaveBeenCalledWith('ticket-1', trigger.id, 'Status question')
+    expect(target.engine.decide).not.toHaveBeenCalled()
+  })
+
+  it('refuses new work without a title and scope', () => {
+    const target = host()
+    expect(dispatchConversation(agent(user('Fix it')), target, {})).toEqual({ refused: expect.stringContaining('title') })
+    expect(target.engine.receive).not.toHaveBeenCalled()
   })
 
   it('does not accept a message twice', () => {
@@ -88,5 +104,25 @@ describe('conversation dispatch through the Engine', () => {
       ticket: id => repo.tickets.get(id) }, { title: 'Fix', scope: 'Fix it.' })
     expect(result).toEqual({ refused: expect.stringContaining('off') })
     expect(repo.tickets.open()).toHaveLength(0)
+  })
+})
+
+describe('conversation attach through the Engine', () => {
+  it('adds the follow-up to the existing ticket rather than opening a second one', () => {
+    const repo = new MemoryRepositories()
+    const settings = SettingsSchema.parse({})
+    const sources = new SourceRegistry(() => settings)
+    sources.registerDefinition(conversationDefinition)
+    const engine = new Engine({ repo, scope: sources, policy: () => settingsPolicy(settings, sources),
+      assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
+      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn() } })
+    const first = dispatchConversation(agent(user('Fix the flaky test')), { engine, disposition: id => repo.triggers.disposition(id),
+      ticket: id => repo.tickets.get(id) }, { title: 'Fix', scope: 'Fix it.' })
+    if ('refused' in first || !first.ticket) throw new Error('the first dispatch did not create a ticket')
+    const followUp = dispatchConversation(agent(user('How is it going?', 'user', 'msg_2')), { engine, disposition: id => repo.triggers.disposition(id),
+      ticket: id => repo.tickets.get(id) }, { ticketId: first.ticket.id, note: 'Status question' })
+    expect(followUp).toMatchObject({ attached: true, ticket: expect.objectContaining({ id: first.ticket.id }) })
+    expect(repo.tickets.open()).toHaveLength(1)
+    expect(repo.tickets.get(first.ticket.id)?.inputs.some(input => input.kind === 'trigger' && input.triggerId === (followUp as { triggerId: string }).triggerId)).toBe(true)
   })
 })

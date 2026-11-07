@@ -344,7 +344,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/role-models.ts` | Resolves the Eval and Executor models, and seeds a new Session with its role's model |
 | `packages/dsh/src/app/assessment.ts` | The MasterAssessor, the assessment schema and the window `orchestrator_eval` answers |
 | `packages/dsh/src/app/execution-environment.ts` | The execution environment: its variables, a Ticket's values, the directory root and the lines of the prompt section, which `packages/dsh/src/app/prompts.ts` fills into its template |
-| `packages/dsh/src/app/conversation.ts` | Reads the person's latest message from the main Session log, classifies a non-person or non-text input as refused, and dispatches it as a conversation Trigger accepted by a direct Eval |
+| `packages/dsh/src/app/conversation.ts` | Reads the person's latest message from the main Session log, classifies a non-person or non-text input as refused, and dispatches it as a conversation Trigger accepted by a direct Eval or attached to an existing ticket |
 | `packages/dsh/src/app/source-context.ts` | `sourceContextOf`: each Source kind's `SourceContext` |
 | `packages/dsh/src/app/links.ts` | `sourceLink`, the page of a Trigger's message, and `candidateCard` |
 | `packages/dsh/src/app/cards.ts` | Compact cards of Triggers, Tickets, Threads and Decisions for models, the closed set of ticket card states `TICKET_STATES`, and `textPage` |
