@@ -2,15 +2,15 @@
 import type { ActorRef } from './model.ts'
 import { key } from './ids.ts'
 
+/** The levels in their order of consequence, which is also the order of any `maxActionLevel` comparison. */
+export const ACTION_LEVELS = ['read', 'draft', 'commit', 'send', 'spend'] as const
+
 /**
  * The five action levels, from an effect inside the worker to one that leaves the system or spends real money:
  * `read` changes nothing; `draft` produces internal objects; `commit` writes a shared workspace; `send` leaves the
  * system's boundary; `spend` costs money or another person's time.
  */
-export type ActionLevel = 'read' | 'draft' | 'commit' | 'send' | 'spend'
-
-/** The levels in their order of consequence, which is also the order of any `maxActionLevel` comparison. */
-export const ACTION_LEVELS: readonly ActionLevel[] = ['read', 'draft', 'commit', 'send', 'spend']
+export type ActionLevel = typeof ACTION_LEVELS[number]
 
 /** What a spend action consumes: money, or time taken from another person, as a calendar booking does. */
 export type ActionCost =
@@ -58,7 +58,7 @@ export function actionKey(identity: ActionIdentity): string {
 function checkCost(cost: ActionCost): void {
   if (cost.kind === 'money') {
     if (!Number.isFinite(cost.amount) || cost.amount <= 0) throw new TypeError('A money cost needs a positive amount')
-    if (!cost.currency) throw new TypeError('A money cost needs a currency')
+    if (typeof cost.currency !== 'string' || !cost.currency.trim()) throw new TypeError('A money cost needs a currency')
     return
   }
   if (cost.kind === 'time') {

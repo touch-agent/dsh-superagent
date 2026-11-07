@@ -25,15 +25,17 @@ describe('action levels', () => {
     const first = createAction(identity('send'))
     const second = createAction(identity('send'))
     expect(second.idempotencyKey).toBe(first.idempotencyKey)
+    expect(first).toEqual({ ...base, level: 'send', idempotencyKey: first.idempotencyKey })
     const variants = [
       createAction({ ...identity('send'), source: 'github' }),
       createAction({ ...identity('send'), objectId: 'om_2' }),
       createAction({ ...identity('send'), kind: 'mail.forward' }),
       createAction({ ...identity('send'), revision: 'rev-2' }),
       createAction({ ...identity('send'), actor: { source: 'feishu', id: 'ou_2' } }),
+      createAction({ ...identity('send'), actor: { source: 'github', id: 'ou_1' } }),
       createAction(identity('commit')),
     ].map(action => action.idempotencyKey)
-    expect(new Set([first.idempotencyKey, ...variants]).size).toBe(7)
+    expect(new Set([first.idempotencyKey, ...variants]).size).toBe(8)
     expect(actionKey(identity('send'))).toBe(first.idempotencyKey)
   })
 })
@@ -46,7 +48,7 @@ describe('spend actions', () => {
   it('maps a calendar booking that takes another person’s time to spend with a time cost', () => {
     const invite = createAction({ ...identity('spend'), kind: 'calendar.invite', cost: { kind: 'time', minutes: 30 } })
     expect(invite).toMatchObject({ kind: 'calendar.invite', level: 'spend', cost: { kind: 'time', minutes: 30 } })
-    expect(invite.cost).not.toHaveProperty('amount')
+    expect(invite.cost).toEqual({ kind: 'time', minutes: 30 })
   })
 
   it('requires a cost, and cannot be written without one', () => {
@@ -59,9 +61,13 @@ describe('spend actions', () => {
   it('refuses a cost that is not a positive amount or duration', () => {
     expect(() => spend({ kind: 'money', amount: 0, currency: 'CNY' })).toThrow(/positive amount/)
     expect(() => spend({ kind: 'money', amount: -1, currency: 'CNY' })).toThrow(/positive amount/)
+    expect(() => spend({ kind: 'money', amount: Number.POSITIVE_INFINITY, currency: 'CNY' })).toThrow(/positive amount/)
     expect(() => spend({ kind: 'money', amount: 8, currency: '' })).toThrow(/currency/)
+    expect(() => spend({ kind: 'money', amount: 8, currency: '   ' })).toThrow(/currency/)
+    expect(() => spend({ kind: 'money', amount: 8, currency: 123 as unknown as string })).toThrow(/currency/)
     expect(() => spend({ kind: 'time', minutes: 0 })).toThrow(/positive number of minutes/)
     expect(() => spend({ kind: 'time', minutes: Number.NaN })).toThrow(/positive number of minutes/)
+    expect(() => spend({ kind: 'voucher' } as unknown as ActionCost)).toThrow(/Unknown action cost: voucher/)
   })
 })
 
