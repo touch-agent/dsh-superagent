@@ -8,7 +8,7 @@
 
 ## 0. 结论
 
-**能，而且今天已经是这样了**——现有实现就是「一个 npm 包 = 一个 bundle + 3 个 Cordis 插件 + 一个浏览器半 + 2 个 agent preset」，入口是侧边栏图标 + 独立主面板 + 插件管理里的配置页。
+**能，而且今天已经是这样了**——现有实现就是「一个 npm 包 = 一个 bundle + 4 个 Cordis 插件 + 一个浏览器半 + 2 个 agent preset」，入口是侧边栏图标 + 独立主面板 + 插件管理里的配置页。
 
 需要加固的不是「能不能装」，而是三件事：
 
@@ -24,7 +24,7 @@
 | --- | --- |
 | 安装单位是 npm 包，bundle patch 声明在 manifest | `package.json` 的 `dsh.bundle.patch: ./cordis.patch.yml` |
 | patch 插 6 行：主插件、GitHub 源、Feishu 源（默认 disabled）、飞书文档源（默认 disabled）、worker preset（order 90）、router preset（order 91） | `cordis.patch.yml` |
-| 服务端是 3 个 Cordis 插件：主插件提供 `orchestrator` 服务（`inject` 11 个宿主服务）；两个 Source 插件 `inject ['orchestrator']` | `packages/dsh/src/index.ts`、`packages/dsh/src/sources/github.ts`、`packages/dsh/src/sources/feishu.ts` |
+| 服务端是 4 个 Cordis 插件：主插件提供 `orchestrator` 服务（`inject` 11 个宿主服务）；三个 Source 插件 `inject ['orchestrator']` | `packages/dsh/src/index.ts`、`packages/dsh/src/sources/github.ts`、`packages/dsh/src/sources/feishu.ts`、`packages/dsh/src/sources/feishu-doc.ts` |
 | 浏览器半是一个独立入口，通过 `__ModuleLoader__.load` 装配 | `lib/client.js` banner、`packages/dsh/src/client/index.tsx` |
 | 入口 UI 已经占三个 slot：主面板 `main`、侧边栏图标 `sidebar.panellist`（order 10）、插件管理配置行 `plugins.row.config` | `packages/dsh/src/client/index.tsx:73-79` |
 | 宿主 CLI 有一等的插件安装命令 | `dsh plugin --profile <name> add <pkg>`（转发 pnpm 到 profile 目录） |
@@ -89,7 +89,7 @@ dsh-superagent           meta：bundle patch + 2 个 preset + locale
 
 **什么时候把 `@superagent/source-kit` 单独拆出来**：出现第三个非官方 adapter 作者时。在此之前 manifest 类型与 conformance helper 放在 kernel 的 `manifest.ts` 与 `tests/conformance/` 就够——过早拆包会把「一次改两个包、跑两次 CI」变成日常。
 
-**拆分动作已完成**（2026-11-07）：`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`；根包保留 `dsh` 段与三个 exports（T1-08 又加 `feishu-doc-watch`），入口改为 `meta/*.ts` 的 re-export；tsconfig paths / vitest 插件 / tsdown resolveId 三处解析同步；`tests/layers.spec.ts` 的边界规则改为「按包名，不按相对路径」。决定 D7：**patch 行名与子路径不改**（`dsh-superagent`、`dsh-superagent/github-watch`、`dsh-superagent/feishu-watch`），所以已装 profile 不受影响。
+**拆分动作已完成**（2026-11-07）：`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`；根包保留 `dsh` 段与四个 exports（T1-08 又加 `feishu-doc-watch`），入口改为 `meta/*.ts` 的 re-export；tsconfig paths / vitest 插件 / tsdown resolveId 三处解析同步；`tests/layers.spec.ts` 的边界规则改为「按包名，不按相对路径」。决定 D7：**patch 行名与子路径不改**（`dsh-superagent`、`dsh-superagent/github-watch`、`dsh-superagent/feishu-watch`），所以已装 profile 不受影响。
 
 ---
 
