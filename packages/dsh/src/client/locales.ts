@@ -387,6 +387,7 @@ const TEXT = {
   undeliveredInputs: ['未送达的输入', 'Undelivered Inputs'],
   executionStatusIntro: ['执行器的状态，以及按在等谁分组的工单。', 'The Executor\'s state, and the Tickets grouped by who they wait on.'],
   ticketFromConversation: ['来自会话', 'From the conversation'],
+  ticketOriginAll: ['全部来源', 'All origins'],
   ticketUndeliveredLabel: ['未送达', 'Undelivered'],
   ticketMandateLabel: ['授权', 'Mandate'],
   ticketActorLabel: ['发起', 'From'],

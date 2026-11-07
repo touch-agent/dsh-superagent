@@ -7,6 +7,19 @@ import { usePanel, mount, remount, all, find, tab, click, type, text, field, at 
 import { MEMBER, server, ticketSummary, threadSummary } from './fixtures/panel-server.ts'
 
 usePanel()
+it('narrows the Ticket list to work assigned in the conversation', async () => {
+  server.tickets.open = [ticketSummary(), ticketSummary({ id: 't2', title: '来自会话的工单', origin: 'conversation' })]
+  await mount()
+  await click(zh['tab.execution'])
+  expect(text()).toContain('来自会话的工单')
+  await click(zh.ticketFromConversation)
+  expect(server.requests.some(request => request.path === 'tickets?state=open&limit=20&origin=conversation')).toBe(true)
+  expect(text()).toContain('来自会话的工单')
+  expect(text()).not.toContain('修复回归')
+  await click(zh.ticketOriginAll)
+  expect(text()).toContain('修复回归')
+})
+
 it('lists Tickets under Execution by who they wait on, with the Executor state and its pause as an action', async () => {
   server.tickets.open = [ticketSummary(), ticketSummary({ id: 't2', title: '执行中的工单', threads: [{ key: 'github:7',
     source: 'github', title: '#7 x', facts: { number: { value: '#7' }, autoMerge: { label: { zh: '自动合并', en: 'Auto-merge' },

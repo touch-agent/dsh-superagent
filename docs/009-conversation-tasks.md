@@ -1,6 +1,6 @@
 # 009 Conversation tasks and multi-source work
 
-Status: approved 2026-11-07 for phase 1 (M1.5 in TASK-PLAN). T1-13 (the built-in conversation Source) and T1-14 (`orchestrator_dispatch`, including attach to an existing ticket) are implemented, with the prompts updated. The panel marks the built-in Source and a conversation-origin Ticket; its fuller task view remains (T1-15/T1-16). §10 records the decisions the design runs on.
+Status: approved 2026-11-07 for phase 1 (M1.5 in TASK-PLAN). T1-13 (the built-in conversation Source) and T1-14 (`orchestrator_dispatch`, including attach to an existing ticket) are implemented, with the prompts updated. The panel marks the built-in Source, labels a conversation-origin Ticket, and can narrow the Ticket list to it; a per-task card and thread view remain (T1-15/T1-16). §10 records the decisions the design runs on.
 It uses the terms of [001 Domain model](001-domain.md), [002 Authorization](002-authorization.md) and [007 Architecture](007-architecture.md).
 
 ## 1. The gap

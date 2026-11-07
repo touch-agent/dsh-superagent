@@ -1,6 +1,6 @@
 /** Execution status view (active Tickets and pause control) and Execution settings group (Executor capacity and workspace environment). */
 import { useRef, useState } from 'react'
-import { TICKET_FILTERS, type TicketFilter } from '../app/api.ts'
+import { TICKET_FILTERS, type TicketFilter, type TicketOrigin } from '../app/api.ts'
 import { LIMITS } from '../limits.ts'
 import { usePoll, type SettingsView, type SourceView, type StateView } from './api.ts'
 import { DisclosureRow, Icon, InfoTip, Input, Pill } from './controls.tsx'
@@ -11,12 +11,15 @@ import { ConfigHistory, Field, Fields, ModelField, numberOf, useBlockDraft, useS
 import { localized } from './text.ts'
 import { ConfirmButton, Hint, LabelValue, LoadMore, LoadState, Section, StatusHead } from './widgets.tsx'
 
-export function ExecutionStatus({ filter: current, state, reload }: {
-  filter: TicketFilter; state: StateView; reload: () => Promise<void>
+export function ExecutionStatus({ filter: current, from, state, reload }: {
+  filter: TicketFilter; from?: TicketOrigin | undefined; state: StateView; reload: () => Promise<void>
 }) {
   const { t, call, navigate } = usePanel()
   const [limit, setLimit] = useState(20)
-  const { data, error, reload: reloadTickets } = usePoll(() => call('GET tickets', { query: { state: current, limit } }), [current, limit])
+  const { data, error, reload: reloadTickets } = usePoll(() => call('GET tickets', { query: { state: current, limit,
+    ...from ? { origin: from } : {} } }), [current, from, limit])
+  const show = (filter: TicketFilter, origin?: TicketOrigin) => navigate({ page: 'execution',
+    query: { ...filter === 'open' ? {} : { filter }, ...origin ? { from: origin } : {} } }, true)
   const { paused, load: { maxWorkers } } = state
   // Pausing uses its own block revision so toggling pause does not invalidate an open Execution settings draft.
   const pause = async () => { await call('POST executor/pause', { body: { paused: !paused } }); await reload() }
@@ -38,8 +41,10 @@ export function ExecutionStatus({ filter: current, state, reload }: {
     </div>
     <div className="dt-filters">
       {TICKET_FILTERS.map(value => <Pill key={value} active={current === value}
-        onClick={() => { setLimit(20); navigate({ page: 'execution', query: value === 'open' ? {} : { filter: value } },
-          true) }}>{t(`ticketFilter.${value}`)}</Pill>)}
+        onClick={() => { setLimit(20); show(value, from) }}>{t(`ticketFilter.${value}`)}</Pill>)}
+      <span className="dt-filters-separator" />
+      <Pill active={!from} onClick={() => { setLimit(20); show(current) }}>{t('ticketOriginAll')}</Pill>
+      <Pill active={from === 'conversation'} onClick={() => { setLimit(20); show(current, 'conversation') }}>{t('ticketFromConversation')}</Pill>
     </div>
     {current === 'idle' && <Hint>{t('idleHint')}</Hint>}
     <LoadState error={error} loading={!data} />
