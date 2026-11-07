@@ -165,8 +165,8 @@ graph LR
 
 ### T1-03 registry 按 manifest 装配 · Runtime · 2 人日
 
-- **交付**：`packages/dsh/src/sources/registry.ts` 从「按 kind 对象注册」改为「按 manifest 注册 + adapter 工厂」；`resolve` 仍保证一 kind 一实例。
-- **验收**：现有 GitHub/Feishu 行为不变（`tests/registry.spec.ts` + 全量绿）。
+- **交付**：`packages/dsh/src/sources/registry.ts` 的登记单元改为 `{ manifest, adapter }`：新增 `registerDefinition`（注册时用 `SourceManifestSchema` 校验 manifest），`register(kind)` 作为迁移期兼容入口（T1-10 删除）；`kind()` 从登记项合成扁平视图供面板与视图读取；`resolve` 仍保证一 id 一实例。`kind.ts` 拆出 `SourceAdapter` 与 `SourceDefinition`，`SourceKind` 继承 adapter。
+- **验收**：`tests/registry.spec.ts` 覆盖定义注册：kind 视图、配置校验、scope、health claim/release、非法 manifest 的路径错误、两入口的 id 冲突；现有 GitHub/Feishu 行为不变（全量绿）。
 - **依赖**：T1-01。
 
 ### T1-04 / T1-05 GitHub、Feishu adapter 迁到 manifest · Connector · 各 3 人日

@@ -369,7 +369,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/infra/text.ts` | Word counts and the chat message limit, `fill` and `sameName` |
 | `packages/dsh/src/infra/health.ts` | The `HealthBoard`, every part's health entry, each claimed by its one writer |
 | `packages/dsh/src/sources/kind.ts` | The `SourceKind` protocol: the runtime behavior a kind adds to the kernel manifest, and the re-export of `FieldSpec` and `Localized` |
-| `packages/dsh/src/sources/registry.ts` | `SourceRegistry` |
+| `packages/dsh/src/sources/registry.ts` | `SourceRegistry`: registers a manifest with its adapter (validating the manifest first) or, while kinds migrate, a flat `SourceKind`; presents either as the flat view the panel reads, keeps one instance per id, claims health entries and implements the Engine's `SourceScope` |
 | `packages/kernel/src/manifest.ts` | The declarative Source manifest: `Localized`, `FieldSpec`, `SourceAuth`, `SourceAdmission`, `SourceLimits` and `SourceManifest`; behavior stays in the runtime adapter |
 | `packages/dsh/src/sources/manifest-schema.ts` | Zod validation of a manifest and of a list of manifests: fields, auth fields, admission rows, health claims, limits and id uniqueness, each violation at its path |
 | `packages/dsh/src/sources/manifest-form.ts` | `manifestForm`: the panel model a manifest yields — fields in order, sign-in fields resolved from their keys, admission rows and the explicit-request note, health entries and polling defaults |
@@ -421,7 +421,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/core-engine.spec.ts` | Domain rules on in-memory repositories: receiving, Eval, fan-out, resume and stop, interrupted Assignments, the pause, Policy changes, reports and outcomes, attaching, replies, failed deliveries and dismissed problems |
 | `tests/stage.spec.ts` | The Ticket stages, row by row |
 | `tests/policy.spec.ts` | Source scope, the gate, the admission table, Mandate revalidation, the Policy version, settings migrations and assessment outcomes |
-| `tests/registry.spec.ts` | `SourceRegistry`: instances, validation, Policy parts, Channels and Thread context |
+| `tests/registry.spec.ts` | `SourceRegistry`: instances, validation, Policy parts, Channels and Thread context, plus registering a manifest with its adapter: the flat kind view, config defaults, scope, health claims released on unregister, manifest validation and id clashes from either entry |
 | `tests/sources.spec.ts` | The Feishu and GitHub Sources on a `SourceContext`: translation, polls and read positions, the pull request rules, health |
 | `tests/commands.spec.ts` | CLI calls as the deployment's accounts, the Channels' answers, and repository-scoped GitHub calls |
 | `tests/feishu-read.spec.ts`, `tests/github-read.spec.ts` | Feishu and GitHub reads |

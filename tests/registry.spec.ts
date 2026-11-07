@@ -4,7 +4,7 @@ import { SettingsSchema } from '@superagent/dsh/policy.ts'
 import { SourceRegistry } from '@superagent/dsh/sources/registry.ts'
 import type { SourceKind } from '@superagent/dsh/sources/kind.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { OutboundMessage } from '@superagent/kernel'
+import type { OutboundMessage, SourceManifest } from '@superagent/kernel'
 import { Commands } from '@superagent/dsh/infra/commands.ts'
 import { HealthBoard } from '@superagent/dsh/infra/health.ts'
 import { sourceContextOf, type SourceContextDeps } from '@superagent/dsh/app/source-context.ts'
@@ -18,6 +18,12 @@ const probe: SourceKind<{ interval: number }> = {
   schema: z.object({ interval: z.number().int().min(1).default(5) }).strict(),
   fields: [{ key: 'interval', type: 'number', min: 1, max: 60, label: { zh: '间隔', en: 'Interval' } }],
 }
+
+const probeManifest = (): SourceManifest => ({
+  id: 'probe', title: { zh: '探针', en: 'Probe' }, description: { zh: '测试源', en: 'Probe source' }, auth: { kind: 'none', fields: [] },
+  fields: probe.fields, scope: { rows: [{ id: 'all', label: { zh: '全部', en: 'All' } }], explicit: { zh: '被 @ 时', en: 'When mentioned' } },
+  health: ['probe'],
+})
 
 describe('Source registry', () => {
   it('lists every installed kind with defaults, in id order, followed by stored instances whose kind is not installed', () => {
@@ -158,5 +164,30 @@ describe('Source registry', () => {
     const reply: OutboundMessage = { id: 'reply-1', channel, text: 'Done', kind: 'reply' }
     expect(await sources.send(reply, commands)).toBe('sent')
     expect(run.mock.calls[0]![1]).toEqual(expect.arrayContaining(['+messages-reply', '--message-id', 'om_dm']))
+  })
+
+  it('registers a manifest with its adapter, presents it as a kind, and claims and releases its health entries', () => {
+    const sources = new SourceRegistry(() => SettingsSchema.parse({ sources: { probe: { enabled: true, config: {} } } }))
+    const release = sources.registerDefinition({ manifest: probeManifest(), adapter: { schema: probe.schema,
+      scope: (_input, config) => ({ listened: true, observed: config.interval > 5 }) } })
+    expect(sources.kind('probe')).toMatchObject({ kind: 'probe', title: { zh: '探针', en: 'Probe' }, health: ['probe'], fields: probe.fields })
+    expect(sources.validate('probe', { enabled: true, config: {} })).toEqual({ enabled: true, config: { interval: 5 } })
+    expect(sources.instance('probe')).toEqual({ id: 'probe', kind: 'probe', enabled: true, config: { interval: 5 } })
+    expect(sources.scope({ source: 'probe', meta: {} })).toEqual({ listened: true, observed: false })
+    expect(sources.healthEntries(['probe']).size).toBe(1)
+    release()
+    expect(sources.kind('probe')).toBeUndefined()
+    expect(sources.healthEntries(['probe']).size).toBe(0)
+  })
+  it('refuses a definition whose manifest does not parse, naming the path', () => {
+    const sources = new SourceRegistry(() => SettingsSchema.parse({}))
+    expect(() => sources.registerDefinition({ manifest: { ...probeManifest(), scope: undefined as unknown as SourceManifest['scope'] },
+      adapter: { schema: probe.schema } })).toThrow(/scope/)
+  })
+  it('refuses a definition whose id is already registered, from either path', () => {
+    const sources = new SourceRegistry(() => SettingsSchema.parse({}))
+    sources.register(probe)
+    expect(() => sources.registerDefinition({ manifest: probeManifest(), adapter: { schema: probe.schema } }))
+      .toThrow('already registered: probe')
   })
 })

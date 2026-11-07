@@ -1,7 +1,7 @@
 /** SourceKind plugin contract: the kernel's declarative manifest plus the runtime's behavior (configuration schema, channel adapter, thread context reader). */
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { z } from 'zod'
-import type { FieldSpec, Localized, OutboundMessage, ScopeResult, Trigger } from '@superagent/kernel'
+import type { FieldSpec, Localized, OutboundMessage, ScopeResult, SourceManifest, Trigger } from '@superagent/kernel'
 import type { Deployment } from '../deployment.ts'
 import type { Commands } from '../infra/commands.ts'
 import type { SourceContext, SourceHost } from './host.ts'
@@ -68,19 +68,12 @@ export interface TriggerContext {
   image(agent: Agent, commands: Commands, message: { id: string; text: string }, key: string, stateDir: string,
     signal: AbortSignal): Promise<unknown>
 }
-/** Pluggable source kind descriptor registered with SourceRegistry. */
-export interface SourceKind<C extends Record<string, unknown> = Record<string, unknown>> {
-  /** Stable ID; a default instance with the same ID exists when none is stored. */
-  kind: string
-  title: Localized
-  description: Localized
-  /** Read-only status facts derived from `deployment` (undefined while waiting for setup), keyed by field key. */
-  facts?(deployment: Deployment | undefined): Record<string, Localized | string>
+/** The behavior half of a Source: how it validates configuration and acts on the host, independent of how it is described. */
+export interface SourceAdapter<C extends Record<string, unknown> = Record<string, unknown>> {
   /** Validates stored and submitted configuration and fills defaults. */
   schema: z.ZodType<C>
-  fields: FieldSpec[]
-  /** Health entry names owned by this kind under `health[...]`; no other kind or core loop may report them. */
-  health: string[]
+  /** Read-only status facts derived from `deployment` (undefined while waiting for setup), keyed by field key. */
+  facts?(deployment: Deployment | undefined): Record<string, Localized | string>
   /** Listening rule for a trigger (or recorded Mandate basis) of this kind; kinds without `scope` listen to everything they produce and observe none of it. */
   scope?(input: { meta: Record<string, unknown> }, config: C): ScopeResult
   /** Outbound reply adapter; kinds without `channel` produce no replies or channel checks. */
@@ -97,6 +90,21 @@ export interface SourceKind<C extends Record<string, unknown> = Record<string, u
   refreshLabels?(host: SourceHost, signal?: AbortSignal): Promise<Record<string, string>>
   /** Variables the kind registers with the execution environment and how their values are computed. */
   environment?: { variables: readonly VariableSpec[]; values(input: EnvironmentInput<C>): Record<string, string> }
+}
+/** A manifest with the behavior that implements it: what `SourceRegistry.registerDefinition` takes. */
+export interface SourceDefinition<C extends Record<string, unknown> = Record<string, unknown>> {
+  manifest: SourceManifest
+  adapter: SourceAdapter<C>
+}
+/** The flat descriptor Source kinds still register with until T1-10: identity from the manifest plus the adapter's behavior. */
+export interface SourceKind<C extends Record<string, unknown> = Record<string, unknown>> extends SourceAdapter<C> {
+  /** Stable ID; a default instance with the same ID exists when none is stored. */
+  kind: string
+  title: Localized
+  description: Localized
+  fields: FieldSpec[]
+  /** Health entry names owned by this kind under `health[...]`; no other kind or core loop may report them. */
+  health: string[]
 }
 
 export interface SourceInstance<C extends Record<string, unknown> = Record<string, unknown>> { id: string; kind: string; enabled: boolean; config: C }
