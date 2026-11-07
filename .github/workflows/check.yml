@@ -35,4 +35,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # A pull-request checkout is detached and has no local `main`; changesets resolves its base branch by name.
+      - run: git show-ref --verify --quiet refs/heads/main || git branch main origin/main
       - run: pnpm changeset status
