@@ -92,6 +92,10 @@ env -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_NOSYSTEM -u GIT_AUTHOR_NAME -u GIT_AUTHOR
 
 建议：meta 包保留 `dsh-superagent` 名称与三个子路径 exports（转发到 `@superagent/dsh`），patch 行名**不改**；`@superagent/dsh` 只作为内部依赖。验收：`X-11` 的 dump-config 断言在**旧 profile** 与新 profile 上都能看到 5 行。
 
+### D9 · manifest 的边界（随 T1-01）
+
+manifest 只放**声明式数据**（identity、fields、准入行与 explicit 文案、health、limits、extra），`channel` / `threadContext` / `policy` / `environment` / `find` / `repliesTo` 留在 runtime 的 adapter。理由：函数无法被 zod 校验，且这些能力的类型引用宿主与运行时类型，搬进 kernel 会破坏零依赖边界。代价是 `kind.ts` 的退役（T1-10）要把「描述」与「行为」拆成两个对象，这正是 T1-03 的装配目标。
+
 ### D8 · 人员配置（决定砍不砍源）
 
 - 4 人（Kernel 1 / Connector 1 / Runtime 1 / Platform 0.5）：M1 ≈ 6.5 周。

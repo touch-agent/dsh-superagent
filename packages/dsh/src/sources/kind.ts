@@ -1,25 +1,12 @@
-/** SourceKind plugin contract: configuration schema, UI form fields, policy integration, channel adapter, and thread context reader. */
+/** SourceKind plugin contract: the kernel's declarative manifest plus the runtime's behavior (configuration schema, channel adapter, thread context reader). */
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { z } from 'zod'
-import type { OutboundMessage, ScopeResult, Trigger } from '@superagent/kernel'
+import type { FieldSpec, Localized, OutboundMessage, ScopeResult, Trigger } from '@superagent/kernel'
 import type { Deployment } from '../deployment.ts'
 import type { Commands } from '../infra/commands.ts'
 import type { SourceContext, SourceHost } from './host.ts'
 
-export interface Localized { zh: string; en: string }
-/** `advanced` folds a rarely changed field (such as a polling tunable) behind the card's Advanced section. */
-interface FieldBase { key: string; label: Localized; hint?: Localized; advanced?: true }
-/**
- * Configuration field specification; `rows` edits a list of records keyed by its first column, `choose` picks from
- * resolved source labels, and `fact` displays a read-only value from `facts`.
- */
-export type FieldSpec =
-  | FieldBase & { type: 'switch' }
-  | FieldBase & { type: 'select'; options: { value: string; label: Localized }[] }
-  | FieldBase & { type: 'number'; min: number; max: number }
-  | FieldBase & { type: 'text'; pattern?: string; readonly?: boolean; choose?: Localized }
-  | FieldBase & { type: 'fact'; settings?: 'deployment' }
-  | FieldBase & { type: 'rows'; columns: ({ key: string; label: Localized; type: 'text'; pattern?: string; optional?: boolean; choose?: Localized; refresh?: Localized } | { key: string; label: Localized; type: 'select'; options: { value: string; label: Localized }[] })[] }
+export type { FieldSpec, Localized }
 
 export interface VariableSpec { key: string; description: Localized }
 export interface EnvironmentInput<C> { deployment: Deployment; config: C; trigger?: Trigger }

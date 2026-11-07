@@ -153,8 +153,8 @@ graph LR
 
 ### T1-01 `SourceManifest` 类型与校验 · Kernel · 2 人日
 
-- **交付**：`packages/kernel/src/manifest.ts` 只放纯类型：`id / title / auth / fields / scope / channel / threadContext / find / repliesTo / policy / health / environment / limits` 与 `extra` 逃生字段；zod schema 放 `packages/dsh/src/sources/manifest-schema.ts`（D6，kernel 零依赖不放宽）。
-- **验收**：`tests/manifest.spec.ts`：合法 manifest 通过；缺 `scope` 或 `id` 冲突时给出带路径的错误。
+- **交付**：`packages/kernel/src/manifest.ts`：声明式的 `SourceManifest`（`id / title / description / auth / fields / scope（准入行 + explicit）/ health / limits` 与 `extra`）；`Localized` 与 `FieldSpec` 从 runtime 迁入并 re-export，全仓只留一份定义。**行为**（`schema`、`channel`、`threadContext`、`policy`、`environment`、`find`、`repliesTo`）留在 runtime 的 `SourceKind`/adapter，不进 manifest（D9）。zod 校验放 `packages/dsh/src/sources/manifest-schema.ts`（D6，kernel 零依赖不放宽）。
+- **验收**：`tests/manifest.spec.ts`：合法 manifest 通过；缺 `scope`、`id` 冲突、auth 字段未声明、字段 key 重复、`limits` 非法时均给出带路径的错误。
 - **依赖**：无。
 
 ### T1-02 manifest → 表单/权限表/健康项/限流 生成器 · Connector · 3 人日
@@ -394,6 +394,7 @@ graph LR
 | D5 | 单租户优先 | T4-01…T4-06 | M4 整体后置，控制面只留接口 | M3 中期 |
 | D6 | manifest 的类型与校验分处两包 | T1-01、T1-02 | A（已定）：kernel 只放纯类型，zod 校验放 `@superagent/dsh`；kernel 零依赖不变 | 已定（2026-11-07） |
 | D7 | 切包后 patch 行名是否改 | X-07、X-11 | 不改：保留 `dsh-superagent` 与三个子路径 exports，已装 profile 不受影响 | 已定（2026-11-07） |
+| D9 | manifest 是否包含宿主能力 | T1-01…T1-05 | 不含：manifest 只放声明式数据，函数能力留 adapter——函数无法被 zod 校验，且会把宿主类型拖进 kernel | 已定（2026-11-07） |
 
 ---
 

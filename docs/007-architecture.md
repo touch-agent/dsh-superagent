@@ -368,8 +368,10 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/infra/paths.ts` | The package's root, where packaged files are |
 | `packages/dsh/src/infra/text.ts` | Word counts and the chat message limit, `fill` and `sameName` |
 | `packages/dsh/src/infra/health.ts` | The `HealthBoard`, every part's health entry, each claimed by its one writer |
-| `packages/dsh/src/sources/kind.ts` | The `SourceKind` protocol |
+| `packages/dsh/src/sources/kind.ts` | The `SourceKind` protocol: the runtime behavior a kind adds to the kernel manifest, and the re-export of `FieldSpec` and `Localized` |
 | `packages/dsh/src/sources/registry.ts` | `SourceRegistry` |
+| `packages/kernel/src/manifest.ts` | The declarative Source manifest: `Localized`, `FieldSpec`, `SourceAuth`, `SourceAdmission`, `SourceLimits` and `SourceManifest`; behavior stays in the runtime adapter |
+| `packages/dsh/src/sources/manifest-schema.ts` | Zod validation of a manifest and of a list of manifests: fields, auth fields, admission rows, health claims, limits and id uniqueness, each violation at its path |
 | `packages/dsh/src/sources/host.ts` | `SourceHost`, `SourceContext`, `Health`, `health` and the fixed health texts |
 | `packages/dsh/src/sources/poll.ts` | What GitHub and Feishu polling share: `POLL_HORIZON_MS`, `polled`, `cursorAt`, and `pollThreads`, which keeps a failure on its Thread as `pollError` |
 | `packages/dsh/src/sources/github.ts` | The GitHub kind and plugin entry, exported as `./github-watch`: a poll round of notifications, the pull requests of open Tickets with their CI, and subscribed Threads |
@@ -426,6 +428,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/assessment.spec.ts` | What the MasterAssessor keeps per Eval, and when it lets go |
 | `tests/background.spec.ts` | Waiting for a worker's shell jobs and subagents: an end that woke it, and a host that stops |
 | `tests/bundle-patch.spec.ts` | The bundle's patch, read as DeepSeek Harness reads it, and the agent preset of Executor Sessions it defines |
+| `tests/manifest.spec.ts` | The Source manifest: a complete manifest parses, and a missing scope, duplicate id, undeclared auth field, duplicate field key or bad polling default names its path |
 | `tests/packaging.spec.ts` | The split between the bundle and the runtime: the bundle keeps the entry names its patch rows resolve, installs the runtime as a dependency instead of carrying its code, and re-exports the runtime plugins unchanged |
 | `tests/effects.spec.ts` | The effect queue: coalescing, limits, retries with backoff, health and shutdown |
 | `tests/passes.spec.ts` | Passes: one at a time, the ones asked for during a pass run as one after it, and the runtime health a failed pass reports |
