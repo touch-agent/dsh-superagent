@@ -8,7 +8,7 @@ import { HealthBoard } from '@superagent/dsh/infra/health.ts'
 import { KV } from '@superagent/dsh/kv.ts'
 import { SettingsSchema, settingsPolicy } from '@superagent/dsh/policy.ts'
 import { feishuDocAdapter, feishuDocKind, type FeishuDocConfig } from '@superagent/dsh/sources/feishu-doc.ts'
-import { pollRound, pollThreads } from '@superagent/dsh/sources/feishu-doc-loops.ts'
+import { pollRound, pollThreads, runFeishuDoc } from '@superagent/dsh/sources/feishu-doc-loops.ts'
 import { docTriggerId } from '@superagent/dsh/sources/feishu-doc-trigger.ts'
 import { SourceRegistry } from '@superagent/dsh/sources/registry.ts'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -30,10 +30,10 @@ const config: FeishuDocConfig = feishuDocAdapter.schema.parse({ documents: [{ ur
 const page = (items: unknown[], has_more = false) => ({ file_token: 'DOC1', file_type: 'docx', items, has_more, ...has_more ? { page_token: 'next' } : {} })
 
 /** A Source context over a real store and engine, with `lark` stubbed per call. */
-function harness() {
+function harness(docConfig: FeishuDocConfig = config) {
   const dir = mkdtempSync(join(tmpdir(), 'feishu-doc-poll-'))
   const store = new Store(join(dir, 'db.sqlite'))
-  store.saveSettings(SettingsSchema.parse({ sources: { 'feishu-doc': { enabled: true, config } } }))
+  store.saveSettings(SettingsSchema.parse({ sources: { 'feishu-doc': { enabled: true, config: docConfig } } }))
   const board = new HealthBoard()
   const sources = new SourceRegistry(() => store.settings(), board)
   sources.register(feishuDocKind)
@@ -76,6 +76,27 @@ describe('polling document comments', () => {
     expect(Date.parse(cursor)).toBeGreaterThan(Date.parse(SINCE))
     expect(Date.now() - Date.parse(cursor)).toBeLessThan(20_000)
     expect(h.health).toMatchObject({ state: 'ready', detail: expect.stringContaining('polled') })
+  })
+
+  it('reports an error only after the configured number of failed rounds, not on the first interruption', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = open = harness(feishuDocAdapter.schema.parse({ documents: [{ url: DOC, listen: 'mentions' }], pollSeconds: 30, failuresBeforeError: 2 }))
+      h.store.set(KV.feishuDoc.since(DOC), SINCE)
+      vi.spyOn(h.commands, 'lark').mockImplementation(async args => {
+        if (args[1] === '+inspect') return { token: 'DOC1', type: 'docx', title: 'Handbook' }
+        if (args[1] === '+list-comments') throw new Error('network down')
+        return {}
+      })
+      const controller = new AbortController()
+      const running = runFeishuDoc(h.ctx, controller.signal)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(h.health).toMatchObject({ state: 'starting' })
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(h.health).toMatchObject({ state: 'error', detail: expect.stringContaining('2') })
+      controller.abort()
+      await running
+    } finally { vi.useRealTimers() }
   })
 
   it('returns a failed document and holds its cursor, leaving the error threshold to the watch loop', async () => {
