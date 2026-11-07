@@ -15,6 +15,8 @@
 > **第二刀（同日）**：装配层也拆开了——`src/app/assembly.ts` 的 `assemble()` 按显式依赖序构建 13 个协作者，`runtime.ts` 只剩状态目录锁、启动与关停（254 → 183 行）；`tests/layers.spec.ts` 把 docs/007 的分层规则变成断言（Sources 不得 import app、面板只拿类型与白名单值、`packages/` 只能经 `@superagent/kernel`、浏览器半不用 Node 内建），当前真实违规为 0；`.github/workflows/check.yml` 让这些守卫在 CI 上跑。提交 `5f8024d`。
 >
 > **迁出（2026-11-07）**：三个提交的树已复制到新仓库 `touch-agent/dsh-superagent`（private，阶段 1 提前落地，因为原仓库 `deepseek-ai/dsh-superagent-prototype` 对当前凭据只读）；`check` workflow 首次运行全绿（1m26s，含 `pnpm install --frozen-lockfile`），证明手写的 `packages/kernel` importer 与 workspace 形状成立。
+>
+> **第三刀 · T0-01（2026-11-07）**：观测的第一块地基——kernel 新增 `Span`/`SpanKind`（十段：ingest…report）与确定性 id（`traceId`/`spanId`），端口 `TraceSink` 只声明「记录一个阶段」；`src/app/trace.ts` 的 `SqliteTraceSink` 把阶段写进新表 `span`（同一阶段重复记录保留第一行），`SCHEMA_VERSION` 升到 12（schema 12 不重写任何记录，只加表与索引，旧库 10/11 在打开时补齐）；`tests/trace.spec.ts` 8 个用例覆盖顺序、幂等、重开存活与 11→12 打开。62 个测试文件 / 1212 用例全绿，浏览器半仍不含 `node:crypto`。
 
 ---
 

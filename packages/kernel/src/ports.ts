@@ -2,6 +2,7 @@
 import type { Assignment, ChannelRef, Decision, DecisionKind, Mandate, MandateBasis, Strength, Thread, Ticket, TicketEndBy, TicketOutcome, Trigger }
   from './model.ts'
 import type { Reason } from './reasons.ts'
+import type { Span } from './trace.ts'
 
 /** Gate admission result: either inadmissible with a reason code, or admissible with strength and MandateBasis. */
 export type GateResult = { admissible: false; reason: string } | { admissible: true; strength: Strength; basis: MandateBasis }
@@ -101,6 +102,14 @@ export interface DomainEvents {
   'policy.changed': { from: string; to: string }
 }
 export type DomainEvent = { [K in keyof DomainEvents]: { type: K; at: string; data: DomainEvents[K] } }[keyof DomainEvents]
+
+/**
+ * Where the Engine reports the stages a Trigger passes, for tracing. Reporting is best effort: a sink that drops spans
+ * loses the trace, never a command, and a sink must not make the Engine wait.
+ */
+export interface TraceSink {
+  record(span: Span): void
+}
 
 /** Durable state. Every method is synchronous so `atomic` can wrap a unit of work. */
 export interface Repositories {
