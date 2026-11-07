@@ -57,7 +57,8 @@ describe('documentation', () => {
   })
   it('lists every module under packages in the module table of 007 Architecture, and only files that exist', () => {
     const modules = listed('Modules')
-    expect([...files('packages')].filter(path => /\.tsx?$/.test(path) && !/^packages\/[^/]+\/lib\//.test(path) && !modules.includes(path))).toEqual([])
+    expect([...files('packages')].filter(path => /\.tsx?$/.test(path) && !/\/node_modules\//.test(path) && !/^packages\/[^/]+\/lib\//.test(path)
+      && !modules.includes(path))).toEqual([])
     expect(modules.filter(path => !existsSync(join(ROOT, path)))).toEqual([])
   })
   it('lists every test in the test table of 007 Architecture, and only files that exist', () => {

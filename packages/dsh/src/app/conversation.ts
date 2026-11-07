@@ -9,7 +9,7 @@ export interface ConversationAgent {
   readonly session: { snapshotEvents(): readonly SessionEvent[] }
 }
 export interface PersonMessage { id: string; text: string; at: string }
-export interface DispatchInput { title?: string; scope?: string; acknowledgement?: string; ticketId?: string; note?: string }
+export interface DispatchInput { title?: string; scope?: string; acknowledgement?: string; ticketId?: string; note?: string; name?: string }
 export interface DispatchHost {
   engine: { receive(trigger: Trigger): ReceiveResult; decide(triggerId: string, outcome: AssessmentOutcome): Decision;
     attach(ticketId: string, triggerId: string, note?: string): Ticket }
@@ -17,6 +17,13 @@ export interface DispatchHost {
   ticket(id: string): Ticket | undefined
 }
 export type DispatchResult = { triggerId: string; duplicate: boolean; attached?: boolean; ticket?: Ticket } | { refused: string }
+
+/** Derives a valid ticket worktree name from a title's English words, falling back to `conversation` for a non-Latin title. */
+export function worktreeName(title: string): string {
+  const words = title.toLowerCase().match(/[a-z][a-z0-9]*/g) ?? []
+  const slug = words.slice(0, 4).join('-').slice(0, 32).replace(/-+$/u, '')
+  return slug || 'conversation'
+}
 
 /**
  * The latest message in the main Session must be the person's, not a notice or relay the plugin delivered; otherwise the
@@ -49,8 +56,8 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
       const ticket = host.engine.attach(input.ticketId, trigger.id, input.note)
       return { triggerId: trigger.id, duplicate: false, attached: true, ticket }
     }
-    const decision = host.engine.decide(trigger.id, { kind: 'accept', title: input.title!, scope: input.scope!, reason: 'Dispatched from the conversation',
-      ...(input.acknowledgement ? { acknowledgement: input.acknowledgement } : {}) })
+    const decision = host.engine.decide(trigger.id, { kind: 'accept', title: input.title!, scope: input.scope!, name: input.name ?? worktreeName(input.title!),
+      reason: 'Dispatched from the conversation', ...(input.acknowledgement ? { acknowledgement: input.acknowledgement } : {}) })
     return { triggerId: trigger.id, duplicate: false, ...(decision.ticketId ? { ticket: host.ticket(decision.ticketId) } : {}) }
   } catch (error) {
     if (error instanceof UserError) return { refused: error.message }

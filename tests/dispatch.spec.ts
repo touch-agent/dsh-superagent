@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { Engine, MemoryRepositories, type Decision, type Ticket, type Trigger, type TriggerDisposition } from '@superagent/kernel'
-import { dispatchConversation, latestPersonMessage, type ConversationAgent } from '@superagent/dsh/app/conversation.ts'
+import { dispatchConversation, latestPersonMessage, worktreeName, type ConversationAgent } from '@superagent/dsh/app/conversation.ts'
 import { SettingsSchema, settingsPolicy } from '@superagent/dsh/policy.ts'
 import { conversationDefinition } from '@superagent/dsh/sources/conversation.ts'
+import { ticketExecution } from '@superagent/dsh/executor/dsh.ts'
+import { mainTools, type MainToolsHost } from '@superagent/dsh/app/tools/main.ts'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SourceRegistry } from '@superagent/dsh/sources/registry.ts'
 
 const at = Date.parse('2026-11-07T10:00:00.000Z')
@@ -28,7 +31,19 @@ describe('conversation dispatch', () => {
     expect(trigger).toMatchObject({ source: 'conversation', text: 'Fix the flaky test', threads: [{ source: 'conversation', id: 'msg_1' }],
       channel: { source: 'conversation', thread: 'conversation:msg_1' }, actor: { source: 'conversation', id: 'local-user' } })
     expect(target.engine.decide).toHaveBeenCalledWith(trigger.id, { kind: 'accept', title: 'Fix the flaky test', scope: 'Make the test stable.',
-      reason: 'Dispatched from the conversation', acknowledgement: 'I will fix the flaky test.' })
+      name: 'fix-the-flaky-test', reason: 'Dispatched from the conversation', acknowledgement: 'I will fix the flaky test.' })
+  })
+
+  it('accepts an explicit worktree name over the title-derived one', () => {
+    const target = host()
+    dispatchConversation(agent(user('Fix it')), target, { title: 'Fix it', scope: 'Fix it.', name: 'fix-it' })
+    expect(target.engine.decide.mock.calls[0]![1]).toMatchObject({ name: 'fix-it' })
+  })
+
+  it('derives a valid English worktree name from the title, and a generic one for a Chinese title', () => {
+    expect(worktreeName('Create LIVE-TEST.md at repo root')).toBe('create-live-test-md')
+    expect(worktreeName('在仓库根目录创建文件')).toBe('conversation')
+    expect(worktreeName('Fix the flaky test')).toBe('fix-the-flaky-test')
   })
 
   it('attaches a follow-up or status question to an existing ticket instead of accepting it', () => {
@@ -78,6 +93,7 @@ describe('conversation dispatch through the Engine', () => {
     sources.registerDefinition(conversationDefinition)
     const engine = new Engine({ repo, scope: sources, policy: () => settingsPolicy(settings, sources),
       assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
+      prepareTicket: (ticket, outcome) => ({ ...ticket, execution: ticketExecution(ticket, outcome, settings, '/state') }),
       outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn() } })
     const dispatch = (input: { title: string; scope: string }) => dispatchConversation(agent(user('Fix the flaky test')), {
       engine, disposition: id => repo.triggers.disposition(id), ticket: id => repo.tickets.get(id) }, input)
@@ -86,6 +102,7 @@ describe('conversation dispatch through the Engine', () => {
     if ('refused' in first) throw new Error(first.refused)
     expect(repo.tickets.open()).toHaveLength(1)
     expect(first.ticket?.mandate).toMatchObject({ strength: 'explicit', basis: { source: 'conversation', via: 'local' } })
+    expect(first.ticket?.execution?.name).toBe('fix-the-flaky-test-' + first.ticket!.id.slice(0, 12))
     expect(first.ticket?.channels).toContainEqual({ source: 'conversation', thread: 'conversation:msg_1',
       address: { session: 'orchestrator-1', root: 'msg_1', messageId: 'msg_1' } })
     expect(dispatch({ title: 'Fix again', scope: 'Another ticket.' })).toMatchObject({ duplicate: true })
@@ -124,5 +141,19 @@ describe('conversation attach through the Engine', () => {
     expect(followUp).toMatchObject({ attached: true, ticket: expect.objectContaining({ id: first.ticket.id }) })
     expect(repo.tickets.open()).toHaveLength(1)
     expect(repo.tickets.get(first.ticket.id)?.inputs.some(input => input.kind === 'trigger' && input.triggerId === (followUp as { triggerId: string }).triggerId)).toBe(true)
+  })
+})
+
+
+describe('the dispatch tool', () => {
+  it('maps the wire ticket_id into the dispatch request', async () => {
+    const dispatch = vi.fn(() => ({ triggerId: 'tr_1', duplicate: false, attached: true }))
+    const host = { dispatch, requestPass: vi.fn(), quietly: <T>(run: () => T) => run(), resources: {}, sessions: {}, settings: {},
+      store: {}, context: {}, prompts: {}, assessor: {}, engine: {} } as unknown as MainToolsHost
+    const call = mainTools(host, {} as Agent).find(item => item.name === 'orchestrator_dispatch')!
+    const args = call.schema.parse({ ticket_id: 'ticket-1', note: 'status' })
+    await call.execute(args as never, new AbortController().signal)
+    expect(dispatch).toHaveBeenCalledWith({}, { title: undefined, scope: undefined, acknowledgement: undefined,
+      ticketId: 'ticket-1', note: 'status' })
   })
 })

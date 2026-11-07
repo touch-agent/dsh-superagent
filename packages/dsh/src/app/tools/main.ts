@@ -171,7 +171,8 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
         note: RoutingNoteSchema.optional().describe('attach: routing background or an explicit constraint, never instructions.'),
       }).strict(),
       execute: async args => {
-        const result = host.quietly(() => host.dispatch(agent, args))
+        const result = host.quietly(() => host.dispatch(agent, { title: args.title, scope: args.scope, acknowledgement: args.acknowledgement,
+          ticketId: args.ticket_id, note: args.note }))
         if ('refused' in result) return result
         host.requestPass()
         return { trigger_id: result.triggerId, ...(result.duplicate ? { duplicate: true } : result.attached ? { attached: true } : { decision: 'accept' }),
