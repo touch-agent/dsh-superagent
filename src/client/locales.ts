@@ -146,7 +146,7 @@ const TEXT = {
   traceWhy: ['为什么', 'Why'],
   traceLoading: ['正在读取…', 'Reading…'],
   traceNone: ['没有记录到这个触发的流水', 'No stages were recorded for this Trigger'],
-  traceStoppedAt: ['停在「{stage}」', 'Stopped at {stage}'],
+  tracePartial: ['流水记到「{stage}」为止，之后的阶段还没接入。', 'The trace ends at {stage}: later stages are not recorded yet.'],
   'span.ingest': ['接收', 'Received'],
   'span.dedupe': ['去重', 'Deduplicated'],
   'span.enqueue': ['排队', 'Queued'],

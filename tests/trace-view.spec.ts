@@ -37,7 +37,9 @@ it('lists the stages in the order they ran, and stops where the trace stops', ()
   expect(view.source).toBe('github')
   expect(view.stages.map(item => item.kind)).toEqual(['ingest', 'enqueue', 'gate', 'admission'])
   expect(view.stages[2]?.facts).toEqual({ admitted: true, strength: 'explicit', via: 'addressed' })
-  expect(view.stop).toEqual({ stage: 'admission' })
+  // Later stages are declared but not written yet, so the view says so instead of calling the last stage the end.
+  expect(view.stop).toBeUndefined()
+  expect(view.partial).toBe(true)
 })
 
 it('reports the gate\'s refusal as the reason the Trigger stopped', () => {

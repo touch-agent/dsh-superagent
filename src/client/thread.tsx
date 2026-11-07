@@ -79,8 +79,8 @@ function TraceDetail({ triggerId }: { triggerId: string }) {
           <span className="dt-chip-source">{t(`span.${stage.kind}`)}</span>
           <span className="dt-chip-fact"><When at={stage.at} /></span>
         </span>)}
-        {trace.stop?.stage === 'gate' && trace.stop.reason ? <span className="dt-error-text">{reasonLabel(t, trace.stop.reason)}</span>
-          : trace.stop ? <span className="dt-line-text">{t('traceStoppedAt', { stage: t(`span.${trace.stop.stage}`) })}</span> : null}</div>
+        {trace.stop?.reason ? <span className="dt-error-text">{reasonLabel(t, trace.stop.reason)}</span>
+          : trace.partial ? <Hint>{t('tracePartial', { stage: t(`span.${trace.stages.at(-1)!.kind}`) })}</Hint> : null}</div>
         : <Hint>{t('traceNone')}</Hint>
       : <Hint>{t('traceLoading')}</Hint>)}
   </>
