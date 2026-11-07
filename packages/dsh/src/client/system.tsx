@@ -1,24 +1,19 @@
 /**
- * Main-Session surfaces: the New Session entry that opens the existing main Session, the "主" row marker, the read-only
- * System view inside the Conversation, and the right Events tab with its unread title, automatic first open and rows.
- * All data is read from the management API; nothing here mutates a Ticket.
+ * Main-Session surfaces: the New Session entry that opens the existing main Session, the "主" row marker, the "状态"
+ * Conversation view that reuses the management page, and the right Events tab with its unread title, automatic first open
+ * and rows. All data comes from the management API the panel already uses.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { ActivityRecord } from '../app/activity.ts'
-import type { Call, TicketRow } from './api.ts'
-import { usePoll } from './api.ts'
 import type { ActivityFeedClient, ActivitySnapshot } from './activity-feed.ts'
 import { useActivityFeed } from './activity-feed.ts'
-import { Button, Icon, Tag, StateDot, type DotState } from './controls.tsx'
+import { Button, Icon, Tag } from './controls.tsx'
 import type { MasterStore } from './master.ts'
 import { useMaster } from './master.ts'
-import { ticketMark } from './marks.ts'
 import type { Route } from './route.ts'
-import { healthText, valueLabel, when, fullTime, type T } from './text.ts'
-import { StageMark, Section } from './widgets.tsx'
+import { when, fullTime, type T } from './text.ts'
 
 const LEVEL_TONE = { quiet: 'outline', feed: 'info', notice: 'warning' } as const
-const HEALTH_DOT: Record<string, DotState> = { ready: 'done', starting: 'ongoing', paused: 'warning', error: 'error' }
 const openTicket = (id: string): Route => ({ page: 'execution', id })
 const openThread = (id: string): Route => ({ page: 'trigger', id })
 
@@ -114,70 +109,15 @@ export function EventsBridge({ activity, master, autoOpen, open }: { activity: A
   }, [autoOpen, open, sessionId, snapshot.unread])
   return null
 }
-function HealthLine({ name, state, detail, t }: { name: string; state: string; detail: string; t: T }) {
-  return <li className="dt-row dt-health" data-state={state}>
-    <StateDot state={HEALTH_DOT[state] ?? 'idle'} />
-    <span className="dt-health-name">{valueLabel(t, 'health', name)}</span>
-    <span className="dt-health-detail">{detail}</span>
-  </li>
-}
-function SystemTicket({ ticket, t, onOpen }: { ticket: TicketRow; t: T; onOpen: (route: Route) => void }) {
-  const status = ticketMark(t, ticket)
-  return <li className="dt-row dt-link dt-ticket dt-system-ticket" data-state={status.dot}>
-    <div className="dt-ticket-stage"><StageMark state={status.dot} icon={status.icon} label={status.label} /></div>
-    <div className="dt-ticket-body">
-      <div className="dt-row-title"><button type="button" className="dt-open" onClick={() => onOpen(openTicket(ticket.id))}>
-        {ticket.title}</button></div>
-      <div className="dt-row-meta"><Time at={ticket.updatedAt} t={t} /></div>
-    </div>
-  </li>
-}
 /**
- * The "体系" Conversation view. It is read-only and only meaningful on the main Session: every other Session sees a short
- * explanation of where the System view lives. Data comes from the same `GET state`, `GET tickets` and `GET activity`
- * endpoints the management panel uses, so no second business rule lives here.
+ * The "状态" Conversation view: on the main Session it mounts the existing management page rather than a second, partial
+ * management page; every other Session sees a short explanation of where the management page lives.
  */
-export function SystemView({ t, call, sessionId, master, activity, onOpen }: { t: T; call: Call; sessionId: string
-  master: MasterStore; activity: ActivityFeedClient; onOpen: (route: Route) => void }) {
+export function SystemView({ t, sessionId, master, children }: { t: T; sessionId: string; master: MasterStore
+  children: ReactNode }) {
   const identity = useMaster(master)
-  const state = usePoll(() => call('GET state'), [call], 5_000)
-  const tickets = usePoll(() => call('GET tickets', { query: { state: 'open', limit: 20 } }), [call], 5_000)
-  const feed = useActivityFeed(activity)
-  if (identity.masterId !== undefined && identity.masterId !== '' && identity.masterId !== sessionId) {
-    return <div className="dt-system-view"><p className="dt-hint">{t('systemOnlyMaster')}</p></div>
-  }
-  const health = Object.entries(state.data?.health ?? {}).sort(([left], [right]) => left.localeCompare(right))
-  const load = state.data?.load
-  return <div className="dt-system-view">
-    <header className="dt-system-head">
-      <div>
-        <h2 className="dt-system-title">{t('systemTitle')}</h2>
-        <p className="dt-hint">{t('systemIntro')}</p>
-      </div>
-      <Button variant="outline" size="sm" icon={<Icon name="external" size={14} />} onClick={() => onOpen({ page: 'overview' })}>
-        {t('systemOpenPanel')}</Button>
-    </header>
-    {state.error && <p className="dt-error" role="alert">{state.error.message}</p>}
-    <Section title={t('systemHealth')}>
-      {load && <div className="dt-stats">
-        <span className="dt-stat"><b>{load.running}</b>{t('executingLabel')}</span>
-        <span className="dt-stat"><b>{load.queued}</b>{t('queuedLabel')}</span>
-        <span className="dt-stat"><b>{load.maxWorkers}</b>{t('systemWorkers')}</span>
-        <span className="dt-stat"><b>{state.data?.paused ? t('yes') : t('no')}</b>{t('systemPaused')}</span>
-      </div>}
-      {health.length ? <ul className="dt-list dt-health-list">{health.map(([name, item]) => <HealthLine key={name} name={name}
-        state={item.state} detail={healthText(t, item)} t={t} />)}</ul> : <p className="dt-hint">{t('loading')}</p>}
-    </Section>
-    <Section title={t('systemTickets')} count={tickets.data?.items.length} action={<Button variant="ghost" size="sm"
-      onClick={() => onOpen({ page: 'execution' })}>{t('systemAllTickets')}</Button>}>
-      {tickets.data?.items.length ? <ul className="dt-list dt-system-tickets">{tickets.data.items.map(ticket => <SystemTicket
-        key={ticket.id} ticket={ticket} t={t} onOpen={onOpen} />)}</ul> : <p className="dt-hint">{tickets.error?.message
-        ?? (tickets.data ? t('systemNoTickets') : t('loading'))}</p>}
-    </Section>
-    <Section title={t('systemEvents')} action={<Button variant="ghost" size="sm" onClick={() => onOpen({ page: 'overview' })}>
-      {t('systemMoreEvents')}</Button>}>
-      <FeedHint snapshot={feed} t={t} />
-      <ActivityList items={feed.items.slice(0, 8)} t={t} onOpen={onOpen} empty={t('eventsEmpty')} />
-    </Section>
-  </div>
+  // Do not mount the management page for an ordinary Session while `masterId` is still unknown.
+  if (identity.masterId === undefined) return <div className="dt-system-view"><p className="dt-hint">{t('loading')}</p></div>
+  if (identity.masterId !== sessionId) return <div className="dt-system-view"><p className="dt-hint">{t('systemOnlyMaster')}</p></div>
+  return <div className="dt-status-page">{children}</div>
 }

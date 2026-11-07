@@ -444,7 +444,7 @@ graph LR
 | S-02 | 单一通知预算：`endCoveredBy` 接入 `eventNotice`；`ready`/`dropped`/人自己停止的结束降级为 feed | 0.5 | S-01 |
 | S-03 | 目录分级：`<stateDir>/system` 为主会话根、默认工单根 `<stateDir>/system/work`、启动创建与文案 | 1 | 无 |
 | S-04 | 主会话入口：`conversation.hero.options` 打开既有 `masterId`、会话行「主」标记、面板回退按钮 | 2 | S-03 |
-| S-05 | 页内「体系」视图：`conversation.view` 仅主会话渲染，复用 Overview/工单/事件数据 hooks，只读 | 3 | S-01 |
+| S-05 | 页内「状态」页：`conversation.view` 仅主会话渲染，直接复用现成 Superagent 管理页 | 3 | S-01 |
 | S-06 | 右侧「事件」栏：`sidebar.right.pane.tab` + 未读标题、首屏/增量轮询、首次 notice 自动打开一次 | 3 | S-01、S-05 |
 | S-07 | SSE：exact 路由 `GET activity/stream`、`Last-Event-ID` 补拉、心跳、同源校验 | 1.5 | S-06 |
 | S-08 | 端到端与版本矩阵：slot 守卫、目录/通知验收、截图与操作手册 | 2 | S-04…S-07 |
@@ -454,14 +454,14 @@ graph LR
 **验收（M1.6 出口）**：
 
 1. New Session 选「主会话」打开既有单例，不新建第二个 router 会话；普通会话不受影响。
-2. 主会话页内有「体系」tab（健康、工单、最近事件）；右侧「事件」tab 可关闭/展开，未读数随新事件变化。
+2. 主会话页内有「状态」tab（完整 Superagent 管理页）；右侧「事件」tab 可关闭/展开，未读数随新事件变化。
 3. 新装默认主会话 cwd 为 `<stateDir>/system`，新工单目录为 `<stateDir>/system/work/<短名>`；已有工单目录不迁移。
 4. 一个 `ready` 结果只产生一条通知；结束事件仍在事件栏可见；`blocked` 后的外部结束仍有通知。
 5. 全量 typecheck / tests / build 绿；schema 12 库可升 13。
 
 **进度（2026-11-07）**：S-01、S-02、S-03 已实现（`activity` 表与 `GET activity`、`endCoveredBy` 预算、`systemRoot`/默认工单根），
-测试覆盖分级、游标、保留窗口、通知去重与目录断言。S-04…S-08 已实现：主会话入口、页内「体系」、右侧「事件」、SSE 与轮询回退、
-宿主 rc.5 slot 守卫与操作手册；测试覆盖入口、标记、只读视图、未读标题、自动打开、SSE 游标/同源/心跳路径和客户端断线补拉。
+测试覆盖分级、游标、保留窗口、通知去重与目录断言。S-04…S-08 已实现：主会话入口、页内「状态」页（复用管理页）、右侧「事件」、SSE 与轮询回退、
+宿主 rc.5 slot 守卫与操作手册；测试覆盖入口、标记、管理页复用、未读标题、自动打开、SSE 游标/同源/心跳路径和客户端断线补拉。
 
 ---
 

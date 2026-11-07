@@ -1,4 +1,4 @@
-/** Shared read-only main-Session identity, so the entry, row marker, System view and Events tab agree on `masterId`. */
+/** Shared read-only main-Session identity, so the entry, row marker, Status page and Events tab agree on `masterId`. */
 import { useEffect, useSyncExternalStore } from 'react'
 import type { Call } from './api.ts'
 

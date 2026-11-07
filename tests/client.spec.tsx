@@ -177,17 +177,18 @@ it('marks the main Session row and leaves every other row unmarked', async () =>
   expect(other.container.querySelector('.dt-master-badge')).toBeNull()
   other.dispose()
 })
-it('renders the read-only System view only for the main Session', async () => {
+it('reuses the management page only for the main Session', async () => {
   serve()
   const { entries } = fixture([])
   const system = entries.find(entry => entry.options.name === 'conversation.view')!
+  expect(system.options.label?.()).toBe(zh.systemTab)
   const master = await render(system, { sessionId: 'master', t })
-  expect(master.container.textContent).toContain(zh.systemTitle)
-  expect(master.container.textContent).toContain(zh.systemHealth)
+  expect(master.container.textContent).toContain(zh.title)
+  expect(master.container.textContent).toContain(zh['tab.overview'])
   master.dispose()
   const other = await render(system, { sessionId: 'other', t })
   expect(other.container.textContent).toContain(zh.systemOnlyMaster)
-  expect(other.container.textContent).not.toContain(zh.systemHealth)
+  expect(other.container.textContent).not.toContain(zh.title)
   other.dispose()
 })
 it('shows the unread notice count in the Events tab title and clears it when the tab opens', async () => {

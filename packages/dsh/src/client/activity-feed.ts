@@ -1,6 +1,6 @@
 /**
  * Same-origin reader for the graded activity feed: one initial page, then Server-Sent Events with a polling fallback,
- * deduplicated by sequence and shared by the right Events tab and the in-Session System view. The unread cursor is the
+ * deduplicated by sequence and shared by the right Events tab and the in-Session Status page. The unread cursor is the
  * last notice-level sequence a person saw; opening the Events tab marks the head seen and persists it per browser.
  */
 import { useEffect, useSyncExternalStore } from 'react'
