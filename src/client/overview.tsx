@@ -68,6 +68,8 @@ export function OverviewPage() {
     {route ? <button type="button" className="dt-textlink dt-stat-value" onClick={() => navigate(route)}>{value}</button> : <span
       className="dt-stat-value">{value}</span>}
   </span>
+  const duration = (value: number | null): ReactNode => value === null ? t('empty')
+    : value < 60 ? `${Math.round(value * 10) / 10} s` : `${Math.round(value / 60)} min`
   const more = (route: Route) => <button type="button" className="dt-textlink dt-more-link"
     onClick={() => navigate(route)}>{t('details')}</button>
   return <>
@@ -90,6 +92,18 @@ export function OverviewPage() {
         {stat(t('flowAcceptedLabel'), data.flow.accepted, { page: 'eval', query: { window: '24h' } })}
         {data.flow.dropped > 0 && stat(t('flowDroppedLabel'), data.flow.dropped, { page: 'source' })}
       </div>
+    </Section>
+    <Section title={t('metricsTitle')}>
+      {/* Read-only figures: a missing sample stays `—`, so an empty Store never looks like a healthy zero. */}
+      <div className="dt-stats">
+        {stat(t('metricTtfaLabel'), <span title={t('metricTtfaHint', { samples: data.metrics.ttfa.samples })}>
+          {duration(data.metrics.ttfa.medianSeconds)} / {duration(data.metrics.ttfa.p90Seconds)}</span>)}
+        {stat(t('metricDuplicatesLabel'), data.metrics.duplicates.repeated)}
+        {stat(t('metricRecoveryLabel'), data.metrics.recovery.recovered
+          ? duration(data.metrics.recovery.medianSeconds) : t('empty'))}
+        {stat(t('metricThroughputLabel'), data.metrics.throughput.perHour)}
+      </div>
+      <Hint>{t('metricHint', { interrupted: data.metrics.recovery.interrupted, recovered: data.metrics.recovery.recovered })}</Hint>
     </Section>
     <Section title={t('term.executor')} action={more({ page: 'execution' })}>
       {/* Pauses surface in `problems` above, so Executor counts render the same in both states; while setup waits, nothing runs. */}

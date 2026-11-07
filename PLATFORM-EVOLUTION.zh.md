@@ -20,6 +20,8 @@
 >
 > **第四刀 · T0-02 前半（2026-11-07）**：Engine 真的开始记流水——`EngineOptions.trace` 是可选端口，`receive` 记 `ingest`/`dedupe`/`enqueue`（排队发生在 `queueForEval`），`evaluateDue → Evals.start` 记 `gate`/`admission`（每一段写清 admitted/strength/via 或拒绝原因，admission 带 `evalId`）；`src/app/assembly.ts` 把 `SqliteTraceSink` 注入 Engine，所以一次真实 receive 就有 trace。同时发现并修正计划里的一处想当然：`SPAN_KINDS` 的顺序应是 `ingest → dedupe → enqueue → gate → admission → …`——排队先于准入，因为 gate 是在 Eval 开始时按当时的线程与工单快照判的（这也正是 trace 有用的地方：能看到「排上了、却在门口被拒」）。新增 `tests/trace-stages.spec.ts`（7 用例，表驱动：五段顺序、重复、未监听、被拒、无 sink 时不记录）。63 个测试文件 / 1219 用例全绿。
 
+> **第五刀 · T0-03（2026-11-07）**：四个健康数字落地在 `src/app/metrics.ts` 并出现在面板概览的只读区与 `GET metrics`——① 判断耗时（Trigger 到首个 Decision 的中位/p90，24 小时）；② 重复发送（同一工单、同一会话、同样文字被回了多次，正常恒为 0，是回归报警）；③ 重启恢复（被 `restarted` 中断的 Assignment 到同工单下一次 Assignment 的中位间隔）；④ 判定吞吐（24 小时 Decision 数 / 24）。口径全部来自库里的行，没有样本时返回 `null` 而不是 0（面板显示 `—`），所以空库不会被误读成「一切正常」。64 个测试文件 / 1225 用例全绿，浏览器半仍不含 `node:crypto`。
+
 ---
 
 ## 0. 一页纸

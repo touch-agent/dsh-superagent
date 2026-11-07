@@ -198,6 +198,11 @@ const overviewView = (): ApiResponse<'GET overview'> => {
     person: server.person, executor: { running: 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers, idle: 1 },
     flow: { received: 12, filtered: 2, triggers: 10, judged: 5, accepted: 1, evaluating: 0,
       dropped: server.dropped.filter(item => item.dropped.at >= dayAgo()).length },
+    metrics: { window: { since: dayAgo(), hours: 24 },
+      ttfa: { samples: 5, medianSeconds: 4, p90Seconds: 9 },
+      duplicates: { sends: 6, repeated: 0 },
+      recovery: { interrupted: 1, recovered: 1, medianSeconds: 30 },
+      throughput: { decisions: 5, perHour: 0.2 } },
     policyVersion: 'abcdef1234567890',
   }
 }
@@ -293,6 +298,7 @@ const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET state': { answer: stateView },
   'GET overview': { answer: overviewView },
+  'GET metrics': { answer: () => overviewView().metrics },
   'GET search': { query: ['q'], answer: async ({ query }) => {
     const q = query.q ?? ''
     await server.searching?.(q)

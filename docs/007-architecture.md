@@ -325,6 +325,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `src/app/store.ts` | The Store, and `Receipt`, a message of the outbox |
 | `src/app/store-read.ts` | `storeReads`: the Store's read queries for the views, the tools and the Sources' polls, which never write |
 | `src/app/trace.ts` | `SqliteTraceSink`: the Engine's `TraceSink`, keeping each stage in the Store's `span` table and reading a trace back for the panel |
+| `src/app/metrics.ts` | The health figures: time from a Trigger to its first Decision, repeated sends, restart recovery and judgements per hour, read from the Store for the panel and `GET metrics` |
 | `src/app/migration.ts` | The schema migrations: one record-rewriting step from schema 10 to schema 11; schema 12 adds only the `span` table |
 | `src/app/effects.ts` | Effects |
 | `src/app/versions.ts` | `Versions`: a record kept as numbered snapshots with a pointer to the current one, for the settings and the prompts |
@@ -440,6 +441,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/migration.spec.ts` | The schema 11 migration: every stored record in its current shape, and the refusal of older schemas |
 | `tests/trace-stages.spec.ts` | The stages the Engine records for one Trigger, in order, and why it stops after deduplication or after a refusal; and that a Trigger still works when no sink is configured |
 | `tests/trace.spec.ts` | Trace and stage ids derived from their inputs, and the Store's `span` table: stages read back in recorded order, a repeated stage kept once, and a schema-11 database opened at schema 12 with its Triggers and no spans |
+| `tests/metrics.spec.ts` | The health figures: an empty Store reports no samples rather than zeros, each Trigger is measured once to its first Decision, the 24-hour window applies, repeated sends are counted, restart recovery spans the interrupted Assignment and the next, and throughput is per hour |
 | `tests/store.spec.ts` | Repositories and their working sets, in SQLite as in memory, the kv area, with every key of `KV` spelled only in `src/kv.ts` and the migration, settings history and queries |
 | `tests/prompts.spec.ts` | Prompt validation, assembly and versions |
 | `tests/cards.spec.ts` | The rules the built-in text must state, file by file |

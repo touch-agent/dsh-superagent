@@ -3,6 +3,7 @@ import { reasonText, ticketStage, type Decision, type Thread } from '@superagent
 import type { Health } from '../../sources/host.ts'
 import type { SetupProblem } from '../../setup.ts'
 import { anyoneAllowed } from '../../policy.ts'
+import { metrics } from '../metrics.ts'
 import type { Store } from '../store.ts'
 import { awaitingEval, dayAgo, newestFirst, ownersOf, snapshot, threadSummary, type ViewHost } from './records.ts'
 import { sourceHealth, type HealthMap } from './sources.ts'
@@ -74,6 +75,7 @@ export function overview(host: ViewHost, health: HealthMap, policyVersionValue: 
     executor: { ...load, maxWorkers: settings.executor.maxWorkers, idle: open.filter(ticket => ticketStage(ticket).stage === 'idle').length },
     flow: { received, filtered, triggers: received - filtered, judged: judgement.judged, accepted: judgement.accepted,
       evaluating: evaluating.length, dropped: store.read.droppedSince(since) },
+    metrics: metrics(store),
     policyVersion: policyVersionValue,
   }
 }
