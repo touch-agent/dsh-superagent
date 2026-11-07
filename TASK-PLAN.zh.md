@@ -159,8 +159,8 @@ graph LR
 
 ### T1-02 manifest → 表单/权限表/健康项/限流 生成器 · Connector · 3 人日
 
-- **交付**：`packages/dsh/src/sources/manifest-form.ts`：字段 → 面板控件（switch/select/number/text/rows）；scope → 权限提示；health → 健康条目名；limits → 轮询默认值。
-- **验收**：给定 manifest，生成的表单 JSON 与手写版本一致（快照测试）；零 React 手写。
+- **交付**：`packages/dsh/src/sources/manifest-form.ts`：`manifestForm(manifest)` 产出面板模型——fields 保持顺序（含 `advanced`）；auth 的字段 key 解析为字段本身；scope 的准入行与 explicit 文案成为权限提示；health 成为健康条目名；limits 成为轮询默认值。React 渲染留给 T1-11。
+- **验收**：`tests/manifest-form.spec.ts`：生成结果与手写的 `githubKind` 的 fields / policy.explicit / health 一致；auth 引用未声明字段时抛错；结果可 JSON 往返。
 - **依赖**：T1-01。
 
 ### T1-03 registry 按 manifest 装配 · Runtime · 2 人日
