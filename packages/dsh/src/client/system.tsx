@@ -117,7 +117,7 @@ export function SystemView({ t, sessionId, master, children }: { t: T; sessionId
   children: ReactNode }) {
   const identity = useMaster(master)
   // Do not mount the management page for an ordinary Session while `masterId` is still unknown.
-  if (identity.masterId === undefined) return <div className="dt-system-view"><p className="dt-hint">{t('loading')}</p></div>
+  if (identity.masterId === undefined) return <div className="dt-system-view"><p className="dt-hint">{identity.error ?? t('loading')}</p></div>
   if (identity.masterId !== sessionId) return <div className="dt-system-view"><p className="dt-hint">{t('systemOnlyMaster')}</p></div>
   return <div className="dt-status-page">{children}</div>
 }

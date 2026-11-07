@@ -41,10 +41,11 @@ function HammerIcon({ size }: SidebarPanelIconOwnerProps) {
   </svg>
 }
 
-/** Mounted panel wrapper; cancels any pending Session navigation when a new one starts or the panel unmounts. */
-function Mounted({ ctx, t, openSession }: { ctx: ClientContext; t: T; openSession: (id: string) => Promise<void> }) {
+/** Panel wrapper: reads the deployment form and renders the management page, in the panel or embedded in the Conversation. */
+function Mounted({ ctx, t, openSession, embedded }: { ctx: ClientContext; t: T; openSession: (id: string) => Promise<void>
+  embedded?: boolean }) {
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
-  return <App t={t} openSession={openSession} deploymentForm={form} />
+  return <App t={t} openSession={openSession} deploymentForm={form} embedded={embedded} />
 }
 
 export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
@@ -83,7 +84,7 @@ export function apply(ctx: ClientContext): void {
   // The in-Session Status view reuses the management page; non-main Sessions render its explanation instead.
   ctx.slots.inject('conversation.view', () => ctx.slots.register({ name: 'conversation.view', id: 'system', order: 20, locale: NS,
     label: () => t('systemTab') }, (props: { sessionId: string; t: T }) => <SystemView t={props.t} sessionId={props.sessionId}
-    master={master}><Mounted ctx={ctx} t={props.t} openSession={openSession} /></SystemView>))
+    master={master}><Mounted ctx={ctx} t={props.t} openSession={openSession} embedded /></SystemView>))
   // The right Events tab type: the host owns closing, expanding, floating and docking.
   try {
     ctx.effect(() => ctx.get('sidebarRightTabs')?.register({ id: EVENTS_ID, kind: EVENTS_KIND, title: () => t('eventsTab'),
