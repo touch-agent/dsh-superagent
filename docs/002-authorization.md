@@ -147,6 +147,18 @@ The Source must still listen to the original Thread. The remaining checks depend
 
 If revalidation fails, the Ticket stays ended and takes none of its waiting messages. Each message is treated as having reached no Ticket; if no other Ticket owns it, it goes to Eval. The main Session is not told it reached a worker. This also applies after a processing pause. Attaching to the Ticket is refused, and further work requires a new accept.
 
+### Revalidation before an action
+
+A Mandate also records the highest action level it permits (`maxActionLevel`) and, when the Policy sets a lifetime, when it expires. The Policy's maximum is `draft` by default: work that only produces internal objects needs no further enablement, while `commit`, `send` and `spend` require the Policy to raise the ceiling explicitly.
+
+A running Ticket revalidates its Mandate at each action point, with the action's level and the moment:
+
+- an expired Mandate is refused with `mandateExpired`;
+- an action above the level the Mandate was accepted with, or above the Policy's current maximum, is refused with `actionLevelExceeded`;
+- an admission basis that no longer holds, such as a Source that stopped listening, a sender removed from the list or matched rules disabled, is refused with `revoked`.
+
+A Policy that lowers its maximum therefore stops the next higher-level action of every running Ticket; the refusal carries the reason the caller records with that action. A Mandate never widens when the Policy raises its maximum; work under a wider ceiling needs a new accept. Policy changes do not withdraw Mandates by themselves, and this revalidation does not end the Ticket: its remaining actions at allowed levels continue.
+
 - **A person saying "stop" in a Thread is an ordinary Trigger,** and Eval decides stop. An Executor cannot declare that a person asked it to stop.
 - **Stop in the panel is a command.** It acts on the Ticket directly and is recorded as a manual stop.
 - **Waiting conditions belong to Sources.** A condition such as "no assignee for N hours" would be a Source that waits and checks again itself; Eval never waits.

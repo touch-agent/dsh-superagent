@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ACTION_LEVELS, actionKey, createAction, isActionLevel, type Action, type ActionCost, type ActionIdentity, type ActionLevel } from '@superagent/kernel'
+import { ACTION_LEVELS, actionKey, createAction, isActionLevel, withinActionLevel, type Action, type ActionCost, type ActionIdentity,
+  type ActionLevel } from '@superagent/kernel'
 
 const actor = { source: 'feishu', id: 'ou_1' }
 const base: Omit<ActionIdentity, 'level'> = { source: 'feishu', objectId: 'om_1', kind: 'mail.reply', revision: 'rev-1', actor }
@@ -12,6 +13,13 @@ describe('action levels', () => {
     expect(ACTION_LEVELS).toEqual(['read', 'draft', 'commit', 'send', 'spend'])
     expect(ACTION_LEVELS.map(isActionLevel)).toEqual([true, true, true, true, true])
     expect([isActionLevel('delete'), isActionLevel(undefined), isActionLevel(3)]).toEqual([false, false, false])
+  })
+
+  it('orders a comparison by consequence so a maximum permits itself and every level below it', () => {
+    expect(ACTION_LEVELS.map(level => withinActionLevel(level, 'commit'))).toEqual([true, true, true, false, false])
+    expect(ACTION_LEVELS.map(max => withinActionLevel('draft', max))).toEqual([false, true, true, true, true])
+    expect(withinActionLevel('read', 'read')).toBe(true)
+    expect(withinActionLevel('spend', 'send')).toBe(false)
   })
 
   it('derives a different idempotency key for each of the five levels', () => {

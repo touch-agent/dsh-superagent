@@ -46,7 +46,7 @@ describe('the conversation Source', () => {
     expect(policy.gate(conversationTrigger(request()), {} as never, [])).toMatchObject({ admissible: true, strength: 'explicit',
       basis: { source: SOURCE, via: 'local', addressed: 'direct' } })
     expect(policy.revalidate({ strength: 'explicit', policyVersion: policy.version, actor: { source: SOURCE, id: LOCAL_USER },
-      scope: 'Fix the test', basis: { source: SOURCE, scope: {}, via: 'local' } })).toBe(true)
+      scope: 'Fix the test', basis: { source: SOURCE, scope: {}, via: 'local' } }).ok).toBe(true)
   })
 
   it('does not admit a trusted Source that stopped listening', () => {

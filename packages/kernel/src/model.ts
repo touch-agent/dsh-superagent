@@ -1,4 +1,5 @@
 /** Domain model of a proactive agent: the concepts and their invariants, independent of any source, policy, or executor. */
+import type { ActionLevel } from './action.ts'
 import type { Reason } from './reasons.ts'
 
 /** Actor identity in the source's own vocabulary; Policy decides which actors may originate work on that Source. */
@@ -139,6 +140,13 @@ export interface Mandate {
   basis: MandateBasis
   actor: ActorRef
   scope: string
+  /**
+   * The highest action level this authorization permits. A Mandate accepted before the action gate has none, and the
+   * Policy's current maximum applies; a later Policy may lower this but never raises it for the same Mandate.
+   */
+  maxActionLevel?: ActionLevel
+  /** When this authorization stops permitting actions; absent when it has no time limit. */
+  expiresAt?: string
 }
 
 /** Active trigger evaluation on a thread; at most one exists per thread. */

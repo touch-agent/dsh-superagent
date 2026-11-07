@@ -5,8 +5,9 @@
 import { LIMITS } from './limits.ts'
 import { z } from 'zod'
 import { ADMISSION_DEFAULTS, type Admission, type AdmissionCell, type AdmissionRow } from './admission.ts'
-import { key, type AssessmentOutcome, type Mandate, type Policy, type PolicyEffect, type SourceScope, type Strength, type Thread, type Ticket,
-  type Trigger, type ActorRef, type GateResult } from '@superagent/kernel'
+import { key, ACTION_LEVELS, DEFAULT_MAX_ACTION_LEVEL, withinActionLevel, type ActionRequest, type AssessmentOutcome, type Mandate, type Policy,
+  type PolicyEffect, type Revalidation, type SourceScope, type Strength, type Thread, type Ticket, type Trigger, type ActorRef,
+  type GateResult } from '@superagent/kernel'
 import { sameName } from './infra/text.ts'
 import { WORKER_COMMANDS } from './infra/environment.ts'
 
@@ -78,6 +79,13 @@ export const SourcePolicySchema = z.object({ allowed: z.array(AllowedSchema).def
 export type SourcePolicy = z.infer<typeof SourcePolicySchema>
 export const PolicyConfigSchema = z.object({
   rules: z.array(RuleSchema).refine(rules => new Set(rules.map(rule => rule.id)).size === rules.length, 'Duplicate rule IDs').default(DEFAULT_RULES),
+  /**
+   * The highest action level any Mandate may authorize. A Policy that lowers it refuses higher-level actions on running
+   * Tickets at their next action point; raising it never widens a Mandate already accepted.
+   */
+  maxActionLevel: z.enum(ACTION_LEVELS).default(DEFAULT_MAX_ACTION_LEVEL),
+  /** How many minutes a new Mandate authorizes actions; 0 keeps it valid until revoked. */
+  mandateMinutes: z.number().int().min(LIMITS.mandateMinutes.min).max(LIMITS.mandateMinutes.max).default(0),
   sources: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), SourcePolicySchema).default({}),
 }).strict()
 export const EvalConfigSchema = z.object({
@@ -114,7 +122,8 @@ export const POLICY_REVISION = 'mandate-v3'
  * Changes to models, concurrency, pause state, or polling intervals do not invalidate existing decisions.
  */
 export function policyVersion(settings: Settings): string {
-  return key(POLICY_REVISION, JSON.stringify({ rules: settings.policy.rules, mode: settings.eval.mode, sources: settings.policy.sources }))
+  return key(POLICY_REVISION, JSON.stringify({ rules: settings.policy.rules, mode: settings.eval.mode,
+    maxActionLevel: settings.policy.maxActionLevel, mandateMinutes: settings.policy.mandateMinutes, sources: settings.policy.sources }))
 }
 export function allowedSender(settings: Settings, actor: ActorRef): z.infer<typeof AllowedSchema> | undefined {
   return settings.policy.sources[actor.source]?.allowed.find(entry => sameName(entry.id, actor.id))
@@ -152,10 +161,10 @@ export function policyEffects(tickets: readonly Ticket[], old: Settings, now: Se
       return JSON.stringify(was) === JSON.stringify(is) ? [] : [{ id, name: is.name, change: 'changed', instruction: is.instruction }]
     })
     const effect: PolicyEffect = rules.length ? { rules } : {}
-    if (before.revalidate(ticket.mandate) && !after.revalidate(ticket.mandate)) {
+    if (before.revalidate(ticket.mandate).ok && !after.revalidate(ticket.mandate).ok) {
       // With the previous accept mode and rules, the Mandate holds unless the sender or receiving scope lost authorization.
       const asBefore = { ...now, eval: old.eval, policy: { ...now.policy, rules: old.policy.rules } }
-      if (!settingsPolicy(asBefore, scope(now)).revalidate(ticket.mandate)) {
+      if (!settingsPolicy(asBefore, scope(now)).revalidate(ticket.mandate).ok) {
         Object.assign(effect, { requesterAllowed: false, requester: ticket.mandate.actor })
       } else if (ticket.mandate.strength === 'inferred' && old.eval.mode === 'auto' && now.eval.mode !== 'auto') effect.proactive = false
     }
@@ -167,6 +176,9 @@ export function policyEffects(tickets: readonly Ticket[], old: Settings, now: Se
 export function settingsPolicy(settings: Settings, sources: SourceScope): Policy {
   const version = policyVersion(settings)
   const mode = settings.eval.mode
+  const { maxActionLevel, mandateMinutes } = settings.policy
+  /** A refusal with a code and the values its reason template reads. */
+  const refuse = (code: string, values?: Record<string, string>): Revalidation => ({ ok: false, reason: { code, ...values ? { values } : {} } })
   /** Gate non-human triggers: only listed bots (as inferred candidates) and senderless system/CI events may pass; other bots are rejected. */
   const machineGate = (trigger: Trigger): GateResult => {
     const bot = trigger.actor.id ? listedBot(settings, trigger.actor) : undefined
@@ -186,8 +198,42 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
     }
     return { admissible: true, strength: 'inferred', basis: { ...recorded, via: 'admission', cell, observation: { mode } } }
   }
+  /** Whether a Mandate's admission basis still holds under this Policy, without its action limits. */
+  const holds = (mandate: Mandate): boolean => {
+    const { basis } = mandate
+    const { source } = basis
+    const current = source && basis.scope ? listened(sources, source, basis.scope) : undefined
+    if (current && !current.listened) return false
+    // The conversation's authenticated local user stays explicit while the built-in Source exists.
+    if (basis.via === 'local') return !!source && (sources.trusted?.(source) ?? false)
+    const rulesOn = (rules: string[] | undefined) => (rules ?? []).every(id => settings.policy.rules.some(rule => rule.enabled && rule.id === id))
+    // Explicit follow-ups remain valid; inferred follow-ups require auto mode and enabled matched rules.
+    if (basis.via === 'followup') return mandate.strength === 'explicit' || (mode === 'auto' && rulesOn(basis.rules))
+    // A bot's candidate holds only while the bot remains on its Source's bot list and passes the observation checks below.
+    if (basis.via === 'bot' && !listedBot(settings, mandate.actor)) return false
+    // An admission-table Mandate holds while the sender's current cell still grants at least the original strength.
+    if (basis.via === 'admission') {
+      const { cell } = basis
+      const listed = !!allowedSender(settings, mandate.actor)
+      // A listed sender who addresses the agent is always explicit and uses no table cell.
+      if (cell === 'unlistedAddressed' && listed) return true
+      // A sender added to the allowed list since acceptance moves to the listed cell, and still undergoes observation checks below.
+      const now = cell === 'unlistedUnaddressed' && listed ? 'listedUnaddressed' : cell
+      if (now === 'listedUnaddressed' && !listed) return false
+      const admission = admissionOf(settings, source ?? '', current?.listened ? current.row : undefined, now)
+      if (STRENGTH[admission] < STRENGTH[mandate.strength]) return false
+      if (mandate.strength === 'explicit') return true
+    } else if (basis.via !== 'bot' && !allowedSender(settings, mandate.actor)) return false
+    // Observed/inferred Mandates hold only while auto mode is active and all matched rules remain enabled.
+    if ((basis.via === 'admission' || basis.via === 'listed' || basis.via === 'bot') && basis.observation) return mode === 'auto' && rulesOn(basis.rules)
+    return true
+  }
   return {
     version, paused: settings.paused, evalTimeoutMs: settings.eval.timeoutSeconds * 1000,
+    mandateLimits(at: string) {
+      return { maxActionLevel, ...mandateMinutes > 0
+        ? { expiresAt: new Date(Date.parse(at) + mandateMinutes * 60_000).toISOString() } : {} }
+    },
     gate(trigger: Trigger, thread, tickets) {
       if (!trigger.human) return machineGate(trigger)
       // A built-in local Source authenticates its user itself; it has no roster to consult.
@@ -217,35 +263,20 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
       return { admissible: false, reason: !allowed ? 'not_a_member' : receivable && admission === 'ignore' ? 'admission_ignored' : 'no_mention' }
     },
     admitsInferred: rules => mode === 'auto' && rules.length > 0 && rules.every(id => settings.policy.rules.some(rule => rule.enabled && rule.id === id)),
-    revalidate(mandate: Mandate) {
-      // Revalidation rules follow docs/002 (Eval path; Resume revalidates).
-      const { basis } = mandate
-      const { source } = basis
-      const current = source && basis.scope ? listened(sources, source, basis.scope) : undefined
-      if (current && !current.listened) return false
-      // The conversation's authenticated local user stays explicit while the built-in Source exists.
-      if (basis.via === 'local') return !!source && (sources.trusted?.(source) ?? false)
-      const rulesOn = (rules: string[] | undefined) => (rules ?? []).every(id => settings.policy.rules.some(rule => rule.enabled && rule.id === id))
-      // Explicit follow-ups remain valid; inferred follow-ups require auto mode and enabled matched rules.
-      if (basis.via === 'followup') return mandate.strength === 'explicit' || (mode === 'auto' && rulesOn(basis.rules))
-      // A bot's candidate holds only while the bot remains on its Source's bot list and passes the observation checks below.
-      if (basis.via === 'bot' && !listedBot(settings, mandate.actor)) return false
-      // An admission-table Mandate holds while the sender's current cell still grants at least the original strength.
-      if (basis.via === 'admission') {
-        const { cell } = basis
-        const listed = !!allowedSender(settings, mandate.actor)
-        // A listed sender who addresses the agent is always explicit and uses no table cell.
-        if (cell === 'unlistedAddressed' && listed) return true
-        // A sender added to the allowed list since acceptance moves to the listed cell, and still undergoes observation checks below.
-        const now = cell === 'unlistedUnaddressed' && listed ? 'listedUnaddressed' : cell
-        if (now === 'listedUnaddressed' && !listed) return false
-        const admission = admissionOf(settings, source ?? '', current?.listened ? current.row : undefined, now)
-        if (STRENGTH[admission] < STRENGTH[mandate.strength]) return false
-        if (mandate.strength === 'explicit') return true
-      } else if (basis.via !== 'bot' && !allowedSender(settings, mandate.actor)) return false
-      // Observed/inferred Mandates hold only while auto mode is active and all matched rules remain enabled.
-      if ((basis.via === 'admission' || basis.via === 'listed' || basis.via === 'bot') && basis.observation) return mode === 'auto' && rulesOn(basis.rules)
-      return true
+    revalidate(mandate: Mandate, action?: ActionRequest, at?: string) {
+      // An authorization that has reached its expiry authorizes nothing, even at a level it once allowed.
+      if (at && mandate.expiresAt && Date.parse(at) >= Date.parse(mandate.expiresAt)) {
+        return refuse('mandateExpired', { at: mandate.expiresAt })
+      }
+      // A Mandate keeps the level it was accepted with, so a later Policy can lower the ceiling but never widen it.
+      if (action) {
+        const authorized = mandate.maxActionLevel ?? maxActionLevel
+        const max = !withinActionLevel(action.level, authorized) ? authorized
+          : !withinActionLevel(action.level, maxActionLevel) ? maxActionLevel : undefined
+        if (max !== undefined) return refuse('actionLevelExceeded', { level: action.level, max })
+      }
+      // The admission basis follows docs/002: the same checks apply before a resume and before an action.
+      return holds(mandate) ? { ok: true } : refuse('revoked')
     },
   }
 }

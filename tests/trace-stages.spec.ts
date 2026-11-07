@@ -16,7 +16,8 @@ function harness({ gate, scope, spans, now }: { gate?: Policy['gate']; scope?: E
   const policy: Policy = {
     version: 'v1', paused: false, evalTimeoutMs: 60_000,
     gate: gate ?? (() => ({ admissible: true, strength: 'explicit', basis: { via: 'listed' } })),
-    revalidate: () => true,
+    revalidate: () => ({ ok: true }),
+    mandateLimits: () => ({ maxActionLevel: 'send' }),
     admitsInferred: () => true,
   }
   const executor: Executor = { start: () => {}, deliver: () => {}, stop: () => {} }
@@ -127,7 +128,8 @@ describe('the stages of one Trigger', () => {
   it('records no trace at all when no sink is configured, so tracing stays optional', () => {
     const repo = new MemoryRepositories()
     const policy: Policy = { version: 'v1', paused: false, evalTimeoutMs: 60_000,
-      gate: () => ({ admissible: true, strength: 'explicit', basis: { via: 'listed' } }), revalidate: () => true, admitsInferred: () => true }
+      gate: () => ({ admissible: true, strength: 'explicit', basis: { via: 'listed' } }), revalidate: () => ({ ok: true }),
+      mandateLimits: () => ({ maxActionLevel: 'send' }), admitsInferred: () => true }
     const engine = new Engine({ repo, policy: () => policy, scope: { scope: () => ({ listened: true, observed: false }) },
       assessor: { request: () => {} }, executor: { start: () => {}, deliver: () => {}, stop: () => {} },
       outbox: { send: () => {}, status: () => undefined, withdraw: () => {} }, now: () => at })

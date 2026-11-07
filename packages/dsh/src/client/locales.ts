@@ -639,6 +639,8 @@ const TEXT = {
   'reason.routed': ['已转给工单 {ticket}', 'Routed to Ticket {ticket}'],
   'reason.stopUnknown': ['要停止的工单不存在或已结束', 'The Ticket to stop is unknown or ended'],
   'reason.stopNotExplicit': ['停止需要名单里的人明确要求', 'Stopping needs an explicit request from someone on the list'],
+  'reason.actionLevelExceeded': ['动作等级 {level} 超过授权上限 {max}', 'Action level {level} exceeds the authorized maximum {max}'],
+  'reason.mandateExpired': ['授权已于 {at} 过期', 'The authorization expired at {at}'],
   'reason.directionUnsettled': ['实现意图或目标未确定，或还要产品或设计决定', 'Intent or target not settled, or a product or design decision is still open'],
   'reason.noRuleMatched': ['没有启用的准入规则匹配', 'No enabled admission rule matched'],
   'reason.ignoredFromCard': ['仅凭候选卡片忽略，未经规则研判', 'Ignored from its card, without a rule assessment'],

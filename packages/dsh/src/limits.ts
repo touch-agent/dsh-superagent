@@ -8,4 +8,6 @@ export const LIMITS = {
   promptMaxChars: { min: 1000, max: 1_000_000 },
   admissionContextMaxPages: { min: 1, max: 100 },
   admissionContextTimeoutMs: { min: 1, max: 90_000 },
+  /** Minutes a Mandate may authorize actions; 0 means until revoked, and a year is the practical ceiling. */
+  mandateMinutes: { min: 0, max: 525_600 },
 } as const

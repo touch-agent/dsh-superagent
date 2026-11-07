@@ -29,7 +29,8 @@ function harness(policyOverrides: Partial<Policy> = {}, { emit, prepareTicket }:
   const policy: Policy = {
     get version() { return version }, get paused() { return paused }, evalTimeoutMs: 60_000,
     gate: (t, thread) => !t.human ? { admissible: false, reason: 'not human' } : t.actor.id === 'alice' ? { admissible: true, strength: 'explicit', basis: { via: 'listed' } } : thread.subscriptions.length ? { admissible: true, strength: 'inferred', basis: { via: 'followup' } } : { admissible: false, reason: 'not a member' },
-    revalidate: () => version !== 'revoked',
+    revalidate: () => version !== 'revoked' ? { ok: true } : { ok: false, reason: { code: 'revoked' } },
+    mandateLimits: () => ({ maxActionLevel: 'send' }),
     admitsInferred: rules => rules.length > 0,
     ...policyOverrides,
   }
@@ -116,8 +117,10 @@ describe('eval', () => {
     const h = harness()
     const decision = accepted(h)
     const ticket = h.repo.tickets.get(decision.ticketId!)!
-    expect(ticket).toMatchObject({ title: 'Fix', mandate: { strength: 'explicit', policyVersion: 'v1', basis: { via: 'listed' }, actor: member, scope: 'small' }, channels: [trigger('1').channel],
+    expect(ticket).toMatchObject({ title: 'Fix', mandate: { strength: 'explicit', policyVersion: 'v1', basis: { via: 'listed' }, actor: member,
+      scope: 'small', maxActionLevel: 'send' }, channels: [trigger('1').channel],
       origin: { triggerId: '1', triggerIds: ['1'] } })
+    expect(ticket.mandate).not.toHaveProperty('expiresAt')
     expect(ticket).not.toHaveProperty('ended')
     expect(ticket.assignments).toEqual([expect.objectContaining({ state: 'running', startedAt: expect.any(String) })])
     expect(h.repo.threads.get('chat:t1')?.subscriptions).toEqual([ticket.id])

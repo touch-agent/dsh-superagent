@@ -44,6 +44,18 @@ export type Action = Omit<ActionIdentity, 'level'> &
 export const isActionLevel = (value: unknown): value is ActionLevel =>
   typeof value === 'string' && (ACTION_LEVELS as readonly string[]).includes(value)
 
+/** The level a Policy authorizes unless it explicitly raises it: writing internal drafts, never sending. */
+export const DEFAULT_MAX_ACTION_LEVEL: ActionLevel = 'draft'
+
+/**
+ * Whether `level` is at or below `max` in the consequence order. A maximum therefore permits itself and every level
+ * below it; an unknown level permits nothing.
+ */
+export function withinActionLevel(level: ActionLevel, max: ActionLevel): boolean {
+  const at = ACTION_LEVELS.indexOf(level), limit = ACTION_LEVELS.indexOf(max)
+  return at >= 0 && limit >= 0 && at <= limit
+}
+
 /**
  * The key that makes an action repeatable: equal identities produce equal keys, while another level, revision, actor,
  * object or kind always names another action. The same action therefore has one key on every attempt, and the five
