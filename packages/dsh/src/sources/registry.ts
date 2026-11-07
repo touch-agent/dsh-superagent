@@ -5,6 +5,7 @@ import type { ConversationHost } from './host.ts'
 import { HealthBoard, type HealthEntry } from '../infra/health.ts'
 import { AdmissionTableSchema, type Settings } from '../policy.ts'
 import type { ChannelLink, ChannelLinks, SourceAdapter, SourceDefinition, SourceInstance, SourceKind, TriggerContext, VariableSpec } from './kind.ts'
+import { manifestForm, type SourceForm } from './manifest-form.ts'
 import { parseSourceManifest } from './manifest-schema.ts'
 
 /** One registered Source: the adapter, plus the manifest it was registered with or the flat kind it still registers as until T1-10. */
@@ -18,9 +19,9 @@ interface Registration<C extends Record<string, unknown> = Record<string, unknow
 /**
  * Manages registered Sources, validates their instance and policy configurations, and implements SourceScope for the Engine.
  * A Source registers either as a manifest with its adapter or, while kinds migrate, as a flat SourceKind; both are stored as
- * one registration, and `kind()` presents either as the flat view its consumers (the panel, settings history, the views) read.
- * Claims each registration's health entries on HealthBoard and mediates access to source channels, links, environment variables
- * and thread context readers for Runtime, Settings, Outbox and MasterAssessor.
+ * one registration; `kind()` presents either as the flat view runtime consumers read, and `form()` presents the panel model
+ * derived from the manifest. Claims each registration's health entries on HealthBoard and mediates access to source channels,
+ * links, environment variables and thread context readers for Runtime, Settings, Outbox and MasterAssessor.
  */
 export class SourceRegistry implements SourceScope {
   private readonly registrations = new Map<string, Registration>()
@@ -82,6 +83,19 @@ export class SourceRegistry implements SourceScope {
     const manifest = registration.manifest!
     return { ...registration.adapter, kind: registration.id, title: manifest.title, description: manifest.description,
       fields: [...manifest.fields], health: [...manifest.health] } as SourceKind
+  }
+  /**
+   * The panel model a registered Source yields: its manifest projected by `manifestForm`, so the panel reads fields, sign-in
+   * fields, health entries and polling defaults from the declaration rather than from the flat kind view. A kind still
+   * registering the pre-manifest way presents the equivalent form with no sign-in fields and no declared limits.
+   */
+  form(id: string): SourceForm | undefined {
+    const registration = this.registrations.get(id)
+    if (!registration) return undefined
+    if (registration.manifest) return manifestForm(registration.manifest)
+    const kind = registration.kind!
+    return { id: kind.kind, title: kind.title, description: kind.description, fields: kind.fields,
+      auth: { kind: 'none', fields: [] }, health: kind.health, limits: undefined }
   }
   /** Every registered kind's instance ordered by ID, followed by stored instances whose kind is not installed (with their config kept as stored). */
   instances(settings = this.settings()): (SourceInstance & { installed: boolean })[] {

@@ -17,10 +17,11 @@ import { EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSch
 import { SetupError, type SetupCode } from '@superagent/dsh/setup.ts'
 import { feishuChannel } from '@superagent/dsh/sources/feishu-trigger.ts'
 import { githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
-import { feishuKind } from '@superagent/dsh/sources/feishu.ts'
-import { githubKind } from '@superagent/dsh/sources/github.ts'
+import { feishuKind, feishuManifest } from '@superagent/dsh/sources/feishu.ts'
+import { githubKind, githubManifest } from '@superagent/dsh/sources/github.ts'
 import type { Health } from '@superagent/dsh/sources/host.ts'
 import type { SourceKind } from '@superagent/dsh/sources/kind.ts'
+import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
 import { testDeployment } from './deployment.ts'
 
 export const MEMBER = 'ou_alice'
@@ -80,6 +81,9 @@ const dayAgo = () => new Date(Date.now() - 86_400_000).toISOString()
 export const problemOf = (code: SetupCode, values: Record<string, string> = {}) => new SetupError(code, values).problem
 // The kinds' configurations differ, and the fake reads them only as the records the views carry.
 const KINDS = [feishuKind, githubKind] as unknown as SourceKind[]
+/** The panel models their manifests yield, as the real settings view hands them to the client. */
+const FORM = new Map([['feishu', manifestForm(feishuManifest)], ['github', manifestForm(githubManifest)]])
+const formOf = (kind: SourceKind) => FORM.get(kind.kind)!
 export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000, admissionContextMaxPages: 10,
   admissionContextTimeoutMs: 15000 }
 
@@ -108,6 +112,9 @@ export interface PanelServer {
   opened: string[]
   dropped: DroppedReply[]
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
+  /** Source cards and status rows a test adds as if their plugin had loaded, such as the manifest-only fixture. */
+  extraSources: SourceView[]
+  extraStatuses: SourceStatusRow[]
 }
 export let server: PanelServer
 
@@ -126,7 +133,8 @@ function healthOf(name: string): Health {
 }
 const problemOf_ = (id: string) => [server.setup.problem, server.setup.feishuProblem].find(item => item?.place === id) ?? undefined
 function sourceSettings(): SourceView[] {
-  return KINDS.map(kind => {
+  return [...KINDS.map(kind => {
+    const form = formOf(kind)
     const config = kind.schema.parse(server.settings.sources[kind.kind]?.config ?? {})
     const problem = problemOf_(kind.kind)
     const { admission: _admission, ...part } = server.settings.policy.sources[kind.kind] ?? { allowed: [], admission: {} }
@@ -134,28 +142,29 @@ function sourceSettings(): SourceView[] {
       health: server.health[`sync:${kind.kind}`] }
     const policy = kind.policy && { fields: kind.policy.fields, explicit: kind.policy.explicit, ...kind.policy.rows
       ? { rows: kind.policy.rows(config) } : {}, ...sync ? { sync } : {} }
-    return { id: kind.kind, kind: kind.kind, title: kind.title, description: kind.description, installed: true,
+    return { id: kind.kind, kind: kind.kind, title: form.title, description: form.description, installed: true,
       value: { enabled: server.settings.sources[kind.kind]?.enabled ?? true, config },
         revision: server.revisions[`source:${kind.kind}`] ?? 0,
-      restarts: SETUP_FIELDS[kind.kind] ?? [], fields: kind.fields, facts: kind.facts?.(resolved()) ?? {},
+      restarts: SETUP_FIELDS[kind.kind] ?? [], form, facts: kind.facts?.(resolved()) ?? {},
       labels: kind.kind === 'feishu' ? { oc_team: '团队群', oc_other: '另一个群', ...server.joined } : {}, ...problem ? { problem } : {},
       ...policy ? { policy } : {} }
-  })
+  }), ...server.extraSources]
 }
 function sourceStatuses(): SourceStatusRow[] {
-  return KINDS.map(kind => {
+  return [...KINDS.map((kind): SourceStatusRow => {
+    const form = formOf(kind)
     const enabled = server.settings.sources[kind.kind]?.enabled ?? true
-    const health = kind.health.map(name => ({ name, ...healthOf(name) }))
+    const health = form.health.map(name => ({ name, ...healthOf(name) }))
     const problem = problemOf_(kind.kind)
     const state = !enabled ? 'off' : problem || health.some(item => item.state === 'error') ? 'error' : server.setup.problem ? 'setup'
       : health.some(item => item.state === 'starting') ? 'starting' : health.some(item => item.state === 'paused') ? 'paused' : 'ready'
     const feishu = kind.kind === 'feishu'
-    return { id: kind.kind, title: kind.title, installed: true, enabled, state, health, ...problem ? { problem } : {},
+    return { id: kind.kind, title: form.title, installed: true, enabled, state, health, ...problem ? { problem } : {},
       stats: { received: feishu ? 12 : 0, filtered: feishu ? 2 : 0, lastAt: '2026-09-23T00:00:00Z' },
       filtered: feishu ? [] : [{ id: 'e9', at: '2026-09-23T00:02:00Z', actor: actor('github', 'someone'), preview: 'looks wrong',
         reason: { code: 'source_disabled' } }],
       dropped: server.dropped.filter(item => item.channel.source === kind.kind && item.dropped.at >= dayAgo()) }
-  })
+  }), ...server.extraStatuses]
 }
 const stateView = (): StateView => ({
   setup: server.setup, load: { running: server.setup.problem ? 0 : 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers },
@@ -253,6 +262,7 @@ function initial(): PanelServer {
   const defaults = { revision: 0, previousRevision: null, savedAt: '', source: 'defaults' }
   return {
     health: {}, down: false, pending: 0, opened: [], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
+    extraSources: [], extraStatuses: [],
     setup: { machine: MACHINE, problem: null, feishuProblem: null,
       accounts: { repository: 'acme/widgets', agent: 'agent-bot', feishu: { appId: 'cli_bot', brand: 'feishu', botId: 'ou_bot',
         name: 'Widgets Bot' } } },

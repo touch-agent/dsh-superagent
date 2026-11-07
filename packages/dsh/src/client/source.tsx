@@ -30,7 +30,15 @@ function SourceCard({ source }: { source: SourceView }) {
     labels={source.labels}
     refreshLabels={refreshLabels} fact={spec.type === 'fact' || !changed(spec.key) ? source.facts[spec.key] : undefined}
     onChange={next => draft.edit({ ...value, config: { ...value.config, [spec.key]: next } })} />
-  const advanced = source.fields.filter(spec => spec.advanced)
+  // The panel model derives the fields and the card's specs from the manifest, so a new Source needs no panel code.
+  const form = source.form
+  const advanced = (form?.fields ?? []).filter(spec => spec.advanced)
+  const signIn = form && form.auth.kind !== 'none'
+    ? t(form.auth.kind === 'cli' ? 'sourceSignInCli' : 'sourceSignInApp',
+      { fields: form.auth.fields.map(spec => localized(t, spec.label)).join(t('listSeparator')) })
+    : ''
+  const health = (form?.health ?? []).map(name => valueLabel(t, 'health', name)).join(t('listSeparator'))
+  const pollSeconds = form?.limits?.pollSeconds
   return <form id={`dt-source-${source.id}`} className="dt-card" onSubmit={event => { void draft.submit(event) }}>
     <Fields disabled={draft.busy}>
       <div className="dt-card-head">
@@ -44,12 +52,17 @@ function SourceCard({ source }: { source: SourceView }) {
         {source.installed && <Switch checked={value.enabled} onChange={enabled => draft.edit({ ...value, enabled })}
           label={t('sourceEnable', { name: localized(t, source.title) })} />}
       </div>
+      {source.installed && (signIn || health || pollSeconds !== undefined) && <div className="dt-row-meta">
+        {signIn && <LabelValue label={t('sourceSignIn')} value={signIn} />}
+        {health && <LabelValue label={t('sourceHealthItems')} value={health} />}
+        {pollSeconds !== undefined && <LabelValue label={t('sourcePollLabel')} value={t('sourcePollValue', { seconds: pollSeconds })} />}
+      </div>}
       {problem && <div className="dt-row-buttons">
         <p className="dt-error" role="status"><SetupMessage problem={problem} lead /></p><CheckSetupButton />
       </div>}
       {!source.installed && <Hint>{t('sourceNotInstalledHint')}</Hint>}
       {source.builtin && <Hint>{t('sourceBuiltInHint')}</Hint>}
-      {source.installed && source.fields.filter(spec => !spec.advanced).map(field)}
+      {source.installed && (form?.fields ?? []).filter(spec => !spec.advanced).map(field)}
       {source.installed && advanced.length > 0 && <DisclosureRow icon={<Icon name="settings" />} title={t('advanced')} open={advancedOpen}
         onToggle={() => setAdvancedOpen(!advancedOpen)}>
         <div className="dt-disclosure-body">{advanced.map(field)}</div>

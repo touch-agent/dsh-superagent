@@ -12,12 +12,14 @@ export type HealthMap = Record<string, Health>
 /** Resolves health entries for a Source instance, treating stale `sourceOff` entries on an enabled Source as `starting`. */
 export function sourceHealth(sources: SourceRegistry, instance: SourceInstance, health: HealthMap) {
   const kind = sources.kind(instance.kind)
+  // The panel model derives the entries from the manifest; a flat kind still names the same entries.
+  const form = sources.form(instance.kind)
   const starting: Health = { state: 'starting', detail: '' }
-  const parts = (kind?.health ?? []).map(name => {
+  const parts = (form?.health ?? kind?.health ?? []).map(name => {
     const entry = health[name]
     return { name, ...(!entry || (instance.enabled && entry.code === 'sourceOff') ? starting : entry) }
   })
-  return { id: instance.id, title: kind?.title ?? { zh: instance.id, en: instance.id }, health: parts }
+  return { id: instance.id, title: form?.title ?? kind?.title ?? { zh: instance.id, en: instance.id }, health: parts }
 }
 export interface SetupState {
   /** Resolved deployment facts; undefined while waiting for initial setup. */

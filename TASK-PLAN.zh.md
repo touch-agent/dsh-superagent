@@ -205,6 +205,7 @@ graph LR
 - **交付**：`packages/dsh/src/client/source.tsx`（字段渲染在 `settings-kit.tsx`）改为渲染生成器产物；权限提示、健康条目、限流说明都从 manifest 读。
 - **验收**：加一个假源（测试 fixture）只改 manifest，面板自动出现正确的字段与标签。
 - **依赖**：T1-02。
+- **状态**：实现完成（2026-11-08，PR 待合并）。`SourceRegistry.form()` 把 manifest 经 `manifestForm` 交给设置视图与健康视图；`source.tsx` 从它渲染字段、登录方式提示、健康项和轮询默认；`tests/fixtures/fake-source.ts` 只声明 manifest，设置页与状态页即出现该来源。`kind()` 仍供运行时读取，扁平 kind 走等价回退。
 
 ### T1-12 文档：新增源 30 分钟指南 · Platform · 1 人日
 

@@ -106,7 +106,7 @@ export function ModelField({ id, value, onChange }: { id: string; value: RoleMod
 type HistoryChange = NonNullable<HistoryView['items'][number]['changes']>[number]
 function changeText(t: T, change: HistoryChange, sources: SourceView[]): string {
   const source = sources.find(item => item.id === change.source)
-  const field = (change.part ? source?.policy?.fields : source?.fields)?.find(item => item.key === change.field)
+  const field = (change.part ? source?.policy?.fields : source?.form?.fields)?.find(item => item.key === change.field)
   const shown = (value: unknown) => value === undefined || value === null || value === '' ? t('unsetValue') : typeof value === 'boolean'
     ? t(value ? 'yes' : 'no')
     : change.code === 'mode' ? valueLabel(t, 'mode', String(value)) : String(value)
