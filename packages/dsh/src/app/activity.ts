@@ -100,14 +100,4 @@ export class ActivityLog {
     const ticketId = 'ticketId' in event.data ? String(event.data.ticketId) : undefined
     return this.store.activity.record(gradeEvent(event, ticketId === undefined ? undefined : find(ticketId)))
   }
-
-  /**
-   * Reads one page of records newer than `after`, or the newest page when `after` is zero.
-   * @param after - the last sequence the reader saw.
-   * @param limit - page size, at most 200.
-   * @param level - lowest level to include; omitted includes every stored level.
-   */
-  feed(after: number, limit = 50, level?: ActivityLevel): ActivityFeed {
-    return activityFeed(this.store.activity, after, limit, level)
-  }
 }

@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { bindScopeParent } from '@deepseek-ai/dsh-scope'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
@@ -1676,7 +1676,10 @@ it('creates an Executor Session under the bundle\'s worker preset, and the main 
   const { sessionId } = await acceptedTicket()
   const created = controller.create.mock.calls.map(([options]) => options as { sessionId: string; agentPreset: string })
   expect(created.find(options => options.sessionId === sessionId)).toMatchObject({ agentPreset: 'dsh-superagent-worker' })
-  expect(created.find(options => options.sessionId === runtime.masterId)).toMatchObject({ agentPreset: 'dsh-superagent-router' })
+  // The main Session is the system entry: its workspace is the system root, created on startup below the state directory.
+  expect(created.find(options => options.sessionId === runtime.masterId)).toMatchObject({ agentPreset: 'dsh-superagent-router',
+    workspaceId: join(directory, 'system') })
+  expect(existsSync(join(directory, 'system'))).toBe(true)
 })
 
 it('selects its own preset again for a main Session or worker a person switched before its first turn, and not after it', async () => {

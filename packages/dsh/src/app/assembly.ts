@@ -73,8 +73,6 @@ interface Parts {
   engine: Engine
   /** Where the Engine records the stages of a Trigger's trace, and where the panel reads one back. */
   trace: SqliteTraceSink
-  /** Grades every domain event for the system view and the single-notification budget. */
-  activity: ActivityLog
   passes: Passes
   masterId: string
   sourceLinks: TextCache
@@ -135,7 +133,8 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const outbox = parts.outbox = new Outbox({ store, effects, sources, commands, paused: () => host.paused() })
   const policy = () => settingsPolicy(store.settings(), sources)
   const trace = parts.trace = new SqliteTraceSink(store)
-  const activity = parts.activity = new ActivityLog(store)
+  // Every domain event is graded and stored in the same transaction that produced it; no other part needs the log itself.
+  const activity = new ActivityLog(store)
   const engine = parts.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, outbox, trace,
     prepareTicket: (ticket, outcome) => executor.prepare(ticket, outcome), emit: event => {
       // Record every event once, in the same transaction, then decide whether it may disturb a person.

@@ -145,7 +145,7 @@
 | `notice` | `trigger.requeued`、`thread.unsubscribed`；以及**未被报告覆盖**的 `ticket.ended` | 进事件栏并通知主会话 |
 
 存储：`activity(seq, at, level, event, ticket, thread, value)`，`seq` 单调递增，作为增量游标；保留最近 5,000 条。
-读取：`GET /orchestrator/api/activity?after=&limit=&level=`，返回 `{items, latest}`，倒序；`level=feed` 表示 feed 及以上，不含 quiet。
+读取：`GET /orchestrator/api/activity?after=&limit=&level=`，返回 `{items, latest}`；首屏按 `seq` 倒序，带 `after` 的增量按 `seq` 升序返回新增。`level=feed` 表示 feed 及以上，不含 quiet。
 
 ### 3.6 单一通知预算（本 PR 已实现）
 
