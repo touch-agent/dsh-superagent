@@ -153,14 +153,14 @@ graph LR
 
 ### T1-01 `SourceManifest` 类型与校验 · Kernel · 2 人日
 
-- **交付**：`packages/kernel/src/manifest.ts`：声明式的 `SourceManifest`（`id / title / description / auth / fields / scope（准入行 + explicit）/ health / limits` 与 `extra`）；`Localized` 与 `FieldSpec` 从 runtime 迁入并 re-export，全仓只留一份定义。**行为**（`schema`、`channel`、`threadContext`、`policy`、`environment`、`find`、`repliesTo`）留在 runtime 的 `SourceKind`/adapter，不进 manifest（D9）。zod 校验放 `packages/dsh/src/sources/manifest-schema.ts`（D6，kernel 零依赖不放宽）。
+- **交付**：`packages/kernel/src/manifest.ts`：声明式的 `SourceManifest`（`id / title / description / auth / fields / health / limits` 与 `extra`）；`Localized` 与 `FieldSpec` 从 runtime 迁入并 re-export，全仓只留一份定义。**行为与准入**（`schema`、`channel`、`threadContext`、`policy`（含准入行与 explicit）、`environment`、`find`、`repliesTo`）留在 runtime 的 adapter，不进 manifest（D9、D10）。zod 校验放 `packages/dsh/src/sources/manifest-schema.ts`（D6，kernel 零依赖不放宽）。
 - **验收**：`tests/manifest.spec.ts`：合法 manifest 通过；缺 `scope`、`id` 冲突、auth 字段未声明、字段 key 重复、`limits` 非法时均给出带路径的错误。
 - **依赖**：无。
 
-### T1-02 manifest → 表单/权限表/健康项/限流 生成器 · Connector · 3 人日
+### T1-02 manifest → 表单/健康项/限流 生成器 · Connector · 2 人日
 
-- **交付**：`packages/dsh/src/sources/manifest-form.ts`：`manifestForm(manifest)` 产出面板模型——fields 保持顺序（含 `advanced`）；auth 的字段 key 解析为字段本身；scope 的准入行与 explicit 文案成为权限提示；health 成为健康条目名；limits 成为轮询默认值。React 渲染留给 T1-11。
-- **验收**：`tests/manifest-form.spec.ts`：生成结果与手写的 `githubKind` 的 fields / policy.explicit / health 一致；auth 引用未声明字段时抛错；结果可 JSON 往返。
+- **交付**：`packages/dsh/src/sources/manifest-form.ts`：`manifestForm(manifest)` 产出面板模型——fields 保持顺序（含 `advanced`）；auth 的字段 key 解析为字段本身；health 成为健康条目名；limits 成为轮询默认值。准入表（rows + explicit）由 adapter 的 policy part 提供给面板（D10），不进表单模型。React 渲染留给 T1-11。
+- **验收**：`tests/manifest-form.spec.ts`：生成结果与手写的 `githubKind` 的 fields / health 一致；auth 引用未声明字段时抛错；结果可 JSON 往返。
 - **依赖**：T1-01。
 
 ### T1-03 registry 按 manifest 装配 · Runtime · 2 人日
@@ -396,6 +396,8 @@ graph LR
 | D6 | manifest 的类型与校验分处两包 | T1-01、T1-02 | A（已定）：kernel 只放纯类型，zod 校验放 `@superagent/dsh`；kernel 零依赖不变 | 已定（2026-11-07） |
 | D7 | 切包后 patch 行名是否改 | X-07、X-11 | 不改：保留 `dsh-superagent` 与三个子路径 exports，已装 profile 不受影响 | 已定（2026-11-07） |
 | D9 | manifest 是否包含宿主能力 | T1-01…T1-05 | 不含：manifest 只放声明式数据，函数能力留 adapter——函数无法被 zod 校验，且会把宿主类型拖进 kernel | 已定（2026-11-07） |
+| D10 | 准入表（rows + explicit）放 manifest 还是 policy | T1-01、T1-02、T1-11 | 放 policy part：行由配置决定（飞书每个群一行），且随 Policy 版本走；manifest 只放与配置无关的声明，避免第二份真相 | 已定（2026-11-07） |
+| D11 | 会话派活如何进入领域 | M1.5（提案） | 内置 `conversation` Source + `orchestrator_dispatch`：会话消息先成为 Trigger，仍由 Eval 建 Ticket；主 agent 派活/协调/回答，不做技术实现；多源任务仍是 Ticket + Channels + Threads，不新增 Task 聚合 | 提案（docs/009） |
 
 ---
 

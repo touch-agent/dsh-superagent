@@ -8,7 +8,7 @@ import { refreshChatNames, runFeishu } from './feishu-loops.ts'
 import { SOURCE, feishuTriggerId } from './feishu-trigger.ts'
 import { sourceContext } from './host.ts'
 import type { Localized, SourceAdapter, SourceDefinition, SourceKind } from './kind.ts'
-import type { SourceManifest, SourceScopeRow } from '@superagent/kernel'
+import type { SourceManifest } from '@superagent/kernel'
 import type { SourceRegistry } from './registry.ts'
 
 export { SOURCE, feishuRef, feishuThreadId, feishuTime, feishuTrigger, feishuTriggerId, historyEvent, withMentionNames }
@@ -29,7 +29,7 @@ const FeishuConfigSchema = FeishuBotSchema.extend({
   otherChats: z.enum(['none', 'mentions']).default('none'),
 }).strict()
 export type FeishuConfig = z.infer<typeof FeishuConfigSchema>
-const admissionRows: SourceScopeRow[] = [
+const admissionRows: { id: string; label: Localized }[] = [
   { id: 'other', label: { zh: '其他群', en: 'Other chats' } },
   { id: 'direct', label: { zh: '私聊', en: 'Direct messages' } },
 ]
@@ -56,7 +56,6 @@ export const feishuManifest: SourceManifest = {
     { key: 'linkTimeoutMs', type: 'number', advanced: true, min: 1, max: 90000, label: { zh: '原消息链接的查询时限 / 毫秒', en: 'Original message link time limit / ms' },
       hint: { zh: '查询原消息链接最多等待的时间；超时后智能体改为直接读取原消息。', en: 'How long to wait for an original message\'s link; after that, agents read the message itself.' } },
   ],
-  scope: { rows: admissionRows, explicit },
   health: ['feishu', 'history'],
 }
 

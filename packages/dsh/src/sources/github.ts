@@ -1,6 +1,6 @@
 /** The GitHub manifest and adapter, notification and repository polling loops, and Cordis plugin entry. */
 import type { Context } from '@deepseek-ai/cordis'
-import { key, type SourceManifest, type SourceScopeRow, type Thread } from '@superagent/kernel'
+import { key, type SourceManifest, type Thread } from '@superagent/kernel'
 import { sameName } from '../infra/text.ts'
 import { GithubAccountsSchema } from '../deployment.ts'
 import { CliError, validItems, type Tally } from '../infra/commands.ts'
@@ -35,7 +35,7 @@ function scopeOf(meta: Record<string, unknown>): Scope | undefined {
   if (meta.kind === 'pull') return 'pulls'
   return meta.kind === 'conversation' || meta.kind === 'inline' || meta.kind === 'review' ? 'comments' : undefined
 }
-const admissionRows: SourceScopeRow[] = [
+const admissionRows: { id: string; label: Localized }[] = [
   { id: 'issues', label: { zh: '新 Issue', en: 'New Issues' } },
   { id: 'pulls', label: { zh: '新 PR', en: 'New pull requests' } },
   { id: 'comments', label: { zh: '评论', en: 'Comments' } },
@@ -63,7 +63,6 @@ export const githubManifest: SourceManifest = {
       hint: { zh: '打开后，Issue 和 PR 上没有 @ 智能体的评论和代码评论也会收到，由策略的接收表决定是否成为候选。', en: 'Comments and review comments on Issues and PRs that do not mention the agent are received too, and the Policy\'s admission table decides whether they become candidates.' } },
     { key: 'observeCi', type: 'switch', label: { zh: '接收默认分支的 CI', en: 'Receive the default branch\'s CI' },
       hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.' } }],
-  scope: { rows: admissionRows, explicit },
   health: ['github'],
   limits: { pollSeconds: 60 },
 }

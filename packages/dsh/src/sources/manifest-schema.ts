@@ -18,7 +18,6 @@ const FieldSchema = z.discriminatedUnion('type', [
   z.object({ ...FieldBase, type: z.literal('fact'), settings: z.literal('deployment').optional() }).strict(),
   z.object({ ...FieldBase, type: z.literal('rows'), columns: z.array(ColumnSchema).min(1) }).strict(),
 ])
-const ScopeRowSchema = z.object({ id: z.string().min(1), label: LocalizedSchema, note: LocalizedSchema.optional() }).strict()
 const IdPattern = /^[a-z][a-z0-9-]*$/
 
 export const SourceManifestSchema = z.object({
@@ -27,7 +26,6 @@ export const SourceManifestSchema = z.object({
   description: LocalizedSchema,
   auth: z.object({ kind: z.enum(['cli', 'app', 'none']), fields: z.array(z.string()).default([]) }).strict(),
   fields: z.array(FieldSchema).min(1),
-  scope: z.object({ rows: z.array(ScopeRowSchema).min(1), explicit: LocalizedSchema }).strict(),
   health: z.array(z.string().regex(IdPattern)).min(1),
   limits: z.object({ pollSeconds: z.number().int().positive().optional() }).strict().optional(),
   extra: z.record(z.string(), z.unknown()).optional(),
@@ -44,10 +42,6 @@ export const SourceManifestSchema = z.object({
     message: 'a manifest that needs no sign-in names no auth fields', path: ['auth', 'fields'] })
   if (manifest.auth.kind !== 'none' && !manifest.auth.fields.length) ctx.addIssue({ code: 'custom',
     message: `a ${manifest.auth.kind} sign-in must name the fields that carry it`, path: ['auth', 'fields'] })
-  const rows = manifest.scope.rows.map(row => row.id)
-  rows.forEach((id, index) => {
-    if (rows.indexOf(id) !== index) ctx.addIssue({ code: 'custom', message: `duplicate scope row "${id}"`, path: ['scope', 'rows', index, 'id'] })
-  })
   manifest.health.forEach((name, index) => {
     if (manifest.health.indexOf(name) !== index) ctx.addIssue({ code: 'custom', message: `duplicate health entry "${name}"`, path: ['health', index] })
   })

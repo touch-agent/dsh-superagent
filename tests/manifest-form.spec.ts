@@ -16,7 +16,6 @@ const manifest = (): SourceManifest => ({
     { key: 'observeIssues', type: 'switch', label: text('Receive new Issues') },
     { key: 'pollSeconds', type: 'number', advanced: true, min: 60, max: 3600, label: text('Polling interval') },
   ],
-  scope: { rows: [{ id: 'issues', label: text('New Issues'), note: text('All') }], explicit: text('An account mentions the agent.') },
   health: ['github'],
   limits: { pollSeconds: 60 },
 })
@@ -33,8 +32,6 @@ describe('a manifest form', () => {
   it('resolves the sign-in fields and keeps the admission hints', () => {
     const form = manifestForm(manifest())
     expect(form.auth).toEqual({ kind: 'cli', fields: [expect.objectContaining({ key: 'cli', type: 'text' })] })
-    expect(form.admission.explicit).toEqual(text('An account mentions the agent.'))
-    expect(form.admission.rows).toEqual([{ id: 'issues', label: text('New Issues'), note: text('All') }])
     expect(form.health).toEqual(['github'])
     expect(form.limits).toEqual({ pollSeconds: 60 })
   })
@@ -55,7 +52,6 @@ describe('a manifest form', () => {
     expect(form.id).toBe(githubKind.kind)
     expect(form.fields).toEqual(githubKind.fields)
     expect(form.auth).toEqual({ kind: 'cli', fields: [githubKind.fields.find(field => field.key === 'cli')] })
-    expect(form.admission.explicit).toEqual(githubKind.policy!.explicit)
     expect(form.health).toEqual(githubKind.health)
   })
 })

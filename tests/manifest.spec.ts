@@ -20,7 +20,6 @@ const manifest = (): SourceManifest => ({
     { key: 'region', type: 'select', label: text('Region'), options: [{ value: 'us', label: text('US') }] },
     { key: 'account', type: 'fact', settings: 'deployment', label: text('Account') },
   ],
-  scope: { rows: [{ id: 'issues', label: text('New Issues'), note: text('All') }], explicit: text('An account mentions the agent.') },
   health: ['github'],
   limits: { pollSeconds: 60 },
 })
@@ -34,12 +33,11 @@ describe('a Source manifest', () => {
     const parsed = parseSourceManifest({ ...manifest(), extra: { notifications: 'rest' } })
     expect(parsed.id).toBe('github')
     expect(parsed.fields.map(field => field.type)).toEqual(['text', 'text', 'switch', 'number', 'rows', 'select', 'fact'])
-    expect(parsed.scope.rows[0]?.note).toEqual(text('All'))
     expect(parsed.limits).toEqual({ pollSeconds: 60 })
     expect(parsed.extra).toEqual({ notifications: 'rest' })
   })
-  it('names the missing scope', () => {
-    expect(issues(SourceManifestSchema.safeParse({ ...manifest(), scope: undefined })).map(issue => issue.path)).toContainEqual(['scope'])
+  it('refuses a scope: admission belongs to the policy part, not the manifest', () => {
+    expect(SourceManifestSchema.safeParse({ ...manifest(), scope: { rows: [], explicit: text('Any') } }).success).toBe(false)
   })
   it('names the second Source when two answer to the same id', () => {
     const parsed = SourceManifestsSchema.safeParse([manifest(), { ...manifest(), title: text('Copy') }])

@@ -2,7 +2,6 @@
 import type { FieldSpec, SourceManifest } from '@superagent/kernel'
 
 export interface SourceFormAuth { kind: SourceManifest['auth']['kind']; fields: readonly FieldSpec[] }
-export interface SourceFormAdmission { explicit: SourceManifest['scope']['explicit']; rows: SourceManifest['scope']['rows'] }
 export interface SourceForm {
   id: string
   title: SourceManifest['title']
@@ -11,8 +10,6 @@ export interface SourceForm {
   fields: readonly FieldSpec[]
   /** The fields that carry the credential, resolved from `auth.fields`. */
   auth: SourceFormAuth
-  /** The admission table's rows and the text describing an explicit request. */
-  admission: SourceFormAdmission
   /** Health entries the Source may report its own state under. */
   health: readonly string[]
   limits: SourceManifest['limits']
@@ -27,6 +24,5 @@ export function manifestForm(manifest: SourceManifest): SourceForm {
     return field
   })
   return { id: manifest.id, title: manifest.title, description: manifest.description, fields: manifest.fields,
-    auth: { kind: manifest.auth.kind, fields: auth }, admission: { explicit: manifest.scope.explicit, rows: manifest.scope.rows },
-    health: manifest.health, limits: manifest.limits }
+    auth: { kind: manifest.auth.kind, fields: auth }, health: manifest.health, limits: manifest.limits }
 }

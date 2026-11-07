@@ -94,7 +94,7 @@ env -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_NOSYSTEM -u GIT_AUTHOR_NAME -u GIT_AUTHOR
 
 ### D9 · manifest 的边界（随 T1-01）
 
-manifest 只放**声明式数据**（identity、fields、准入行与 explicit 文案、health、limits、extra），`channel` / `threadContext` / `policy` / `environment` / `find` / `repliesTo` 留在 runtime 的 adapter。理由：函数无法被 zod 校验，且这些能力的类型引用宿主与运行时类型，搬进 kernel 会破坏零依赖边界。代价是 `kind.ts` 的退役（T1-10）要把「描述」与「行为」拆成两个对象，这正是 T1-03 的装配目标。
+manifest 只放**与配置无关的声明式数据**（identity、fields、auth、health、limits、extra），`channel` / `threadContext` / `policy` / `environment` / `find` / `repliesTo` 留在 runtime 的 adapter。**准入表也归 policy part**（D10）：行由配置决定（如飞书每个群一行），并随 Policy 版本走；manifest 里再放一份会产生第二个真相。理由还有：函数无法被 zod 校验，且这些能力的类型引用宿主与运行时类型，搬进 kernel 会破坏零依赖边界。代价是 `kind.ts` 的退役（T1-10）要把「描述」与「行为」拆成两个对象，这正是 T1-03 的装配目标。
 
 ### D8 · 人员配置（决定砍不砍源）
 

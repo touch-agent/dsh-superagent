@@ -21,7 +21,7 @@ const probe: SourceKind<{ interval: number }> = {
 
 const probeManifest = (): SourceManifest => ({
   id: 'probe', title: { zh: '探针', en: 'Probe' }, description: { zh: '测试源', en: 'Probe source' }, auth: { kind: 'none', fields: [] },
-  fields: probe.fields, scope: { rows: [{ id: 'all', label: { zh: '全部', en: 'All' } }], explicit: { zh: '被 @ 时', en: 'When mentioned' } },
+  fields: probe.fields,
   health: ['probe'],
 })
 
@@ -181,8 +181,8 @@ describe('Source registry', () => {
   })
   it('refuses a definition whose manifest does not parse, naming the path', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
-    expect(() => sources.registerDefinition({ manifest: { ...probeManifest(), scope: undefined as unknown as SourceManifest['scope'] },
-      adapter: { schema: probe.schema } })).toThrow(/scope/)
+    expect(() => sources.registerDefinition({ manifest: { ...probeManifest(), fields: [] },
+      adapter: { schema: probe.schema } })).toThrow(/fields/)
   })
   it('refuses a definition whose id is already registered, from either path', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
