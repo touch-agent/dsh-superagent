@@ -91,6 +91,13 @@ describe('the approval state machine', () => {
     expect(revoke(revoked, { at: '2026-11-07T10:20:00.000Z' })).toEqual(revoked)
   })
 
+  it('records a reason on a decision and allows an automatic revocation without a person', () => {
+    expect(approve(requested(), { ...decided(), reason: 'Known sender' })).toMatchObject({ state: 'approved', reason: 'Known sender' })
+    const revoked = revoke(requested(), { at: '2026-11-07T10:10:00.000Z', reason: 'No longer needed' })
+    expect(revoked).toMatchObject({ state: 'revoked', reason: 'No longer needed' })
+    expect(revoked).not.toHaveProperty('decidedBy')
+  })
+
   it('refuses a decision before the request, an expiry that is not later, and an action that no longer matches its key', () => {
     expect(() => createApproval(request({ expiresAt: times.requestedAt }))).toThrow(/expire after it was requested/)
     expect(() => createApproval(request({ expiresAt: '2026-11-07T09:00:00.000Z' }))).toThrow(/expire after it was requested/)
@@ -120,10 +127,29 @@ describe('the approval repository', () => {
         expect(repo.approvals.get(one.id)).toEqual(one)
         expect(repo.approvals.byTicket('t1').map(approval => approval.id)).toEqual([one.id, two.id])
         expect(repo.approvals.pending().map(approval => approval.id)).toEqual([one.id, two.id, other.id])
-        repo.approvals.save(approve(one, decided()))
-        expect(repo.approvals.get(one.id)).toMatchObject({ state: 'approved' })
+        const approved = approve(one, decided())
+        repo.approvals.save(approved)
+        expect(repo.approvals.get(one.id)).toEqual(approved)
         expect(repo.approvals.pending().map(approval => approval.id)).toEqual([two.id, other.id])
+        // A repeated approval of the stored record keeps the first decision; it does not add another row.
+        repo.approvals.save(approve(repo.approvals.get(one.id)!, { by: { source: 'feishu', id: 'ou_bob' }, at: '2026-11-07T12:00:00.000Z' }))
+        expect(repo.approvals.get(one.id)).toEqual(approved)
         expect(repo.approvals.byTicket('t1').map(approval => approval.id)).toEqual([one.id, two.id])
+        repo.approvals.save(expire(two, times.expiresAt))
+        expect(repo.approvals.pending().map(approval => approval.id)).toEqual([other.id])
+        expect(repo.approvals.get(two.id)).toMatchObject({ state: 'expired' })
+      }
+    } finally { store.close() }
+  })
+
+  it('rolls an approval save back with its transaction', () => {
+    const store = new Store(join(directory, 'db.sqlite'))
+    try {
+      for (const repo of [store, new MemoryRepositories()] as Repositories[]) {
+        const approval = createApproval(request())
+        expect(() => repo.atomic(() => { repo.approvals.save(approval); throw new Error('boom') })).toThrow('boom')
+        expect(repo.approvals.get(approval.id)).toBeUndefined()
+        expect(repo.approvals.pending()).toEqual([])
       }
     } finally { store.close() }
   })

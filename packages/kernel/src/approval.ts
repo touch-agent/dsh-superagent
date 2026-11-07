@@ -4,7 +4,7 @@ import { UserError } from './errors.ts'
 import { key } from './ids.ts'
 import { isoTime, type ActorRef } from './model.ts'
 
-/** The states an Approval may hold, in the order it can first reach them from `requested`. */
+/** The states an Approval may hold: `requested`, then one of the four final states. */
 export const APPROVAL_STATES = ['requested', 'approved', 'denied', 'expired', 'revoked'] as const
 /** Where an Approval is: waiting for a decision, or one of the four final states. */
 export type ApprovalState = typeof APPROVAL_STATES[number]
@@ -12,7 +12,7 @@ export type ApprovalState = typeof APPROVAL_STATES[number]
 /**
  * One Approval request: the Ticket it belongs to, the exact Action and revision it approves, the moment it stops being
  * decidable, and the person who decided it. The Action is kept as requested so the approved revision and level stay
- * auditable after it runs. A Ticket may hold many Approvals; each Action holds at most one.
+ * auditable after it runs. A Ticket may hold many Approvals; each Action holds at most one Approval per Ticket.
  */
 export interface Approval {
   id: string
@@ -28,7 +28,7 @@ export interface Approval {
   decidedAt?: string
   /** Who approved or denied it, or revoked it before a decision; an expiry has none. */
   decidedBy?: ActorRef
-  /** Why it was denied or revoked, in the caller's words. */
+  /** Why it was approved, denied or revoked, in the caller's words. */
   reason?: string
 }
 
@@ -97,7 +97,8 @@ function requireAction(value: Action): Action {
 /**
  * Build a requested Approval for one Action. The id is derived from the Ticket and the Action's idempotency key, so
  * asking again for the same action names the same record instead of creating a second one. The request must expire
- * after it was made.
+ * after it was made. This is a constructor, not a get-or-create: it always returns `requested`, so a caller must read an
+ * existing record by id before saving and never save a fresh request over an existing decision.
  */
 export function createApproval(input: ApprovalRequest): Approval {
   const ticketId = requireText(input.ticketId, 'The Approval ticket')
@@ -121,7 +122,7 @@ function requireDecidable(approval: Approval, atValue: string): string {
 /** Apply an approved or denied decision to one Approval. Repeating the same decision leaves the record untouched. */
 function decide(approval: Approval, state: 'approved' | 'denied', decision: ApprovalDecision): Approval {
   if (approval.state === state) return approval
-  if (approval.state !== 'requested') throw new UserError('approvalDecided', { state: approval.state })
+  if (approval.state !== 'requested') throw new UserError('approvalDecided')
   const at = requireDecidable(approval, decision.at)
   const by = requireActor(decision.by, 'The Approval approver')
   return { ...approval, state, decidedAt: at, decidedBy: by, ...(decision.reason ? { reason: decision.reason } : {}) }
@@ -139,7 +140,7 @@ export const deny = (approval: Approval, decision: ApprovalDecision): Approval =
  */
 export function revoke(approval: Approval, revocation: ApprovalRevocation): Approval {
   if (approval.state === 'revoked') return approval
-  if (approval.state !== 'requested') throw new UserError('approvalDecided', { state: approval.state })
+  if (approval.state !== 'requested') throw new UserError('approvalDecided')
   const at = requireDecidable(approval, revocation.at)
   const by = revocation.by === undefined ? undefined : requireActor(revocation.by, 'The Approval revoker')
   return { ...approval, state: 'revoked', decidedAt: at, ...(by ? { decidedBy: by } : {}), ...(revocation.reason ? { reason: revocation.reason } : {}) }
@@ -152,7 +153,7 @@ export function revoke(approval: Approval, revocation: ApprovalRevocation): Appr
  */
 export function expire(approval: Approval, atValue: string): Approval {
   if (approval.state === 'expired') return approval
-  if (approval.state !== 'requested') throw new UserError('approvalDecided', { state: approval.state })
+  if (approval.state !== 'requested') throw new UserError('approvalDecided')
   const at = requireTime(atValue, 'The Approval expiry check time')
   if (Date.parse(at) < Date.parse(approval.expiresAt)) return approval
   return { ...approval, state: 'expired', decidedAt: approval.expiresAt }
