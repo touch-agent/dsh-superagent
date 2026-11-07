@@ -25,7 +25,7 @@ export const SourceManifestSchema = z.object({
   title: LocalizedSchema,
   description: LocalizedSchema,
   auth: z.object({ kind: z.enum(['cli', 'app', 'none']), fields: z.array(z.string()).default([]) }).strict(),
-  fields: z.array(FieldSchema).min(1),
+  fields: z.array(FieldSchema),
   health: z.array(z.string().regex(IdPattern)).min(1),
   limits: z.object({ pollSeconds: z.number().int().positive().optional() }).strict().optional(),
   extra: z.record(z.string(), z.unknown()).optional(),

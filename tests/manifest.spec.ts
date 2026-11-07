@@ -36,6 +36,10 @@ describe('a Source manifest', () => {
     expect(parsed.limits).toEqual({ pollSeconds: 60 })
     expect(parsed.extra).toEqual({ notifications: 'rest' })
   })
+  it('accepts an empty field list for a built-in Source with nothing to configure', () => {
+    expect(SourceManifestSchema.safeParse({ ...manifest(), auth: { kind: 'none', fields: [] }, fields: [] }).success).toBe(true)
+  })
+
   it('refuses a scope: admission belongs to the policy part, not the manifest', () => {
     expect(SourceManifestSchema.safeParse({ ...manifest(), scope: { rows: [], explicit: text('Any') } }).success).toBe(false)
   })

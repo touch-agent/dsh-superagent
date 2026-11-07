@@ -3,7 +3,7 @@ import type { EngineForSources, ReceiveResult, Trigger } from '@superagent/kerne
 import type { Deployment } from '../deployment.ts'
 import type { Commands } from '../infra/commands.ts'
 import type { SetupProblem } from '../setup.ts'
-import type { SourceContext } from '../sources/host.ts'
+import type { ConversationHost, SourceContext } from '../sources/host.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import type { Outbox } from './outbox.ts'
 import type { Store } from './store.ts'
@@ -24,6 +24,8 @@ export interface SourceContextDeps {
   readonly feishuProblem?: SetupProblem | undefined
   /** Hands a Trigger to the Engine and schedules the pass that assesses it. */
   receive(trigger: Trigger): ReceiveResult | Promise<ReceiveResult>
+  /** Delivery into the main Session; absent in tests and panels that never send conversation messages. */
+  readonly conversation?: ConversationHost
 }
 
 /**
@@ -36,6 +38,7 @@ export function sourceContextOf(deps: SourceContextDeps, kind: { kind: string; h
   return {
     get deployment() { return deps.deployment },
     commands: deps.commands,
+    conversation: deps.conversation ?? { deliver: async () => { throw new Error('Conversation delivery is unavailable in this context') } },
     ready: deps.ready,
     configured: () => deps.configured(),
     get problem() { return [deps.feishuProblem, deps.setupProblem].find(problem => problem?.place === kind.kind) },

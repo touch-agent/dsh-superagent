@@ -7,6 +7,7 @@ import { UserError, followupOwners, key, reasonText, type Decision, type Decisio
 import { IM_WORDS, NOTE_WORDS, wordCount } from '../../infra/text.ts'
 import { AssessmentSchema, EvalReadSchema, WorktreeNameSchema, type MasterAssessor } from '../assessment.ts'
 import { ticketCard } from '../cards.ts'
+import type { DispatchInput, DispatchResult } from '../conversation.ts'
 import { PromptConfigSchema, savePrompts, type Prompts } from '../prompts.ts'
 import { readResource, type MainResourceHost, type ResourceHost } from '../resources.ts'
 import type { Sessions } from '../sessions.ts'
@@ -31,6 +32,8 @@ export interface MainToolsHost {
   sendReplies(): Promise<void>
   /** Runs an Engine command initiated by the main Session without emitting self-notifications. */
   quietly<T>(run: () => T): T
+  /** Records the person's latest message as a conversation request and accepts it. */
+  dispatch(agent: Agent, input: DispatchInput): DispatchResult
 }
 /** Schedules an Engine pass to execute the recorded routing decision and formats the tool response. */
 function routed(host: MainToolsHost, result: { decision?: DecisionKind; reason: string; ticketId?: string | undefined }) {
@@ -157,6 +160,22 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
   return [
     readTool('Read one page of a resource the resource parameter lists, such as the ticket list or a ticket. Follow next_offset, and next_resource where a page names one.',
       false, (resource, offset, limit, signal) => readResource(resources, resource, offset, limit, undefined, signal)),
+    tool({
+      name: 'orchestrator_dispatch',
+      description: 'Start work from the person\'s latest message after they clearly asked for it. Use it once per request, when the message is theirs and asks for work rather than a question or small talk. A repeated call for the same message dispatches nothing twice. Do not use it for a ticket notice, status question, or a message the agent wrote.',
+      schema: z.object({
+        title: z.string().trim().min(1).max(200).describe('A short label of the person\'s request; no added requirements or implementation advice.'),
+        scope: z.string().trim().min(1).max(2000).describe('What the person asked for, in their terms; the work the ticket may do.'),
+        acknowledgement: AcknowledgementSchema.optional().describe('One brief sentence, in the source language, naming the concrete change and intended result; it replies in the conversation.'),
+      }).strict(),
+      execute: async args => {
+        const result = host.quietly(() => host.dispatch(agent, args))
+        if ('refused' in result) return result
+        host.requestPass()
+        return { trigger_id: result.triggerId, ...(result.duplicate ? { duplicate: true } : { decision: 'accept' }),
+          ...(result.ticket ? { ticket: ticketCard(result.ticket) } : {}) }
+      },
+    }),
     routeTool(host),
     tool({
       name: 'orchestrator_ticket_retry',

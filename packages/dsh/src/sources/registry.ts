@@ -1,6 +1,7 @@
 /** Registry of installed Source kinds, their configured instances, and the Engine's SourceScope implementation. */
 import type { ChannelRef, OutboundMessage, ScopeResult, SourceManifest, SourceScope, Trigger } from '@superagent/kernel'
 import type { Commands } from '../infra/commands.ts'
+import type { ConversationHost } from './host.ts'
 import { HealthBoard, type HealthEntry } from '../infra/health.ts'
 import { AdmissionTableSchema, type Settings } from '../policy.ts'
 import type { ChannelLink, ChannelLinks, SourceAdapter, SourceDefinition, SourceInstance, SourceKind, TriggerContext, VariableSpec } from './kind.ts'
@@ -26,7 +27,9 @@ export class SourceRegistry implements SourceScope {
   private readonly views = new Map<string, SourceKind>()
   private readonly health = new Map<string, HealthEntry>()
   constructor(private readonly settings: () => Settings, private readonly board: Pick<HealthBoard, 'claim'> = new HealthBoard(),
-    private readonly registered: (kind: SourceKind) => () => void = () => () => {}) {}
+    private readonly registered: (kind: SourceKind) => () => void = () => () => {},
+    /** Delivery into the main Session, used by the built-in conversation Channel; absent outside the runtime. */
+    private readonly deliver: ConversationHost['deliver'] = async () => { throw new Error('Conversation delivery is unavailable in this context') }) {}
 
   /** Registers a flat SourceKind (the pre-manifest path T1-10 retires), claims its health entries and returns an unregister disposer. */
   register<C extends Record<string, unknown>>(kind: SourceKind<C>): () => void {
@@ -113,6 +116,10 @@ export class SourceRegistry implements SourceScope {
     const parsed = policy.schema.safeParse(rest)
     return { ...parsed.success ? parsed.data : policy.schema.parse({}), admission: AdmissionTableSchema.safeParse(admission ?? {}).data ?? {} }
   }
+  /** Whether a kind is a built-in local Source whose authenticated user needs no roster. */
+  trusted(id: string): boolean {
+    return this.registrations.get(id)?.adapter.trusted === true
+  }
   channelAllowed(channel: { source: string; address: Record<string, string> }, settings = this.settings()): boolean {
     const registration = this.registrations.get(channel.source)
     if (!registration) return false
@@ -138,7 +145,8 @@ export class SourceRegistry implements SourceScope {
   async send(message: OutboundMessage, commands: Commands): Promise<'sent' | 'gone' | 'waiting'> {
     const registration = this.registrations.get(message.channel.source)
     if (!registration) return 'waiting'
-    return registration.adapter.channel ? registration.adapter.channel.send({ commands }, message) : 'gone'
+    const conversation: ConversationHost = { deliver: (requestId, text) => this.deliver(requestId, text) }
+    return registration.adapter.channel ? registration.adapter.channel.send({ commands, conversation }, message) : 'gone'
   }
   link(channel: ChannelRef, links: ChannelLinks): ChannelLink {
     const link = this.registrations.get(channel.source)?.adapter.channel?.link(channel.address, links)

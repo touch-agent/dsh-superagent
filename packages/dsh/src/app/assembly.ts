@@ -28,6 +28,8 @@ import type { Health, SourceContext } from '../sources/host.ts'
 import { Sessions } from './sessions.ts'
 import { Settings } from './settings.ts'
 import { sourceContextOf, type SourceContextDeps } from './source-context.ts'
+import { conversationDefinition } from '../sources/conversation.ts'
+import { dispatchConversation } from './conversation.ts'
 import type { ResourceHost } from './resources.ts'
 import { mainTools, type MainToolsHost } from './tools/main.ts'
 import { executorTools, type ExecutorToolsHost } from './tools/executor.ts'
@@ -106,7 +108,7 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
     if (kind.policy?.sync) void host.ready().then(() => parts.settings.syncable().includes(kind.kind) ? parts.settings.sync(kind.kind) : undefined)
       .catch(() => { /* sync() records its failure in health. */ })
     return () => {}
-  })
+  }, async (requestId: string, text: string) => { await parts.sessions.prompt(parts.masterId, requestId, text, 'queue'); return 'sent' })
   const sourceLinks = parts.sourceLinks = new TextCache(200_000)
   const links = parts.links = { store, links: sourceLinks, commands, sources, lifetime }
   const link = parts.link = (trigger: Trigger, signal?: AbortSignal) => sourceLink(links, trigger, signal)
@@ -154,10 +156,15 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
     health: host.runtimeHealth, lifetime, configured: () => setup.configured(), closing: () => host.closing() })
   parts.sourceDeps = { store, engine, outbox, commands, sources, get ready() { return host.ready() },
     get deployment() { return setup.deployment }, configured: () => setup.configured(),
-    get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem }, receive: trigger => passes.receive(trigger) }
+    get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem }, receive: trigger => passes.receive(trigger),
+    conversation: { deliver: async (requestId, text) => { await sessions.prompt(masterId, requestId, text, 'queue'); return 'sent' } } }
+  // The conversation is built in: it needs no plugin, no credentials and no team configuration.
+  sources.registerDefinition(conversationDefinition)
   parts.toolHost = { context: ctx, engine, store, prompts, sessions, settings, assessor, resources,
     get github() { return host.context({ kind: 'github', health: ['github'] }) },
     requestPass: () => { host.requestPass() }, sendReplies: () => outbox.sent(),
-    quietly: run => host.quietly(run) }
+    quietly: run => host.quietly(run),
+    dispatch: (agent, input) => dispatchConversation(agent, { engine, disposition: id => store.triggers.disposition(id),
+      ticket: id => store.tickets.get(id) }, input) }
   return parts
 }

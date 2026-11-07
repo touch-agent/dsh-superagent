@@ -74,6 +74,12 @@ Setting the unlisted-addressed cell to explicit lets anyone in that scope reques
 
 The admission table is part of the Policy version. Weakening a cell does not immediately stop open Tickets accepted under it. It can revoke their Mandates when they are revalidated before resuming.
 
+### The local conversation
+
+The built-in conversation Source is not a team-configured channel: its only sender is the authenticated local user. The gate
+admits that user as an explicit request and records the basis as `local`, so no roster or admission row exists to weaken or
+widen it. A conversation Mandate revalidates while the conversation Source is installed; it does not depend on the accept mode.
+
 ### Bots and automated reviewers
 
 The host recognizes GitHub Apps, logins ending in `[bot]`, and Feishu bots as bots. A Source can list bots such as `dependabot[bot]` whose messages may become inferred candidates. They must either address the agent or post in a scope that receives every message. They cannot make explicit requests or stop Tickets.

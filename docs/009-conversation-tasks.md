@@ -1,6 +1,6 @@
 # 009 Conversation tasks and multi-source work
 
-Status: approved 2026-11-07 for phase 1 (M1.5 in TASK-PLAN). Nothing in this document is implemented yet; §10 records the decisions the design now runs on.
+Status: approved 2026-11-07 for phase 1 (M1.5 in TASK-PLAN). T1-13 (the built-in conversation Source) and T1-14 (`orchestrator_dispatch`) are implemented; task threads, status attach and the panel remain. §10 records the decisions the design runs on.
 It uses the terms of [001 Domain model](001-domain.md), [002 Authorization](002-authorization.md) and [007 Architecture](007-architecture.md).
 
 ## 1. The gap
@@ -43,7 +43,7 @@ A new Source kind, `conversation`, whose instance is the main Session's conversa
 | Actor | The authenticated local user |
 | Channel address | The session and the task thread; `send` delivers into the conversation |
 | Receiving scope | The conversation; every dispatched message is listened to and observed |
-| Admission | One fixed row, "you", with explicit strength. No team-editable roster |
+| Admission | The Source is trusted and local: its authenticated user is explicit by definition (`basis.via = local`), with no roster or admission row to configure |
 
 `scope` listens to every Trigger this Source produces (they exist only when dispatched). `threadContext` reads the task thread from the session transcript, so Eval and Executors see the request and its discussion. `health` is one entry, `conversation`.
 
@@ -86,7 +86,7 @@ Source events then advance a task without a new decision: a person's message on 
 
 ### 4.5 Authorization and audit
 
-- The local user is the actor on every conversation Trigger. The conversation Source's admission row is fixed (the signed-in user, explicit); the Policy table does not let a team admit other people through it.
+- The local user is the actor on every conversation Trigger. The conversation Source's admission is fixed (the signed-in local user, explicit, basis `local`); the Policy table does not let a team admit other people through it.
 - A conversation Mandate records the same facts as any Mandate: Policy version, scope, strength, rule matches, the actor's identity on this Source and how the Source received the Trigger.
 - The agent's outbound identity on GitHub or Feishu is its bot identity, not the person's. Replies to the conversation use the conversation Channel.
 - Every dispatch, attach, bind and stop is an Input on the Ticket or a Decision with its Trigger id, so audit answers "who asked for this" without a new log.
@@ -156,7 +156,7 @@ Product decisions to make explicitly:
 | 1 | **Task-scoped Threads.** The dispatched request is the root; replies under it belong to that task. | The conversation Channel address carries the task root. `threadContext` reads one task thread, not the whole session, so status questions and follow-ups cannot fan out to another task. |
 | 2 | **Deterministic acceptance, with Eval retained.** A dispatched request is accepted without a model call because the local user is explicit by definition, but the Trigger still goes through `Engine.receive`/Eval and the Decision and Mandate are recorded. Later a fast classifier (such as jev) can pre-judge whether a raw conversation message is a task before dispatch. | The dispatch tool stays the only entry. Eval needs a trusted path for the conversation Source that accepts deterministically without skipping the records; the future classifier is an optional pre-filter, not a replacement for Eval. |
 | 3 | **No direct outbound from the main agent.** It cannot send to GitHub, Feishu or any other Source outside a Ticket and its Channels. | Multi-source reporting needs the `bindChannel` operation (§4.4), not a main-agent send tool. Outbound authorization and idempotence stay in the Channel. |
-| 4 | **Single-user first.** Multi-user conversations are out of scope; if added later they resemble a group chat and need roster/admission like Feishu. | The conversation Source's policy part has one fixed local-user row and no roster. Multi-user would become its own Source policy, not a silent widening of this one. |
+| 4 | **Single-user first.** Multi-user conversations are out of scope; if added later they resemble a group chat and need roster/admission like Feishu. | The conversation Source is `trusted`: the gate admits its authenticated local user with the `local` basis and no roster. Multi-user would need its own Source policy, not a silent widening of this one. |
 
 The attach rule is unchanged: a status message is attached to a Ticket only when the main agent can name that Ticket (an explicit id, a quoted ticket title or acknowledgement, or a single unambiguous match). It never guesses between two live tasks.
 

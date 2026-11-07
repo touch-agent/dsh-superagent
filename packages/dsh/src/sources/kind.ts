@@ -37,7 +37,7 @@ export interface SourceChannel<C> {
    * Sends a message idempotently by ID; returns `'gone'` when the target conversation no longer accepts replies.
    * @throws when delivery failed but may succeed on a later retry.
    */
-  send(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<'sent' | 'gone'>
+  send(host: Pick<SourceContext, 'commands' | 'conversation'>, message: OutboundMessage): Promise<'sent' | 'gone'>
   /** Returns the URL and label for `address`; `url` is empty when `links` lack the required deployment info. */
   link(address: Record<string, string>, links: ChannelLinks): ChannelLink
 }
@@ -72,6 +72,8 @@ export interface TriggerContext {
 export interface SourceAdapter<C extends Record<string, unknown> = Record<string, unknown>> {
   /** Validates stored and submitted configuration and fills defaults. */
   schema: z.ZodType<C>
+  /** A built-in local Source: its authenticated user is explicit without a Policy roster. */
+  trusted?: true
   /** Read-only status facts derived from `deployment` (undefined while waiting for setup), keyed by field key. */
   facts?(deployment: Deployment | undefined): Record<string, Localized | string>
   /** Listening rule for a trigger (or recorded Mandate basis) of this kind; kinds without `scope` listen to everything they produce and observe none of it. */

@@ -181,8 +181,8 @@ describe('Source registry', () => {
   })
   it('refuses a definition whose manifest does not parse, naming the path', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
-    expect(() => sources.registerDefinition({ manifest: { ...probeManifest(), fields: [] },
-      adapter: { schema: probe.schema } })).toThrow(/fields/)
+    expect(() => sources.registerDefinition({ manifest: { ...probeManifest(), auth: { kind: 'cli', fields: ['missing'] } },
+      adapter: { schema: probe.schema } })).toThrow(/auth/)
   })
   it('refuses a definition whose id is already registered, from either path', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))

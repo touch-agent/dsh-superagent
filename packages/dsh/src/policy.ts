@@ -190,6 +190,11 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
     version, paused: settings.paused, evalTimeoutMs: settings.eval.timeoutSeconds * 1000,
     gate(trigger: Trigger, thread, tickets) {
       if (!trigger.human) return machineGate(trigger)
+      // A built-in local Source authenticates its user itself; it has no roster to consult.
+      if (sources.trusted?.(trigger.source)) {
+        return { admissible: true, strength: 'explicit', basis: { source: trigger.source, scope: trigger.meta, via: 'local',
+          ...trigger.addressed ? { addressed: trigger.addressed } : {} } }
+      }
       const allowed = allowedSender(settings, trigger.actor)
       const scope = listened(sources, trigger.source, trigger.meta)
       const row = scope.listened ? scope.row : undefined
@@ -216,6 +221,8 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
       const { source } = basis
       const current = source && basis.scope ? listened(sources, source, basis.scope) : undefined
       if (current && !current.listened) return false
+      // The conversation's authenticated local user stays explicit while the built-in Source exists.
+      if (basis.via === 'local') return !!source && (sources.trusted?.(source) ?? false)
       const rulesOn = (rules: string[] | undefined) => (rules ?? []).every(id => settings.policy.rules.some(rule => rule.enabled && rule.id === id))
       // Explicit follow-ups remain valid; inferred follow-ups require auto mode and enabled matched rules.
       if (basis.via === 'followup') return mandate.strength === 'explicit' || (mode === 'auto' && rulesOn(basis.rules))

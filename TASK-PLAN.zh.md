@@ -407,7 +407,7 @@ graph LR
 
 | 任务 | 内容 | 人日 | 依赖 |
 | --- | --- | --- | --- |
-| T1-13 | 内置 `conversation` Source：manifest 允许 `fields: []`、adapter（scope / channel / threadContext / 固定 policy）、definition 与宿主注册；会话投递能力加入 `SourceContext`；任务线程的 Trigger 构造 | 2 | 无 |
+| T1-13 | 内置 `conversation` Source：manifest 允许 `fields: []`、trusted adapter（scope / channel / threadContext）、definition 与宿主注册；会话投递能力加入 `SourceContext`；任务线程的 Trigger 构造 | 2 | 无 |
 | T1-14 | `orchestrator_dispatch` 工具：校验消息归属、幂等记录 Trigger、`Engine.receive` + `Engine.decide`（直接 Eval 的确定性接受，保留 Decision/Mandate），拒绝路径可解释 | 2 | T1-13 |
 | T1-15 | 任务线程闭环：Channel 投递到会话、attach 状态询问、主 agent 提示词从“只路由”改为“派活/协调/回答” | 2 | T1-14 |
 | T1-16 | 面板与文档：会话任务卡 / 任务视图、conversation Source 的独立区块；一致性测试与操作手册 | 1 | T1-15 |
@@ -416,6 +416,8 @@ graph LR
 **总：9 人日（T1-13…T1-16 为 7 人日；T1-17 可与 M2 并行）。**
 
 **验收（M1.5 出口）**：在会话里派活能创建恰好一个 Ticket；重复派活不重复建单；闲聊与状态询问不建单；任务线程里的追问能回到对应 Executor；主 agent 无法绕过 Ticket 直接向外发消息；全量测试与构建绿。
+
+**进度（2026-11-07）**：T1-13、T1-14 已实现（conversation Source、trusted/local 准入、会话投递、`orchestrator_dispatch`、直接 Eval 受理），单测与 Engine 集成测试覆盖幂等与关闭拒绝；T1-15 的任务线程/状态追问和 T1-16 的面板/提示词待做。
 
 ### 排期建议
 

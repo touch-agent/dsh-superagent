@@ -298,7 +298,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/index.ts` | The main plugin entry: reads the machine settings, starts the Runtime, and gives it the restart that a save of a Source's account uses |
 | `packages/dsh/src/deployment.ts` | The plugin `Config` and `Machine`; `resolveDeployment` and `resolveFeishuBot` read the repository and the accounts from the Source settings, each CLI run as Executor shells run it; `SETUP_FIELDS` lists the Source fields setup reads. The code names no person, account or organization |
 | `packages/dsh/src/setup.ts` | Setup problems: `SetupError`, with a code, the place that fixes it and the English text the log, the main Session and the panel share |
-| `packages/dsh/src/policy.ts` | The Policy: the settings schemas by block, the Policy version, the gate and Mandate revalidation |
+| `packages/dsh/src/policy.ts` | The Policy: the settings schemas by block, the Policy version, the gate (including the built-in local Source's `local` basis), Mandate revalidation, and assessment rules |
 | `packages/dsh/src/admission.ts` | The admission table's values, each cell's options and defaults, shared with the panel |
 | `packages/dsh/src/limits.ts` | The limits of the values a person sets, which the settings schemas check and the panel's fields offer |
 | `packages/dsh/src/kv.ts` | `KV`: every family of `kv` records with its key, its value's type and its owner, and the `Key` and `Family` types the Store and `SourceContext.state` take |
@@ -344,12 +344,13 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/role-models.ts` | Resolves the Eval and Executor models, and seeds a new Session with its role's model |
 | `packages/dsh/src/app/assessment.ts` | The MasterAssessor, the assessment schema and the window `orchestrator_eval` answers |
 | `packages/dsh/src/app/execution-environment.ts` | The execution environment: its variables, a Ticket's values, the directory root and the lines of the prompt section, which `packages/dsh/src/app/prompts.ts` fills into its template |
+| `packages/dsh/src/app/conversation.ts` | Reads the person's latest message from the main Session log, classifies a non-person or non-text input as refused, and dispatches it as a conversation Trigger accepted by a direct Eval |
 | `packages/dsh/src/app/source-context.ts` | `sourceContextOf`: each Source kind's `SourceContext` |
 | `packages/dsh/src/app/links.ts` | `sourceLink`, the page of a Trigger's message, and `candidateCard` |
 | `packages/dsh/src/app/cards.ts` | Compact cards of Triggers, Tickets, Threads and Decisions for models, the closed set of ticket card states `TICKET_STATES`, and `textPage` |
 | `packages/dsh/src/app/resources.ts` | `RESOURCES` and `readResource`: what `orchestrator_read` reads, for each role |
 | `packages/dsh/src/app/tools/tool.ts` | The `Tool` type, `readTool`, the `orchestrator_read` of both roles, and `AcknowledgementSchema` |
-| `packages/dsh/src/app/tools/main.ts` | The main Session's tools |
+| `packages/dsh/src/app/tools/main.ts` | The main Session's tools, including `orchestrator_dispatch` for work the person assigned in the conversation |
 | `packages/dsh/src/app/tools/executor.ts` | An Executor Session's tools |
 | `packages/dsh/src/app/http.ts` | The `/orchestrator/api` routes: the same-origin check, request limits and one status per kind of failure |
 | `packages/dsh/src/app/api.ts` | `Api`, every route with its parameters, query, body and response, and the filters of the lists; it imports only types, so the panel bundles it |
@@ -368,18 +369,19 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/infra/paths.ts` | The package's root, where packaged files are |
 | `packages/dsh/src/infra/text.ts` | Word counts and the chat message limit, `fill` and `sameName` |
 | `packages/dsh/src/infra/health.ts` | The `HealthBoard`, every part's health entry, each claimed by its one writer |
-| `packages/dsh/src/sources/kind.ts` | The `SourceAdapter` (behavior), `SourceDefinition` (manifest plus adapter) and the flat `SourceKind` protocol: the runtime behavior a kind adds to the kernel manifest, and the re-export of `FieldSpec` and `Localized` |
-| `packages/dsh/src/sources/registry.ts` | `SourceRegistry`: registers a manifest with its adapter (validating the manifest first) or, while kinds migrate, a flat `SourceKind`; presents either as the flat view the panel reads, keeps one instance per id, claims health entries and implements the Engine's `SourceScope` |
+| `packages/dsh/src/sources/kind.ts` | The `SourceAdapter` (behavior, including the `trusted` flag of a built-in local Source), `SourceDefinition` (manifest plus adapter) and the flat `SourceKind` protocol: the runtime behavior a kind adds to the kernel manifest, and the re-export of `FieldSpec` and `Localized` |
+| `packages/dsh/src/sources/registry.ts` | `SourceRegistry`: registers a manifest with its adapter (validating the manifest first) or, while kinds migrate, a flat `SourceKind`; presents either as the flat view the panel reads, keeps one instance per id, claims health entries, marks a built-in local kind `trusted`, and implements the Engine's `SourceScope`; its send path also carries the conversation delivery host |
 | `packages/kernel/src/manifest.ts` | The declarative Source manifest: `Localized`, `FieldSpec`, `SourceAuth`, `SourceLimits` and `SourceManifest`; behavior and admission (rows and the explicit-request note) stay in the runtime adapter's policy part |
 | `packages/dsh/src/sources/manifest-schema.ts` | Zod validation of a manifest and of a list of manifests: fields, sign-in kind versus auth fields, health claims, limits and id uniqueness, each violation at its path |
 | `packages/dsh/src/sources/manifest-form.ts` | `manifestForm`: the panel model a manifest yields — fields in order, sign-in fields resolved from their keys, health entries and polling defaults; the admission table comes from the adapter's policy part |
-| `packages/dsh/src/sources/host.ts` | `SourceHost`, `SourceContext`, `Health`, `health` and the fixed health texts |
+| `packages/dsh/src/sources/host.ts` | `SourceHost`, `SourceContext`, `ConversationHost` (delivery into the main Session), `Health`, `health` and the fixed health texts |
 | `packages/dsh/src/sources/poll.ts` | What GitHub and Feishu polling share: `POLL_HORIZON_MS`, `polled`, `cursorAt`, and `pollThreads`, which keeps a failure on its Thread as `pollError` |
 | `packages/dsh/src/sources/github.ts` | The GitHub manifest (`githubManifest`: fields, CLI sign-in, health, polling limit), the adapter that implements it (`githubAdapter`: schema, behavior and the policy part with admission rows), the `githubDefinition` the plugin registers, and the plugin entry exported as `./github-watch`: a poll round of notifications, the pull requests of open Tickets with their CI, and subscribed Threads |
 | `packages/dsh/src/sources/github-trigger.ts` | GitHub comments, reviews, Issue bodies and CI changes as Triggers, and GitHub addresses |
 | `packages/dsh/src/sources/github-pull.ts` | The pull request rules: which pull requests a Ticket follows (`claimPull`, `observePull`), the closes it reports to the Engine, and `pullEndNotices`, the chat notice of a Ticket that ended merged or closed |
 | `packages/dsh/src/sources/github-channel.ts` | The GitHub Channel: comments and review thread replies, `sent` or `gone` |
 | `packages/dsh/src/sources/github-read.ts` | CI snapshots, repository reads, the `github/` resources, and `githubThreadContext`: an Issue's or pull request's conversation by page |
+| `packages/dsh/src/sources/conversation.ts` | The built-in conversation Source: its manifest (no fields), the trusted adapter (always-listened scope, task-thread Trigger construction, replies into the main Session), and the definition the assembly registers |
 | `packages/dsh/src/sources/feishu.ts` | The Feishu manifest (`feishuManifest`), the adapter that implements it (`feishuAdapter`), the `feishuDefinition` the plugin registers, and the plugin entry exported as `./feishu-watch` |
 | `packages/dsh/src/sources/feishu-trigger.ts` | Feishu messages as Triggers, by one rule for live events, history pages and topic pages |
 | `packages/dsh/src/sources/feishu-loops.ts` | The Feishu loops: the event consumer, history recovery, chat names and polling of subscribed topics |
@@ -421,6 +423,8 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/core-engine.spec.ts` | Domain rules on in-memory repositories: receiving, Eval, fan-out, resume and stop, interrupted Assignments, the pause, Policy changes, reports and outcomes, attaching, replies, failed deliveries and dismissed problems |
 | `tests/stage.spec.ts` | The Ticket stages, row by row |
 | `tests/policy.spec.ts` | Source scope, the gate, the admission table, Mandate revalidation, the Policy version, settings migrations and assessment outcomes |
+| `tests/dispatch.spec.ts` | Conversation dispatch: the latest person message becomes a task, a repeated dispatch is not accepted twice, a disabled Source and a non-person or non-text message are refused, and older requests are not revived |
+| `tests/conversation.spec.ts` | The conversation Source: a dispatched message names its task thread and channel, its trigger id is stable per message, replies resolve to the request, the adapter needs no configuration, delivery reaches the main Session, and the trusted gate admits and revalidates the local user |
 | `tests/registry.spec.ts` | `SourceRegistry`: instances, validation, Policy parts, Channels and Thread context, plus registering a manifest with its adapter: the flat kind view, config defaults, scope, health claims released on unregister, manifest validation and id clashes from either entry |
 | `tests/sources.spec.ts` | The Feishu and GitHub Sources on a `SourceContext`: translation, polls and read positions, the pull request rules, health |
 | `tests/commands.spec.ts` | CLI calls as the deployment's accounts, the Channels' answers, and repository-scoped GitHub calls |

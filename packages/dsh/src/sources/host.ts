@@ -28,9 +28,16 @@ export interface SourceHost {
 /** Display label, URL, and facts (`null` removes a fact) that a Source publishes on a Thread. */
 export interface ThreadDescription { label?: string; url?: string; facts?: Record<string, ThreadFact | null> }
 /** Application capabilities exposed to a Source kind for reading state, ingesting triggers, managing threads/tickets, and reporting health. */
+/** Delivery into the built-in conversation: the main Session of this installation. */
+export interface ConversationHost {
+  /** Delivers `text` at most once per request id; throws when the message may be delivered on a later retry. */
+  deliver(requestId: string, text: string): Promise<'sent' | 'gone'>
+}
 export interface SourceContext {
   readonly deployment: Deployment
   readonly commands: Commands
+  /** The conversation Channel destination; kinds without one receive a host that refuses delivery. */
+  readonly conversation: ConversationHost
   readonly ready: Promise<void>
   /** True once setup resolved the repository and accounts; Sources poll only then. */
   configured(): boolean
