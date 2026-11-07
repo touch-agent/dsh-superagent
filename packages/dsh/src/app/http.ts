@@ -238,14 +238,104 @@ function match(table: Routes, method: string, segments: string[]) {
   }
   return undefined
 }
+const STREAM_PATH = '/orchestrator/api/activity/stream'
+const STREAM_POLL_MS = 1_000
+const STREAM_HEARTBEAT_MS = 15_000
+const STREAM_LEVELS = ['quiet', 'feed', 'notice'] as const
+type StreamLevel = typeof STREAM_LEVELS[number]
+/**
+ * Accepts the browser's EventSource handshake without requiring the panel's custom header: EventSource cannot set one.
+ * Loopback, the request port, same-origin and Fetch-Metadata are still checked, so a foreign page cannot read the feed.
+ */
+function sameOriginStream(req: IncomingMessage, port: number): boolean {
+  const host = req.headers.host
+  if (!host || !host.endsWith(`:${port}`)) return false
+  if (!['127.0.0.1', 'localhost'].includes(host.slice(0, host.lastIndexOf(':')))) return false
+  const origin = req.headers.origin
+  if (origin !== undefined && origin !== `http://${host}`) return false
+  const site = req.headers['sec-fetch-site']
+  return site === undefined || site === 'same-origin' || site === 'none'
+}
+/** Writes one chunk, waiting for the socket to drain rather than buffering an unbounded stream. */
+async function writeChunk(res: ServerResponse, chunk: string): Promise<boolean> {
+  if (res.writableEnded || res.destroyed) return false
+  if (res.write(chunk)) return true
+  await new Promise<void>(resolve => { res.once('drain', resolve); res.once('close', resolve) })
+  return !res.writableEnded && !res.destroyed
+}
+/**
+ * Streams graded activity as Server-Sent Events. `Last-Event-ID` (or `?after=`) resumes from the client's cursor; a first
+ * connection without one starts at the current head, so opening the panel never replays retained history. Each record is an
+ * `activity` event whose `id` is its sequence; a `ready` event reports the head and backfill cursor, and heartbeat comments
+ * keep idle proxies from closing the response.
+ */
+async function streamActivity(ctx: Context, runtime: HttpHost, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const port = ctx.webServer.port
+  if (port === undefined) { json(res, 503, { error: 'Web server is not listening' }); return }
+  if (!sameOriginStream(req, port)) { json(res, 403, { error: 'Same-origin event stream required' }); return }
+  if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  const queryAfter = Number.parseInt(url.searchParams.get('after') ?? '', 10)
+  const headerAfter = Number.parseInt(String(req.headers['last-event-id'] ?? ''), 10)
+  const requested = Number.isFinite(headerAfter) && headerAfter >= 0 ? headerAfter : queryAfter
+  const levelValue = url.searchParams.get('level')
+  const level: StreamLevel = STREAM_LEVELS.includes(levelValue as StreamLevel) ? levelValue as StreamLevel : 'feed'
+  const limit = Math.min(200, Math.max(1, Number.parseInt(url.searchParams.get('limit') ?? '200', 10) || 200))
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store, no-transform',
+    connection: 'keep-alive', 'x-accel-buffering': 'no', 'x-content-type-options': 'nosniff' })
+  res.flushHeaders?.()
+  let closed = false
+  let cursor = Number.isFinite(requested) && requested > 0 ? requested : runtime.store.activity.latest(level)
+  let polling = false
+  let heartbeat: NodeJS.Timeout | undefined
+  let poll: NodeJS.Timeout | undefined
+  const stop = () => {
+    closed = true
+    clearInterval(heartbeat)
+    clearInterval(poll)
+  }
+  async function pump(): Promise<void> {
+    if (closed || polling) return
+    polling = true
+    try {
+      for (;;) {
+        if (closed) return
+        const latest = runtime.store.activity.latest(level)
+        if (cursor > latest) cursor = latest
+        const feed = activityFeed(runtime.store.activity, cursor, limit, level)
+        for (const item of feed.items) {
+          if (!await writeChunk(res, `id: ${item.seq}\nevent: activity\ndata: ${JSON.stringify(item)}\n\n`)) return
+          cursor = item.seq
+        }
+        if (feed.next > cursor) cursor = feed.next
+        if (feed.items.length === 0 || feed.next >= latest) return
+      }
+    } finally { polling = false }
+  }
+  res.on('close', stop)
+  heartbeat = setInterval(() => { void writeChunk(res, ': heartbeat\n\n') }, STREAM_HEARTBEAT_MS)
+  poll = setInterval(() => { void pump().catch(stop) }, STREAM_POLL_MS)
+  heartbeat.unref?.(); poll.unref?.()
+  try {
+    await runtime.ready
+    if (closed) return
+    await writeChunk(res, `event: ready\ndata: ${JSON.stringify({ latest: runtime.store.activity.latest(level), next: cursor })}\n\n`)
+    await pump()
+    if (closed) return
+    await writeChunk(res, `event: ready\ndata: ${JSON.stringify({ latest: runtime.store.activity.latest(level), next: cursor })}\n\n`)
+  } catch { stop(); if (!res.writableEnded) res.end() }
+}
 export function registerHttp(ctx: Context, runtime: HttpHost): () => void {
   if (ctx.webServer.host !== '127.0.0.1') throw new Error('Orchestrator management requires a loopback Web server')
   const table = routes(runtime)
   const disposers = [
+    ctx.webServer.register({ kind: 'exact', path: STREAM_PATH, handler: (req, res) => streamActivity(ctx, runtime, req, res) }),
     ctx.webServer.register({ kind: 'prefix', path: '/orchestrator', handler: async (req, res) => {
       const url = new URL(req.url ?? '/', 'http://localhost')
       if (!url.pathname.startsWith('/orchestrator/api/')) { res.writeHead(404); res.end(); return }
-      if (!sameOrigin(req, ctx.webServer.port)) { json(res, 403, { error: 'Same-origin management request required' }); return }
+      const port = ctx.webServer.port
+      if (port === undefined) { json(res, 503, { error: 'Web server is not listening' }); return }
+      if (!sameOrigin(req, port)) { json(res, 403, { error: 'Same-origin management request required' }); return }
       try {
         await runtime.ready
         const route = match(table, req.method ?? 'GET', url.pathname.slice('/orchestrator/api/'.length).split('/'))

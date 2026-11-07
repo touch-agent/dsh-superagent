@@ -9,20 +9,41 @@ import { SetupError } from '@superagent/dsh/setup.ts'
 
 type Handler = (req: unknown, res: unknown) => Promise<void>
 type Headers = Record<string, string | undefined>
-/** Mount management HTTP routes on a fake web server and return a request helper that includes default panel headers. */
-function serve(runtime: Partial<Record<keyof HttpHost, unknown>>, host = '127.0.0.1') {
-  let handler: Handler = async () => {}
-  const ctx = { webServer: { host, port: 3082, register: (route: { handler: Handler }) => { handler = route.handler; return () => {} } } }
+/** Mount management HTTP routes on a fake web server, exposing each route so an event-stream test can drive it directly. */
+function mount(runtime: Partial<Record<keyof HttpHost, unknown>>, host = '127.0.0.1') {
+  const handlers = new Map<string, Handler>()
+  const ctx = { webServer: { host, port: 3082, register: (route: { kind: string; path: string; handler: Handler }) => {
+    handlers.set(`${route.kind}:${route.path}`, route.handler); return () => {} } } }
   registerHttp(ctx as never, { ready: Promise.resolve(), ...runtime } as unknown as HttpHost)
-  return async (method: string, path: string, body?: unknown, headers: Headers = {}) => {
+  const call = async (method: string, path: string, body?: unknown, headers: Headers = {}) => {
     let status = 0, text = ''
     const chunks = body === undefined ? [] : [Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))]
     const sent = Object.fromEntries(Object.entries({ host: '127.0.0.1:3082', 'x-orchestrator-request': '1', ...headers }).filter(([,
       value]) => value !== undefined))
     const req = { method, url: `/orchestrator/api/${path}`, headers: sent, async *[Symbol.asyncIterator]() { yield* chunks } }
-    await handler(req, { writeHead: (code: number) => { status = code }, end: (data: string) => { text = data } })
+    await handlers.get(`prefix:/orchestrator`)!(req, { writeHead: (code: number) => { status = code }, end: (data: string) => {
+      text = data } })
     return { status, body: JSON.parse(text) as Record<string, unknown> }
   }
+  return { call, handlers }
+}
+function serve(runtime: Partial<Record<keyof HttpHost, unknown>>, host = '127.0.0.1') { return mount(runtime, host).call }
+/** A response that records SSE chunks; the handler owns the connection and returns once its initial backfill is written. */
+async function stream(handler: Handler, url: string, headers: Headers = {}) {
+  const chunks: string[] = []
+  let status = 0, headersSent: Record<string, unknown> = {}
+  const listeners = new Map<string, (() => void)[]>()
+  const res = {
+    writableEnded: false, destroyed: false,
+    writeHead: (code: number, values: Record<string, unknown> = {}) => { status = code; headersSent = values },
+    flushHeaders: () => {},
+    write: (chunk: string) => { chunks.push(chunk); return true },
+    end: () => { res.writableEnded = true },
+    on: (event: string, listener: () => void) => { listeners.set(event, [...listeners.get(event) ?? [], listener]); return res },
+    once: (event: string, listener: () => void) => { listeners.set(event, [...listeners.get(event) ?? [], listener]); return res },
+  }
+  await handler({ method: 'GET', url, headers: { host: '127.0.0.1:3082', ...headers } }, res)
+  return { status, headers: headersSent, text: chunks.join('') }
 }
 
 it('answers each kind of failure with its own status', async () => {
@@ -114,4 +135,56 @@ it('answers a prompt save that lost a race with 409, and a settings body over 12
   expect(await call('PUT', 'settings/executor', { value, revision: 0 })).toEqual({ status: 400,
     body: { error: `Request exceeds ${128 * 1024} bytes` } })
   expect(saves).toEqual([])
+})
+
+/** One graded record in the fake activity table. */
+const activityRecord = (seq: number, level: 'quiet' | 'feed' | 'notice' = 'feed') => ({ seq, at: '2026-01-01T00:00:00Z',
+  event: 'trigger.received' as const, level, summary: `Trigger ${seq} received` })
+const atLevel = (item: ReturnType<typeof activityRecord>, level?: string) => level === 'quiet' ? item.level === 'quiet'
+  : level === 'notice' ? item.level === 'notice' : level === 'feed' ? item.level !== 'quiet' : true
+/** The read side `activityFeed` consumes, filtered the way `Store.activity` narrows a level. */
+const activityTable = (items: ReturnType<typeof activityRecord>[]) => ({
+  latest: (level?: string) => items.filter(item => atLevel(item, level)).at(-1)?.seq ?? 0,
+  after: (after: number, limit: number, level?: string) => items.filter(item => item.seq > after && atLevel(item, level))
+    .slice(0, limit),
+  recent: (limit: number, level?: string) => items.filter(item => atLevel(item, level)).slice(-limit).reverse(),
+})
+const streamHandler = () => mount({ store: { activity: activityTable([activityRecord(1), activityRecord(2), activityRecord(3)]) } })
+  .handlers.get('exact:/orchestrator/api/activity/stream')!
+
+it('streams activity after a cursor with sequence ids and a ready head', async () => {
+  const result = await stream(streamHandler(), '/orchestrator/api/activity/stream?after=1')
+  expect(result.status).toBe(200)
+  expect(result.headers['content-type']).toContain('text/event-stream')
+  expect(result.text).not.toContain('id: 1\n')
+  expect(result.text).toContain('id: 2\nevent: activity\ndata: {"seq":2')
+  expect(result.text).toContain('id: 3\nevent: activity')
+  expect(result.text.match(/event: ready/g)).toHaveLength(2)
+})
+it('lets Last-Event-ID supersede the connection URL cursor, so a reconnect does not replay', async () => {
+  const result = await stream(streamHandler(), '/orchestrator/api/activity/stream?after=1', { 'last-event-id': '2' })
+  expect(result.text).not.toContain('id: 2\n')
+  expect(result.text).toContain('id: 3\nevent: activity')
+})
+it('starts a fresh stream at the current head instead of replaying retained history', async () => {
+  const result = await stream(streamHandler(), '/orchestrator/api/activity/stream')
+  expect(result.text).not.toContain('event: activity')
+  expect(result.text).toContain('event: ready')
+})
+it('leaves quiet records out of the feed stream', async () => {
+  const { handlers } = mount({ store: { activity: activityTable([activityRecord(1, 'quiet'), activityRecord(2, 'feed'),
+    activityRecord(3, 'notice')]) } })
+  const result = await stream(handlers.get('exact:/orchestrator/api/activity/stream')!, '/orchestrator/api/activity/stream?after=1')
+  expect(result.text).toContain('id: 2\n')
+  expect(result.text).toContain('id: 3\n')
+  expect(result.text).not.toContain('"seq":1')
+})
+it('refuses a foreign origin or a non-loopback host on the event stream', async () => {
+  const handler = streamHandler()
+  const foreign = await stream(handler, '/orchestrator/api/activity/stream', { origin: 'https://evil.example' })
+  expect(foreign.status).toBe(403)
+  const crossSite = await stream(handler, '/orchestrator/api/activity/stream', { 'sec-fetch-site': 'cross-site' })
+  expect(crossSite.status).toBe(403)
+  const otherHost = await stream(handler, '/orchestrator/api/activity/stream', { host: '192.168.1.5:3082' })
+  expect(otherHost.status).toBe(403)
 })

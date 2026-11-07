@@ -15,18 +15,21 @@ const t = ((key: keyof typeof zh) => zh[key] ?? key) as never
 function fixture(listed: string[]) {
   const entries: Entry[] = []
   const dictionaries: Record<string, unknown> = {}
+  const opened: string[] = []
+  const tabs: unknown[] = []
   const ctx = {
     slots: { inject: (_name: string, register: () => void) => register(), register: (options: Entry['options'], component: Entry['component']) => { entries.push({ options, component }); return () => {} } },
     locale: { register: (ns: string, value: unknown) => { dictionaries[ns] = value; return () => {} }, bind: () => t },
     effect: (effect: () => unknown) => { effect() },
     sessions: { list: { getSnapshot: () => ({ phase: 'ready', byId: Object.fromEntries(listed.map(id => [id, {}])) }) }, refresh: vi.fn(async () => {}) },
     uiWorkspace: { openSession: vi.fn() },
-    // Omit config form service so Deployment renders read-only.
-    get: () => undefined,
+    // Omit the config form service so Deployment renders read-only; the right sidebar is available.
+    get: (name: string) => name === 'sidebarRight' ? { openTab: (kind: string) => opened.push(kind) }
+      : name === 'sidebarRightTabs' ? { register: (definition: unknown) => { tabs.push(definition); return () => {} } } : undefined,
   }
   apply(ctx as never)
   const entry = (name: string) => entries.find(item => item.options.name === name)!
-  return { ctx, entries, dictionaries, main: entry('main'), nav: entry('sidebar.panellist') }
+  return { ctx, entries, dictionaries, opened, tabs, main: entry('main'), nav: entry('sidebar.panellist') }
 }
 async function render(entry: Entry, props: Record<string, unknown>) {
   const container = document.createElement('div'); document.body.append(container)
@@ -43,16 +46,24 @@ const openMaster = async (container: HTMLElement) => {
 const serve = () => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
   const path = new URL(url, 'http://127.0.0.1').pathname.replace('/orchestrator/api/', '')
   if (path === 'overview') return Response.json({ problems: [], person: [], executor: { running: 0, queued: 0, maxWorkers: 3, idle: 0 }, flow: { triggers: 0, filtered: 0, judged: 0, accepted: 0, evaluating: 0 }, metrics: { window: { since: '', hours: 24 }, ttfa: { samples: 0, medianSeconds: null, p90Seconds: null }, duplicates: { sends: 0, repeated: 0 }, recovery: { interrupted: 0, recovered: 0, medianSeconds: null }, throughput: { decisions: 0, perHour: 0 } }, policyVersion: 'v' })
+  if (path === 'tickets') return Response.json({ items: [], total: 0, offset: 0, limit: 20 })
+  if (path === 'activity') {
+    const level = new URL(url, 'http://127.0.0.1').searchParams.get('level')
+    if (level === 'notice') return Response.json({ items: [], latest: 0, next: 0 })
+    return Response.json({ items: [{ seq: 1, at: '2026-01-01T00:00:00Z', event: 'ticket.ended', level: 'notice', summary: 'Ticket t1 ended', ticket: 't1' }], latest: 1, next: 1 })
+  }
   if (path === 'state') return Response.json({ masterId: 'master', settings: SettingsSchema.parse({}), revisions: { policy: 0, eval: 0, executor: 0 }, sources: [], policy_version: 'v', health: {}, outgoing: [], load: { running: 0, queued: 0 },
     setup: { machine: { stateDir: '/srv/state', worktreeRoot: '/srv/state/worktrees', blockedCommands: [], promptMaxChars: 100000, admissionContextMaxPages: 10, admissionContextTimeoutMs: 15000 }, problem: null, feishuProblem: null, accounts: null } })
   return Response.json({ error: 'unavailable' }, { status: 503 })
 }))
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => { vi.unstubAllGlobals(); localStorage.clear() })
 
 it('registers a localized main panel, sidebar entry and Plugin Manager row page, and no settings section', () => {
   const { entries, dictionaries, main, nav } = fixture([])
-  expect(entries.map(entry => entry.options.name)).toEqual(['main', 'sidebar.panellist', 'plugins.row.config'])
-  expect(entries[2]!.options).toMatchObject({ key: 'dsh-superagent#dsh-superagent', locale: 'dshSuperagent' })
+  expect(entries.map(entry => entry.options.name)).toEqual(['main', 'sidebar.panellist', 'conversation.hero.options',
+    'sidebar.session.row.leading', 'conversation.view', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
+    'conversation.session.header.utilities', 'plugins.row.config'])
+  expect(entries[8]!.options).toMatchObject({ key: 'dsh-superagent#dsh-superagent', locale: 'dshSuperagent' })
   expect(Object.keys(dictionaries)).toEqual(['dshSuperagent'])
   expect(main.options).toMatchObject({ key: 'dsh-superagent', locale: 'dshSuperagent' })
   expect(nav.options).toMatchObject({ id: 'dsh-superagent', order: 10, locale: 'dshSuperagent' })
@@ -142,4 +153,78 @@ it('tells a dsh-superagent that does not answer from a record it does not have, 
     status: 400, missing: false, unreachable: false })
   expect(await failure(async () => Response.json({ error: 'Unknown ticket', code: 'unknownTicket' }, { status: 404 }))).toEqual({
     message: 'user unknownTicket', status: 404, missing: true, unreachable: false })
+})
+
+it('opens the existing main Session from the New Session option, not a new one', async () => {
+  serve()
+  const { ctx, entries } = fixture(['master'])
+  const view = await render(entries.find(entry => entry.options.name === 'conversation.hero.options')!, { t })
+  const button = [...view.container.querySelectorAll('button')].find(item => item.textContent === zh.masterSession)!
+  expect(button.hasAttribute('disabled')).toBe(false)
+  await act(async () => { button.click() })
+  for (let i = 0; i < 5; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+  expect(ctx.uiWorkspace.openSession).toHaveBeenCalledExactlyOnceWith('master')
+  view.dispose()
+})
+it('marks the main Session row and leaves every other row unmarked', async () => {
+  serve()
+  const { entries } = fixture([])
+  const badge = entries.find(entry => entry.options.name === 'sidebar.session.row.leading')!
+  const master = await render(badge, { sessionId: 'master', t })
+  expect(master.container.querySelector('.dt-master-badge')?.textContent).toBe(zh.masterBadge)
+  master.dispose()
+  const other = await render(badge, { sessionId: 'other', t })
+  expect(other.container.querySelector('.dt-master-badge')).toBeNull()
+  other.dispose()
+})
+it('renders the read-only System view only for the main Session', async () => {
+  serve()
+  const { entries } = fixture([])
+  const system = entries.find(entry => entry.options.name === 'conversation.view')!
+  const master = await render(system, { sessionId: 'master', t })
+  expect(master.container.textContent).toContain(zh.systemTitle)
+  expect(master.container.textContent).toContain(zh.systemHealth)
+  master.dispose()
+  const other = await render(system, { sessionId: 'other', t })
+  expect(other.container.textContent).toContain(zh.systemOnlyMaster)
+  expect(other.container.textContent).not.toContain(zh.systemHealth)
+  other.dispose()
+})
+it('shows the unread notice count in the Events tab title and clears it when the tab opens', async () => {
+  serve()
+  const { entries } = fixture([])
+  const title = await render(entries.find(entry => entry.options.name === 'sidebar.right.pane.tab.title')!, { t })
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  expect(title.container.textContent).toContain(zh.eventsTab)
+  expect(title.container.querySelector('.dt-events-unread')?.textContent).toBe('1')
+  title.dispose()
+  const body = await render(entries.find(entry => entry.options.name === 'sidebar.right.pane.tab')!, { t })
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  expect(localStorage.getItem('dsh-superagent/activity-seen')).toBe('1')
+  body.dispose()
+})
+it('opens the Events tab once when the first unread notice reaches the main Session', async () => {
+  serve()
+  const { opened, entries } = fixture([])
+  const bridge = entries.find(entry => entry.options.name === 'conversation.session.header.utilities')!
+  const view = await render(bridge, {})
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+  expect(opened).toEqual(['system-events'])
+  view.dispose()
+})
+
+it('keeps the management panel and registers only declared seats on a host without the conversation surfaces', () => {
+  const entries: Entry[] = []
+  const declared = new Set(['main', 'sidebar.panellist', 'plugins.row.config'])
+  const ctx = {
+    slots: { inject: (name: string, register: () => void) => { if (declared.has(name)) register() },
+      register: (options: Entry['options'], component: Entry['component']) => { entries.push({ options, component }); return () => {} } },
+    locale: { register: () => () => {}, bind: () => t },
+    effect: (effect: () => unknown) => { effect() },
+    sessions: { list: { getSnapshot: () => ({ phase: 'ready', byId: {} }) }, refresh: vi.fn(async () => {}) },
+    uiWorkspace: { openSession: vi.fn() },
+    get: () => undefined,
+  }
+  apply(ctx as never)
+  expect(entries.map(entry => entry.options.name)).toEqual(['main', 'sidebar.panellist', 'plugins.row.config'])
 })
