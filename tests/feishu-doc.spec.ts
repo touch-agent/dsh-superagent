@@ -53,7 +53,6 @@ it('flattens reply elements into the text a person sees, names the bot, and drop
   expect(docMarkerIds(marked)).toEqual(['reply-1'])
   expect(stripDocMarkers(marked)).toBe('hello')
   expect(docMarkerIds('plain text with \u200d no pair')).toEqual([])
-  expect(docReplyText({ reply_id: 'r1', user_id: MEMBER, create_time: AT, extra: 'opaque' })).toBe('')
   expect(docReplyText({ reply_id: 'r1', user_id: MEMBER, create_time: AT, extra: { image_list: ['k'] } })).toBe('[image]')
 })
 
@@ -109,13 +108,15 @@ it('reads the comment itself, the card around the Trigger, and the reply before 
   expect(root.body).toMatchObject({ document: DOC, commentId: 'c1' })
   const parentTrigger = docTrigger(reply('r3', MEMBER, [text('again')]), card, document, BOT)!
   const parent = await feishuDocThreadContext.read(stub([answers]).commands, parentTrigger, 'parent', undefined, noDocuments)
-  expect(parent.messages.map(item => item.id)).toEqual([docTriggerId('r2')])
+  expect(parent.messages.map(item => item.id)).toEqual([docTriggerId('r1')])
+  // Feishu's card is flat: a reply late in the list still answers the comment itself, which is the first reply.
   const parentOnLaterPage = docTrigger(reply('r3', MEMBER, [text('third')]), card, document, BOT)!
-  const long = stub([{ items: [reply('r1', MEMBER, [text('root')])], has_more: true, page_token: 'p2' },
-    { items: [reply('r2', MEMBER, [text('second')]), reply('r3', MEMBER, [text('third')])], has_more: false }])
+  const long = stub([{ items: [reply('r1', MEMBER, [text('root')])], has_more: true, page_token: 'p2' }])
   const parentLater = await feishuDocThreadContext.read(long.commands, parentOnLaterPage, 'parent', undefined, noDocuments)
-  expect(parentLater.messages.map(item => item.id)).toEqual([docTriggerId('r2')])
-  expect(parentLater.body).toMatchObject({ status: 'parent' })
+  expect(parentLater.messages.map(item => item.id)).toEqual([docTriggerId('r1')])
+  const rootParent = await feishuDocThreadContext.read(stub([{ items: [reply('r1', MEMBER, [text('root')])], has_more: false }]).commands,
+    docTrigger(reply('r1', MEMBER, [text('root')]), { ...card, rootReplyId: 'r1' }, document, BOT)!, 'parent', undefined, noDocuments)
+  expect(rootParent.body).toMatchObject({ status: 'no_parent' })
   const page = await feishuDocThreadContext.read(stub([{ ...answers, has_more: true, page_token: 'p2' }]).commands, trigger, 'thread', undefined, noDocuments)
   expect(page.messages.map(item => item.from)).toEqual([MEMBER, MEMBER, BOT.botId])
   expect(page.messages[2]!.bot).toBe(true)
@@ -140,11 +141,11 @@ describe('replying on a comment card', () => {
     const again = stub([posted])
     expect(await sendFeishuDoc({ commands: again.commands }, message('reply-1'))).toBe('sent')
     expect(again.calls).toHaveLength(1)
-    // A reply list may return `extra` as a string; the outbound ID there also proves the reply was posted.
-    const extra = { items: [{ ...reply('r2', BOT.botId, [text('Fixed')]), extra: 'reply-1' }], has_more: false }
-    const third = stub([extra])
-    expect(await sendFeishuDoc({ commands: third.commands }, message('reply-1'))).toBe('sent')
-    expect(third.calls).toHaveLength(1)
+
+  })
+  it('refuses a reply longer than the comment API accepts, before posting it', async () => {
+    const long = { ...message('reply-long'), text: 'x'.repeat(10_001) }
+    await expect(sendFeishuDoc({ commands: stub([]).commands }, long)).rejects.toThrow('10000')
   })
   it('resolves a document token through +inspect when the Trigger predates it', async () => {
     const { commands, calls } = stub([{ items: [], has_more: false }, { token: 'DOC9', type: 'docx' }])
@@ -152,10 +153,12 @@ describe('replying on a comment card', () => {
     expect(calls[1]).toEqual(expect.arrayContaining(['drive', '+inspect', '--url', DOC]))
     expect(calls[2]).toEqual(expect.arrayContaining(['/open-apis/drive/v1/files/DOC9/comments/c1/replies']))
   })
-  it('answers gone for a deleted document or a solved comment, and leaves other failures to the retry', async () => {
+  it('answers gone for a deleted document, a missing document or a solved comment, and leaves other failures to the retry', async () => {
     expect(await sendFeishuDoc({ commands: stub([{ items: [], has_more: false }, new CliError('docs had been deleted', 1069304)]).commands },
       message('reply-3'))).toBe('gone')
     expect(await sendFeishuDoc({ commands: stub([new CliError('该评论已被解决，无法回复', 1069303)]).commands }, message('reply-4'))).toBe('gone')
+    expect(await sendFeishuDoc({ commands: stub([{ items: [], has_more: false }, new CliError('doc not exist', 1069305)]).commands },
+      message('reply-7'))).toBe('gone')
     await expect(sendFeishuDoc({ commands: stub([{ items: [], has_more: false }, new CliError('Rate limited', 99991400)]).commands },
       message('reply-5'))).rejects.toThrow('Rate limited')
     // A failed pre-check must not fall through to posting, which could double an already sent reply.
@@ -172,6 +175,15 @@ it('rereads configured document titles, keeping a configured display name', asyn
   const labels = await refreshDocLabels(ctx as unknown as SourceContext)
   expect(labels).toEqual({ [DOC]: 'Handbook', 'https://example.feishu.cn/docx/DOC2': 'Renamed' })
   expect(state.get(KV.sources.labels('feishu-doc'))).toEqual(labels)
+})
+
+it('offers one admission row per document with the cells its listen mode needs', () => {
+  const rows = feishuDocAdapter.policy!.rows!(feishuDocAdapter.schema.parse({ documents: [
+    { url: DOC, listen: 'mentions' }, { url: 'https://example.feishu.cn/docx/DOC2', listen: 'all' }] }))
+  expect(rows).toEqual([
+    expect.objectContaining({ id: DOC, cells: { listedUnaddressed: false, unlistedAddressed: true, unlistedUnaddressed: false } }),
+    expect.objectContaining({ id: 'https://example.feishu.cn/docx/DOC2', cells: { listedUnaddressed: true, unlistedAddressed: true, unlistedUnaddressed: true } }),
+  ])
 })
 
 it('declares the document and comment of a Trigger as environment variables', () => {

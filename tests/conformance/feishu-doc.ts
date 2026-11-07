@@ -2,6 +2,7 @@
 import type { Commands } from '@superagent/dsh/infra/commands.ts'
 import { CliError } from '@superagent/dsh/infra/commands.ts'
 import { feishuDocAdapter, feishuDocDefinition, type FeishuDocConfig } from '@superagent/dsh/sources/feishu-doc.ts'
+import { readComments, readReplies } from '@superagent/dsh/sources/feishu-doc-read.ts'
 import { docTrigger } from '@superagent/dsh/sources/feishu-doc-trigger.ts'
 import { cursorAt } from '@superagent/dsh/sources/poll.ts'
 import { testDeployment } from '../fixtures/deployment.ts'
@@ -21,6 +22,12 @@ const text = (value: string) => ({ type: 'text_run', text_run: { text: value } }
 const mention = (id: string) => ({ type: 'person', person: { user_id: id } })
 const reply = (id: string, user: string, elements: unknown[], at = AT) =>
   ({ reply_id: id, user_id: user, create_time: at, content: { elements } })
+
+const commands = (payload: unknown): Commands => ({ deployment: testDeployment(), lark: async () => payload }) as unknown as Commands
+const commentList = { file_token: 'DOC1', file_type: 'docx', has_more: false, items: [{ comment_id: 'c1', quote: 'the margin',
+  reply_list: { replies: [reply('r2', MEMBER, [mention(BOT), text(' please fix the margin')])] } }] }
+const replyList = { file_token: 'DOC1', file_type: 'docx', has_more: false,
+  items: [reply('r2', MEMBER, [mention(BOT), text(' please fix the margin')])] }
 
 const config = feishuDocAdapter.schema.parse({ documents: [
   { url: DOC, name: 'Handbook', listen: 'mentions' },
@@ -46,9 +53,10 @@ export function feishuDocConformance(): ConformanceSubject<FeishuDocConfig> {
     config,
     definition: feishuDocDefinition,
     events: [
-      // A comment and its re-read through the reply list name one Trigger.
-      { name: 'a reply that mentions the bot', trigger: () => docTrigger(reply('r2', MEMBER, [mention(BOT), text(' please fix the margin')]), card, doc, bot),
-        replay: () => docTrigger(reply('r2', MEMBER, [mention(BOT), text(' please fix the margin')]), { commentId: 'c1' }, doc, bot) },
+      // The comment list and the reply list are the two real read paths; both name the same Trigger.
+      { name: 'a reply that mentions the bot',
+        trigger: async () => docTrigger((await readComments(commands(commentList), DOC)).cards[0]!.replies[0]!, card, doc, bot),
+        replay: async () => docTrigger((await readReplies(commands(replyList), DOC, 'c1')).replies[0]!, { commentId: 'c1' }, doc, bot) },
       { name: 'a later reply that does not mention the bot', trigger: () => docTrigger(reply('r3', MEMBER, [text('With the numbers?')]), card, doc, bot) },
       // The bot's own reply is never work.
       { name: 'the bot\'s own reply', ignored: true, trigger: () => docTrigger(reply('r4', BOT, [text('Done')]), card, doc, bot) },

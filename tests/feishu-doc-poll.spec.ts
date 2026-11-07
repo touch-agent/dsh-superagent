@@ -68,13 +68,15 @@ describe('polling document comments', () => {
       if (args[1] === '+list-replies') return page([reply('r5', MEMBER, [text('root')], -DAY * 3), reply('r6', MEMBER, [text('new')], -5)])
       return {}
     })
+    const before = Date.now()
     await pollRound(h.ctx, config)
+    const after = Date.now()
     expect(h.receive.mock.calls.map(call => call[0].id)).toEqual(['r2', 'r4', 'r6'].map(docTriggerId))
     const thread = h.store.threads.get('feishu-doc:c1')!
     expect(thread.meta).toMatchObject({ document: DOC, commentId: 'c1', label: 'Handbook' })
     const cursor = h.store.get(KV.feishuDoc.since(DOC))!
-    expect(Date.parse(cursor)).toBeGreaterThan(Date.parse(SINCE))
-    expect(Date.now() - Date.parse(cursor)).toBeLessThan(20_000)
+    expect(Date.parse(cursor)).toBeGreaterThanOrEqual(before - 5000 - 1)
+    expect(Date.parse(cursor)).toBeLessThanOrEqual(after - 5000 + 1)
     expect(h.health).toMatchObject({ state: 'ready', detail: expect.stringContaining('polled') })
   })
 
@@ -92,7 +94,8 @@ describe('polling document comments', () => {
       const running = runFeishuDoc(h.ctx, controller.signal)
       await vi.advanceTimersByTimeAsync(0)
       expect(h.health).toMatchObject({ state: 'starting' })
-      await vi.advanceTimersByTimeAsync(30_000)
+      // Each advance flushes a round and then its pause; allow for the round still running when the clock moves.
+      for (let round = 0; round < 6 && h.health?.state !== 'error'; round += 1) await vi.advanceTimersByTimeAsync(30_000)
       expect(h.health).toMatchObject({ state: 'error', detail: expect.stringContaining('2') })
       controller.abort()
       await running
@@ -116,29 +119,54 @@ describe('polling document comments', () => {
     const h = open = harness()
     h.store.set(KV.feishuDoc.since(DOC), SINCE)
     let pages = 0
+    let done = false
     vi.spyOn(h.commands, 'lark').mockImplementation(async args => {
       if (args[1] === '+inspect') return { token: 'DOC1', type: 'docx', title: 'Handbook' }
-      if (args[1] === '+list-comments') { pages += 1; return { file_token: 'DOC1', file_type: 'docx', items: [], has_more: true, page_token: `p${pages + 1}` } }
+      if (args[1] === '+list-comments') {
+        if (done) return { file_token: 'DOC1', file_type: 'docx', items: [], has_more: false }
+        pages += 1
+        return { file_token: 'DOC1', file_type: 'docx', items: [], has_more: true, page_token: `p${pages + 1}` }
+      }
       return {}
     })
-    expect(await pollRound(h.ctx, config)).toEqual([expect.stringContaining('cursor is held')])
+    expect(await pollRound(h.ctx, config)).toEqual([expect.stringContaining('continuing from the saved page')])
     expect(pages).toBe(20)
     expect(h.store.get(KV.feishuDoc.since(DOC))).toBe(SINCE)
+    const saved = h.store.get(KV.feishuDoc.page(DOC))
+    expect(saved).toBe('p21')
+    // The next round continues from the saved page, so a document larger than the page cap makes progress.
+    expect(await pollRound(h.ctx, config)).toEqual([expect.stringContaining('continuing from the saved page')])
+    expect(h.store.get(KV.feishuDoc.page(DOC))).toBe('p42')
+    expect(h.store.get(KV.feishuDoc.since(DOC))).toBe(SINCE)
+    done = true
+    expect(await pollRound(h.ctx, config)).toEqual([])
+    expect(h.store.get(KV.feishuDoc.page(DOC))).toBeUndefined()
+    expect(Date.parse(h.store.get(KV.feishuDoc.since(DOC))!)).toBeGreaterThan(Date.parse(SINCE))
   })
 
   it('holds the cursor when a comment card has more replies than one read returns', async () => {
     const h = open = harness()
     h.store.set(KV.feishuDoc.since(DOC), SINCE)
     let pages = 0
+    let done = false
     vi.spyOn(h.commands, 'lark').mockImplementation(async args => {
       if (args[1] === '+inspect') return { token: 'DOC1', type: 'docx', title: 'Handbook' }
       if (args[1] === '+list-comments') return page([{ comment_id: 'c1', has_more: true, reply_list: { replies: [] } }])
-      if (args[1] === '+list-replies') { pages += 1; return { file_token: 'DOC1', file_type: 'docx', items: [], has_more: true, page_token: `q${pages + 1}` } }
+      if (args[1] === '+list-replies') {
+        if (done) return { file_token: 'DOC1', file_type: 'docx', items: [], has_more: false }
+        pages += 1
+        return { file_token: 'DOC1', file_type: 'docx', items: [], has_more: true, page_token: `q${pages + 1}` }
+      }
       return {}
     })
-    expect(await pollRound(h.ctx, config)).toEqual([expect.stringContaining('cursor is held')])
+    expect(await pollRound(h.ctx, config)).toEqual([expect.stringContaining('continuing from the saved page')])
     expect(pages).toBe(10)
     expect(h.store.get(KV.feishuDoc.since(DOC))).toBe(SINCE)
+    expect(h.store.get(KV.feishuDoc.page(`${DOC}#c1`))).toBe('q11')
+    done = true
+    expect(await pollRound(h.ctx, config)).toEqual([])
+    expect(h.store.get(KV.feishuDoc.page(`${DOC}#c1`))).toBeUndefined()
+    expect(Date.parse(h.store.get(KV.feishuDoc.since(DOC))!)).toBeGreaterThan(Date.parse(SINCE))
   })
 
   it('reads from the moment a document is saved, not its earlier comments', async () => {

@@ -31,8 +31,8 @@ export interface Violation { group: ConformanceGroup; case: string; detail: stri
  */
 export interface EventCase {
   name: string
-  trigger: () => Trigger | undefined
-  replay?: () => Trigger | undefined
+  trigger: () => Trigger | undefined | Promise<Trigger | undefined>
+  replay?: () => Trigger | undefined | Promise<Trigger | undefined>
   ignored?: true
 }
 
@@ -106,16 +106,16 @@ function checkManifest<C extends Record<string, unknown>>(subject: ConformanceSu
   } catch (error) { fail(violations, 'manifest', 'config', `the fixture configuration is invalid: ${reason(error)}`) }
 }
 
-function checkTriggers<C extends Record<string, unknown>>(subject: ConformanceSubject<C>, violations: Violation[]): void {
+async function checkTriggers<C extends Record<string, unknown>>(subject: ConformanceSubject<C>, violations: Violation[]): Promise<void> {
   const { manifest } = subject.definition
   const ids = new Map<string, string>()
   for (const event of subject.events) {
     if (event.ignored) {
-      const ignored = event.trigger()
+      const ignored = await event.trigger()
       if (ignored) fail(violations, 'triggers', event.name, 'an event the Source must ignore produced a Trigger')
       continue
     }
-    const first = event.trigger()
+    const first = await event.trigger()
     if (!first) { fail(violations, 'triggers', event.name, 'the event produced no Trigger'); continue }
     if (!first.id.trim() || /\s/.test(first.id)) fail(violations, 'triggers', event.name, `id ${JSON.stringify(first.id)} is empty or contains whitespace`)
     if (first.source !== manifest.id) fail(violations, 'triggers', event.name, `source ${first.source} differs from ${manifest.id}`)
@@ -130,7 +130,7 @@ function checkTriggers<C extends Record<string, unknown>>(subject: ConformanceSu
       if (typeof first.channel.address !== 'object' || first.channel.address === null) fail(violations, 'triggers', event.name, 'the channel has no address')
     }
     if (typeof first.meta !== 'object' || first.meta === null) fail(violations, 'triggers', event.name, 'meta is not an object')
-    const again = (event.replay ?? event.trigger)()
+    const again = await (event.replay ?? event.trigger)()
     if (!again) fail(violations, 'triggers', event.name, 'the replay produced no Trigger')
     else if (again.id !== first.id) fail(violations, 'triggers', event.name,
       `the same remote event must keep one id (idempotency key): ${first.id} then ${again.id}`)
