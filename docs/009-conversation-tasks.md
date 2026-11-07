@@ -1,6 +1,6 @@
 # 009 Conversation tasks and multi-source work
 
-Status: approved 2026-11-07 for phase 1 (M1.5 in TASK-PLAN). T1-13 (the built-in conversation Source) and T1-14 (`orchestrator_dispatch`, including attach to an existing ticket) are implemented, with the prompts updated. The panel marks the built-in Source, labels a conversation-origin Ticket, and can narrow the Ticket list to it; and the Ticket page links back to the main Session it came from, with the operation described in [005](005-panel.md). T1-15/T1-16 are implemented; a richer per-task card remains future polish. §10 records the decisions the design runs on.
+Status: approved 2026-11-07 for phase 1 (M1.5 in TASK-PLAN). T1-13 (the built-in conversation Source) and T1-14 (`orchestrator_dispatch`, including attach to an existing ticket) are implemented, with the prompts updated. The panel marks the built-in Source, labels a conversation-origin Ticket, and can narrow the Ticket list to it; and the Ticket page links back to the main Session it came from, with the operation described in [005](005-panel.md). T1-15/T1-16 are implemented. T1-17 adds `Engine.bindChannel` and `orchestrator_ticket_bind`; the Ticket page shows each subscribed Thread as an anchor, with whether the Ticket opened it or follows it and its close, and its last event. A richer per-task card remains future polish. §10 records the decisions the design runs on.
 It uses the terms of [001 Domain model](001-domain.md), [002 Authorization](002-authorization.md) and [007 Architecture](007-architecture.md).
 
 ## 1. The gap
@@ -73,8 +73,8 @@ Chat stays chat: a message with no dispatch is visible to the main Session only.
 
 The existing aggregate already holds several Threads and Channels. Two additions make multi-source work first class:
 
-- **Bind a Channel when the task starts using another Source.** Today a Ticket gets the Channels of the Triggers it was accepted with; `bindThread` adds context but no Channel. Add `Engine.bindChannel(ticketId, channel)` (or an `orchestrator_ticket_bind` tool) so a task started in conversation can report into the GitHub PR it opens or the Feishu chat it was discussed in. Constraints: the Channel's Source must be enabled; the Channel must belong to a Thread the Ticket follows or is about to follow; the Ticket must be live. The operation is recorded as an Input for audit.
-- **Treat external anchors as state points.** A PR, an Issue, a document and a chat thread are Threads with a lifecycle. `bindThread(..., own)` plus `threadClosed` already ends a Ticket when its own PR merges; the panel should surface these anchors, their state and the last event on the task card, and the main agent should read them for status answers.
+- **Bind a Channel when the task starts using another Source.** A Ticket gets the Channels of the Triggers it was accepted with; `Engine.bindChannel(ticketId, channel)` adds another and subscribes the Ticket to that Channel's Thread so later events reach it, without making the Thread a state point (`bindThread` does that). `orchestrator_ticket_bind` does the same from a `trigger_id`, so a task started in conversation can report into the GitHub PR it opens or the Feishu chat it was discussed in. Constraints: the Channel's Source must be enabled and its address allowed, checked by the caller; the Ticket must be live. The operation is recorded as a `binding` Input for audit, not delivered as work. Claiming a pull request follows the PR and adds its Channel automatically.
+- **Treat external anchors as state points.** A PR, an Issue, a document and a chat thread are Threads with a lifecycle. `bindThread(..., own)` plus `threadClosed` already ends a Ticket when its own PR merges; the Ticket page surfaces each anchor's source facts, whether the Ticket opened it or follows it, its close, and its last event, and the main agent reads them for status answers.
 
 Source events then advance a task without a new decision: a person's message on a subscribed Thread reaches the Executor, and a Thread close is a state change. Neither grants authority; the Mandate still limits scope.
 
@@ -140,6 +140,8 @@ Product decisions to make explicitly:
 | 2 | Task threads, status answers, task card in the conversation, panel task view | The person can assign, ask and stop without leaving the conversation |
 | 3 | `bindChannel`, multi-source state points, anchor view on the task card | A conversation task reports into GitHub and is advanced by its PR events |
 | 4 | Hardening: replay, duplicate dispatch, prompt-injection review, privacy of transcripts | Audit and failure cases covered by tests |
+
+Phases 1–3 are implemented as T1-13…T1-17; phase 4 remains.
 
 ## 9. Risks
 

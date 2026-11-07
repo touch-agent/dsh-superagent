@@ -49,7 +49,8 @@ function ContextTag() {
   return <Tag tone="quiet" title={t('contextOnlyHint')}>{t('contextOnly')}</Tag>
 }
 /** Thread list row; on a Ticket page, `ticketId` omits that Ticket from fanout targets and `context` marks context-only threads. */
-export function ThreadLine({ thread, ticketId, context }: { thread: ThreadRow; ticketId?: string; context?: boolean }) {
+export function ThreadLine({ thread, ticketId, context }: { thread: ThreadRow & { anchor?: { own: boolean; closed?: { outcome: string } } };
+  ticketId?: string; context?: boolean }) {
   const { t, navigate } = usePanel()
   const live = thread.tickets.filter(ticket => ticket.state === 'open' && ticket.id !== ticketId)
   const { dot, icon, label } = threadMark(t, thread)
@@ -67,6 +68,8 @@ export function ThreadLine({ thread, ticketId, context }: { thread: ThreadRow; t
       </div>
       <div className="dt-row-meta dt-line">
         <ThreadChip thread={thread} />
+        {thread.anchor && <Tag tone="quiet">{thread.anchor.own ? t('anchorOwn') : t('anchorFollowed')}{thread.anchor.closed
+          ? ` · ${valueLabel(t, 'outcome', thread.anchor.closed.outcome)}` : ''}</Tag>}
         {context && <ContextTag />}
         {thread.pollError ? <span className="dt-line-text dt-error-text">{thread.pollError}</span> : reaches && <LabelValue
           label={t('fanoutTo')} value={reaches} />}

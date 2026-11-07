@@ -1115,6 +1115,27 @@ describe('ticket commands', () => {
     expect(h.repo.tickets.get(other)).toMatchObject({ ended: { outcome: 'closed' } })
   })
 
+  it('binds a Channel from another Source as an anchor once, without making its Thread a state point', () => {
+    const h = harness()
+    const ticketId = accepted(h).ticketId!
+    const channel = { source: 'gh', thread: 'gh:9', address: { number: '9' } }
+    h.engine.bindChannel(ticketId, channel)
+    expect(h.repo.tickets.get(ticketId)).toMatchObject({ channels: [trigger('1').channel, channel] })
+    expect(h.repo.tickets.get(ticketId)).not.toHaveProperty('follows')
+    expect(h.repo.threads.get('gh:9')!.subscriptions).toEqual([ticketId])
+    // The binding is an audit Input, not a message for the worker, so it never enters delivery.
+    expect(h.repo.tickets.get(ticketId)!.inputs).toContainEqual(expect.objectContaining({ kind: 'binding', channel }))
+    expect(h.repo.tickets.get(ticketId)!.undelivered).toEqual([])
+    // A repeat is idempotent and records nothing new.
+    h.engine.bindChannel(ticketId, channel)
+    expect(h.repo.tickets.get(ticketId)!.inputs.filter(input => input.kind === 'binding')).toHaveLength(1)
+    // A Channel whose thread belongs to another Source is refused.
+    expect(() => h.engine.bindChannel(ticketId, { source: 'chat', thread: 'gh:8', address: {} }))
+      .toThrow(new UserError('channelThreadMismatch'))
+    h.engine.stopTicket(ticketId, 'done')
+    expect(() => h.engine.bindChannel(ticketId, { source: 'gh', thread: 'gh:10', address: {} })).toThrow(new UserError('ticketEnded'))
+  })
+
   it('retries a ticket that reported failed with a new Assignment, and asks only a waiting worker for its status', () => {
     const h = harness()
     const ticketId = accepted(h).ticketId!

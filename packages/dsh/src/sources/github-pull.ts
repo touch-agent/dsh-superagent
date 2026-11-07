@@ -4,7 +4,7 @@ import { key, liveTicket, type Follow, type OutboundMessage, type ThreadFact, ty
 import type { Deployment } from '../deployment.ts'
 import { sameName } from '../infra/text.ts'
 import type { SourceContext } from './host.ts'
-import { githubPage, SOURCE, UserSchema } from './github-trigger.ts'
+import { githubChannel, githubPage, SOURCE, UserSchema } from './github-trigger.ts'
 
 const PullSchema = z.looseObject({
   title: z.string().optional(), state: z.string(), html_url: z.string(), user: UserSchema,
@@ -70,6 +70,7 @@ export async function observePull(ctx: SourceContext, pr: Pull): Promise<boolean
 function bind(ctx: SourceContext, ticketId: string, pr: Pull, own: boolean): void {
   ctx.atomic(() => {
     ctx.tickets.bindThread(ticketId, { source: SOURCE, id: String(pr.number) }, own)
+    ctx.tickets.bindChannel(ticketId, githubChannel(pr.number, pr.html_url))
     ctx.threads.patch(`github:${pr.number}`, { number: pr.number, isPr: true, url: pr.html_url, prAuthor: pr.user.login })
   })
 }

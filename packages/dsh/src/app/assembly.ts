@@ -160,7 +160,7 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
     conversation: { deliver: async (requestId, text) => { await sessions.prompt(masterId, requestId, text, 'queue'); return 'sent' } } }
   // The conversation is built in: it needs no plugin, no credentials and no team configuration.
   sources.registerDefinition(conversationDefinition)
-  parts.toolHost = { context: ctx, engine, store, prompts, sessions, settings, assessor, resources,
+  parts.toolHost = { context: ctx, engine, store, prompts, sessions, settings, assessor, resources, sources,
     get github() { return host.context({ kind: 'github', health: ['github'] }) },
     requestPass: () => { host.requestPass() }, sendReplies: () => outbox.sent(),
     quietly: run => host.quietly(run),

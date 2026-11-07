@@ -1,7 +1,7 @@
 /** Tickets: their lifecycle from an accept to their end, their Subscriptions and their Inputs. */
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
-import { latestAssignment, latestReport, liveTicket, readUntil, runningAssignment, settled, threadKey, waitsForPerson } from './model.ts'
+import { channelThread, latestAssignment, latestReport, liveTicket, readUntil, runningAssignment, settled, threadKey, waitsForPerson } from './model.ts'
 import type { Assignment, ChannelRef, Evaluation, Follow, Mandate, PolicyEffect, ThreadRef, Ticket, TicketEndBy, TicketInput, TicketOutcome,
   Trigger, TriggerDisposition } from './model.ts'
 import type { AssessmentOutcome } from './ports.ts'
@@ -71,6 +71,27 @@ export class Tickets extends EnginePart {
     if (follow) { follow.own ||= own; delete follow.closed } else ticket.follows = [...ticket.follows ?? [], { thread: followed, own }]
     ticket.updatedAt = this.now()
     this.repo.tickets.save(ticket)
+    return ticket
+  }
+  /**
+   * Adds a Channel to an open ticket, subscribing it to the Channel's Thread so later events reach it, and records the binding
+   * as an Input for audit. It does not make the Thread a state point; `bind` does that. The caller checks that the Source is
+   * enabled and that the address may receive replies; repeating a binding changes nothing.
+   * @throws UserError when the ticket is unknown or has ended, or the Channel's Thread belongs to another Source.
+   */
+  bindChannel(ticketId: string, channel: ChannelRef): Ticket {
+    const ticket = this.require(ticketId)
+    if (!liveTicket(ticket)) throw new UserError('ticketEnded')
+    const thread = channelThread(channel)
+    if (thread.source !== channel.source || !thread.id) throw new UserError('channelThreadMismatch')
+    this.subscribe(ticketId, thread)
+    if (!ticket.channels.some(item => sameChannel(item, channel))) {
+      const at = this.now()
+      ticket.channels.push(channel)
+      ticket.inputs.push({ id: key('input', ticketId, 'binding', channel.source, channel.thread, at), kind: 'binding', channel, at })
+      ticket.updatedAt = at
+      this.repo.tickets.save(ticket)
+    }
     return ticket
   }
   /**
@@ -378,7 +399,8 @@ export class Tickets extends EnginePart {
     const latest = latestAssignment(ticket)
     if (taken || !(Date.parse(latest?.createdAt ?? '') > Date.parse(at))) return taken
     const report = latest?.report
-    const later = ticket.inputs.some(input => input.kind !== 'policy-changed' && Date.parse(input.at) > Date.parse(report?.at ?? ''))
+    const later = ticket.inputs.some(input => input.kind !== 'policy-changed' && input.kind !== 'binding'
+      && Date.parse(input.at) > Date.parse(report?.at ?? ''))
     return report?.state !== 'ready' || ticket.undelivered.length > 0 || later
   }
   /** Add a pending Assignment; a failed delivery to the one before it no longer concerns the ticket. */

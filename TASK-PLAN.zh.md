@@ -417,12 +417,12 @@ graph LR
 
 **验收（M1.5 出口）**：在会话里派活能创建恰好一个 Ticket；重复派活不重复建单；闲聊与状态询问不建单；任务线程里的追问能回到对应 Executor；主 agent 无法绕过 Ticket 直接向外发消息；全量测试与构建绿。
 
-**进度（2026-11-07）**：T1-13、T1-14 已实现（conversation Source、trusted/local 准入、会话投递、`orchestrator_dispatch`、直接 Eval 受理），单测与 Engine 集成测试覆盖幂等与关闭拒绝；T1-15、T1-16 已实现（会话 Channel 投递、状态追问 attach、提示词、conversation 内置来源区块、工单“来自会话”标识、来源筛选、回到会话、操作手册）。
+**进度（2026-11-07）**：T1-13、T1-14 已实现（conversation Source、trusted/local 准入、会话投递、`orchestrator_dispatch`、直接 Eval 受理），单测与 Engine 集成测试覆盖幂等与关闭拒绝；T1-15、T1-16 已实现（会话 Channel 投递、状态追问 attach、提示词、conversation 内置来源区块、工单“来自会话”标识、来源筛选、回到会话、操作手册）；T1-17 已实现（`Engine.bindChannel`、`orchestrator_ticket_bind`、GitHub PR 领取时自动绑定 PR Channel、任务卡外部锚点与状态点、绑定审计 Input）。M1.5 全部完成。
 
 ### 排期建议
 
 - 先做 T1-13/T1-14（4 人日，1 条泳道），把“派活→Eval→Ticket→回执”打通；T1-15 紧随其后。
-- T1-17 依赖 `bindChannel`，建议在 M1 的 T1-10 之后与 M2 并行，不阻塞 M1.5 出口。
+- T1-17 已随 M1.5 完成；后续按 M2 核心闸门（T2-01…05）推进。
 
 ---
 

@@ -1,5 +1,5 @@
 /** Ticket list, ticket detail, mandate basis formatting, and executor load views. */
-import { liveTicket, threadKey, ticketStage, type AcceptMode, type AdmissionCell, type MandateBasis, type Ticket,
+import { channelThread, liveTicket, threadKey, ticketStage, type AcceptMode, type AdmissionCell, type MandateBasis, type Ticket,
   type TicketStage } from '@superagent/kernel'
 import { workerSessionId } from '../../executor/dsh.ts'
 import type { Store } from '../store.ts'
@@ -86,7 +86,12 @@ export function ticketDetail(host: ViewHost, id: string) {
         ? { turnEndedAt: assignment.report.at } : {} })),
     inputs: ticket.inputs.slice().reverse().map(input),
     // Threads followed for context only (e.g., related issues) grant no authority and are marked with `context: true`.
-    threads: view.threadsOf(id).map(thread => ({ ...threadSummary(view, thread),
-      ...thread.context?.includes(id) ? { context: true as const } : {} })) }
+    threads: view.threadsOf(id).map(thread => {
+      const follow = ticket.follows?.find(item => item.thread === thread.key)
+      const channel = ticket.channels.find(item => threadKey(channelThread(item)) === thread.key)
+      return { ...threadSummary(view, thread), ...follow ? { anchor: { own: follow.own,
+        ...follow.closed ? { closed: follow.closed } : {} } } : channel ? { anchor: { own: false } } : {},
+        ...thread.context?.includes(id) ? { context: true as const } : {} }
+    }) }
 }
 export type TicketDetailView = NonNullable<ReturnType<typeof ticketDetail>>

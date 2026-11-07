@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
-import { UserError, followupOwners, key, reasonText, type Decision, type DecisionKind, type EngineForMainSession, type EngineForPeople }
+import { UserError, followupOwners, key, liveTicket, reasonText, threadKey, type Decision, type DecisionKind, type EngineForMainSession, type EngineForPeople }
   from '@superagent/kernel'
 import { IM_WORDS, NOTE_WORDS, wordCount } from '../../infra/text.ts'
 import { AssessmentSchema, EvalReadSchema, WorktreeNameSchema, type MasterAssessor } from '../assessment.ts'
@@ -12,6 +12,7 @@ import { PromptConfigSchema, savePrompts, type Prompts } from '../prompts.ts'
 import { readResource, type MainResourceHost, type ResourceHost } from '../resources.ts'
 import type { Sessions } from '../sessions.ts'
 import type { Settings } from '../settings.ts'
+import type { SourceRegistry } from '../../sources/registry.ts'
 import type { Store } from '../store.ts'
 import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
 
@@ -20,13 +21,14 @@ const RoutingNoteSchema = z.string().trim()
   .describe(`Optional routing background or explicit human constraint, at most ${NOTE_WORDS} words. Never add implementation instructions or replace the original source.`)
 export interface MainToolsHost {
   readonly context: Context
-  readonly engine: Pick<EngineForMainSession, 'decide' | 'attach' | 'reply' | 'requestStatus' | 'note'> & EngineForPeople
+  readonly engine: Pick<EngineForMainSession, 'decide' | 'attach' | 'reply' | 'requestStatus' | 'note' | 'bindChannel'> & EngineForPeople
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'threads' | 'atomic' | 'replyStatus' | 'settings'>
   readonly prompts: Pick<Prompts, 'preview' | 'save'>
   readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery' | 'modelRetry'>
   readonly settings: Pick<Settings, 'view' | 'block' | 'save' | 'pause' | 'sync'>
   readonly assessor: Pick<MasterAssessor, 'context' | 'read' | 'decide'>
   readonly resources: ResourceHost
+  readonly sources: Pick<SourceRegistry, 'channelAllowed'>
   /** Schedules a pass to carry out work queued by an Engine command (such as an Eval or ticket resume). */
   requestPass(): void
   sendReplies(): Promise<void>
@@ -177,6 +179,31 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
         host.requestPass()
         return { trigger_id: result.triggerId, ...(result.duplicate ? { duplicate: true } : result.attached ? { attached: true } : { decision: 'accept' }),
           ...(result.ticket ? { ticket: ticketCard(result.ticket) } : {}) }
+      },
+    }),
+    tool({
+      name: 'orchestrator_ticket_bind',
+      description: 'Bind a live ticket to the Source thread of a trigger_id: it subscribes to the thread and gains its Channel. Use only when a person asks; repeats do nothing.',
+      schema: z.object({
+        ticket_id: z.string().describe('The live ticket.'),
+        trigger_id: z.string().describe('A trigger on the thread.'),
+      }).strict(),
+      execute: async args => {
+        const ticket = host.store.tickets.get(args.ticket_id)
+        if (!ticket) throw new UserError('unknownTicket')
+        if (!liveTicket(ticket)) throw new UserError('ticketEnded')
+        const trigger = host.store.triggers.get(args.trigger_id)
+        if (!trigger) throw new UserError('unknownTrigger')
+        const channel = trigger.channel
+        if (!channel) throw new UserError('noChannel')
+        if (!host.sources.channelAllowed(channel)) throw new UserError('channelNotAllowed')
+        if (!trigger.threads.some(thread => threadKey(thread) === channel.thread || thread.id === channel.thread)) {
+          throw new UserError('channelThreadMismatch')
+        }
+        const duplicate = ticket.channels.some(item => JSON.stringify(item) === JSON.stringify(channel))
+        host.quietly(() => host.engine.bindChannel(args.ticket_id, channel))
+        host.requestPass()
+        return { ...(duplicate ? { duplicate: true } : { bound: true }), ticket: ticketCard(host.store.tickets.get(args.ticket_id)!) }
       },
     }),
     routeTool(host),

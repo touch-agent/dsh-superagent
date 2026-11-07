@@ -960,7 +960,9 @@ describe('github source', () => {
     expect(claimPull(h, 't1', openPull(30))).toBeUndefined()
     expect(h.store.tickets.get('t1')!.follows).toEqual([{ thread: 'github:30', own: false }])
     expect(claimPull(h, 't1', agents(43, 'agent/fix-1'))).toBeUndefined()
-    expect(h.store.tickets.get('t1')).toMatchObject({ follows: [{ thread: 'github:30', own: false }, { thread: 'github:43', own: true }], channels: [] })
+    expect(h.store.tickets.get('t1')).toMatchObject({ follows: [{ thread: 'github:30', own: false }, { thread: 'github:43', own: true }],
+      channels: [githubChannel(30, 'https://github.com/acme/widgets/pull/30'), githubChannel(43, 'https://github.com/acme/widgets/pull/43')] })
+    expect(h.store.tickets.get('t1')!.inputs.map(input => input.kind)).toEqual(['binding', 'binding'])
     expect(pullOf(h.store.tickets.get('t1')!)).toBe(43)
     expect(h.store.threads.get('github:43')).toMatchObject({ subscriptions: ['t1'], meta: { isPr: true, prAuthor: 'agent-bot' } })
     // The PR the ticket started from is not one it opened: when its own PR merges, the ticket ends instead of following it.

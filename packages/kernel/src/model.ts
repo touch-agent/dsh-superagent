@@ -10,6 +10,12 @@ export interface ChannelRef { source: string; thread: string; address: Record<st
 
 /** Stable key of a thread across the whole domain. */
 export const threadKey = (ref: ThreadRef): string => `${ref.source}:${ref.id}`
+/** The Thread a Channel names: its `thread` is a thread key, or a bare id of the Channel's own Source. */
+export const channelThread = (channel: ChannelRef): ThreadRef => {
+  const colon = channel.thread.indexOf(':')
+  return colon < 0 ? { source: channel.source, id: channel.thread }
+    : { source: channel.thread.slice(0, colon), id: channel.thread.slice(colon + 1) }
+}
 /**
  * Normalizes valid timestamps to `Date#toISOString` form so stored timestamps compare lexicographically in memory and SQL;
  * values that do not parse as a timestamp are returned unchanged.
@@ -258,6 +264,8 @@ export type TicketInput =
   | { id: string; kind: 'text'; text: string; at: string }
   /** A fact the main Session gave the ticket from other work: context, which asks for nothing and grants nothing. */
   | { id: string; kind: 'note'; text: string; at: string }
+  /** An external Channel the ticket gained, recorded for audit; it asks for nothing and grants nothing. */
+  | { id: string; kind: 'binding'; channel: ChannelRef; at: string }
 
 /**
  * How a Policy change bears on a ticket: the rules it was accepted under that changed, with their instruction now, or no

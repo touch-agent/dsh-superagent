@@ -145,6 +145,41 @@ describe('conversation attach through the Engine', () => {
 })
 
 
+describe('the ticket bind tool', () => {
+  it('binds a live ticket to a trigger\'s Source thread and Channel, and repeats idempotently', async () => {
+    const repo = new MemoryRepositories()
+    const settings = SettingsSchema.parse({})
+    const sources = new SourceRegistry(() => settings)
+    sources.registerDefinition(conversationDefinition)
+    const engine = new Engine({ repo, scope: sources, policy: () => settingsPolicy(settings, sources),
+      assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
+      prepareTicket: (ticket, outcome) => ({ ...ticket, execution: ticketExecution(ticket, outcome, settings, '/state') }),
+      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn() } })
+    const first = dispatchConversation(agent(user('Fix the flaky test')), { engine, disposition: id => repo.triggers.disposition(id),
+      ticket: id => repo.tickets.get(id) }, { title: 'Fix', scope: 'Fix it.' })
+    if ('refused' in first || !first.ticket) throw new Error('the dispatch did not create a ticket')
+    const anchor: Trigger = { id: 'anchor-1', source: 'conversation', threads: [{ source: 'conversation', id: 'root-2' }],
+      actor: { source: 'conversation', id: 'local-user' }, human: true, at: '2026-11-07T10:01:00.000Z', text: 'main',
+      channel: { source: 'conversation', thread: 'conversation:root-2', address: { session: 'orchestrator-1', root: 'root-2', messageId: 'msg-2' } },
+      meta: {} }
+    repo.triggers.save(anchor)
+    const requestPass = vi.fn()
+    const host = { engine: { bindChannel: (id: string, channel: Parameters<typeof engine.bindChannel>[1]) => engine.bindChannel(id, channel) },
+      store: repo, sources, requestPass, quietly: <T>(run: () => T) => run(), resources: {}, sessions: {}, settings: {},
+      context: {}, prompts: {}, assessor: {} } as unknown as MainToolsHost
+    const call = mainTools(host, {} as Agent).find(item => item.name === 'orchestrator_ticket_bind')!
+    const args = call.schema.parse({ ticket_id: first.ticket.id, trigger_id: anchor.id })
+    expect(await call.execute(args as never, new AbortController().signal)).toMatchObject({ bound: true })
+    expect(repo.tickets.get(first.ticket.id)).toMatchObject({ channels: [first.ticket.channels[0], anchor.channel] })
+    expect(repo.tickets.get(first.ticket.id)).not.toHaveProperty('follows')
+    expect(repo.threads.get('conversation:root-2')!.subscriptions).toEqual([first.ticket.id])
+    expect(repo.tickets.get(first.ticket.id)!.inputs.filter(input => input.kind === 'binding')).toHaveLength(1)
+    expect(await call.execute(args as never, new AbortController().signal)).toMatchObject({ duplicate: true })
+    expect(repo.tickets.get(first.ticket.id)!.inputs.filter(input => input.kind === 'binding')).toHaveLength(1)
+    expect(requestPass).toHaveBeenCalled()
+  })
+})
+
 describe('the dispatch tool', () => {
   it('maps the wire ticket_id into the dispatch request', async () => {
     const dispatch = vi.fn(() => ({ triggerId: 'tr_1', duplicate: false, attached: true }))

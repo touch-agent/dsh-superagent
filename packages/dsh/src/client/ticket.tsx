@@ -21,8 +21,9 @@ function InputLine({ input, earlier = [] }: { input: Input; earlier?: { id: stri
         id: trigger.thread, query: { trigger: trigger.id } })}>
         {actorName(t, trigger.actor)}{t('labelSeparator')}{readableMarkers(t, trigger.preview) || t('empty')}
       </button></div> : <div className="dt-row-title">{valueLabel(t, 'input', input.kind)}</div>}
-      <div className="dt-row-meta">{input.kind === 'trigger' && <span>{valueLabel(t, 'input', input.kind)}</span>}<When
-        at={input.at} /></div>
+      <div className="dt-row-meta">{input.kind === 'trigger' && <span>{valueLabel(t, 'input', input.kind)}</span>}
+        {input.kind === 'binding' && input.channel && <span className="dt-mono">{valueLabel(t, 'source', input.channel.source)}
+          {' · '}{input.channel.thread}</span>}<When at={input.at} /></div>
       {(input.kind === 'text' || input.kind === 'note') && input.text && <div className="dt-row-quote"><MarkdownLite text={input.text} /></div>}
       {trigger?.handback && <Hint>{t('inputHandedBack', { reason: trigger.handback.reason })}</Hint>}
       <Earlier items={earlier} />
