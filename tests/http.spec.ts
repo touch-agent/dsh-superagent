@@ -67,18 +67,21 @@ it('decodes path parameters and parses each route\'s query', async () => {
   expect(seen).toEqual(['feishu:oc_1:om/root', { filter: { kinds: ['accept', 'reopen'], since: expect.any(String) }, offset: 0, limit: 200 }])
 })
 
-it('serves the activity feed by cursor and minimum level, and refuses an out-of-range page', async () => {
+it('serves the activity feed by cursor and minimum level, defaulting or clamping a bad page', async () => {
   const seen: unknown[] = []
+  const item = { seq: 4, at: '', event: 'trigger.received', level: 'feed', summary: 'Trigger x received', data: {} }
   const call = serve({ store: { activity: {
     latest: () => 7,
-    recent: (limit: number, level?: string) => { seen.push({ after: 0, limit, level }); return [] },
+    recent: (limit: number, level?: string) => { seen.push({ after: 0, limit, level }); return [item] },
     after: (after: number, limit: number, level?: string) => { seen.push({ after, limit, level }); return [] },
   } } })
-  expect(await call('GET', 'activity?after=3&limit=20&level=feed')).toEqual({ status: 200, body: { items: [], latest: 7 } })
-  expect(await call('GET', 'activity')).toEqual({ status: 200, body: { items: [], latest: 7 } })
+  expect(await call('GET', 'activity?after=3&limit=20&level=feed')).toEqual({ status: 200, body: { items: [], latest: 7, next: 3 } })
+  // A first load starts at the head, even when its page is smaller than the feed.
+  expect(await call('GET', 'activity')).toEqual({ status: 200, body: { items: [item], latest: 7, next: 7 } })
   expect(seen).toEqual([{ after: 3, limit: 20, level: 'feed' }, { after: 0, limit: 50, level: undefined }])
-  expect(await call('GET', 'activity?limit=500')).toMatchObject({ status: 400, body: { error: expect.stringContaining('limit') } })
-  expect(await call('GET', 'activity?level=loud')).toMatchObject({ status: 400 })
+  expect(await call('GET', 'activity?limit=500')).toMatchObject({ status: 200 })
+  expect(await call('GET', 'activity?after=x&level=loud')).toMatchObject({ status: 200 })
+  expect(seen.slice(-2)).toEqual([{ after: 0, limit: 200, level: undefined }, { after: 0, limit: 50, level: undefined }])
 })
 
 it('answers only a same-origin request from the panel on the loopback address', async () => {

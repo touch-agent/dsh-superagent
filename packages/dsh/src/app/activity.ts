@@ -1,5 +1,5 @@
 /** Grades domain events for the system view and the single-notification budget. */
-import { latestReport, type DomainEvent, type Ticket } from '@superagent/kernel'
+import type { DomainEvent, Ticket } from '@superagent/kernel'
 import type { Store } from './store.ts'
 
 /**
@@ -25,17 +25,25 @@ export interface ActivityRecord {
   suppressed?: 'report' | 'human'
 }
 
-/** One page of the activity feed, newest first, with the cursor a reader resumes from. */
-export interface ActivityFeed { items: ActivityRecord[]; latest: number }
+/** One page of the activity feed and the two cursors a reader needs. */
+export interface ActivityFeed {
+  items: ActivityRecord[]
+  /** The highest stored sequence, for unread counts and for noticing a backlog. */
+  latest: number
+  /** The next `after`: the head after a first load, else the last sequence this page returned. Poll again while it is below `latest`. */
+  next: number
+}
 
 /**
- * Whether a Ticket's end was already told to a person: its latest report was a terminal result (`ready` or `dropped`),
- * or the person ended it themselves. Such an end is recorded in the feed but must not produce a second notification.
+ * Whether a Ticket's end was already told to a person: its latest Assignment reported a terminal result (`ready` or
+ * `dropped`), or the person ended it themselves. Only the latest Assignment counts: a Ticket resumed after an earlier
+ * terminal report now waits for new work, so its later end is news again. Such an end is recorded in the feed but must not
+ * produce a second notification.
  * @returns Why it was covered, or `undefined` when the end is news.
  */
 export function endCoveredBy(ticket: Pick<Ticket, 'assignments' | 'ended'>): 'report' | 'human' | undefined {
   if (ticket.ended?.by === 'human') return 'human'
-  const report = latestReport(ticket)
+  const report = ticket.assignments.at(-1)?.report
   return report && (report.state === 'ready' || report.state === 'dropped') ? 'report' : undefined
 }
 
@@ -84,11 +92,15 @@ export function gradeEvent(event: DomainEvent, ticket: Ticket | undefined): Omit
   }
 }
 
-/** Reads one page of records newer than `after`, or the newest page when `after` is zero. */
+/**
+ * Reads one page of records. A first load (`after` 0) returns the newest page and starts the reader at the head; a later
+ * load returns records after the cursor oldest first and advances to the last one, so a backlog is paged without gaps.
+ */
 export function activityFeed(read: Pick<Store['activity'], 'latest' | 'after' | 'recent'>, after: number, limit = 50, level?: ActivityLevel): ActivityFeed {
   const latest = read.latest()
-  const items = after > 0 ? read.after(after, limit, level) : read.recent(limit, level)
-  return { items, latest }
+  if (after <= 0) return { items: read.recent(limit, level), latest, next: latest }
+  const items = read.after(after, limit, level)
+  return { items, latest, next: items.at(-1)?.seq ?? after }
 }
 
 /** Persists graded events and answers the system view and the future realtime reader. */
@@ -96,8 +108,8 @@ export class ActivityLog {
   constructor(private readonly store: Pick<Store, 'activity' | 'tickets'>) {}
 
   /** Grades `event` and records it in the current transaction, returning the stored record. */
-  record(event: DomainEvent, find: (id: string) => Ticket | undefined = id => this.store.tickets.get(id)): ActivityRecord {
+  record(event: DomainEvent): ActivityRecord {
     const ticketId = 'ticketId' in event.data ? String(event.data.ticketId) : undefined
-    return this.store.activity.record(gradeEvent(event, ticketId === undefined ? undefined : find(ticketId)))
+    return this.store.activity.record(gradeEvent(event, ticketId === undefined ? undefined : this.store.tickets.get(ticketId)))
   }
 }

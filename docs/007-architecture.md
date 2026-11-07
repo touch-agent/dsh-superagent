@@ -491,7 +491,7 @@ One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.
 | `decision` | Decisions, by Thread | Engine |
 | `effect` | The effect queue: per kind and key, the payload, its order, failed attempts with the last error, and when it is due | Effects; the schema 11 migration queues what earlier versions kept for the main Session |
 | `span` | Each stage a Trigger passed, by its trace's id, with the kind of stage, its `at` and the bounded facts recorded for it; a stage recorded twice keeps its first row, because its id is derived from the trace, the stage and an optional ref that tells repeated happenings apart | The Engine, through `SqliteTraceSink` |
-| `activity` | Every domain event with its `quiet`, `feed` or `notice` level, a one-line summary, its Ticket and Thread, and why a notice-worthy event was suppressed; a monotonic `seq` is the system view's cursor. The newest 5,000 rows are kept | The Engine's emit hook, through `ActivityLog` |
+| `activity` | Every domain event as one JSON row, by a monotonic `seq` that is the system view's cursor: its `quiet`, `feed` or `notice` level, a one-line summary, its Ticket and Thread, and why a notice-worthy event was suppressed. The newest 5,000 rows are kept | The Engine's emit hook, through `ActivityLog` |
 | `outbox` | The receipt of each message for a Channel, by id, with the Ticket it is for and its `status`, `pending`, `sent` or `dropped`, kept so an id is never queued twice; for a dropped message, when and why, as the generated column `dropped`, its time, and a reason code. A message that waits has a `reply` effect, which holds its attempts | The Outbox |
 | `kv` | Every other record, by key | The part that names it |
 

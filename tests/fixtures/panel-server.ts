@@ -299,7 +299,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET state': { answer: stateView },
   'GET overview': { answer: overviewView },
   'GET metrics': { answer: () => overviewView().metrics },
-  'GET activity': { query: ['after', 'limit', 'level'], answer: () => ({ items: [], latest: 0 }) },
+  'GET activity': { query: ['after', 'limit', 'level'], answer: () => ({ items: [], latest: 0, next: 0 }) },
   'GET search': { query: ['q'], answer: async ({ query }) => {
     const q = query.q ?? ''
     await server.searching?.(q)

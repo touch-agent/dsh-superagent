@@ -26,8 +26,14 @@ it('grades each domain event by who it may disturb, and keeps quiet stages out o
   expect(gradeEvent(event('eval.started', { evalId: 'e1', threadKey: 'feishu:oc:om', triggerIds: ['x'], strength: 'inferred' }), undefined))
     .toMatchObject({ level: 'quiet', thread: 'feishu:oc:om' })
   expect(gradeEvent(event('assignment.started', { ticketId: 't1', assignmentId: 'a1' }), undefined)).toMatchObject({ level: 'quiet', ticket: 't1' })
+  expect(gradeEvent(event('assignment.ended', { ticketId: 't1', assignmentId: 'a1', reason: 'ready' }), undefined)).toMatchObject({ level: 'quiet', ticket: 't1' })
+  expect(gradeEvent(event('decision.recorded', { decisionId: 'd1', kind: 'accept', threadKey: 'feishu:oc:om' }), undefined))
+    .toMatchObject({ level: 'feed', thread: 'feishu:oc:om' })
   expect(gradeEvent(event('ticket.created', { ticketId: 't1', decisionId: 'd1', strength: 'explicit' }), undefined)).toMatchObject({ level: 'feed', ticket: 't1' })
+  expect(gradeEvent(event('ticket.resumed', { ticketId: 't1', triggerId: 'x' }), undefined)).toMatchObject({ level: 'feed', ticket: 't1' })
+  expect(gradeEvent(event('thread.subscribed', { threadKey: 'github:1', ticketId: 't1' }), undefined)).toMatchObject({ level: 'quiet', thread: 'github:1' })
   expect(gradeEvent(event('trigger.requeued', { triggerId: 'x' }), undefined)).toMatchObject({ level: 'notice' })
+  expect(gradeEvent(event('trigger.followup', { triggerId: 'x' }), undefined)).toMatchObject({ level: 'quiet' })
   expect(gradeEvent(event('thread.unsubscribed', { threadKey: 'github:1', ticketId: 't1', by: 'person' }), undefined))
     .toMatchObject({ level: 'notice', thread: 'github:1' })
   expect(gradeEvent(event('policy.changed', { from: 'a', to: 'b' }), undefined)).toMatchObject({ level: 'quiet' })
@@ -50,6 +56,12 @@ it('counts a ticket end as already told when its latest report was terminal or a
     [{ id: 'a1', state: 'ended', createdAt: '', report: report('ready') }]))).toMatchObject({ level: 'feed', suppressed: 'report', ticket: 't1' })
   // The same end without a terminal report is a notice.
   expect(gradeEvent(end, ticket({ at: '2026-01-01T00:00:03Z', by: 'executor', outcome: 'completed' }, []))).toMatchObject({ level: 'notice' })
+  // A resume starts a new Assignment; until it reports, an earlier ready report no longer covers the Ticket's next end.
+  const resumed = ticket({ at: '2026-01-01T00:00:03Z', by: 'executor', outcome: 'closed' },
+    [{ id: 'a1', state: 'ended', createdAt: '', report: report('ready') }, { id: 'a2', state: 'running', createdAt: '' }])
+  expect(endCoveredBy(resumed)).toBeUndefined()
+  expect(gradeEvent(end, resumed)).toMatchObject({ level: 'notice' })
+  expect(eventNotice(end, () => resumed)).toBeDefined()
 })
 
 it('persists graded events with a monotonic cursor, filters by minimum level, and survives reopen', () => {
@@ -67,12 +79,37 @@ it('persists graded events with a monotonic cursor, filters by minimum level, an
   expect(activityFeed(store.activity, 0).items.map(item => item.seq)).toEqual([3, 2, 1])
   expect(activityFeed(store.activity, 0, 50, 'feed').items.map(item => item.seq)).toEqual([3, 1])
   expect(activityFeed(store.activity, first.seq).items.map(item => item.seq)).toEqual([2, 3])
-  expect(activityFeed(store.activity, 0).latest).toBe(3)
+  expect(activityFeed(store.activity, 0)).toMatchObject({ latest: 3, next: 3 })
+  expect(activityFeed(store.activity, first.seq)).toMatchObject({ latest: 3, next: 3 })
   store.close()
   const reopened = new Store(path)
   expect(activityFeed(reopened.activity, 0).items.map(item => item.event)).toEqual(['ticket.ended', 'eval.started', 'trigger.received'])
   expect(reopened.activity.latest()).toBe(3)
   reopened.close()
+})
+
+it('pages a backlog through `next` without skipping records, and filters to notices only', () => {
+  const store = new Store(join(directory, 'orchestrator.sqlite'))
+  for (let index = 0; index < 5; index++) store.activity.record({ at: '2026-01-01T00:00:01Z', event: 'trigger.received', level: 'feed',
+    summary: `Trigger ${index} received`, data: { triggerId: String(index), threads: [] } })
+  store.activity.record({ at: '2026-01-01T00:00:02Z', event: 'trigger.requeued', level: 'notice', summary: 'Trigger x queued', data: { triggerId: 'x' } })
+  const first = activityFeed(store.activity, 1, 2)
+  expect(first.items.map(item => item.seq)).toEqual([2, 3])
+  expect(first.next).toBe(3)
+  const second = activityFeed(store.activity, first.next, 2)
+  expect(second.items.map(item => item.seq)).toEqual([4, 5])
+  expect(second.next).toBe(5)
+  expect(activityFeed(store.activity, second.next, 2).items.map(item => item.seq)).toEqual([6])
+  expect(activityFeed(store.activity, 0, 50, 'notice').items.map(item => item.event)).toEqual(['trigger.requeued'])
+  store.close()
+})
+
+it('rolls activity back with the transaction that emitted it', () => {
+  const store = new Store(join(directory, 'orchestrator.sqlite'))
+  expect(() => store.atomic(() => { store.activity.record({ at: '2026-01-01T00:00:01Z', event: 'trigger.received', level: 'feed',
+    summary: 'Trigger x received', data: { triggerId: 'x', threads: [] } }); throw new Error('rollback') })).toThrow('rollback')
+  expect(store.activity.latest()).toBe(0)
+  store.close()
 })
 
 it('keeps the newest 5,000 records so the feed cannot grow without limit', () => {

@@ -151,11 +151,7 @@ const PromptsQuery = z.object({ revision: count.optional(), offset: count.defaul
 const SourceBlock = z.templateLiteral(['source:', z.string().regex(/^[a-z][a-z0-9-]*$/)])
 const SettingsBlockSchema = z.union([z.enum(['policy', 'eval', 'executor']), SourceBlock])
 const SaveRequest = z.object({ value: z.unknown(), revision: z.number().int().nonnegative() })
-const ActivityQuery = z.object({
-  after: z.coerce.number().int().nonnegative().default(0),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-  level: z.enum(['quiet', 'feed', 'notice']).optional(),
-})
+const ActivityQuery = z.object({ after: offset, limit: limit(50, 200), level: z.enum(['quiet', 'feed', 'notice']).optional().catch(undefined) })
 
 function routes(runtime: HttpHost): Routes {
   const { store } = runtime

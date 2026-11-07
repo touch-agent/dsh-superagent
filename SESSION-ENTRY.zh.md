@@ -88,7 +88,7 @@
 | `conversation.hero.options` 不可用 | 侧栏会话行「主」标记 + 主面板顶部「打开主会话」按钮 |
 | `conversation.view` 不可用 | 保留独立主面板；主会话页内只放一个跳转按钮 |
 | `sidebar.right.pane.tab` 不可用 | 在「体系」视图内用右侧分栏自绘事件列表（仍可关闭/展开） |
-| SSE 不可用 | `GET activity?after=` 5 秒轮询；断线重连后按 `after` 补拉 |
+| SSE 不可用 | `GET activity?after=` 5 秒轮询；断线重连后按 `next` 补拉，`next < latest` 时继续拉 |
 | 主会话已存在于旧工作目录 | 不强行迁移；保留原 cwd，新建的主会话才用新根（DSH 会话持久化 cwd） |
 
 ---
@@ -132,7 +132,7 @@
 - 标题插槽显示未读数（`notice` 级事件中未读的条数），打开后清零并持久化 `lastSeenSeq`。
 - 首次收到 `notice` 级事件时自动打开一次；之后由用户关闭/展开，宿主记住面板状态。
 - 列表按 `seq` 倒序，显示时间、级别、摘要、工单链接；点击条目打开对应工单（`openTicket` 或面板路由）。
-- 加载：首屏 `GET activity?level=feed&limit=50`；轮询 `?after=<latest>&level=feed`；SSE 升级时同一协议。
+- 加载：首屏 `GET activity?level=feed&limit=50`；轮询 `?after=<next>&level=feed`，若返回的 `next < latest` 说明有积压，立即再拉一页；`latest` 只用于未读数。SSE 升级时同一协议。
 
 ### 3.5 事件分级（本 PR 已实现）
 
@@ -144,8 +144,8 @@
 | `feed` | `trigger.received`、`decision.recorded`、`ticket.created`、`ticket.resumed` | 进事件栏，不通知 |
 | `notice` | `trigger.requeued`、`thread.unsubscribed`；以及**未被报告覆盖**的 `ticket.ended` | 进事件栏并通知主会话 |
 
-存储：`activity(seq, at, level, event, ticket, thread, value)`，`seq` 单调递增，作为增量游标；保留最近 5,000 条。
-读取：`GET /orchestrator/api/activity?after=&limit=&level=`，返回 `{items, latest}`；首屏按 `seq` 倒序，带 `after` 的增量按 `seq` 升序返回新增。`level=feed` 表示 feed 及以上，不含 quiet。
+存储：`activity(seq, value)`，`value` 是整条事件记录（级别、摘要、工单/线程、抑制原因）；`seq` 单调递增，作为增量游标；保留最近 5,000 条。
+读取：`GET /orchestrator/api/activity?after=&limit=&level=`，返回 `{items, latest, next}`；首屏按 `seq` 倒序并从队头开始，带 `after` 的增量按 `seq` 升序返回新增，`next` 是本页最后一条（空页则是原游标）。`level=feed` 表示 feed 及以上，不含 quiet。
 
 ### 3.6 单一通知预算（本 PR 已实现）
 
@@ -154,9 +154,9 @@
 
 - `reportRelay` 是主通道：`ready` / `dropped` / `blocked` / `failed` 的报告仍然即时 relay。
 - `ticket.ended` 在以下情况降级为 `feed`、不发 notice：
-  - 最新报告已经是终态 `ready` 或 `dropped`（报告已经说清结果）；
+  - 最新 Assignment 的报告已经是终态 `ready` 或 `dropped`（报告已经说清结果；`ready` 之后等待的 PR 合并/关闭也属于这一类）；
   - 结束是 `by: 'human'`（人自己按的停止，不需要再被告知）。
-- 其余结束仍是 `notice`：工作中被外部关闭、PR 合并/关闭、`blocked`/`failed` 之后才结束等。
+- 其余结束仍是 `notice`：最新报告不是终态时被外部关闭（如 `blocked`/`failed` 后 PR 关闭）、没有报告的结束等。
 - `attention` 问题不受预算影响；它是「需要人回答」，不是结果重复。
 - 预算按**结果**去重，不设时间窗速率限制；如果后续仍出现噪声，再在 `ActivityLog` 上加每工单令牌桶，而不是扩大本 PR 范围。
 
@@ -197,7 +197,7 @@ domain event ──► ActivityLog（全部入库）
 3. **右侧栏**：主会话右侧出现「事件」tab，可关闭、可展开；新 `notice` 事件使未读数 +1；打开后清零。
 4. **推送**：轮询模式下 5 秒内可见新事件；断线后按 `after` 补拉不漏；SSE 模式同样。
 5. **目录**：新装默认主会话 cwd 为 `<stateDir>/system`，新工单目录为 `<stateDir>/system/work/<name>`；已有工单目录不变；显式根覆盖生效。
-6. **通知预算**：`ready` 报告后只收到一条结果通知；`ticket_ended` 出现在事件栏；`blocked` 后外部关闭仍收到结束通知。
+6. **通知预算**：`ready` 报告后只收到一条结果通知（其后的 PR 合并/关闭不再重复）；`ticket_ended` 出现在事件栏；`blocked` 后外部关闭仍收到结束通知。
 7. **回归**：`pnpm typecheck`、全量 `vitest`、`pnpm build`、`pnpm size` 全绿；schema 12 库可打开并升到 13。
 
 ---

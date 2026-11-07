@@ -45,7 +45,7 @@ const SETS: Record<string, Record<string, string>> = {
 }
 /** SQL predicate for the minimum level a reader wants, in the quiet < feed < notice order the grader uses. */
 const minLevel = (level: ActivityLevel | undefined): string =>
-  level === 'notice' ? " AND level = 'notice'" : level === 'feed' ? " AND level <> 'quiet'" : ''
+  level === 'notice' ? " AND (value ->> '$.level') = 'notice'" : level === 'feed' ? " AND (value ->> '$.level') <> 'quiet'" : ''
 
 export { SCHEMA_VERSION }
 /**
@@ -83,8 +83,7 @@ export class Store implements Repositories {
             CREATE TABLE IF NOT EXISTS trigger_thread (thread TEXT NOT NULL, id TEXT NOT NULL, at TEXT NOT NULL, human INTEGER NOT NULL,
               PRIMARY KEY (thread, id));
             CREATE TABLE IF NOT EXISTS span (id TEXT PRIMARY KEY, trace TEXT NOT NULL, kind TEXT NOT NULL, at TEXT NOT NULL, value TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS activity (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, level TEXT NOT NULL, event TEXT NOT NULL,
-              ticket TEXT, thread TEXT, value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS activity (seq INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS effect (kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, seq INTEGER NOT NULL,
               generation INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', due INTEGER NOT NULL,
               since TEXT NOT NULL, PRIMARY KEY (kind, key));
@@ -94,8 +93,6 @@ export class Store implements Repositories {
             CREATE INDEX IF NOT EXISTS effect_due ON effect(kind, due, seq);
             CREATE INDEX IF NOT EXISTS span_trace ON span(trace, at);
             CREATE INDEX IF NOT EXISTS span_at ON span(at);
-            CREATE INDEX IF NOT EXISTS activity_at ON activity(at);
-            CREATE INDEX IF NOT EXISTS activity_level ON activity(level, seq);
           `)
           this.addColumns()
           // Schema 12 and 13 only add the `span` and `activity` tables, which the schema block above creates for every
@@ -274,8 +271,7 @@ export class Store implements Repositories {
   readonly activity = {
     /** Appends one graded event and returns it with its sequence; keeps the newest 5,000 records. */
     record: (record: Omit<ActivityRecord, 'seq'>): ActivityRecord => {
-      const row = this.db.prepare('INSERT INTO activity (at, level, event, ticket, thread, value) VALUES (?,?,?,?,?,?) RETURNING seq')
-        .get(record.at, record.level, record.event, record.ticket ?? null, record.thread ?? null, JSON.stringify(record))
+      const row = this.db.prepare('INSERT INTO activity (value) VALUES (?) RETURNING seq').get(JSON.stringify(record))
       const seq = Number(row!.seq)
       // The feed is an operator convenience, not an audit log: retain a bounded window so it cannot grow without limit.
       if (seq > 5000) this.db.prepare('DELETE FROM activity WHERE seq <= ?').run(seq - 5000)
