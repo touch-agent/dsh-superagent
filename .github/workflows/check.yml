@@ -21,3 +21,18 @@ jobs:
       # host dependency inside `packages/kernel` or a Source that imports `src/app`; nothing here needs a separate job.
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+
+  # Malformed changesets fail here rather than in a release, so a package change always says which package it bumps.
+  changesets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm changeset status

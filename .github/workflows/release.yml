@@ -1,0 +1,34 @@
+name: release
+
+# A dry run on every push to main: what a release would version, and what it would write into each package's
+# changelog. Nothing is published and nothing is committed here; the packages stay private until a release is asked for.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Read the pending changesets
+        run: pnpm changeset status --output changeset-status.json
+      - name: Show the versions and changelogs a release would write
+        run: |
+          pnpm changeset version
+          git diff --stat
+          cat packages/kernel/CHANGELOG.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: changeset-status
+          path: changeset-status.json
