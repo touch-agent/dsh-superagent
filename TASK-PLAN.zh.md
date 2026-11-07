@@ -397,7 +397,30 @@ graph LR
 | D7 | 切包后 patch 行名是否改 | X-07、X-11 | 不改：保留 `dsh-superagent` 与三个子路径 exports，已装 profile 不受影响 | 已定（2026-11-07） |
 | D9 | manifest 是否包含宿主能力 | T1-01…T1-05 | 不含：manifest 只放声明式数据，函数能力留 adapter——函数无法被 zod 校验，且会把宿主类型拖进 kernel | 已定（2026-11-07） |
 | D10 | 准入表（rows + explicit）放 manifest 还是 policy | T1-01、T1-02、T1-11 | 放 policy part：行由配置决定（飞书每个群一行），且随 Policy 版本走；manifest 只放与配置无关的声明，避免第二份真相 | 已定（2026-11-07） |
-| D11 | 会话派活如何进入领域 | M1.5（提案） | 内置 `conversation` Source + `orchestrator_dispatch`：会话消息先成为 Trigger，仍由 Eval 建 Ticket；主 agent 派活/协调/回答，不做技术实现；多源任务仍是 Ticket + Channels + Threads，不新增 Task 聚合 | 提案（docs/009） |
+| D11 | 会话派活如何进入领域 | M1.5 | 内置 `conversation` Source + `orchestrator_dispatch`：会话消息先成为 Trigger，仍由 Eval 建 Ticket；主 agent 派活/协调/回答，不做技术实现；多源任务仍是 Ticket + Channels + Threads，不新增 Task 聚合。已定：按任务开线程、确定性接受（保留 Eval，后续可接 jev 类快速判断）、主 agent 不直接向外部源发消息、先单用户 | 已定（2026-11-07） |
+
+---
+
+## 10.1 M1.5 会话派活（T1-13…T1-17）
+
+决策见 D11 与 [docs/009](docs/009-conversation-tasks.md)。目标是让“和主 agent 说话”成为合法的工作入口，同时不破坏“Only Eval creates a Ticket”。
+
+| 任务 | 内容 | 人日 | 依赖 |
+| --- | --- | --- | --- |
+| T1-13 | 内置 `conversation` Source：manifest 允许 `fields: []`、adapter（scope / channel / threadContext / 固定 policy）、definition 与宿主注册；会话投递能力加入 `SourceContext`；任务线程的 Trigger 构造 | 2 | 无 |
+| T1-14 | `orchestrator_dispatch` 工具：校验消息归属、幂等记录 Trigger、`Engine.receive` + `Engine.decide`（直接 Eval 的确定性接受，保留 Decision/Mandate），拒绝路径可解释 | 2 | T1-13 |
+| T1-15 | 任务线程闭环：Channel 投递到会话、attach 状态询问、主 agent 提示词从“只路由”改为“派活/协调/回答” | 2 | T1-14 |
+| T1-16 | 面板与文档：会话任务卡 / 任务视图、conversation Source 的独立区块；一致性测试与操作手册 | 1 | T1-15 |
+| T1-17 | 多源任务：`Engine.bindChannel` + `orchestrator_ticket_bind`、任务卡展示外部锚点与状态点 | 2 | T1-15 |
+
+**总：9 人日（T1-13…T1-16 为 7 人日；T1-17 可与 M2 并行）。**
+
+**验收（M1.5 出口）**：在会话里派活能创建恰好一个 Ticket；重复派活不重复建单；闲聊与状态询问不建单；任务线程里的追问能回到对应 Executor；主 agent 无法绕过 Ticket 直接向外发消息；全量测试与构建绿。
+
+### 排期建议
+
+- 先做 T1-13/T1-14（4 人日，1 条泳道），把“派活→Eval→Ticket→回执”打通；T1-15 紧随其后。
+- T1-17 依赖 `bindChannel`，建议在 M1 的 T1-10 之后与 M2 并行，不阻塞 M1.5 出口。
 
 ---
 

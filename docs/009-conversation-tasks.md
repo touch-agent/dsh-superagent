@@ -1,6 +1,6 @@
 # 009 Conversation tasks and multi-source work
 
-Status: proposal for review. Nothing in this document is implemented; the decisions it needs are listed in §10.
+Status: approved 2026-11-07 for phase 1 (M1.5 in TASK-PLAN). Nothing in this document is implemented yet; §10 records the decisions the design now runs on.
 It uses the terms of [001 Domain model](001-domain.md), [002 Authorization](002-authorization.md) and [007 Architecture](007-architecture.md).
 
 ## 1. The gap
@@ -78,6 +78,12 @@ The existing aggregate already holds several Threads and Channels. Two additions
 
 Source events then advance a task without a new decision: a person's message on a subscribed Thread reaches the Executor, and a Thread close is a state change. Neither grants authority; the Mandate still limits scope.
 
+### 4.5 Implementation notes found while planning
+
+- **No configuration fields.** The conversation Source has nothing to configure, so the manifest schema must allow `fields: []` for built-in Sources; the current schema requires at least one field. This is part of T1-13.
+- **Delivery is a host capability.** A Source Channel's `send` currently receives only `commands`; the conversation Channel must deliver into a DSH Session. T1-13 adds a `conversation` capability to `SourceContext` (or implements the Channel in the runtime) so the Source definition never imports DSH agent types and the web bundle stays clean.
+- **Deterministic acceptance is still an Eval.** The dispatch tool calls `Engine.receive` and then records a Decision with `Engine.decide` (a direct Eval) carrying the title, scope and acknowledgement. That is the existing explicit path the main Session already uses for candidates, so no Ticket is created outside Eval and the Mandate still records the policy version and the local actor.
+
 ### 4.5 Authorization and audit
 
 - The local user is the actor on every conversation Trigger. The conversation Source's admission row is fixed (the signed-in user, explicit); the Policy table does not let a team admit other people through it.
@@ -143,10 +149,15 @@ Product decisions to make explicitly:
 - **Channel accumulation.** Binding every Source a task touches can leak reports to unintended chats; `bindChannel` needs the same `allowed` check a normal send uses.
 - **Prompt injection in conversation.** Local chat is trusted for identity, not for instructions that override policy; the same untrusted-data rules as `meta` and `text` apply.
 
-## 10. Open decisions
+## 10. Decisions
 
-1. Per-task Thread or per-conversation Thread.
-2. Deterministic acceptance or model Eval for conversation requests.
-3. Whether the main agent may send to external Sources outside a Ticket.
-4. How a conversation request names an existing Ticket for attach (explicit id, quoted title, or the main agent's judgement).
-5. Whether the conversation Source appears under **Eval → On each Source** at all, or in its own panel section.
+| # | Decision | Consequence for the implementation |
+| --- | --- | --- |
+| 1 | **Task-scoped Threads.** The dispatched request is the root; replies under it belong to that task. | The conversation Channel address carries the task root. `threadContext` reads one task thread, not the whole session, so status questions and follow-ups cannot fan out to another task. |
+| 2 | **Deterministic acceptance, with Eval retained.** A dispatched request is accepted without a model call because the local user is explicit by definition, but the Trigger still goes through `Engine.receive`/Eval and the Decision and Mandate are recorded. Later a fast classifier (such as jev) can pre-judge whether a raw conversation message is a task before dispatch. | The dispatch tool stays the only entry. Eval needs a trusted path for the conversation Source that accepts deterministically without skipping the records; the future classifier is an optional pre-filter, not a replacement for Eval. |
+| 3 | **No direct outbound from the main agent.** It cannot send to GitHub, Feishu or any other Source outside a Ticket and its Channels. | Multi-source reporting needs the `bindChannel` operation (§4.4), not a main-agent send tool. Outbound authorization and idempotence stay in the Channel. |
+| 4 | **Single-user first.** Multi-user conversations are out of scope; if added later they resemble a group chat and need roster/admission like Feishu. | The conversation Source's policy part has one fixed local-user row and no roster. Multi-user would become its own Source policy, not a silent widening of this one. |
+
+The attach rule is unchanged: a status message is attached to a Ticket only when the main agent can name that Ticket (an explicit id, a quoted ticket title or acknowledgement, or a single unambiguous match). It never guesses between two live tasks.
+
+The panel lists the conversation Source in its own section; it does not appear under **Eval → On each Source**, because it has no team-editable admission rows.
