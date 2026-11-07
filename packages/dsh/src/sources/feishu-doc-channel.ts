@@ -9,9 +9,10 @@ import type { ChannelLink } from './kind.ts'
 
 /** Document types the reply API accepts; `+inspect` reports a bitable as `bitable` and a wiki as its underlying type. */
 const FILE_TYPES = new Set(['doc', 'docx', 'sheet', 'slides', 'bitable', 'base', 'file', 'apps'])
-/** A deleted document, a solved comment and a whole-document comment can never receive the reply. */
+/** A deleted document (1069304/1069305/1069307), a solved comment and a whole-document comment can never receive the reply. */
+const GONE_CODES = new Set([1069304, 1069305, 1069307])
 const gone = (error: unknown): boolean => error instanceof CliError
-  && (error.code === 1069304 || /solved|解决|whole|全文评论|not found|不存在/i.test(error.message))
+  && (GONE_CODES.has(error.code ?? -1) || /solved|解决|whole|全文评论/i.test(error.message))
 const InspectedSchema = z.looseObject({ token: z.string().min(1), type: z.string() })
 /** Resolves the canonical token and type of a document whose Trigger was received before the comment list named them. */
 async function inspect(host: Pick<SourceContext, 'commands'>, document: string): Promise<{ token: string; type: string }> {
@@ -23,15 +24,16 @@ async function inspect(host: Pick<SourceContext, 'commands'>, document: string):
  * Posts one reply on a comment card.
  * Feishu has no idempotency key for comment replies, so the reply text starts with an invisible mark naming the outbound
  * message; a retried send reads the card's replies first and answers `sent` when the mark is already there. The same ID also
- * travels in the request's `extra` field, the reply API's documented free-form metadata, so the remote call names the message.
+ * travels in the request's write-only `extra` field, so the remote call names the message; the reply list returns an object
+ * there, not this string, so only the mark can be read back.
  */
 export async function sendFeishuDoc(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<'sent' | 'gone'> {
   const { document, commentId, token, fileType } = message.channel.address
   if (!document || !commentId) throw new Error('The reply names no Feishu document comment')
+  if ([...message.text].length > 10_000) throw new Error('A Feishu comment reply cannot exceed 10000 characters')
   try {
     const posted = await readReplies(host.commands, document, commentId)
-    // The remote may keep the mark in the text, the ID in `extra`, or neither; either one means the reply is already there.
-    if (posted.replies.some(reply => reply.extra === message.id || docMarkerIds(docReplyText(reply)).includes(message.id))) return 'sent'
+    if (posted.replies.some(reply => docMarkerIds(docReplyText(reply)).includes(message.id))) return 'sent'
   } catch (error) {
     // A deleted comment can never take the reply. Any other read failure stays retryable, so a reply is never posted twice.
     if (gone(error)) return 'gone'

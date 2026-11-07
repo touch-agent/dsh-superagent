@@ -56,6 +56,6 @@ export const KV = {
     topics: family<Record<string, string>, [chat: string]>('feishu-history-threads:'),
     seen: family<string[], [thread: string]>('thread-seen:'), initialized: family<boolean, [thread: string]>('thread-initialized:') },
   /** Feishu document Source: per-document comment cursor, and per-polled-comment-card seen reply IDs and initialization flag. */
-  feishuDoc: { since: family<string, [document: string]>('feishu-doc-since:'),
+  feishuDoc: { since: family<string, [document: string]>('feishu-doc-since:'), page: family<string, [key: string]>('feishu-doc-page:'),
     seen: family<string[], [thread: string]>('feishu-doc-seen:'), initialized: family<boolean, [thread: string]>('feishu-doc-initialized:') },
 }

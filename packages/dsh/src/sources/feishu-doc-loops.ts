@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { threadKey, type Thread, type Trigger } from '@superagent/kernel'
 import { validItems, type Tally } from '../infra/commands.ts'
 import type { FeishuBot } from '../deployment.ts'
-import { readComments, readReplies } from './feishu-doc-read.ts'
+import { readCommentPage, readComments, readReplies, type CommentPage, type DocCardView } from './feishu-doc-read.ts'
 import { docRef, docThreadRef, docTime, docTrigger, SOURCE, type DocCard, type DocComment, type DocRef, type DocTarget, type DocReply }
   from './feishu-doc-trigger.ts'
 import { health, type SourceContext } from './host.ts'
@@ -14,7 +14,9 @@ import type { FeishuDocConfig } from './feishu-doc.ts'
 
 const HEALTH = 'feishu-doc'
 export const runFeishuDoc = (ctx: SourceContext, signal: AbortSignal): Promise<unknown> =>
-  Promise.allSettled([watch(ctx, signal)])
+  watch(ctx, signal).catch(error => {
+    if (!signal.aborted) ctx.report(HEALTH, health('error', 'pollFailures', { count: '1', error: String(error) }))
+  })
 const enabled = (ctx: SourceContext): FeishuDocConfig | undefined => ctx.config<FeishuDocConfig>(SOURCE)
 const bot = (ctx: SourceContext): FeishuBot => {
   const resolved = ctx.deployment.feishu
@@ -23,8 +25,10 @@ const bot = (ctx: SourceContext): FeishuBot => {
 }
 function available(ctx: SourceContext): boolean {
   if (ctx.configured() && ctx.deployment.feishu) return true
-  const waiting = health('paused', ctx.configured() ? 'feishuCliUnset' : 'setupPending')
-  ctx.report(HEALTH, ctx.problem ? { state: 'paused', detail: ctx.problem.detail } : waiting)
+  // The bot belongs to the Feishu Source; without it this Source waits instead of reporting a missing CLI of its own.
+  const waiting = ctx.problem ? { state: 'paused' as const, detail: ctx.problem.detail }
+    : health('paused', ctx.configured() ? 'feishuBotMissing' : 'setupPending')
+  ctx.report(HEALTH, waiting)
   return false
 }
 const labels = (ctx: SourceContext): Record<string, string> => ctx.state.get(KV.sources.labels(SOURCE)) ?? {}
@@ -98,23 +102,34 @@ export async function pollRound(ctx: SourceContext, config: FeishuDocConfig, sig
       ctx.state.set(KV.sources.labels(SOURCE), known)
     }
     const cursor = KV.feishuDoc.since(doc.url)
-    const since = ctx.state.get(cursor)
+    const stored = ctx.state.get(cursor)
+    const pageKey = KV.feishuDoc.page(doc.url)
+    const resume = ctx.state.get(pageKey)
     // The Source reads from the moment the document is saved; earlier comments are not work.
-    if (since === undefined) { ctx.state.set(cursor, started); continue }
+    if (stored === undefined && resume === undefined) { ctx.state.set(cursor, started); continue }
+    const since = stored ?? started
     try {
-      const page = await readComments(ctx.commands.withSignal(signal), doc.url, tally)
+      const commands = ctx.commands.withSignal(signal)
+      // A backlog continues from its page token, while the newest page is reread for comments posted meanwhile.
+      const page = resume
+        ? merged(await readCommentPage(commands, doc.url, tally), await readComments(commands, doc.url, tally, resume))
+        : await readComments(commands, doc.url, tally)
       const target: DocTarget = { url: doc.url, title: known[doc.url], token: page.token, type: page.type }
-      // A truncated page or reply list means replies exist that this round did not see; hold the cursor so none is skipped.
       let complete = !page.truncated
+      if (resume) ctx.state.set(pageKey, page.truncated ? page.next : undefined)
+      else if (page.truncated) ctx.state.set(pageKey, page.next)
       for (const card of page.cards) {
         if (signal?.aborted) return problems
-        const replies = card.comment.has_more
-          ? await readReplies(ctx.commands.withSignal(signal), doc.url, card.comment.comment_id, tally)
+        const cardKey = KV.feishuDoc.page(`${doc.url}#${card.comment.comment_id}`)
+        const cardResume = ctx.state.get(cardKey)
+        const replies = card.comment.has_more || cardResume
+          ? await readReplies(commands, doc.url, card.comment.comment_id, tally, cardResume)
           : undefined
-        if (replies?.truncated) complete = false
+        if (replies?.truncated) { complete = false; ctx.state.set(cardKey, replies.next) }
+        else if (cardResume) ctx.state.set(cardKey, undefined)
         await ingest(ctx, target, card.comment, replies?.replies ?? card.replies, since)
       }
-      if (!complete) problems.push(`${target.title}: more comments or replies than the source can page through; the cursor is held so none is skipped`)
+      if (!complete) problems.push(`${target.title}: more comments or replies than one round reads; continuing from the saved page next round`)
       else if (!signal?.aborted) ctx.state.set(cursor, cursorAt(started))
     } catch (error) {
       if (!signal?.aborted) problems.push(`${known[doc.url] ?? doc.url}: ${String(error)}`)
@@ -125,6 +140,13 @@ export async function pollRound(ctx: SourceContext, config: FeishuDocConfig, sig
   const skipped = tally.skipped ? `; ${tally.skipped} unreadable items skipped` : ''
   if (!problems.length) ctx.report(HEALTH, { state: 'ready', detail: `Configured documents polled for new comment replies${skipped}`, at: new Date().toISOString() })
   return problems
+}
+/** Merges the newest page with a backlog page, keeping one card per comment id. */
+function merged(fresh: Pick<CommentPage, 'token' | 'type' | 'cards'>, backlog: CommentPage): CommentPage {
+  const cards = new Map<string, DocCardView>()
+  for (const card of [...fresh.cards, ...backlog.cards]) cards.set(card.comment.comment_id, card)
+  return { token: backlog.token ?? fresh.token, type: backlog.type ?? fresh.type, cards: [...cards.values()],
+    truncated: backlog.truncated, next: backlog.next }
 }
 /** Polls the subscribed comment cards, which the comment list cannot follow after their first page. */
 export async function pollThreads(ctx: SourceContext, signal?: AbortSignal, tally: Tally = { skipped: 0 },
@@ -172,9 +194,12 @@ async function pollThread(ctx: SourceContext, thread: Thread, signal: AbortSigna
   const checkpoint = KV.feishuDoc.seen(thread.key)
   const seen = new Set(ctx.state.get(checkpoint) ?? [])
   const initialized = ctx.state.get(KV.feishuDoc.initialized(thread.key))
+  const pageKey = KV.feishuDoc.page(`thread:${thread.key}`)
+  const resume = ctx.state.get(pageKey)
   const since = Date.parse(thread.createdAt)
-  const page = await readReplies(commands, ref.document, ref.commentId, tally)
-  if (page.truncated) problems.push(`${known[ref.document] ?? ref.document}: more replies on comment ${ref.commentId} than the source can page through; the unread ones stay pending`)
+  const page = await readReplies(commands, ref.document, ref.commentId, tally, resume)
+  ctx.state.set(pageKey, page.truncated ? page.next : undefined)
+  if (page.truncated) problems.push(`${known[ref.document] ?? ref.document}: more replies on comment ${ref.commentId} than one round reads; continuing from the saved page next round`)
   const target: DocTarget = { url: ref.document, title: known[ref.document], token: page.token, type: page.type }
   const card: DocCard = { commentId: ref.commentId, rootReplyId: page.replies[0]?.reply_id }
   for (const reply of page.replies) {
@@ -185,5 +210,6 @@ async function pollThread(ctx: SourceContext, thread: Thread, signal: AbortSigna
     seen.add(reply.reply_id)
   }
   ctx.state.set(checkpoint, [...seen])
-  ctx.state.set(KV.feishuDoc.initialized(thread.key), true)
+  // A truncated read has not seen the whole card, so it is not initialized; the saved page token continues next round.
+  if (!page.truncated) ctx.state.set(KV.feishuDoc.initialized(thread.key), true)
 }

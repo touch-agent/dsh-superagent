@@ -23,8 +23,10 @@ const RepliesSchema = z.looseObject({
   items: z.array(z.unknown()).default([]), has_more: z.boolean().default(false), page_token: z.string().optional(),
 })
 export interface DocCardView { comment: DocComment; replies: DocReply[] }
-export interface CommentPage { token?: string; type?: string; cards: DocCardView[]; truncated: boolean }
-export interface ReplyPage { token?: string; type?: string; replies: DocReply[]; truncated: boolean }
+export interface CommentPage { token?: string; type?: string; cards: DocCardView[]; truncated: boolean; next?: string }
+export interface ReplyPage { token?: string; type?: string; replies: DocReply[]; truncated: boolean; next?: string }
+interface CommentPageView { token?: string; type?: string; cards: DocCardView[]; has_more: boolean; next?: string }
+interface ReplyPageView { token?: string; type?: string; replies: DocReply[]; has_more: boolean; next?: string }
 
 const bot = (commands: Commands): DocBot => commands.deployment.feishu
   ? { botId: commands.deployment.feishu.botId, appId: commands.deployment.feishu.appId, name: commands.deployment.feishu.name }
@@ -34,65 +36,79 @@ const bot = (commands: Commands): DocBot => commands.deployment.feishu
  * Lists the unresolved, partial comments of one document. Whole-document comments are left out because Feishu accepts no
  * reply on them, so the Source could not answer a Ticket made from one.
  */
-export async function readComments(commands: Commands, document: string, tally: Tally = { skipped: 0 }): Promise<CommentPage> {
-  let page: string | undefined
+async function commentPage(commands: Commands, document: string, cursor: string | undefined, tally: Tally): Promise<CommentPageView> {
+  const result = CommentsSchema.parse(await commands.lark(['drive', '+list-comments', '--url', document, '--comment-scope', 'partial',
+    '--solved-status', 'false', '--page-size', String(PAGE_SIZE), ...cursor ? ['--page-token', cursor] : []]))
+  const cards: DocCardView[] = []
+  for (const comment of validItems(DocCommentSchema, result.items, tally)) {
+    if (comment.is_whole) continue
+    cards.push({ comment, replies: validItems(DocReplySchema, comment.reply_list?.replies ?? [], tally) })
+  }
+  return { token: result.file_token, type: result.file_type, cards, has_more: result.has_more,
+    next: result.has_more && result.page_token ? result.page_token : undefined }
+}
+/** Reads the newest page of comments, for catching comments posted while an older page backlog is being read. */
+export async function readCommentPage(commands: Commands, document: string,
+  tally: Tally = { skipped: 0 }): Promise<Pick<CommentPage, 'token' | 'type' | 'cards' | 'next'>> {
+  const page = await commentPage(commands, document, undefined, tally)
+  return { token: page.token, type: page.type, cards: page.cards, next: page.next }
+}
+export async function readComments(commands: Commands, document: string, tally: Tally = { skipped: 0 },
+  cursor?: string): Promise<CommentPage> {
+  let page = cursor
   let token: string | undefined
   let type: string | undefined
   const cards: DocCardView[] = []
-  const pages = new Set<string>()
+  const seenPages = new Set<string>()
   for (let count = 0; ; count += 1) {
-    if (count >= MAX_COMMENT_PAGES) return { ...token ? { token } : {}, ...type ? { type } : {}, cards, truncated: true }
-    const result = CommentsSchema.parse(await commands.lark(['drive', '+list-comments', '--url', document, '--comment-scope', 'partial',
-      '--solved-status', 'false', '--page-size', String(PAGE_SIZE), ...page ? ['--page-token', page] : []]))
-    token ??= result.file_token
-    type ??= result.file_type
-    for (const comment of validItems(DocCommentSchema, result.items, tally)) {
-      if (comment.is_whole) continue
-      cards.push({ comment, replies: validItems(DocReplySchema, comment.reply_list?.replies ?? [], tally) })
-    }
-    if (!result.has_more) break
-    if (!result.page_token || pages.has(result.page_token)) throw new Error('Feishu comment pagination did not advance')
-    page = result.page_token
-    pages.add(page)
+    const result = await commentPage(commands, document, page, tally)
+    token ??= result.token
+    type ??= result.type
+    cards.push(...result.cards)
+    if (!result.has_more) return { ...token ? { token } : {}, ...type ? { type } : {}, cards, truncated: false }
+    if (!result.next || seenPages.has(result.next)) throw new Error('Feishu comment pagination did not advance')
+    if (count + 1 >= MAX_COMMENT_PAGES) return { ...token ? { token } : {}, ...type ? { type } : {}, cards, truncated: true, next: result.next }
+    page = result.next
+    seenPages.add(result.next)
   }
-  return { ...token ? { token } : {}, ...type ? { type } : {}, cards, truncated: false }
 }
 
+async function replyPage(commands: Commands, document: string, commentId: string, cursor: string | undefined, pageSize: number,
+  tally: Tally): Promise<ReplyPageView> {
+  const result = RepliesSchema.parse(await commands.lark(['drive', '+list-replies', '--url', document, '--comment-id', commentId,
+    '--page-size', String(pageSize), ...cursor ? ['--page-token', cursor] : []]))
+  return { token: result.file_token, type: result.file_type, replies: validItems(DocReplySchema, result.items, tally),
+    has_more: result.has_more, next: result.has_more && result.page_token ? result.page_token : undefined }
+}
 /** Lists every reply of one comment card, in the order Feishu returns them. */
-export async function readReplies(commands: Commands, document: string, commentId: string,
-  tally: Tally = { skipped: 0 }): Promise<ReplyPage> {
-  let page: string | undefined
+export async function readReplies(commands: Commands, document: string, commentId: string, tally: Tally = { skipped: 0 },
+  cursor?: string): Promise<ReplyPage> {
+  let page = cursor
   let token: string | undefined
   let type: string | undefined
   const replies: DocReply[] = []
-  const pages = new Set<string>()
+  const seenPages = new Set<string>()
   for (let count = 0; ; count += 1) {
-    if (count >= MAX_REPLY_PAGES) return { ...token ? { token } : {}, ...type ? { type } : {}, replies, truncated: true }
-    const result = RepliesSchema.parse(await commands.lark(['drive', '+list-replies', '--url', document, '--comment-id', commentId,
-      '--page-size', String(PAGE_SIZE), ...page ? ['--page-token', page] : []]))
-    token ??= result.file_token
-    type ??= result.file_type
-    replies.push(...validItems(DocReplySchema, result.items, tally))
+    const result = await replyPage(commands, document, commentId, page, PAGE_SIZE, tally)
+    token ??= result.token
+    type ??= result.type
+    replies.push(...result.replies)
     if (!result.has_more) return { ...token ? { token } : {}, ...type ? { type } : {}, replies, truncated: false }
-    if (!result.page_token || pages.has(result.page_token)) throw new Error('Feishu comment reply pagination did not advance')
-    page = result.page_token
-    pages.add(page)
+    if (!result.next || seenPages.has(result.next)) throw new Error('Feishu comment reply pagination did not advance')
+    if (count + 1 >= MAX_REPLY_PAGES) return { ...token ? { token } : {}, ...type ? { type } : {}, replies, truncated: true, next: result.next }
+    page = result.next
+    seenPages.add(result.next)
   }
 }
 
-/** One page of a comment card's replies, used as the Thread page of an assessment. */
-async function replyPage(commands: Commands, document: string, commentId: string, cursor?: string, pageSize = CONTEXT_PAGE_SIZE) {
-  return RepliesSchema.parse(await commands.lark(['drive', '+list-replies', '--url', document, '--comment-id', commentId,
-    '--page-size', String(pageSize), ...cursor ? ['--page-token', cursor] : []]))
-}
 const contextMessage = (reply: DocReply, reader: DocBot): ContextMessage => ({
   id: docTriggerId(reply.reply_id), from: reply.user_id, at: docTime(reply.create_time), text: stripDocMarkers(docReplyText(reply, reader)),
   ...reply.user_id === reader.botId || reply.user_id === reader.appId ? { bot: true as const } : {},
 })
 
 /**
- * The Thread of a document comment is its comment card; assessments read the card's replies around the Trigger. Feishu lists the
- * first reply (the comment itself) first; a parent is the reply before the Trigger's in that order.
+ * The Thread of a document comment is its comment card. Feishu comment replies are flat: the first reply is the comment itself
+ * and every other reply answers that root, so a non-root Trigger's parent is the first reply, not the reply listed before it.
  */
 export const feishuDocThreadContext: ThreadContext<FeishuDocConfig> = {
   messageId: trigger => docTriggerId(String((trigger.meta as { replyId?: unknown }).replyId ?? '')),
@@ -100,36 +116,23 @@ export const feishuDocThreadContext: ThreadContext<FeishuDocConfig> = {
     const ref = docRef(trigger)
     if (!ref) throw new Error('The Trigger names no Feishu document comment')
     const reader = bot(commands)
+    const tally: Tally = { skipped: 0 }
     if (part === 'root') {
-      const page = await replyPage(commands, ref.document, ref.commentId)
-      const root = page.items.map(item => DocReplySchema.safeParse(item)).find(parsed => parsed.success)?.data
+      const page = await replyPage(commands, ref.document, ref.commentId, undefined, PAGE_SIZE, tally)
+      const root = page.replies[0]
       const messages = root ? [contextMessage(root, reader)] : []
       return { messages, body: { status: messages.length ? 'root' : 'empty', document: ref.document, commentId: ref.commentId, messages } }
     }
     if (part === 'parent') {
-      // A comment card can outgrow one page; page until the Trigger's reply is found, so a long card still has a parent.
-      let cursor: string | undefined
-      let previous: DocReply | undefined
-      for (let pages = 0; pages < MAX_REPLY_PAGES; pages += 1) {
-        const page = await replyPage(commands, ref.document, ref.commentId, cursor, PAGE_SIZE)
-        for (const item of page.items) {
-          const parsed = DocReplySchema.safeParse(item)
-          if (!parsed.success) continue
-          if (docTriggerId(parsed.data.reply_id) === feishuDocThreadContext.messageId(trigger)) {
-            const messages = previous ? [contextMessage(previous, reader)] : []
-            return { messages, body: { status: messages.length ? 'parent' : 'no_parent', document: ref.document, commentId: ref.commentId, messages } }
-          }
-          previous = parsed.data
-        }
-        if (!page.has_more || !page.page_token) break
-        cursor = page.page_token
-      }
-      return { messages: [], body: { status: 'no_parent', document: ref.document, commentId: ref.commentId, messages: [] } }
+      const page = await replyPage(commands, ref.document, ref.commentId, undefined, PAGE_SIZE, tally)
+      const root = page.replies[0]
+      const messages = root && docTriggerId(root.reply_id) !== feishuDocThreadContext.messageId(trigger) ? [contextMessage(root, reader)] : []
+      return { messages, body: { status: messages.length ? 'parent' : 'no_parent', document: ref.document, commentId: ref.commentId, messages } }
     }
-    const page = await replyPage(commands, ref.document, ref.commentId, cursor)
-    const messages = page.items.flatMap(item => { const parsed = DocReplySchema.safeParse(item); return parsed.success ? [contextMessage(parsed.data, reader)] : [] })
-    const next = page.has_more && page.page_token ? page.page_token : undefined
+    const page = await replyPage(commands, ref.document, ref.commentId, cursor, CONTEXT_PAGE_SIZE, tally)
+    const messages = page.replies.map(reply => contextMessage(reply, reader))
+    const next = page.next
     return { messages, ...next ? { next } : {}, status: messages.length ? undefined : 'empty',
-      body: { status: messages.length ? 'thread' : 'empty', document: ref.document, commentId: ref.commentId, messages, has_more: page.has_more, page_token: page.page_token } }
+      body: { status: messages.length ? 'thread' : 'empty', document: ref.document, commentId: ref.commentId, messages, has_more: page.has_more, page_token: page.next } }
   },
 }

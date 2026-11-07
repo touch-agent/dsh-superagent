@@ -19,7 +19,7 @@ export const DocReplySchema = z.looseObject({
   create_time: TimeSchema,
   update_time: TimeSchema.optional(),
   content: z.looseObject({ elements: z.array(z.unknown()).default([]) }).optional(),
-  extra: z.union([z.string(), z.looseObject({ image_list: z.array(z.string()).optional() })]).optional(),
+  extra: z.looseObject({ image_list: z.array(z.string()).optional() }).optional(),
 })
 export type DocReply = z.infer<typeof DocReplySchema>
 /** One comment card: the comment, its replies, and whether more replies exist than the list returned. */
@@ -78,7 +78,7 @@ export function docElementText(elements: readonly unknown[], bot?: DocBot): stri
 /** The text of one reply, with an image placeholder when the reply carries images and no text. */
 export function docReplyText(reply: DocReply, bot?: DocBot): string {
   const text = docElementText(reply.content?.elements ?? [], bot)
-  const images = typeof reply.extra === 'object' && reply.extra?.image_list?.length ? 1 : 0
+  const images = reply.extra?.image_list?.length ? 1 : 0
   return text || (images ? '[image]' : '')
 }
 /** True when one of the reply's elements mentions the bot, which makes it an explicit request from an allowed sender. */
