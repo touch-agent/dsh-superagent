@@ -1,4 +1,4 @@
-/** Feishu source kind definition, policy synchronization, and Cordis plugin entry. */
+/** The Feishu manifest and adapter, policy synchronization, and Cordis plugin entry. */
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import { FeishuBotSchema } from '../deployment.ts'
@@ -7,7 +7,8 @@ import { feishuThreadContext } from './feishu-read.ts'
 import { refreshChatNames, runFeishu } from './feishu-loops.ts'
 import { SOURCE, feishuTriggerId } from './feishu-trigger.ts'
 import { sourceContext } from './host.ts'
-import type { Localized, SourceKind } from './kind.ts'
+import type { Localized, SourceAdapter, SourceDefinition, SourceKind } from './kind.ts'
+import type { SourceManifest, SourceScopeRow } from '@superagent/kernel'
 import type { SourceRegistry } from './registry.ts'
 
 export { SOURCE, feishuRef, feishuThreadId, feishuTime, feishuTrigger, feishuTriggerId, historyEvent, withMentionNames }
@@ -28,12 +29,17 @@ const FeishuConfigSchema = FeishuBotSchema.extend({
   otherChats: z.enum(['none', 'mentions']).default('none'),
 }).strict()
 export type FeishuConfig = z.infer<typeof FeishuConfigSchema>
-export const feishuKind: SourceKind<FeishuConfig> = {
-  kind: SOURCE,
-  refreshLabels: (host, signal) => refreshChatNames(sourceContext(host, feishuKind), signal),
+const admissionRows: SourceScopeRow[] = [
+  { id: 'other', label: { zh: '其他群', en: 'Other chats' } },
+  { id: 'direct', label: { zh: '私聊', en: 'Direct messages' } },
+]
+const explicit = { zh: '名单内的人 @ 机器人或私聊机器人，总是明确的请求，不需要配置。', en: 'Someone on the list who mentions the bot or messages it directly always makes an explicit request; that needs no setting.' }
+
+export const feishuManifest: SourceManifest = {
+  id: SOURCE,
   title: { zh: '飞书', en: 'Feishu' },
   description: { zh: '接收下列群和私聊中发给机器人的消息，补收群历史并轮询订阅的线程。', en: 'Receives messages to the bot in these chats and direct messages, recovers chat history and polls subscribed Threads.' },
-  schema: FeishuConfigSchema,
+  auth: { kind: 'cli', fields: ['cli'] },
   fields: [
     { key: 'cli', type: 'text', label: { zh: '机器人的 lark-cli', en: 'Bot lark-cli' },
       hint: { zh: '命令名或绝对路径，指向只允许机器人身份（strict mode bot）的 lark-cli 配置；执行器以 lark-cli 调用它。保存时读取应用和机器人，然后重启 dsh-superagent。', en: 'A command name or absolute path of a lark-cli configuration that allows only the bot identity (strict mode bot); the Executor calls it as lark-cli. Saving reads the app and the bot, then restarts dsh-superagent.' } },
@@ -50,7 +56,13 @@ export const feishuKind: SourceKind<FeishuConfig> = {
     { key: 'linkTimeoutMs', type: 'number', advanced: true, min: 1, max: 90000, label: { zh: '原消息链接的查询时限 / 毫秒', en: 'Original message link time limit / ms' },
       hint: { zh: '查询原消息链接最多等待的时间；超时后智能体改为直接读取原消息。', en: 'How long to wait for an original message\'s link; after that, agents read the message itself.' } },
   ],
+  scope: { rows: admissionRows, explicit },
   health: ['feishu', 'history'],
+}
+
+export const feishuAdapter: SourceAdapter<FeishuConfig> = {
+  schema: FeishuConfigSchema,
+  refreshLabels: (host, signal) => refreshChatNames(sourceContext(host, feishuKind), signal),
   scope({ meta }, config) {
     if (meta.direct === true) return config.directMessages ? { listened: true, observed: false, row: 'direct' } : { listened: false, reason: 'direct_messages_not_allowed' }
     const chat = config.chats.find(item => item.chatId === meta.chatId)
@@ -65,7 +77,7 @@ export const feishuKind: SourceKind<FeishuConfig> = {
   },
   threadContext: feishuThreadContext,
   find: query => ({ threads: [], terms: [...new Set(query.match(/om_[A-Za-z0-9_-]+/g) ?? [])] }),
-  // A message's Trigger is named after the message, so the one it answers is named after its parent.
+  // A message's Trigger is named after the message, so the one it answers is named after its parent.,
   repliesTo: trigger => typeof trigger.meta.parentId === 'string' ? feishuTriggerId(trigger.meta.parentId) : undefined,
   policy: {
     unnamed: { person: { zh: '飞书用户', en: 'Feishu user' }, bot: { zh: '飞书机器人', en: 'Feishu bot' } },
@@ -86,16 +98,17 @@ export const feishuKind: SourceKind<FeishuConfig> = {
         columns: [{ key: 'id', type: 'text', label: { zh: 'App ID 或 open_id', en: 'App ID or open_id' }, pattern: '(cli|ou)_[a-zA-Z0-9]+' },
           { key: 'name', type: 'text', label: { zh: '名字', en: 'Name' }, optional: true }] },
     ],
-    explicit: { zh: '名单内的人 @ 机器人或私聊机器人，总是明确的请求，不需要配置。', en: 'Someone on the list who mentions the bot or messages it directly always makes an explicit request; that needs no setting.' },
+    explicit,
     rows(stored) {
       const config = FeishuConfigSchema.parse(stored)
       const mentions = { zh: '仅 @', en: '@ only' }
+      const label = (id: string) => admissionRows.find(item => item.id === id)!.label
       return [
         ...config.chats.map(chat => ({ id: chat.chatId, label: chat.name || chat.chatId, note: chat.listen === 'all' ? { zh: '全部消息', en: 'All' } : mentions,
           cells: { listedUnaddressed: chat.listen === 'all', unlistedAddressed: true, unlistedUnaddressed: chat.listen === 'all' } })),
-        { id: 'other', label: { zh: '其他群', en: 'Other chats' }, note: config.otherChats === 'mentions' ? mentions : { zh: '不接收', en: 'Not received' },
+        { id: 'other', label: label('other'), note: config.otherChats === 'mentions' ? mentions : { zh: '不接收', en: 'Not received' },
           cells: { listedUnaddressed: false, unlistedAddressed: config.otherChats === 'mentions', unlistedUnaddressed: false } },
-        { id: 'direct', label: { zh: '私聊', en: 'Direct messages' }, note: config.directMessages ? { zh: '接收', en: 'Received' } : { zh: '不接收', en: 'Not received' },
+        { id: 'direct', label: label('direct'), note: config.directMessages ? { zh: '接收', en: 'Received' } : { zh: '不接收', en: 'Not received' },
           cells: { listedUnaddressed: false, unlistedAddressed: config.directMessages, unlistedUnaddressed: false } },
       ]
     },
@@ -124,13 +137,17 @@ export const feishuKind: SourceKind<FeishuConfig> = {
   },
   facts: (deployment): Record<string, Localized | string> => deployment?.feishu ? { cli: { zh: `当前机器人 ${deployment.feishu.name || deployment.feishu.botId}`, en: `Current bot ${deployment.feishu.name || deployment.feishu.botId}` } } : {},
 }
+export const feishuDefinition: SourceDefinition<FeishuConfig> = { manifest: feishuManifest, adapter: feishuAdapter }
+/** The flat view the panel and the tests still read; T1-10 retires it with the rest of the kind protocol. */
+export const feishuKind: SourceKind<FeishuConfig> = { ...feishuAdapter, kind: feishuManifest.id, title: feishuManifest.title,
+  description: feishuManifest.description, fields: [...feishuManifest.fields], health: [...feishuManifest.health] }
 /** Returns the Feishu Source's settings, falling back to schema defaults while the Feishu plugin is disabled. */
 export const feishuSettings = (sources: SourceRegistry): FeishuConfig => sources.instance<FeishuConfig>(SOURCE)?.config ?? FeishuConfigSchema.parse({})
 
 export const name = 'dsh-superagent-feishu'
 export const inject = ['orchestrator']
 export function apply(ctx: Context): void {
-  ctx.effect(() => ctx.orchestrator.sources.register(feishuKind), 'feishu: source kind')
+  ctx.effect(() => ctx.orchestrator.sources.registerDefinition(feishuDefinition), 'feishu: source kind')
   ctx.effect(() => {
     const controller = new AbortController()
     const running = runFeishu(sourceContext(ctx.orchestrator, feishuKind), controller.signal)

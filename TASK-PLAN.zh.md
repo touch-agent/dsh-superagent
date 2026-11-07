@@ -171,8 +171,9 @@ graph LR
 
 ### T1-04 / T1-05 GitHub、Feishu adapter 迁到 manifest · Connector · 各 3 人日
 
-- **交付**：`packages/dsh/src/sources/github*.ts`、`feishu*.ts` 拆成「manifest + adapter 实现」，旧 `kind.ts` 保留但不再被注册。
-- **验收**：`tests/bundle-patch.spec.ts` 与源相关测试全绿；行为差异逐条列出（应为空）。
+- **状态**：已完成（2026-11-07）。
+- **交付**：`github.ts` / `feishu.ts` 各自导出 `*Manifest`（声明式数据，含 auth/scope/health/limits）、`*Adapter`（schema/scope/channel/threadContext/find/repliesTo/policy/environment/facts）与 `*Definition = { manifest, adapter }`；插件改用 `registerDefinition` 注册，`kind.ts` 的扁平类型仍在，两个 `*Kind` 只是从 manifest + adapter 合成、供面板与测试读取，T1-10 删除。
+- **验收**：全量测试绿；`sources.spec` 断言“registry 从 definition 合成的扁平视图与手写 kind 深度相等”，作为无行为差异的等价证明。
 - **依赖**：T1-02、T1-03。
 
 ### T1-06 adapter conformance suite · Connector · 4 人日

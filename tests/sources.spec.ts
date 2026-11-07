@@ -104,7 +104,8 @@ describe('feishu source', () => {
       return { ...value, registered, health }
     }
     const unset = await run({ deployment: testDeployment({ feishu: undefined }) })
-    expect(unset.registered).toBe(feishuKind)
+    // The plugin registers the manifest with its adapter; the registry presents it as the same flat view the kind was.
+    expect(unset.registered).toEqual(feishuKind)
     expect(unset.health).toMatchObject({ feishu: { state: 'paused', code: 'feishuCliUnset' }, history: { state: 'paused', code: 'feishuBotMissing' } })
     const problem = new SetupError('feishuBotNotReady', { app: 'cli_bot', status: 'missing' }).problem
     const refused = await run({ deployment: testDeployment({ feishu: undefined }), feishuProblem: problem })

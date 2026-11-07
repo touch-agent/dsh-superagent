@@ -375,12 +375,12 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/sources/manifest-form.ts` | `manifestForm`: the panel model a manifest yields — fields in order, sign-in fields resolved from their keys, admission rows and the explicit-request note, health entries and polling defaults |
 | `packages/dsh/src/sources/host.ts` | `SourceHost`, `SourceContext`, `Health`, `health` and the fixed health texts |
 | `packages/dsh/src/sources/poll.ts` | What GitHub and Feishu polling share: `POLL_HORIZON_MS`, `polled`, `cursorAt`, and `pollThreads`, which keeps a failure on its Thread as `pollError` |
-| `packages/dsh/src/sources/github.ts` | The GitHub kind and plugin entry, exported as `./github-watch`: a poll round of notifications, the pull requests of open Tickets with their CI, and subscribed Threads |
+| `packages/dsh/src/sources/github.ts` | The GitHub manifest (`githubManifest`: fields, CLI sign-in, admission rows, health, polling limit), the adapter that implements it (`githubAdapter`), the `githubDefinition` the plugin registers, and the plugin entry exported as `./github-watch`: a poll round of notifications, the pull requests of open Tickets with their CI, and subscribed Threads |
 | `packages/dsh/src/sources/github-trigger.ts` | GitHub comments, reviews, Issue bodies and CI changes as Triggers, and GitHub addresses |
 | `packages/dsh/src/sources/github-pull.ts` | The pull request rules: which pull requests a Ticket follows (`claimPull`, `observePull`), the closes it reports to the Engine, and `pullEndNotices`, the chat notice of a Ticket that ended merged or closed |
 | `packages/dsh/src/sources/github-channel.ts` | The GitHub Channel: comments and review thread replies, `sent` or `gone` |
 | `packages/dsh/src/sources/github-read.ts` | CI snapshots, repository reads, the `github/` resources, and `githubThreadContext`: an Issue's or pull request's conversation by page |
-| `packages/dsh/src/sources/feishu.ts` | The Feishu kind and plugin entry, exported as `./feishu-watch` |
+| `packages/dsh/src/sources/feishu.ts` | The Feishu manifest (`feishuManifest`), the adapter that implements it (`feishuAdapter`), the `feishuDefinition` the plugin registers, and the plugin entry exported as `./feishu-watch` |
 | `packages/dsh/src/sources/feishu-trigger.ts` | Feishu messages as Triggers, by one rule for live events, history pages and topic pages |
 | `packages/dsh/src/sources/feishu-loops.ts` | The Feishu loops: the event consumer, history recovery, chat names and polling of subscribed topics |
 | `packages/dsh/src/sources/feishu-channel.ts` | The Feishu Channel: topic replies, `sent` or `gone` |

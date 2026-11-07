@@ -1,6 +1,6 @@
-/** GitHub source kind definition, notification and repository polling loops, and Cordis plugin entry. */
+/** The GitHub manifest and adapter, notification and repository polling loops, and Cordis plugin entry. */
 import type { Context } from '@deepseek-ai/cordis'
-import { key, type Thread } from '@superagent/kernel'
+import { key, type SourceManifest, type SourceScopeRow, type Thread } from '@superagent/kernel'
 import { sameName } from '../infra/text.ts'
 import { GithubAccountsSchema } from '../deployment.ts'
 import { CliError, validItems, type Tally } from '../infra/commands.ts'
@@ -13,7 +13,7 @@ import { observePull, pullsOf, readPull, type Pull } from './github-pull.ts'
 import { health, sourceContext, type Health, type SourceContext } from './host.ts'
 import { KV } from '../kv.ts'
 import { cursorAt, pause, POLL_HORIZON_MS, pollThreads as pollEach } from './poll.ts'
-import type { Localized, SourceKind } from './kind.ts'
+import type { Localized, SourceAdapter, SourceDefinition, SourceKind } from './kind.ts'
 import { z } from 'zod'
 
 export { commentTrigger, type GithubComment } from './github-trigger.ts'
@@ -35,11 +35,19 @@ function scopeOf(meta: Record<string, unknown>): Scope | undefined {
   if (meta.kind === 'pull') return 'pulls'
   return meta.kind === 'conversation' || meta.kind === 'inline' || meta.kind === 'review' ? 'comments' : undefined
 }
-export const githubKind: SourceKind<GithubConfig> = {
-  kind: SOURCE,
+const admissionRows: SourceScopeRow[] = [
+  { id: 'issues', label: { zh: '新 Issue', en: 'New Issues' } },
+  { id: 'pulls', label: { zh: '新 PR', en: 'New pull requests' } },
+  { id: 'comments', label: { zh: '评论', en: 'Comments' } },
+  { id: 'ci', label: { zh: '默认分支的 CI', en: 'Default branch CI' } },
+]
+const explicit = { zh: '名单里的账号在 Issue 或评论里 @ 智能体的账号。', en: 'An account on the list mentions the agent\'s account in an Issue or a comment.' }
+
+export const githubManifest: SourceManifest = {
+  id: SOURCE,
   title: { zh: 'GitHub', en: 'GitHub' },
   description: { zh: '智能体的 GitHub 账号；接收仓库里发给它的通知、已订阅 Issue 与 PR 的讨论、CI 状态变化和 PR 合并关闭。', en: 'The agent\'s GitHub accounts; receives notifications to it in the repository, discussion on subscribed Issues and PRs, CI changes, and PR merge or close.' },
-  schema: GithubConfigSchema,
+  auth: { kind: 'cli', fields: ['cli'] },
   fields: [
     { key: 'repository', type: 'text', pattern: '[A-Za-z0-9_.\\-]+/[A-Za-z0-9_.\\-]+', label: { zh: '监听的仓库', en: 'Repository' },
       hint: { zh: '写作 owner/name。这个来源接收这个仓库的通知和讨论；保存时检查智能体账号能否推送到它，然后重启 dsh-superagent。', en: 'Written owner/name. This Source receives the repository\'s notifications and discussion; saving checks that the agent account can push to it, then restarts dsh-superagent.' } },
@@ -55,12 +63,18 @@ export const githubKind: SourceKind<GithubConfig> = {
       hint: { zh: '打开后，Issue 和 PR 上没有 @ 智能体的评论和代码评论也会收到，由策略的接收表决定是否成为候选。', en: 'Comments and review comments on Issues and PRs that do not mention the agent are received too, and the Policy\'s admission table decides whether they become candidates.' } },
     { key: 'observeCi', type: 'switch', label: { zh: '接收默认分支的 CI', en: 'Receive the default branch\'s CI' },
       hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.' } }],
+  scope: { rows: admissionRows, explicit },
+  health: ['github'],
+  limits: { pollSeconds: 60 },
+}
+
+export const githubAdapter: SourceAdapter<GithubConfig> = {
+  schema: GithubConfigSchema,
   // What the Source observes across the repository it receives in full; elsewhere, only what addresses the agent.
   scope: ({ meta }, config) => {
     const row = scopeOf(meta)
     return { listened: true, observed: row !== undefined && config[OBSERVED[row]], ...row ? { row } : {} }
   },
-  health: ['github'],
   channel: { send: sendGithub, link: githubLink },
   threadContext: githubThreadContext,
   // `#12`, `12`, or the page of an Issue or PR, of any repository, names Thread 12.
@@ -76,16 +90,16 @@ export const githubKind: SourceKind<GithubConfig> = {
     { key: 'bots', type: 'rows', label: { zh: '评论可以成为候选的机器人', en: 'Bots whose comments may become candidates' },
       hint: { zh: '名单里的机器人账号（例如 dependabot[bot]）的评论在来源收到时成为推断的候选，交给评估：评论 @ 了智能体，或者打开了“接收仓库里的评论”。它们不能发起明确的请求，也不能停止工单；其他机器人的评论不接收。', en: 'A comment of a bot account on this list, such as dependabot[bot], becomes an inferred candidate for an assessment when the Source receives it: when it mentions the agent, or with Receive comments in the repository on. Such a comment never makes an explicit request or stops a ticket; other bots\' comments are not admitted.' },
       columns: [{ key: 'id', type: 'text', label: { zh: '账号', en: 'Account' }, pattern: '[A-Za-z0-9\\-]+(\\[bot\\])?' }] }],
-    explicit: { zh: '名单里的账号在 Issue 或评论里 @ 智能体的账号。', en: 'An account on the list mentions the agent\'s account in an Issue or a comment.' },
+    explicit,
     rows(stored) {
       const config = GithubConfigSchema.partial().parse(stored)
       const note = (observed: boolean | undefined) => observed ? { zh: '全部', en: 'All' } : { zh: '仅 @', en: '@ only' }
-      const row = (id: Scope, label: { zh: string; en: string }) => ({ id, label, note: note(config[OBSERVED[id]]),
+      const label = (id: Scope) => admissionRows.find(item => item.id === id)!.label
+      const row = (id: Scope) => ({ id, label: label(id), note: note(config[OBSERVED[id]]),
         cells: { listedUnaddressed: !!config[OBSERVED[id]], unlistedAddressed: true, unlistedUnaddressed: !!config[OBSERVED[id]] } })
-      return [row('issues', { zh: '新 Issue', en: 'New Issues' }), row('pulls', { zh: '新 PR', en: 'New pull requests' }),
-        row('comments', { zh: '评论', en: 'Comments' }),
+      return [row('issues'), row('pulls'), row('comments'),
         // CI has no sender, so only the cell of a sender off the list who does not address the agent applies.
-        { id: 'ci', label: { zh: '默认分支的 CI', en: 'Default branch CI' }, note: config.observeCi ? { zh: '接收', en: 'Received' } : { zh: '不接收', en: 'Not received' },
+        { id: 'ci', label: label('ci'), note: config.observeCi ? { zh: '接收', en: 'Received' } : { zh: '不接收', en: 'Not received' },
           cells: { listedUnaddressed: false, unlistedAddressed: false, unlistedUnaddressed: !!config.observeCi } }]
     },
   },
@@ -107,10 +121,14 @@ export const githubKind: SourceKind<GithubConfig> = {
     cli: { zh: `当前账号 @${deployment.github.login}`, en: `Current account @${deployment.github.login}` },
   } : {},
 }
+export const githubDefinition: SourceDefinition<GithubConfig> = { manifest: githubManifest, adapter: githubAdapter }
+/** The flat view the panel and the tests still read; T1-10 retires it with the rest of the kind protocol. */
+export const githubKind: SourceKind<GithubConfig> = { ...githubAdapter, kind: githubManifest.id, title: githubManifest.title,
+  description: githubManifest.description, fields: [...githubManifest.fields], health: [...githubManifest.health] }
 export const name = 'dsh-superagent-github'
 export const inject = ['orchestrator']
 export function apply(ctx: Context): void {
-  ctx.effect(() => ctx.orchestrator.sources.register(githubKind), 'github: source kind')
+  ctx.effect(() => ctx.orchestrator.sources.registerDefinition(githubDefinition), 'github: source kind')
   ctx.effect(() => {
     const source = sourceContext(ctx.orchestrator, githubKind)
     const controller = new AbortController()
