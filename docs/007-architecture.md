@@ -297,6 +297,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `meta/index.ts` | The bundle's main entry: re-exports the runtime plugin, so the patch row `dsh-superagent` resolves without knowing the runtime package name |
 | `meta/github-watch.ts` | The bundle's `./github-watch` entry: re-exports the runtime's GitHub Source plugin |
 | `meta/feishu-watch.ts` | The bundle's `./feishu-watch` entry: re-exports the runtime's Feishu Source plugin |
+| `meta/feishu-doc-watch.ts` | The bundle's `./feishu-doc-watch` entry: re-exports the runtime's Feishu document Source plugin |
 | `packages/dsh/src/index.ts` | The main plugin entry: reads the machine settings, starts the Runtime, and gives it the restart that a save of a Source's account uses |
 | `packages/dsh/src/deployment.ts` | The plugin `Config` and `Machine`; `resolveDeployment` and `resolveFeishuBot` read the repository and the accounts from the Source settings, each CLI run as Executor shells run it; `SETUP_FIELDS` lists the Source fields setup reads. The code names no person, account or organization |
 | `packages/dsh/src/setup.ts` | Setup problems: `SetupError`, with a code, the place that fixes it and the English text the log, the main Session and the panel share |
@@ -392,6 +393,11 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/sources/feishu-read.ts` | The `feishu/` reads of a Trigger's message, its root, parent and topic, and `feishuThreadContext`, which gives them to assessments with their images |
 | `packages/dsh/src/sources/admission-context.ts` | The bounded window an assessment starts from: the first pages of a Trigger's Thread, read through its kind, and the messages around the Trigger |
 | `packages/dsh/src/sources/feishu-image.ts` | Reads a Feishu message's image as an attachment for the assessing Session |
+| `packages/dsh/src/sources/feishu-doc.ts` | The Feishu document manifest (`feishuDocManifest`), the adapter that implements it (`feishuDocAdapter`), the `feishuDocDefinition` the plugin registers, and the plugin entry exported as `./feishu-doc-watch`; it reads and answers comments as the bot configured on the Feishu Source |
+| `packages/dsh/src/sources/feishu-doc-trigger.ts` | Feishu document comment replies as Triggers: the comment card is the Thread, a bot mention is `addressed`, and release text carries the invisible delivery mark |
+| `packages/dsh/src/sources/feishu-doc-read.ts` | The comment and reply reads of a document, and `feishuDocThreadContext`, which gives a comment card to assessments |
+| `packages/dsh/src/sources/feishu-doc-channel.ts` | The Feishu document comment Channel: one reply per outbound message, `sent` or `gone` |
+| `packages/dsh/src/sources/feishu-doc-loops.ts` | The Feishu document loop: polling each document's new comment replies, document titles, and subscribed comment cards |
 | `packages/dsh/src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel and the page in DeepSeek Harness's Plugin Manager |
 | `packages/dsh/src/client/app.tsx` | The panel: header, search, glossary, tabs and the page of the current route |
 | `packages/dsh/src/client/provider.tsx` | What every page reads from its host: copy, calls, navigation, notices, the state poll, and `restart`, which reads the state quickly while dsh-superagent restarts |
@@ -415,7 +421,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/client/locales.ts` | All copy in both languages, and the glossary of [001 Domain model](001-domain.md) |
 | `packages/dsh/src/client/client.css`, `css.d.ts` | The panel's stylesheet, loaded as text |
 
-`packages/dsh/src/sources/github.ts` and `packages/dsh/src/sources/feishu.ts` are also the entries of the two Source plugins, built by `tsdown.config.ts` into `packages/dsh/lib` and exported by the runtime package as `./github-watch` and `./feishu-watch`; the bundle re-exports them as `dsh-superagent/github-watch` and `dsh-superagent/feishu-watch`. The bundle's `cordis.patch.yml` inserts the three plugins, with Feishu disabled.
+`packages/dsh/src/sources/github.ts`, `packages/dsh/src/sources/feishu.ts` and `packages/dsh/src/sources/feishu-doc.ts` are also the entries of the three Source plugins, built by `tsdown.config.ts` into `packages/dsh/lib` and exported by the runtime package as `./github-watch`, `./feishu-watch` and `./feishu-doc-watch`; the bundle re-exports them as `dsh-superagent/github-watch`, `dsh-superagent/feishu-watch` and `dsh-superagent/feishu-doc-watch`. The bundle's `cordis.patch.yml` inserts the four plugins, with the two Feishu ones disabled.
 
 ## Tests
 
@@ -430,7 +436,9 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/conversation.spec.ts` | The conversation Source: a dispatched message names its task thread and channel, its trigger id is stable per message, replies resolve to the request, the adapter needs no configuration, delivery reaches the main Session, and the trusted gate admits and revalidates the local user |
 | `tests/registry.spec.ts` | `SourceRegistry`: instances, validation, Policy parts, Channels and Thread context, plus registering a manifest with its adapter: the flat kind view, config defaults, scope, health claims released on unregister, manifest validation and id clashes from either entry |
 | `tests/sources.spec.ts` | The Feishu and GitHub Sources on a `SourceContext`: translation, polls and read positions, the pull request rules, health |
-| `tests/conformance/github.spec.ts`, `tests/conformance/feishu.spec.ts` | The shared adapter conformance suite against both Sources: one Trigger id per event across read paths, the five-second cursor step, health claims, scope decisions matching the Policy rows, the `sent`/`gone` Channel answers, and the probe cases once T2-06 adds probe |
+| `tests/feishu-doc.spec.ts` | The Feishu document Source: comment times and text, Trigger ids and Threads, comment and reply reads, Thread context, the idempotent reply, document titles and environment variables |
+| `tests/feishu-doc-poll.spec.ts` | Feishu document polling on a `SourceContext`: new replies only, whole-document and bot comments left out, the five-second cursor step, the first poll as the starting point, and subscribed comment cards |
+| `tests/conformance/github.spec.ts`, `tests/conformance/feishu.spec.ts`, `tests/conformance/feishu-doc.spec.ts` | The shared adapter conformance suite against all three Sources: one Trigger id per event across read paths, the five-second cursor step, health claims, scope decisions matching the Policy rows, the `sent`/`gone` Channel answers, and the probe cases once T2-06 adds probe |
 | `tests/conformance/suite.spec.ts` | The conformance suite itself: a fake Source that keeps the contract passes, and a Source whose idempotency key changes between two reads, whose cursor misses the five-second overlap, which fails to pass the outbound idempotency key, or which misnames a health entry fails its group |
 | `tests/commands.spec.ts` | CLI calls as the deployment's accounts, the Channels' answers, and repository-scoped GitHub calls |
 | `tests/feishu-read.spec.ts`, `tests/github-read.spec.ts` | Feishu and GitHub reads |

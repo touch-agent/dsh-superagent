@@ -13,12 +13,13 @@ const raw = { name: 'raw',
     : undefined }
 const node = { format: 'esm' as const, platform: 'node' as const, target: 'es2024', dts: true }
 export default defineConfig([
-  // The runtime package: the three plugin entries, built from packages/dsh/src into packages/dsh/lib.
-  { entry: { index: 'packages/dsh/src/index.ts', 'github-watch': 'packages/dsh/src/sources/github.ts', 'feishu-watch': 'packages/dsh/src/sources/feishu.ts' },
+  // The runtime package: the four plugin entries, built from packages/dsh/src into packages/dsh/lib.
+  { entry: { index: 'packages/dsh/src/index.ts', 'github-watch': 'packages/dsh/src/sources/github.ts', 'feishu-watch': 'packages/dsh/src/sources/feishu.ts',
+    'feishu-doc-watch': 'packages/dsh/src/sources/feishu-doc.ts' },
     outDir: 'packages/dsh/lib', ...node, fixedExtension: false, clean: true, alias,
     deps: { neverBundle: [/^@deepseek-ai\//, 'zod', 'proper-lockfile'] } },
-  // The bundle's node half: thin entries that re-export the runtime, so the installed package name and its three subpaths stay the same.
-  { entry: { index: 'meta/index.ts', 'github-watch': 'meta/github-watch.ts', 'feishu-watch': 'meta/feishu-watch.ts' },
+  // The bundle's node half: thin entries that re-export the runtime, so the installed package name and its subpaths stay the same.
+  { entry: { index: 'meta/index.ts', 'github-watch': 'meta/github-watch.ts', 'feishu-watch': 'meta/feishu-watch.ts', 'feishu-doc-watch': 'meta/feishu-doc-watch.ts' },
     outDir: 'lib', ...node, fixedExtension: false, clean: true,
     deps: { neverBundle: ['@superagent/dsh'] } },
   // The browser half belongs to the bundle: it keeps the module id `dsh-superagent`, which the panel slots are registered under.

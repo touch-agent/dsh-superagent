@@ -9,6 +9,7 @@ export default defineConfig({ resolve: { dedupe: ['react', 'react-dom'], alias: 
   { find: '@superagent/kernel', replacement: kernel },
   { find: '@superagent/dsh/github-watch', replacement: `${dsh}/sources/github.ts` },
   { find: '@superagent/dsh/feishu-watch', replacement: `${dsh}/sources/feishu.ts` },
+  { find: '@superagent/dsh/feishu-doc-watch', replacement: `${dsh}/sources/feishu-doc.ts` },
   { find: /^@superagent\/dsh$/, replacement: `${dsh}/index.ts` },
   { find: /^@superagent\/dsh\/(.*)$/, replacement: `${dsh}/$1` },
 ] }, test: { include: ['tests/**/*.spec.{ts,tsx}'] } })

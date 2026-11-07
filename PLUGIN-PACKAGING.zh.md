@@ -23,7 +23,7 @@
 | 事实 | 证据 |
 | --- | --- |
 | 安装单位是 npm 包，bundle patch 声明在 manifest | `package.json` 的 `dsh.bundle.patch: ./cordis.patch.yml` |
-| patch 插 5 行：主插件、GitHub 源、Feishu 源（默认 disabled）、worker preset（order 90）、router preset（order 91） | `cordis.patch.yml` |
+| patch 插 6 行：主插件、GitHub 源、Feishu 源（默认 disabled）、飞书文档源（默认 disabled）、worker preset（order 90）、router preset（order 91） | `cordis.patch.yml` |
 | 服务端是 3 个 Cordis 插件：主插件提供 `orchestrator` 服务（`inject` 11 个宿主服务）；两个 Source 插件 `inject ['orchestrator']` | `packages/dsh/src/index.ts`、`packages/dsh/src/sources/github.ts`、`packages/dsh/src/sources/feishu.ts` |
 | 浏览器半是一个独立入口，通过 `__ModuleLoader__.load` 装配 | `lib/client.js` banner、`packages/dsh/src/client/index.tsx` |
 | 入口 UI 已经占三个 slot：主面板 `main`、侧边栏图标 `sidebar.panellist`（order 10）、插件管理配置行 `plugins.row.config` | `packages/dsh/src/client/index.tsx:73-79` |
@@ -79,7 +79,7 @@ dsh-superagent           meta：bundle patch + 2 个 preset + locale
 | --- | --- | --- | --- | --- |
 | `@superagent/kernel` | `packages/kernel/src/*`（engine/part/model/tickets/evals/assignments/intake/replies/stage/reasons/errors/ids/memory/ports） | 仅 `node:crypto` | 季度，破坏性变更走 major | **已存在**（提交 `3f7a158`） |
 | `@superagent/dsh` | `packages/dsh/src/index.ts`（服务注册）、`packages/dsh/src/app/**`、`packages/dsh/src/client/**`、`packages/dsh/src/sources/**`、`packages/dsh/src/executor/**`、`packages/dsh/src/infra/**`，以及运行时要读的 `skills/`、`prompts/` | peer：`@deepseek-ai/dsh-*` alpha；dep：`@superagent/kernel`、`zod`、`proper-lockfile` | 双周，紧跟宿主 | **已拆出**（2026-11-07，`packages/dsh`） |
-| `dsh-superagent`（meta） | `cordis.patch.yml`、`dsh.client` 段、两个 preset 的配置行、`locale/*.json`，以及三个 node 入口（`lib/index.js` 与两个 watch 入口的 re-export） | `@superagent/dsh` | 双周 | **已是仓库根包**（2026-11-07） |
+| `dsh-superagent`（meta） | `cordis.patch.yml`、`dsh.client` 段、两个 preset 的配置行、`locale/*.json`，以及四个 node 入口（`lib/index.js` 与三个 watch 入口的 re-export） | `@superagent/dsh` | 双周 | **已是仓库根包**（2026-11-07） |
 
 **为什么 meta 不能省**：`bundle.patch` 只能由被安装的包自己声明（`dsh.bundle.patch`），preset 是「配置行」不是代码，locale 是包内资源。把这些塞进 runtime 包会让「改一个文案」也要发一次 runtime 版本。
 
@@ -89,7 +89,7 @@ dsh-superagent           meta：bundle patch + 2 个 preset + locale
 
 **什么时候把 `@superagent/source-kit` 单独拆出来**：出现第三个非官方 adapter 作者时。在此之前 manifest 类型与 conformance helper 放在 kernel 的 `manifest.ts` 与 `tests/conformance/` 就够——过早拆包会把「一次改两个包、跑两次 CI」变成日常。
 
-**拆分动作已完成**（2026-11-07）：`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`；根包保留 `dsh` 段与三个 exports，入口改为 `meta/*.ts` 的 re-export；tsconfig paths / vitest 插件 / tsdown resolveId 三处解析同步；`tests/layers.spec.ts` 的边界规则改为「按包名，不按相对路径」。决定 D7：**patch 行名与子路径不改**（`dsh-superagent`、`dsh-superagent/github-watch`、`dsh-superagent/feishu-watch`），所以已装 profile 不受影响。
+**拆分动作已完成**（2026-11-07）：`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`；根包保留 `dsh` 段与三个 exports（T1-08 又加 `feishu-doc-watch`），入口改为 `meta/*.ts` 的 re-export；tsconfig paths / vitest 插件 / tsdown resolveId 三处解析同步；`tests/layers.spec.ts` 的边界规则改为「按包名，不按相对路径」。决定 D7：**patch 行名与子路径不改**（`dsh-superagent`、`dsh-superagent/github-watch`、`dsh-superagent/feishu-watch`），所以已装 profile 不受影响。
 
 ---
 
@@ -129,14 +129,14 @@ dsh-superagent           meta：bundle patch + 2 个 preset + locale
 
 | 场景 | 行为 | 谁保证 |
 | --- | --- | --- |
-| 首次安装 | profile 加一条依赖；patch 插入 5 行；`stateDir` 由 profile 提供 | `bundle-patch.spec.ts` + `dsh --dump-config` |
+| 首次安装 | profile 加一条依赖；patch 插入 6 行；`stateDir` 由 profile 提供 | `bundle-patch.spec.ts` + `dsh --dump-config` |
 | 缺 `stateDir` | 插件拒绝启动并说明原因 | `packages/dsh/src/index.ts` 的 machineOf 校验（已有） |
 | 升级跨 schema | `SCHEMA_VERSION` 只增；旧库迁移或拒启 | `migration.ts`（已有，当前 11） |
 | 升级跨宿主版本 | peer 依赖 + compat matrix；启动时校验必需服务是否都在 | 新增 X-10 |
 | 卸载 | 插件行消失；stateDir 保留；重装恢复 | 新增 X-08 |
 | 装两个实例 | 不允许：一个 stateDir 一个实例（单实例约束，方案 §11 已登记） | 由 stateDir 锁保证（`lockSync` 已有） |
 
-**bundle patch 的隐含风险**：`insert` 行依赖宿主 loader 里的定位锚点。DSH alpha 每次升级都可能改锚点，改了就「装上了但没生效」——这是最坏的一种失败，因为没有报错。防线只有一条：`dsh --profile <tmp> --dump-config` 断言 5 行都在（X-11）。
+**bundle patch 的隐含风险**：`insert` 行依赖宿主 loader 里的定位锚点。DSH alpha 每次升级都可能改锚点，改了就「装上了但没生效」——这是最坏的一种失败，因为没有报错。防线只有一条：`dsh --profile <tmp> --dump-config` 断言 6 行都在（X-11）。
 
 ---
 
@@ -169,7 +169,7 @@ COREPACK_HOME=$PWD/.corepack pnpm install     # store 也留在工作区内
 | X-08 | 安装/卸载 E2E：临时 `DSH_HOME` + `dsh plugin add` + 起进程 + 面板可用 + 卸载后 stateDir 仍在 | 5 | M1 结束前 |
 | X-09 | 入口首页三区（待我处理 / 正在跑 / 历史）+ 侧边栏角标（若宿主支持） | 5 | M3 前 |
 | X-10 | 宿主兼容矩阵：CI 跑两个 alpha 版本，断言必需服务齐备 | 3 | 每个里程碑 |
-| X-11 | `dump-config` 断言：patch 5 行齐全（防「装了没生效」） | 2 | 随 X-07 |
+| X-11 | `dump-config` 断言：patch 6 行齐全（防「装了没生效」） | 2 | 随 X-07 |
 
 合计 +18 人日，M1 前需要先做 X-07、X-11（5 人日），因为它们决定后续所有代码落在哪个包里。
 

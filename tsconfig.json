@@ -31,6 +31,9 @@
       "@superagent/dsh/feishu-watch": [
         "./packages/dsh/src/sources/feishu.ts"
       ],
+      "@superagent/dsh/feishu-doc-watch": [
+        "./packages/dsh/src/sources/feishu-doc.ts"
+      ],
       "@superagent/dsh/*": [
         "./packages/dsh/src/*"
       ]

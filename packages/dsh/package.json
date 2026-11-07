@@ -19,6 +19,10 @@
       "types": "./lib/feishu-watch.d.ts",
       "default": "./lib/feishu-watch.js"
     },
+    "./feishu-doc-watch": {
+      "types": "./lib/feishu-doc-watch.d.ts",
+      "default": "./lib/feishu-doc-watch.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

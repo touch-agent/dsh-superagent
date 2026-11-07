@@ -520,23 +520,24 @@ worker 的 6 个（`packages/dsh/src/app/tools/executor.ts`）：`orchestrator_r
 
 ---
 
-## 9. 接入面：一个 npm 包、四个入口、没有 API
+## 9. 接入面：一个 npm 包、五个入口、没有 API
 
 ### 9.1 bundle 如何被装载
 
-`package.json:30-46` 的 `dsh` 段声明三件事：`bundle.patch`、`client.platform`、`client.inject`（6 个 UI 包）。构建产出 4 个入口（`tsdown.config.ts:10-13`）：`lib/index.js`、`lib/github-watch.js`、`lib/feishu-watch.js`、`lib/client.js`。
+`package.json:30-46` 的 `dsh` 段声明三件事：`bundle.patch`、`client.platform`、`client.inject`（6 个 UI 包）。构建产出 5 个入口（`tsdown.config.ts`）：`lib/index.js`、`lib/github-watch.js`、`lib/feishu-watch.js`、`lib/feishu-doc-watch.js`、`lib/client.js`。
 
-`cordis.patch.yml` 是一个 `- insert:` 列表，插 **5 行**（文档说 3 个插件，实际是 3 插件 + 2 preset）：
+`cordis.patch.yml` 是一个 `- insert:` 列表，插 **6 行**（4 个插件 + 2 preset）：
 
 | 行 | name | 作用 |
 | --- | --- | --- |
 | `dsh-superagent` | `dsh-superagent` | 主插件（Runtime） |
 | `dsh-superagent-github` | `dsh-superagent/github-watch` | GitHub 采集 |
 | `dsh-superagent-feishu` | `dsh-superagent/feishu-watch`（默认 `disabled: true`） | 飞书采集 |
+| `dsh-superagent-feishu-doc` | `dsh-superagent/feishu-doc-watch`（默认 `disabled: true`） | 飞书文档评论采集 |
 | `dsh-superagent-worker-preset` | `@deepseek-ai/dsh-agent-preset`（id `dsh-superagent-worker`） | 执行器的宿主 tool 集（裁剪版 standard） |
 | `dsh-superagent-router-preset` | 同上（id `dsh-superagent-router`） | 主 Session 的极窄 tool 集（连 write/edit 都关） |
 
-5 行都**不带 config**：`stateDir` 由 profile 层补（`examples/profile.cordis.patch.yml:7-9`），缺了插件拒绝启动（`cordis.patch.yml:1-3`）。这是「bundle 只声明、profile 才配置」的分工。
+6 行都**不带 config**：`stateDir` 由 profile 层补（`examples/profile.cordis.patch.yml:7-9`），缺了插件拒绝启动（`cordis.patch.yml:1-3`）。这是「bundle 只声明、profile 才配置」的分工。
 
 **没有自有 API**：入口契约就是 Cordis 标准四件套 `name/inject/Config/apply`（`packages/dsh/src/index.ts:7-24`）；服务靠 `class Runtime extends Service` + `super(ctx,'orchestrator')` 提供（`runtime.ts:88`）；唯一主动注册的宿主能力是 HTTP 前缀 `ctx.webServer.register({kind:'prefix', path:'/orchestrator', handler})`（`packages/dsh/src/app/http.ts:232`）——**不新开端口**。
 
@@ -676,7 +677,7 @@ Source 拿到的 context 是 `Pick` 过的（`packages/dsh/src/app/source-contex
 | **client 控件是手抄副本** | `controls.tsx` 镜像 DSH ui-primitives 的 markup/键盘行为，升级不自动跟随 | `packages/dsh/src/client/controls.tsx` 头注释 |
 | **面板全量轮询** | 5s 一次 `GET state`，`document.hidden` 时间隔 ×6 | `packages/dsh/src/client/provider.tsx:89`、`packages/dsh/src/client/api.ts:67-98` |
 
-另有两处「文档说 A、代码是 B」，读文档时要注意：`docs/007:400` 说 patch 插 3 个插件（实际 5 行，含 2 个 preset）；`docs/007:107` 列 12 个域事件，`packages/dsh/src/core/ports.ts:86-101` 实际 13 个（漏了 `trigger.followup`）。
+另有两处「文档说 A、代码是 B」，读文档时要注意：`docs/007` 说 patch 插 4 个插件（实际 6 行，含 2 个 preset）；`docs/007:107` 列 12 个域事件，`packages/dsh/src/core/ports.ts:86-101` 实际 13 个（漏了 `trigger.followup`）。
 
 ---
 
