@@ -139,6 +139,8 @@ export function threadFacts(store: Store, thread: Thread) {
 }
 export type ThreadFactsView = ReturnType<typeof threadFacts>
 export const ticketLine = (view: Snapshot, ticket: Ticket) => ({ ...ticketSummary(ticket),
+  // Where the accepted request came from, for a list that needs to tell a conversation task from a Source one.
+  ...(() => { const source = view.store.triggers.get(ticket.origin.triggerId)?.source; return source ? { origin: source } : {} })(),
   threads: view.threadsOf(ticket.id).map(thread => threadFacts(view.store, thread)) })
 export function threadTitle(store: Pick<Store, 'read'>, thread: Thread): string {
   const label = attribute(thread.meta.label)

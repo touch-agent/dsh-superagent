@@ -37,6 +37,7 @@ function SourceCard({ source }: { source: SourceView }) {
         <div className="dt-row-main">
           <div className="dt-row-title">
             <span className="dt-card-title">{localized(t, source.title)}</span>{description && <InfoTip text={description} />}
+            {source.builtin && <Tag tone="quiet">{t('sourceBuiltIn')}</Tag>}
             {!source.installed && <Tag tone="warning">{t('sourceNotInstalled')}</Tag>}
           </div>
         </div>
@@ -47,6 +48,7 @@ function SourceCard({ source }: { source: SourceView }) {
         <p className="dt-error" role="status"><SetupMessage problem={problem} lead /></p><CheckSetupButton />
       </div>}
       {!source.installed && <Hint>{t('sourceNotInstalledHint')}</Hint>}
+      {source.builtin && <Hint>{t('sourceBuiltInHint')}</Hint>}
       {source.installed && source.fields.filter(spec => !spec.advanced).map(field)}
       {source.installed && advanced.length > 0 && <DisclosureRow icon={<Icon name="settings" />} title={t('advanced')} open={advancedOpen}
         onToggle={() => setAdvancedOpen(!advancedOpen)}>

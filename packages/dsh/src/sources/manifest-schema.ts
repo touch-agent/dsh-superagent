@@ -26,7 +26,8 @@ export const SourceManifestSchema = z.object({
   description: LocalizedSchema,
   auth: z.object({ kind: z.enum(['cli', 'app', 'none']), fields: z.array(z.string()).default([]) }).strict(),
   fields: z.array(FieldSchema),
-  health: z.array(z.string().regex(IdPattern)).min(1),
+  // A Source may have no health probe when the runtime itself is its only dependency.
+  health: z.array(z.string().regex(IdPattern)),
   limits: z.object({ pollSeconds: z.number().int().positive().optional() }).strict().optional(),
   extra: z.record(z.string(), z.unknown()).optional(),
 }).strict().superRefine((manifest, ctx) => {

@@ -13,7 +13,8 @@ export const conversationManifest: SourceManifest = {
   description: { zh: '在主会话里直接交代的任务。', en: 'Work dispatched directly in the main conversation.' },
   auth: { kind: 'none', fields: [] },
   fields: [],
-  health: ['conversation'],
+  // No probe: the main Session itself is the Source's only dependency, and it reports its own state.
+  health: [],
 }
 
 const ConfigSchema = z.object({}).strict()

@@ -40,6 +40,10 @@ describe('a Source manifest', () => {
     expect(SourceManifestSchema.safeParse({ ...manifest(), auth: { kind: 'none', fields: [] }, fields: [] }).success).toBe(true)
   })
 
+  it('accepts a Source that makes no health claim', () => {
+    expect(parseSourceManifest({ ...manifest(), health: [] })).toMatchObject({ health: [] })
+  })
+
   it('refuses a scope: admission belongs to the policy part, not the manifest', () => {
     expect(SourceManifestSchema.safeParse({ ...manifest(), scope: { rows: [], explicit: text('Any') } }).success).toBe(false)
   })

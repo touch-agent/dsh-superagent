@@ -8,7 +8,8 @@ import { SourceRegistry } from '@superagent/dsh/sources/registry.ts'
 import { feishuKind } from '@superagent/dsh/sources/feishu.ts'
 import { githubKind } from '@superagent/dsh/sources/github.ts'
 import { snapshot, threadSummary, ticketSummary, triggerView } from '@superagent/dsh/app/views/records.ts'
-import { basisFacts, ticketDetail } from '@superagent/dsh/app/views/tickets.ts'
+import { basisFacts, ticketDetail, ticketList } from '@superagent/dsh/app/views/tickets.ts'
+import { settingsView } from '@superagent/dsh/app/views/settings.ts'
 import { threadDetail } from '@superagent/dsh/app/views/threads.ts'
 import { droppedReplies, sourcesStatus } from '@superagent/dsh/app/views/sources.ts'
 import { overview } from '@superagent/dsh/app/views/overview.ts'
@@ -19,6 +20,7 @@ import { feishuLink } from '@superagent/dsh/sources/feishu-channel.ts'
 import { feishuChannel, feishuTriggerId } from '@superagent/dsh/sources/feishu-trigger.ts'
 import { githubLink } from '@superagent/dsh/sources/github-channel.ts'
 import { githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
+import { conversationDefinition, conversationTrigger } from '@superagent/dsh/sources/conversation.ts'
 import { followupOwners, type ChannelRef } from '@superagent/kernel'
 
 let directory: string
@@ -79,6 +81,18 @@ it('names each sender as the Policy lists it, by its id where the id is readable
       { source: 'feishu', id: 'ou_bot', name: feishuKind.policy!.unnamed!.bot }, { source: 'feishu', id: '' }])
   expect(view.rule('copy')).toEqual({ id: 'copy', name: 'Copy fixes' })
   expect(view.rule('gone')).toEqual({ id: 'gone', name: 'gone' })
+})
+
+it('marks the built-in conversation Source and a Ticket dispatched from it', () => {
+  const host = views()
+  host.sources.registerDefinition(conversationDefinition)
+  const request = conversationTrigger({ messageId: 'm1', text: 'Fix the flaky test', at, sessionId: 'orchestrator-1' })
+  store.triggers.save(request)
+  store.tickets.save({ id: 't1', title: 'Fix', decisionId: 'd', channels: [], undelivered: [], createdAt: at, updatedAt: at,
+    mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'local', source: 'conversation' }, actor: { source: 'conversation',
+      id: 'local-user' }, scope: 'Fix it' }, origin: { triggerId: request.id, triggerIds: [request.id] }, assignments: [], inputs: [] })
+  expect(ticketList(host, 'open', 0, 10).items[0]?.origin).toBe('conversation')
+  expect(settingsView(store, host.sources, {}, {}, directory).sources.find(source => source.id === 'conversation')?.builtin).toBe(true)
 })
 
 it('classifies a Thread by what it is doing, and offers a filtered Trigger of a person to Eval again', () => {
