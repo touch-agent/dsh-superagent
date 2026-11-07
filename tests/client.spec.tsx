@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ApiError, caller, usePoll } from '@superagent/dsh/client/api.ts'
 import { apply } from '@superagent/dsh/client/index.tsx'
 import { zh } from '@superagent/dsh/client/locales.ts'
+import { PANEL_NAVIGATE } from '@superagent/dsh/client/panel.ts'
 import { SettingsSchema } from '@superagent/dsh/policy.ts'
 
 declare global { var IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -56,7 +57,7 @@ const serve = () => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     setup: { machine: { stateDir: '/srv/state', worktreeRoot: '/srv/state/worktrees', blockedCommands: [], promptMaxChars: 100000, admissionContextMaxPages: 10, admissionContextTimeoutMs: 15000 }, problem: null, feishuProblem: null, accounts: null } })
   return Response.json({ error: 'unavailable' }, { status: 503 })
 }))
-afterEach(() => { vi.unstubAllGlobals(); localStorage.clear() })
+afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); sessionStorage.clear() })
 
 it('registers a localized main panel, sidebar entry and Plugin Manager row page, and no settings section', () => {
   const { entries, dictionaries, main, nav } = fixture([])
@@ -177,18 +178,48 @@ it('marks the main Session row and leaves every other row unmarked', async () =>
   expect(other.container.querySelector('.dt-master-badge')).toBeNull()
   other.dispose()
 })
-it('renders the read-only System view only for the main Session', async () => {
+it('reuses the management page only for the main Session', async () => {
   serve()
   const { entries } = fixture([])
   const system = entries.find(entry => entry.options.name === 'conversation.view')!
+  expect(system.options.label?.()).toBe(zh.systemTab)
   const master = await render(system, { sessionId: 'master', t })
-  expect(master.container.textContent).toContain(zh.systemTitle)
-  expect(master.container.textContent).toContain(zh.systemHealth)
+  expect(master.container.textContent).toContain(zh.title)
+  expect(master.container.textContent).toContain(zh['tab.overview'])
   master.dispose()
   const other = await render(system, { sessionId: 'other', t })
   expect(other.container.textContent).toContain(zh.systemOnlyMaster)
-  expect(other.container.textContent).not.toContain(zh.systemHealth)
+  expect(other.container.textContent).not.toContain(zh.title)
   other.dispose()
+})
+it('mounts the embedded Status page with unique ids and keeps panel navigation out of it', async () => {
+  serve()
+  const { main, entries } = fixture(['master'])
+  const system = entries.find(entry => entry.options.name === 'conversation.view')!
+  const Main = main.component
+  const Status = system.component
+  const container = document.createElement('div'); document.body.append(container)
+  const root = createRoot(container)
+  await act(async () => { root.render(<><Main t={t} /><Status sessionId="master" t={t} /></>) })
+  for (let i = 0; i < 5; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+  const ids = [...container.querySelectorAll('[id]')].map(node => node.id)
+  expect(new Set(ids).size).toBe(ids.length)
+  expect(container.querySelector('#dt-page')).not.toBeNull()
+  expect(container.querySelector('#dt-page-status')).not.toBeNull()
+  await act(async () => { window.dispatchEvent(new CustomEvent(PANEL_NAVIGATE, { detail: { page: 'settings', query: { group: 'source' } } })) })
+  for (let i = 0; i < 5; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+  expect(container.querySelector('#dt-page')?.getAttribute('aria-labelledby')).toBe('dt-tab-settings')
+  expect(container.querySelector('#dt-page-status')?.getAttribute('aria-labelledby')).toBe('dt-page-status-tab-overview')
+  act(() => { root.unmount() }); container.remove()
+})
+it('shows the identity error instead of loading forever when GET state fails', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'down' }, { status: 503 })))
+  const { entries } = fixture([])
+  const system = entries.find(entry => entry.options.name === 'conversation.view')!
+  const master = await render(system, { sessionId: 'master', t })
+  expect(master.container.textContent).toContain('down')
+  expect(master.container.textContent).not.toContain(zh.loading)
+  master.dispose()
 })
 it('shows the unread notice count in the Events tab title and clears it when the tab opens', async () => {
   serve()

@@ -43,22 +43,22 @@ Only the latest message from the person is dispatched. A message that arrived fr
 
 ### Main-Session surfaces
 
-The main Session is the process's single router Session. Four surfaces make it the entry to the system without turning the Conversation into a second management panel:
+The main Session is the process's single router Session. Four surfaces make it the entry to the system; the Status tab reuses the management page itself so the two cannot drift apart:
 
 - **New Session → Main Session.** The right side of the New Session composer offers **Main Session** (主会话), which selects the existing `masterId` through the Workspace. It never starts another router Session; using it twice returns to the same Conversation. If the Session catalog is not ready, the control disables itself and reports why. The management panel keeps its own **Open main Session** header button as a fallback.
 - **The main Session row** carries a compact **Main** (主) badge in its leading decoration. DSH `0.2.1-rc.5` has no trailing decoration on Session rows, so the badge is leading rather than trailing.
-- **System** (体系) is a tab inside the main Conversation. It is read-only and shows runtime health, open Tickets and the latest graded events, each linking into the matching management page. Opening a link selects the management panel at that route. Any other Session shows one sentence explaining that the System view belongs to the main Session.
+- **Status** (状态) is a tab inside the main Conversation. It mounts the existing management page itself — the same header, search, tabs (Overview, Sources, Triggers, Eval, Execution, Settings) and actions as the sidebar panel — rather than a reduced second view. The embedded copy keeps its own page route, so navigating inside 状态 does not move the sidebar panel, and vice versa. Any other Session shows one sentence explaining that the Status page belongs to the main Session.
 - **Events** (事件) is a right-pane tab. Its title shows the number of unread `notice`-level events; opening the tab marks the current head seen and persists the cursor in this browser. The tab opens automatically once, when the first unread notice reaches the main Session; later opening and closing stay manual. Rows link to their Ticket or Thread. The tab uses the same-origin SSE stream and falls back to five-second cursor polling when the stream is unavailable; a notice whose result was already relayed by a report stays in the feed without counting as unread.
 
-These surfaces depend on host seats introduced by `0.2.1-rc.5` (`conversation.hero.options`, `conversation.view`, `sidebar.session.row.leading`, `sidebar.right.pane.tab` and its title, and `conversation.session.header.utilities`). Registration runs through `slots.inject`, so a host that does not declare a seat omits that surface and keeps the management panel; nothing throws and no second data path is created.
+These surfaces depend on host seats introduced by `0.2.1-rc.5` (`conversation.hero.options`, `conversation.view`, `sidebar.session.row.leading`, `sidebar.right.pane.tab` and its title, and `conversation.session.header.utilities`). Registration runs through `slots.inject`, so a host that does not declare a seat omits that surface and keeps the management panel; nothing throws and no separate business logic or API model is created.
 
 | Surface | Before | After |
 | --- | --- | --- |
 | Main-Session entry in New Session | ![Before](images/session-entry/before-master-entry.png) | ![After](images/session-entry/after-master-entry.png) |
-| System view in the main Conversation | ![Before](images/session-entry/before-system-view.png) | ![After](images/session-entry/after-system-view.png) |
+| Status page (reused management page) in the main Conversation | ![Before](images/session-entry/before-status-view.png) | ![After](images/session-entry/after-status-view.png) |
 | Events tab with unread title | ![Before](images/session-entry/before-events-tab.png) | ![After](images/session-entry/after-events-tab.png) |
 
-Captured on DSH `0.2.1-rc.5`, same 1440×900 viewport and light theme; the Before column is the host Conversation without this plugin's surface, the After column is this plugin installed, and the Events capture adds one unread notice.
+Captured on DSH `0.2.1-rc.5`, same 1440×900 viewport and light theme. For the entry and Events rows, Before is the host without this plugin's surface and After is this branch. For Status, Before is revision `c18d8a6`, where 体系 was a reduced read-only view, and After is this branch's 状态 page, which mounts the existing management page. The Events capture adds one unread notice.
 
 ### Health figures
 

@@ -23,6 +23,8 @@ import { When } from './widgets.tsx'
 export interface AppProps {
   t: T; openSession: (sessionId: string) => Promise<void>
   deploymentForm: DeploymentForm
+  /** A second mount inside the Conversation: local route, unique DOM ids, no panel-navigation listener. */
+  embedded?: boolean
 }
 
 function Glossary({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -139,11 +141,13 @@ function Header({ masterId }: { masterId: string | undefined }) {
   </header>
 }
 
-function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab: Tab) => void; deploymentForm: DeploymentForm }) {
+function Pages({ route, openTab, deploymentForm, pageId, tabPrefix }: { route: Route; openTab: (tab: Tab) => void
+  deploymentForm: DeploymentForm; pageId: string; tabPrefix: string }) {
   const { t } = usePanel()
   const { state, error, reload } = usePanelData()
   // Keep the active tab scrolled into view on narrow screens when routes change via links.
-  useEffect(() => { document.getElementById(`dt-tab-${route.page}`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }) }, [route.page])
+  useEffect(() => { document.getElementById(`${tabPrefix}-${route.page}`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }) },
+    [route.page, tabPrefix])
   const waiting = error ? <p className="dt-error" role="alert">{error.message}</p> : <p className="dt-hint">{t('loading')}</p>
   const page = (() => {
     switch (route.page) {
@@ -164,16 +168,17 @@ function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab
       <Header masterId={state?.masterId} />
       {error && state && <p className="dt-error" role="status">{error.message}</p>}
       <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={route.page} onChange={openTab}
-        items={TABS.map(value => ({ value, label: t(`tab.${value}`), id: `dt-tab-${value}`, panelId: 'dt-page' }))} />
-      <main id="dt-page" role="tabpanel" aria-labelledby={`dt-tab-${route.page}`} className="dt-main">{page}</main>
+        items={TABS.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId }))} />
+      <main id={pageId} role="tabpanel" aria-labelledby={`${tabPrefix}-${route.page}`} className="dt-main">{page}</main>
     </div>
   </div>
 }
 
 /** Root panel component managing route history and shared panel state. */
-export function App({ t, openSession, deploymentForm }: AppProps) {
-  const [location, setLocation] = useState(initialLocation)
-  useEffect(() => { remember(location) }, [location])
+export function App({ t, openSession, deploymentForm, embedded = false }: AppProps) {
+  // The embedded Status page keeps its own route and does not overwrite the panel's remembered route.
+  const [location, setLocation] = useState<Location>(() => embedded ? { route: HOME, stack: [] } : initialLocation())
+  useEffect(() => { if (!embedded) remember(location) }, [location, embedded])
   // Preserve the last opened settings group across navigation so the Settings tab reopens at it.
   const move = useCallback((next: (current: Location) => Pick<Location, 'route' | 'stack'>) =>
     setLocation(current => ({ ...next(current), group: lastSettingsGroup(current) })), [])
@@ -185,14 +190,17 @@ export function App({ t, openSession, deploymentForm }: AppProps) {
     ? settingsRoute(lastSettingsGroup(current)) : { page: tab, id: undefined } })), [move])
   // A Conversation view or the Events tab asks for one management page; the panel may already be mounted or may mount later.
   useEffect(() => {
+    if (embedded) return
     const onNavigate = (event: Event) => {
       const route = parseRoute((event as CustomEvent<unknown>).detail)
       if (route) navigate(route)
     }
     window.addEventListener(PANEL_NAVIGATE, onNavigate)
     return () => window.removeEventListener(PANEL_NAVIGATE, onNavigate)
-  }, [navigate])
+  }, [navigate, embedded])
+  const pageId = embedded ? 'dt-page-status' : 'dt-page'
+  const tabPrefix = embedded ? 'dt-page-status-tab' : 'dt-tab'
   return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? HOME)}>
-    <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} />
+    <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} pageId={pageId} tabPrefix={tabPrefix} />
   </PanelProvider>
 }

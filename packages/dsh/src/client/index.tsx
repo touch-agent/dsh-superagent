@@ -1,6 +1,6 @@
 /**
  * Browser plugin entry point: the sidebar icon and management panel, the New Session main-Session entry, the in-Session
- * System view, the right Events tab with its unread title, and the Plugin Manager config view.
+ * Status view that reuses the management page, the right Events tab with its unread title, and the Plugin Manager config view.
  */
 import { useCallback, useEffect, useRef } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
@@ -41,10 +41,11 @@ function HammerIcon({ size }: SidebarPanelIconOwnerProps) {
   </svg>
 }
 
-/** Mounted panel wrapper; cancels any pending Session navigation when a new one starts or the panel unmounts. */
-function Mounted({ ctx, t, openSession }: { ctx: ClientContext; t: T; openSession: (id: string) => Promise<void> }) {
+/** Panel wrapper: reads the deployment form and renders the management page, in the panel or embedded in the Conversation. */
+function Mounted({ ctx, t, openSession, embedded }: { ctx: ClientContext; t: T; openSession: (id: string) => Promise<void>
+  embedded?: boolean }) {
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
-  return <App t={t} openSession={openSession} deploymentForm={form} />
+  return <App t={t} openSession={openSession} deploymentForm={form} embedded={embedded} />
 }
 
 export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
@@ -80,10 +81,10 @@ export function apply(ctx: ClientContext): void {
   // rc.5's row exposes a leading decoration; a trailing badge is not part of this host version.
   ctx.slots.inject('sidebar.session.row.leading', () => ctx.slots.register({ name: 'sidebar.session.row.leading', id: 'system-master', order: 10,
     locale: NS }, (props: { sessionId: string; t: T }) => <MasterBadge t={props.t} master={master} sessionId={props.sessionId} />))
-  // The in-Session System view; non-main Sessions render its explanation instead of the system.
+  // The in-Session Status view reuses the management page; non-main Sessions render its explanation instead.
   ctx.slots.inject('conversation.view', () => ctx.slots.register({ name: 'conversation.view', id: 'system', order: 20, locale: NS,
-    label: () => t('systemTab') }, (props: { sessionId: string; t: T }) => <SystemView t={props.t} call={call} sessionId={props.sessionId}
-    master={master} activity={activity} onOpen={openPanel} />))
+    label: () => t('systemTab') }, (props: { sessionId: string; t: T }) => <SystemView t={props.t} sessionId={props.sessionId}
+    master={master}><Mounted ctx={ctx} t={props.t} openSession={openSession} embedded /></SystemView>))
   // The right Events tab type: the host owns closing, expanding, floating and docking.
   try {
     ctx.effect(() => ctx.get('sidebarRightTabs')?.register({ id: EVENTS_ID, kind: EVENTS_KIND, title: () => t('eventsTab'),

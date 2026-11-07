@@ -14,7 +14,7 @@
 | 需求 | 宿主能力 | 结论 |
 | --- | --- | --- |
 | 新建时选「主会话 / 普通会话」 | `conversation.hero.options`（list，New Session 行右侧）+ `ctx.uiWorkspace.openSession/startSession` | **可做**：选项打开既有主会话，不新建；普通会话走宿主默认新建 |
-| 主会话 tab 内看整个体系 | `conversation.view`（list，会话内 tab）+ 现成管理 API/面板 | **可做**：只对主会话注册「体系」视图 |
+| 主会话 tab 内看整个体系 | `conversation.view`（list，会话内 tab）+ 现成管理 API/面板 | **可做**：只对主会话注册「状态」页，直接挂载现成管理页 |
 | 右侧实时事件与工单状态 | `sidebar.right.pane.tab` + `.title` + `ctx.sidebarRight.openTab/close/toggleExpanded` | **可做**：注册「事件」tab，宿主自带关闭/展开 |
 | 服务端推送 | `ctx.webServer.register`（`exact` 路由，handler 持有响应） | **可做**：SSE；首版用 5 秒轮询即可 |
 
@@ -55,7 +55,7 @@
 ### 2.2 会话内 tab
 
 - `conversation.view`：`kind: 'list'`，会话级；注册后宿主的 ViewTab 由 `{id,label}` 投影，正文由 slot entry 渲染。已有 `ui-chat`、`ui-trajectory` 两个第三方视图先例。
-- 视图组件能读到当前 `sessionId`；据此只对 `masterId` 渲染体系内容，其他会话显示一句说明或不显示。
+- 视图组件能读到当前 `sessionId`；据此只对 `masterId` 渲染状态内容，其他会话显示一句说明或不显示。
 
 **限制**：tab 属于「会话」，不是「主面板」；不能把现有主面板原样嵌进去，需要复用它的数据/组件而不是整个入口。
 
@@ -87,7 +87,7 @@
 | --- | --- |
 | `conversation.hero.options` 不可用 | 侧栏会话行「主」标记 + 主面板顶部「打开主会话」按钮 |
 | `conversation.view` 不可用 | 保留独立主面板；主会话页内只放一个跳转按钮 |
-| `sidebar.right.pane.tab` 不可用 | 在「体系」视图内用右侧分栏自绘事件列表（仍可关闭/展开） |
+| `sidebar.right.pane.tab` 不可用 | 在「状态」页内用右侧分栏自绘事件列表（仍可关闭/展开） |
 | SSE 不可用 | `GET activity?after=` 5 秒轮询；断线重连后按 `next` 补拉，`next < latest` 时继续拉 |
 | 主会话已存在于旧工作目录 | 不强行迁移；保留原 cwd，新建的主会话才用新根（DSH 会话持久化 cwd） |
 
@@ -112,19 +112,20 @@
 
 ### 3.2 主会话入口
 
-1. 启动时确保主会话存在（已有逻辑），并把它作为「体系入口」。
+1. 启动时确保主会话存在（已有逻辑），并把它作为「状态入口」。
 2. `conversation.hero.options` 注册一项「主会话」：点击 `ctx.uiWorkspace.openSession(masterId)`；若主会话尚未就绪，先显示禁用态。
 3. `sidebar.session.row.trailing` 在主会话行显示「主」标记，普通会话不显示。
 4. 主面板保留「打开主会话」按钮，作为宿主 slot 失效时的回退。
 5. 「普通会话」不新增入口，沿用宿主 New Session；插件不干预普通会话的 preset。
 
-### 3.3 主会话页内「体系」视图
+### 3.3 主会话页内「状态」页
 
-- `conversation.view` 注册 `{id:'system', label:{zh:'体系',en:'System'}}`。
-- 内容分三块：运行健康（Overview）、工单列表（复用 `GET tickets` 的紧凑行）、最近事件（`GET activity?level=feed`）。
-- 只读；写操作仍然回到既有主面板/设置页，避免两套交互。
-- 视图只在 `sessionId === masterId` 时渲染；其他会话显示「这是普通会话，体系视图只在主会话可用」。
-- 实现上抽一个 `SystemView` 组件，主面板与页内视图共用数据 hooks，不复制业务规则。
+- `conversation.view` 注册 `{id:'system', label:{zh:'状态',en:'Status'}}`。
+- 内容直接挂载现成管理页（`App`）：同一套 header、搜索、概览/来源/触发/评估/执行/设置和操作，不另做一份精简视图，也不复制业务规则。
+- 页内与管理页是同一实现；写操作与面板一致，不再有「页内只读」的第二套交互。
+- 页内与侧栏各自保留页面路由、各自轮询 state；导航不联动，避免两个实例争写同一份历史。
+- 只在 `sessionId === masterId` 时渲染；其他会话显示「这是普通会话，状态页只在主会话可用」。
+- `SystemView` 只负责主会话判断和外层高度，内容仍由管理页组件提供。
 
 ### 3.4 右侧「事件」栏
 
@@ -181,7 +182,7 @@ domain event ──► ActivityLog（全部入库）
 | S-02 | 单一通知预算：`endCoveredBy` 接入 `eventNotice`，更新报告相关测试 | 0.5 | **本 PR 完成** |
 | S-03 | 目录分级：`systemRoot`、默认 `<stateDir>/system/work`、启动创建、设置文案/文档 | 1 | **本 PR 完成** |
 | S-04 | 主会话入口：hero option + 会话行标记 + `openSession` + 回退按钮 | 2 | **本 PR 完成** |
-| S-05 | 页内「体系」视图：`conversation.view`、仅主会话、复用数据 hooks | 3 | **本 PR 完成** |
+| S-05 | 页内「状态」页：`conversation.view`、仅主会话、直接复用管理页 | 3 | **本 PR 完成** |
 | S-06 | 右侧「事件」栏：tab + 未读标题 + 轮询 + 自动打开一次 | 3 | **本 PR 完成** |
 | S-07 | SSE 推送：exact 路由、`Last-Event-ID` 补拉、心跳、同源校验 | 1.5 | **本 PR 完成** |
 | S-08 | 端到端与宿主版本矩阵：slot 存在性守卫、截图/演示、操作手册 | 2 | **本 PR 完成**（截图见 `docs/images/session-entry/`） |
@@ -196,7 +197,7 @@ domain event ──► ActivityLog（全部入库）
 | --- | --- | --- |
 | `conversation.hero.options` | 新建会话行右侧「主会话」按钮 | `slots.inject` 静默跳过；面板头部「打开主会话」回退按钮仍在 |
 | `sidebar.session.row.leading` | 会话行「主」标记 | 无标记；主会话仍可从入口打开 |
-| `conversation.view` | 主会话页内「体系」只读视图 | 管理面板 Overview 继续提供同一数据 |
+| `conversation.view` | 主会话页内「状态」页，直接复用管理页 | 管理面板仍提供同一页面 |
 | `sidebar.right.pane.tab` / `.title` | 右侧「事件」tab 与未读标题 | 无事件栏；页内视图仍显示最近事件 |
 | `conversation.session.header.utilities` | 无渲染的自动打开桥 | 不自动打开，仍可从右侧栏手动打开 |
 
@@ -213,7 +214,7 @@ SSE 是 `GET /orchestrator/api/activity/stream` 的 exact 路由：`Last-Event-I
 ## 5. 验收
 
 1. **入口**：从 New Session 选「主会话」打开的是既有 `masterId`；连续点两次不产生第二个 router 会话；普通会话仍可正常新建。
-2. **页内视图**：主会话有「体系」tab，能看到健康/工单/最近事件；普通会话没有该内容或显示说明。
+2. **页内视图**：主会话有「状态」tab，直接显示完整 Superagent 管理页（概览/来源/触发/评估/执行/设置）；普通会话没有该内容或显示说明。
 3. **右侧栏**：主会话右侧出现「事件」tab，可关闭、可展开；新 `notice` 事件使未读数 +1；打开后清零。
 4. **推送**：轮询模式下 5 秒内可见新事件；断线后按 `next` 补拉不漏（`next === latest` 才算追平）；SSE 模式同样。
 5. **目录**：新装默认主会话 cwd 为 `<stateDir>/system`，新工单目录为 `<stateDir>/system/work/<name>`；已有工单目录不变；显式根覆盖生效。
@@ -242,6 +243,6 @@ SSE 是 `GET /orchestrator/api/activity/stream` 的 exact 路由：`Last-Event-I
 - `packages/dsh/src/app/assembly.ts`：emit 时入库；`eventNotice` 用预算。
 - `packages/dsh/src/app/http.ts`、`api.ts`：`GET activity` 与 SSE `GET activity/stream`。
 - `packages/dsh/src/app/execution-environment.ts`、`runtime.ts`：`systemRoot`、主会话 cwd、默认工单根。
-- `packages/dsh/src/client/{index.tsx,system.tsx,activity-feed.ts,master.ts,panel.ts}`：主会话入口、体系视图、事件栏、SSE/轮询客户端。
+- `packages/dsh/src/client/{index.tsx,system.tsx,activity-feed.ts,master.ts,panel.ts}`：主会话入口、复用管理页的状态视图、事件栏、SSE/轮询客户端。
 - `tests/activity.spec.ts`、`tests/http.spec.ts`、`tests/activity-feed.spec.ts`、`tests/client.spec.tsx` 与报告/目录/迁移相关断言。
 - 本文与 `TASK-PLAN.zh.md` §10.2、`docs/003`、`docs/005`、`docs/006`、`docs/007`。

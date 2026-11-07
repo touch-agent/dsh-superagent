@@ -398,10 +398,10 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/sources/feishu-doc-read.ts` | The comment and reply reads of a document, and `feishuDocThreadContext`, which gives a comment card to assessments |
 | `packages/dsh/src/sources/feishu-doc-channel.ts` | The Feishu document comment Channel: one reply per outbound message, `sent` or `gone` |
 | `packages/dsh/src/sources/feishu-doc-loops.ts` | The Feishu document loop: polling each document's new comment replies, document titles, and subscribed comment cards |
-| `packages/dsh/src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel, the main-Session entry and row badge, the System view, the Events tab and the page in DeepSeek Harness's Plugin Manager |
-| `packages/dsh/src/client/master.ts` | The shared read-only main-Session identity that the entry, row badge, System view and Events tab follow, with one poller for all of them |
+| `packages/dsh/src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel, the main-Session entry and row badge, the Status view that reuses the management page, the Events tab and the page in DeepSeek Harness's Plugin Manager |
+| `packages/dsh/src/client/master.ts` | The shared read-only main-Session identity that the entry, row badge, Status page and Events tab follow, with one poller for all of them |
 | `packages/dsh/src/client/activity-feed.ts` | The same-origin activity reader: first page, SSE with a cursor-polling fallback, dedupe by sequence, unread notice count and the persisted last-seen cursor |
-| `packages/dsh/src/client/system.tsx` | The main-Session surfaces: the New Session entry, the row badge, the read-only System view, the Events tab and title, and the first-notice auto-open bridge |
+| `packages/dsh/src/client/system.tsx` | The main-Session surfaces: the New Session entry, the row badge, the Status gate around the reused management page, the Events tab and title, and the first-notice auto-open bridge |
 | `packages/dsh/src/client/panel.ts` | Selects the management panel at a route requested by a Conversation surface, remembering it for a panel that mounts later |
 | `packages/dsh/src/client/styles.ts` | Installs the plugin stylesheet in the document head so surfaces outside the management panel share its tokens and classes |
 | `packages/dsh/src/client/app.tsx` | The panel: header, search, glossary, tabs and the page of the current route |
