@@ -131,6 +131,7 @@ export function TicketPage({ id }: { id: string }) {
       {data.actions.retry && <ConfirmButton variant="outline" icon="refresh" label={t('retry')} title={t('retryTitle')}
         message={t('retryConfirm', { title: data.title })}
         onConfirm={() => after(call('POST tickets/:id/retry', { id }))} />}
+      {data.conversationSession && <SessionButton variant="outline" sessionId={data.conversationSession} label={t('openConversation')} />}
       {data.sessionId && <SessionButton variant="outline" sessionId={data.sessionId} />}
     </PageHead>
     {error && <LoadState error={error} loading={false} />}

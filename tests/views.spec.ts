@@ -94,6 +94,7 @@ it('marks the built-in conversation Source and a Ticket dispatched from it', () 
   expect(ticketList(host, 'open', 0, 10).items[0]?.origin).toBe('conversation')
   expect(ticketList(host, 'open', 0, 10, 'conversation').items.map(ticket => ticket.id)).toEqual(['t1'])
   expect(ticketList(host, 'open', 0, 10, 'github').items).toEqual([])
+  expect(ticketDetail(host, 't1')?.conversationSession).toBe('orchestrator-1')
   expect(settingsView(store, host.sources, {}, {}, directory).sources.find(source => source.id === 'conversation')?.builtin).toBe(true)
 })
 
