@@ -1,8 +1,8 @@
 /**
  * Migrates a schema 10 database to schema 11 in a single transaction so runtime readers never convert legacy shapes,
- * and stamps any older database with the current schema (13). Schema 12 added the additive `span` table and schema 13 the
- * additive `activity` table, both created by `Store` for every database it opens. Databases older than schema 10 are
- * rejected: this version cannot migrate them.
+ * and stamps any older database with the current schema (14). Schema 12 added the additive `span` table, schema 13 the
+ * additive `activity` table and schema 14 the additive `approval` table, all created by `Store` for every database it
+ * opens. Databases older than schema 10 are rejected: this version cannot migrate them.
  */
 import { basename } from 'node:path'
 import { z } from 'zod'
@@ -19,7 +19,7 @@ import type { SettingsVersion, Store } from './store.ts'
 import { Versions } from './versions.ts'
 import { KV, type Key } from '../kv.ts'
 
-export const SCHEMA_VERSION = 13
+export const SCHEMA_VERSION = 14
 /** The oldest database schema version this build can open and migrate directly. */
 export const OLDEST_SCHEMA = 10
 /** Returns an error message explaining why `version` cannot be opened: older schemas need a new state directory. */

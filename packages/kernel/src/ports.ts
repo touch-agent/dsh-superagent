@@ -1,4 +1,5 @@
 /** Ports the core depends on. Sources, policies, assessors, executors, and channels are project-specific. */
+import type { Approval } from './approval.ts'
 import type { Assignment, ChannelRef, Decision, DecisionKind, Mandate, MandateBasis, Strength, Thread, Ticket, TicketEndBy, TicketOutcome, Trigger }
   from './model.ts'
 import type { Reason } from './reasons.ts'
@@ -141,5 +142,13 @@ export interface Repositories {
     get(id: string): Decision | undefined
     save(decision: Decision): void
     byThread(key: string): Decision[]
+  }
+  approvals: {
+    get(id: string): Approval | undefined
+    save(approval: Approval): void
+    /** A Ticket's Approvals, oldest first. */
+    byTicket(ticketId: string): Approval[]
+    /** Approvals still waiting for a decision, oldest first. */
+    pending(): Approval[]
   }
 }

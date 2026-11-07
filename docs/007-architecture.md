@@ -153,14 +153,14 @@ Trigger and Thread `meta` belong to the Source. The core does not interpret them
 
 Its interfaces are grouped by purpose:
 
-- **Domain repositories:** `atomic`, plus `triggers`, `threads`, `tickets` and `decisions`, each with `get`, `save` and list queries. Indexed working sets are `threads.active()`, `tickets.open()`, `tickets.active()` and `read.subscribedThreads`.
+- **Domain repositories:** `atomic`, plus `triggers`, `threads`, `tickets`, `decisions` and `approvals`, each with `get`, `save` and list queries. Indexed working sets are `threads.active()`, `tickets.open()`, `tickets.active()`, `approvals.pending()` and `read.subscribedThreads`.
 - **Read queries:** `read` serves views, tools and Source polls through methods such as `threadTriggers`, `triggerStats`, `search` and `droppedReplies`. These methods never write.
 - **Source metadata:** `threads.describe` and `threads.patchMeta` update Source-owned Thread metadata.
 - **Settings:** `settings`, `saveSettings`, `blockRevision` and `settingsHistory`. Settings and prompts use numbered `Versions` (`packages/dsh/src/app/versions.ts`).
 - **Outbox receipts:** `replyStatus` and `receipts`, written only by Outbox. Receipt operations are `get`, `waiting`, `behind`, `add`, `settle` and `withdraw`. `behind` checks whether an earlier message for the same Ticket and conversation is waiting with fewer than three failures. A withdrawn message settles with `channelGone` or `channelIgnored`. Read queries expose failed and dropped replies through `failingReplies`, `droppedReplies` and `droppedSince`.
 - **Typed key-value records:** `get`, `set`, `delete` and `keys`, using entries from `KV`.
 
-`afterCommit` runs an action only after the transaction commits, never after rollback. Runtime reads records in their stored shape; the migration converts older supported records at startup. Schema 12 added the `span` table and schema 13 the `activity` table without rewriting records: a database at schema 11 or 10 opens at 13 with its records untouched.
+`afterCommit` runs an action only after the transaction commits, never after rollback. Runtime reads records in their stored shape; the migration converts older supported records at startup. Schema 12 added the `span` table, schema 13 the `activity` table and schema 14 the `approval` table without rewriting records: a database at schema 11 or 10 opens at 14 with its records untouched.
 
 ### Effects
 
@@ -317,6 +317,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/kernel/src/replies.ts` | `Replies`: the Engine's Channel writes |
 | `packages/kernel/src/stage.ts` | `ticketStage` and `canRetry`: the Ticket stages of [003 Execution](003-execution.md) |
 | `packages/kernel/src/action.ts` | `Action` and the five `ActionLevel`s, the `ActionCost` a spend carries, `actionKey` and `createAction`, which derives the idempotency key and refuses a spend without a money or time cost |
+| `packages/kernel/src/approval.ts` | `Approval`, one person's consent to one Action and revision, with its five states, `createApproval`, and `approve`, `deny`, `revoke` and `expire`: no jump out of a final state, a repeated decision kept idempotent, and a decision at or after the expiry refused |
 | `packages/kernel/src/errors.ts` | `UserError` and `USER_ERRORS` |
 | `packages/kernel/src/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
 | `packages/kernel/src/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
@@ -334,7 +335,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/store-read.ts` | `storeReads`: the Store's read queries for the views, the tools and the Sources' polls, which never write |
 | `packages/dsh/src/app/trace.ts` | `SqliteTraceSink`: the Engine's `TraceSink`, keeping each stage in the Store's `span` table and reading a trace back for the panel |
 | `packages/dsh/src/app/metrics.ts` | The health figures: time from a Trigger to its first Decision, repeated sends, restart recovery and judgements per hour, read from the Store for the panel and `GET metrics` |
-| `packages/dsh/src/app/migration.ts` | The schema migrations: one record-rewriting step from schema 10 to schema 11; schema 12 added only the `span` table and schema 13 only the `activity` table |
+| `packages/dsh/src/app/migration.ts` | The schema migrations: one record-rewriting step from schema 10 to schema 11; schema 12 added only the `span` table, schema 13 only the `activity` table and schema 14 only the `approval` table |
 | `packages/dsh/src/app/effects.ts` | Effects |
 | `packages/dsh/src/app/versions.ts` | `Versions`: a record kept as numbered snapshots with a pointer to the current one, for the settings and the prompts |
 | `packages/dsh/src/app/cache.ts` | `TextCache`: texts kept in memory within a size, the least recently used dropped first |
@@ -438,6 +439,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/core-engine.spec.ts` | Domain rules on in-memory repositories: receiving, Eval, fan-out, resume and stop, interrupted Assignments, the pause, Policy changes, reports and outcomes, attaching, replies, failed deliveries and dismissed problems |
 | `tests/stage.spec.ts` | The Ticket stages, row by row |
 | `tests/action.spec.ts` | The five action levels and their distinct idempotency keys, the key moving with every part of an action's identity, and a spend requiring a money or time cost |
+| `tests/approval.spec.ts` | The Approval state machine: one record per Ticket and Action, each transition out of `requested`, no jump out of a final state, a decision at or after the expiry refused, a repeated decision idempotent, and the Store's per-Ticket and pending queues in SQLite as in memory |
 | `tests/policy.spec.ts` | Source scope, the gate, the admission table, Mandate revalidation, the Policy version, settings migrations and assessment outcomes |
 | `tests/dispatch.spec.ts` | Conversation dispatch: the latest person message becomes a task, a repeated dispatch is not accepted twice, a disabled Source and a non-person or non-text message are refused, and older requests are not revived |
 | `tests/conversation.spec.ts` | The conversation Source: a dispatched message names its task thread and channel, its trigger id is stable per message, replies resolve to the request, the adapter needs no configuration, delivery reaches the main Session, and the trusted gate admits and revalidates the local user |
@@ -472,7 +474,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/settings.spec.ts` | Settings saves that race a model or account check, a Policy sync that a save outran, and the refusals of the pause, a sync and a block |
 | `tests/views.spec.ts` | What the management views derive from the Store, such as the Thread a dropped message belongs to |
 | `tests/timeline.spec.ts` | A Thread's pages and a Trigger's neighbours by time and then id, with every received Trigger's time in one form |
-| `tests/migration.spec.ts` | The schema 10→11 record rewrite, the refusal of older schemas, and opening a schema-12 database at 13 |
+| `tests/migration.spec.ts` | The schema 10→11 record rewrite, the refusal of older schemas, and opening a database written before an additive table at the current schema |
 | `tests/trace-stages.spec.ts` | The stages the Engine records for one Trigger, in order: the whole journey of an accepted Trigger from intake to its first report, the stages a duplicate, an unheard Thread and a refused gate stop at, one row per happening, and that a Trigger still works when no sink is configured |
 | `tests/trace-view.spec.ts` | The panel's trace view: an unknown Trigger answers with an empty trace, the stages come back in order with their facts, and a refusal stops at the gate |
 | `tests/trace.spec.ts` | Trace and stage ids derived from their inputs, and the Store's `span` table: stages read back in recorded order, a repeated stage kept once, and a schema-11 database opened at the current schema with its Triggers and no spans |
@@ -507,6 +509,7 @@ One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.
 | `thread` | Threads: Subscriptions, the Tickets that follow it for context, queued Triggers, the Eval in progress, the count of its expiries and `meta`; the generated columns `active`, set while Triggers are queued or an Eval runs, and `subscribed`, its Source while a Ticket subscribes to it | Engine; Sources write `meta` |
 | `ticket` | Tickets with their Mandate, origin, execution, Assignments, Channels, Inputs and the Threads they follow; the generated columns `open`, set while it has not ended, and `active`, set while Inputs are undelivered or the latest Assignment is pending or running | Engine |
 | `decision` | Decisions, by Thread | Engine |
+| `approval` | Approvals, by Ticket: the Action and revision they approve, their state, request and expiry times, the person who decided, and why it was denied or revoked; the generated columns `ticket`, the Ticket they belong to, and `pending`, set while they wait for a decision | The part that records the approval |
 | `effect` | The effect queue: per kind and key, the payload, its order, failed attempts with the last error, and when it is due | Effects; the schema 11 migration queues what earlier versions kept for the main Session |
 | `span` | Each stage a Trigger passed, by its trace's id, with the kind of stage, its `at` and the bounded facts recorded for it; a stage recorded twice keeps its first row, because its id is derived from the trace, the stage and an optional ref that tells repeated happenings apart | The Engine, through `SqliteTraceSink` |
 | `activity` | Every domain event as one JSON row, by a monotonic `seq` that is the system view's cursor: its `quiet`, `feed` or `notice` level, a one-line summary, its Ticket and Thread, and why a notice-worthy event was suppressed. The newest 5,000 rows are kept | The Engine's emit hook, through `ActivityLog` |
@@ -531,9 +534,9 @@ Dismissal is stored on its Decision. Input text is rendered from the Ticket when
 
 Read caches use bounded in-memory `TextCache` instances and are lost on restart. A Session paging through an original Source record or prompt preview must reread offset 0 after a restart. Feishu links resolved after intake are cached the same way; link-based search finds them only after that link has been read during the current process lifetime.
 
-Nothing deletes old records yet, so these grow without bound: the `trigger`, `disposition` and `decision` rows; ended Tickets and their Threads; the outbox's receipts; and in `kv`, every saved settings revision and prompt version, the prompt revisions each Session worked under, and the Sources' records per Thread and per Issue or pull request. The `activity` table is the exception: it keeps a bounded window of the newest 5,000 events.
+Nothing deletes old records yet, so these grow without bound: the `trigger`, `disposition`, `decision` and `approval` rows; ended Tickets and their Threads; the outbox's receipts; and in `kv`, every saved settings revision and prompt version, the prompt revisions each Session worked under, and the Sources' records per Thread and per Issue or pull request. The `activity` table is the exception: it keeps a bounded window of the newest 5,000 events.
 
-`SCHEMA_VERSION` only increases. A database of a newer version refuses to start; `packages/dsh/src/app/migration.ts` upgrades a database of the pre-release schema 10 once, at start, and refuses an older one. Schema 13 is current.
+`SCHEMA_VERSION` only increases. A database of a newer version refuses to start; `packages/dsh/src/app/migration.ts` upgrades a database of the pre-release schema 10 once, at start, and refuses an older one. Schema 14 is current.
 
 ## Model-facing interfaces
 

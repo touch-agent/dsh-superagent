@@ -229,6 +229,7 @@ graph LR
 - **交付**：`approval` 表 + 迁移；状态 `requested → approved / denied / expired / revoked`；与 Ticket 一对多。
 - **验收**：`tests/approval.spec.ts`：状态不可跳变；过期后 approve 被拒；同一 action 重复 approve 幂等。
 - **依赖**：T2-01。
+- **状态**：实现完成（2026-11-07，PR #7 待合并）。`packages/kernel/src/approval.ts` 导出 `Approval`、五态与 `createApproval` / `approve` / `deny` / `expire` / `revoke`；id 由 Ticket 与 Action 幂等键派生，同一 action 只有一条审批，重复批准幂等；`approval` 表随 schema 14 增量迁移，Store 与 MemoryRepositories 提供按 Ticket 和待批准查询；`tests/approval.spec.ts` 覆盖状态跳变、过期后批准被拒、重复批准幂等与迁移。
 
 ### T2-03 `maxActionLevel` 进 Authority 与 revalidate · Kernel · 2 人日
 
