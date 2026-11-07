@@ -368,7 +368,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/infra/paths.ts` | The package's root, where packaged files are |
 | `packages/dsh/src/infra/text.ts` | Word counts and the chat message limit, `fill` and `sameName` |
 | `packages/dsh/src/infra/health.ts` | The `HealthBoard`, every part's health entry, each claimed by its one writer |
-| `packages/dsh/src/sources/kind.ts` | The `SourceKind` protocol: the runtime behavior a kind adds to the kernel manifest, and the re-export of `FieldSpec` and `Localized` |
+| `packages/dsh/src/sources/kind.ts` | The `SourceAdapter` (behavior), `SourceDefinition` (manifest plus adapter) and the flat `SourceKind` protocol: the runtime behavior a kind adds to the kernel manifest, and the re-export of `FieldSpec` and `Localized` |
 | `packages/dsh/src/sources/registry.ts` | `SourceRegistry`: registers a manifest with its adapter (validating the manifest first) or, while kinds migrate, a flat `SourceKind`; presents either as the flat view the panel reads, keeps one instance per id, claims health entries and implements the Engine's `SourceScope` |
 | `packages/kernel/src/manifest.ts` | The declarative Source manifest: `Localized`, `FieldSpec`, `SourceAuth`, `SourceAdmission`, `SourceLimits` and `SourceManifest`; behavior stays in the runtime adapter |
 | `packages/dsh/src/sources/manifest-schema.ts` | Zod validation of a manifest and of a list of manifests: fields, auth fields, admission rows, health claims, limits and id uniqueness, each violation at its path |

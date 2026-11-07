@@ -1,7 +1,7 @@
 /** The manifest form model: the panel's fields, sign-in fields, admission hints, health names and polling defaults come from the manifest, and match the hand-written Source kind. */
 import { describe, expect, it } from 'vitest'
 import type { SourceManifest } from '@superagent/kernel'
-import { githubKind } from '@superagent/dsh/sources/github.ts'
+import { githubKind, githubManifest } from '@superagent/dsh/sources/github.ts'
 import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
 
 const text = (value: string) => ({ zh: value, en: value })
@@ -51,11 +51,10 @@ describe('a manifest form', () => {
     expect(manifestForm(withoutLimits).limits).toBeUndefined()
   })
   it('matches the hand-written GitHub kind it will replace', () => {
-    const form = manifestForm({ ...manifest(), fields: githubKind.fields,
-      auth: { kind: 'cli', fields: ['cli'] }, scope: { rows: manifest().scope.rows, explicit: githubKind.policy!.explicit },
-      health: githubKind.health })
+    const form = manifestForm(githubManifest)
+    expect(form.id).toBe(githubKind.kind)
     expect(form.fields).toEqual(githubKind.fields)
-    expect(form.auth.fields).toEqual([githubKind.fields.find(field => field.key === 'cli')])
+    expect(form.auth).toEqual({ kind: 'cli', fields: [githubKind.fields.find(field => field.key === 'cli')] })
     expect(form.admission.explicit).toEqual(githubKind.policy!.explicit)
     expect(form.health).toEqual(githubKind.health)
   })

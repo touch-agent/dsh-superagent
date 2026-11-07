@@ -60,24 +60,27 @@ export const feishuManifest: SourceManifest = {
   health: ['feishu', 'history'],
 }
 
+/** What the Source's own host context needs: the manifest id and health names, not the flat kind view. */
+const self = { kind: feishuManifest.id, health: feishuManifest.health }
+const feishuScope: NonNullable<SourceAdapter<FeishuConfig>['scope']> = ({ meta }, config) => {
+  if (meta.direct === true) return config.directMessages ? { listened: true, observed: false, row: 'direct' } : { listened: false, reason: 'direct_messages_not_allowed' }
+  const chat = config.chats.find(item => item.chatId === meta.chatId)
+  if (chat) return { listened: true, observed: chat.listen === 'all', row: chat.chatId }
+  return config.otherChats === 'mentions' ? { listened: true, observed: false, row: 'other' } : { listened: false, reason: 'chat_not_allowed' }
+}
 export const feishuAdapter: SourceAdapter<FeishuConfig> = {
   schema: FeishuConfigSchema,
-  refreshLabels: (host, signal) => refreshChatNames(sourceContext(host, feishuKind), signal),
-  scope({ meta }, config) {
-    if (meta.direct === true) return config.directMessages ? { listened: true, observed: false, row: 'direct' } : { listened: false, reason: 'direct_messages_not_allowed' }
-    const chat = config.chats.find(item => item.chatId === meta.chatId)
-    if (chat) return { listened: true, observed: chat.listen === 'all', row: chat.chatId }
-    return config.otherChats === 'mentions' ? { listened: true, observed: false, row: 'other' } : { listened: false, reason: 'chat_not_allowed' }
-  },
+  refreshLabels: (host, signal) => refreshChatNames(sourceContext(host, self), signal),
+  scope: feishuScope,
   // A reply goes only to a chat the Source still receives.
   channel: {
     allowed: (address, config) =>
-      feishuKind.scope!({ meta: { chatId: address.chatId ?? '', direct: address.direct === 'true' } }, config).listened,
+      feishuScope({ meta: { chatId: address.chatId ?? '', direct: address.direct === 'true' } }, config).listened,
     send: sendFeishu, link: feishuLink,
   },
   threadContext: feishuThreadContext,
   find: query => ({ threads: [], terms: [...new Set(query.match(/om_[A-Za-z0-9_-]+/g) ?? [])] }),
-  // A message's Trigger is named after the message, so the one it answers is named after its parent.,
+  // A message's Trigger is named after the message, so the one it answers is named after its parent.
   repliesTo: trigger => typeof trigger.meta.parentId === 'string' ? feishuTriggerId(trigger.meta.parentId) : undefined,
   policy: {
     unnamed: { person: { zh: '飞书用户', en: 'Feishu user' }, bot: { zh: '飞书机器人', en: 'Feishu bot' } },
@@ -116,7 +119,7 @@ export const feishuAdapter: SourceAdapter<FeishuConfig> = {
       label: { zh: '立即同步', en: 'Sync now' },
       ready: part => !!part.syncChat,
       async run(host, part, signal) {
-        const commands = sourceContext(host, feishuKind).commands.withSignal(signal)
+        const commands = sourceContext(host, self).commands.withSignal(signal)
         const chat = String(part.syncChat)
         const members = ['im', '+chat-members-list', '--chat-id', chat, '--member-types', 'user', '--page-all', '--page-limit', '0']
         const result = MembersSchema.parse(await commands.lark(members))
@@ -150,7 +153,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.orchestrator.sources.registerDefinition(feishuDefinition), 'feishu: source kind')
   ctx.effect(() => {
     const controller = new AbortController()
-    const running = runFeishu(sourceContext(ctx.orchestrator, feishuKind), controller.signal)
+    const running = runFeishu(sourceContext(ctx.orchestrator, self), controller.signal)
     return async () => { controller.abort(); await running }
   })
 }

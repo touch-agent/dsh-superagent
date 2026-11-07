@@ -55,6 +55,14 @@ describe('a Source manifest', () => {
     const result = SourceManifestSchema.safeParse({ ...manifest(), auth: { kind: 'cli', fields: ['gh'] } })
     expect(issues(result).map(issue => issue.path)).toContainEqual(['auth', 'fields', 0])
   })
+  it('refuses a sign-in kind and its fields disagreeing', () => {
+    const bare = SourceManifestSchema.safeParse({ ...manifest(), auth: { kind: 'cli', fields: [] } })
+    expect(issues(bare).map(issue => issue.path)).toContainEqual(['auth', 'fields'])
+    const none = SourceManifestSchema.safeParse({ ...manifest(), auth: { kind: 'none', fields: ['cli'] } })
+    expect(issues(none).map(issue => issue.path)).toContainEqual(['auth', 'fields'])
+    const twice = SourceManifestSchema.safeParse({ ...manifest(), auth: { kind: 'cli', fields: ['cli', 'cli'] } })
+    expect(issues(twice).map(issue => issue.path)).toContainEqual(['auth', 'fields', 1])
+  })
   it('names the second of two fields with one key', () => {
     const fields = [...manifest().fields, { key: 'cli', type: 'text' as const, label: text('Again') }]
     const result = SourceManifestSchema.safeParse({ ...manifest(), fields })

@@ -38,7 +38,12 @@ export const SourceManifestSchema = z.object({
   })
   manifest.auth.fields.forEach((key, index) => {
     if (!keys.includes(key)) ctx.addIssue({ code: 'custom', message: `auth field "${key}" is not one of the manifest's fields`, path: ['auth', 'fields', index] })
+    if (manifest.auth.fields.indexOf(key) !== index) ctx.addIssue({ code: 'custom', message: `duplicate auth field "${key}"`, path: ['auth', 'fields', index] })
   })
+  if (manifest.auth.kind === 'none' && manifest.auth.fields.length) ctx.addIssue({ code: 'custom',
+    message: 'a manifest that needs no sign-in names no auth fields', path: ['auth', 'fields'] })
+  if (manifest.auth.kind !== 'none' && !manifest.auth.fields.length) ctx.addIssue({ code: 'custom',
+    message: `a ${manifest.auth.kind} sign-in must name the fields that carry it`, path: ['auth', 'fields'] })
   const rows = manifest.scope.rows.map(row => row.id)
   rows.forEach((id, index) => {
     if (rows.indexOf(id) !== index) ctx.addIssue({ code: 'custom', message: `duplicate scope row "${id}"`, path: ['scope', 'rows', index, 'id'] })

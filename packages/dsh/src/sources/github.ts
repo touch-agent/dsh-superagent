@@ -130,7 +130,7 @@ export const inject = ['orchestrator']
 export function apply(ctx: Context): void {
   ctx.effect(() => ctx.orchestrator.sources.registerDefinition(githubDefinition), 'github: source kind')
   ctx.effect(() => {
-    const source = sourceContext(ctx.orchestrator, githubKind)
+    const source = sourceContext(ctx.orchestrator, { kind: githubManifest.id, health: githubManifest.health })
     const controller = new AbortController()
     // Unhandled rejections terminate the DSH process, so a failure escaping the polling loop is reported as source health instead.
     const running = watch(source, controller.signal)
