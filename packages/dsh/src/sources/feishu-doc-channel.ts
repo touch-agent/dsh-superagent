@@ -34,6 +34,8 @@ export async function sendFeishuDoc(host: Pick<SourceContext, 'commands'>, messa
   try {
     const posted = await readReplies(host.commands, document, commentId)
     if (posted.replies.some(reply => docMarkerIds(docReplyText(reply)).includes(message.id))) return 'sent'
+    // The reply may be past the page cap; posting then could not be checked, so leave it retryable instead of guessing.
+    if (posted.truncated) throw new Error('The comment card has more replies than the pre-send read covers')
   } catch (error) {
     // A deleted comment can never take the reply. Any other read failure stays retryable, so a reply is never posted twice.
     if (gone(error)) return 'gone'

@@ -181,6 +181,36 @@ describe('polling document comments', () => {
     expect(h.store.get(KV.feishuDoc.since(DOC))).toBeDefined()
   })
 
+  it('continues a subscribed card whose reply list was truncated and initializes only after a full read', async () => {
+    const h = open = harness()
+    const now = new Date().toISOString()
+    h.store.tickets.save({ id: 't1', title: 'Margin', decisionId: 'd1', mandate: { strength: 'explicit', policyVersion: '',
+      basis: { via: 'listed' }, actor: { source: 'feishu-doc', id: MEMBER }, scope: '' }, channels: [], assignments: [], inputs: [],
+      undelivered: [], createdAt: now, updatedAt: now, origin: { triggerId: 'source-t1', triggerIds: [] } } as Ticket)
+    h.store.threads.save({ key: 'feishu-doc:c1', ref: { source: 'feishu-doc', id: 'c1' }, createdAt: now, lastAt: now, subscriptions: ['t1'],
+      correlated: [], pending: [], meta: { document: DOC, commentId: 'c1' } })
+    let resume: string | undefined
+    let fetches = 0
+    vi.spyOn(h.commands, 'lark').mockImplementation(async args => {
+      const at = args.indexOf('--page-token')
+      if (at >= 0) resume = args[at + 1]
+      fetches += 1
+      if (fetches <= 10) return { items: fetches === 1 ? [reply('r1', MEMBER, [text('root')], -3600), reply('r2', MEMBER, [text('detail')], 5)] : [],
+        has_more: true, page_token: `q${fetches + 1}` }
+      return { items: [reply('r3', MEMBER, [text('more')], 10)], has_more: false }
+    })
+    expect(await pollThreads(h.ctx)).toEqual([expect.stringContaining('continuing from the saved page')])
+    expect(resume).toBe('q10')
+    expect(h.receive.mock.calls.map(call => call[0].id)).toEqual([docTriggerId('r2')])
+    expect(h.store.get(KV.feishuDoc.initialized('feishu-doc:c1'))).toBeUndefined()
+    expect(h.store.get(KV.feishuDoc.page('thread:feishu-doc:c1'))).toBe('q11')
+    await pollThreads(h.ctx)
+    expect(resume).toBe('q11')
+    expect(h.receive.mock.calls.map(call => call[0].id)).toEqual(['r2', 'r3'].map(docTriggerId))
+    expect(h.store.get(KV.feishuDoc.page('thread:feishu-doc:c1'))).toBeUndefined()
+    expect(h.store.get(KV.feishuDoc.initialized('feishu-doc:c1'))).toBe(true)
+  })
+
   it('follows a subscribed comment card and does not re-ingest the replies that were already there', async () => {
     const h = open = harness()
     const now = new Date().toISOString()

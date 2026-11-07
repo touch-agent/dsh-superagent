@@ -65,9 +65,12 @@ export const feishuDocAdapter: SourceAdapter<FeishuDocConfig> = {
   threadContext: feishuDocThreadContext,
   repliesTo: docRepliesTo,
   policy: {
-    schema: z.object({ allowed: z.array(z.object({ id: z.string().regex(/^ou_[A-Za-z0-9]+$/) }).strict()).default([]) }).strict(),
+    schema: z.object({ allowed: z.array(z.object({ id: z.string().regex(/^ou_[A-Za-z0-9]+$/),
+      name: z.string().trim().max(100).optional() }).strict())
+      .refine(users => new Set(users.map(user => user.id)).size === users.length, 'Duplicate open_ids').default([]) }).strict(),
     fields: [{ key: 'allowed', type: 'rows', label: { zh: '能发起工作的飞书用户', en: 'Feishu users who may originate work' },
-      columns: [{ key: 'id', type: 'text', label: { zh: '用户 open_id', en: 'User open_id' }, pattern: 'ou_[A-Za-z0-9]+' }] }],
+      columns: [{ key: 'id', type: 'text', label: { zh: '用户 open_id', en: 'User open_id' }, pattern: 'ou_[A-Za-z0-9]+' },
+        { key: 'name', type: 'text', label: { zh: '显示名', en: 'Display name' }, optional: true }] }],
     explicit,
     rows(stored) {
       const config = FeishuDocConfigSchema.partial().parse(stored)

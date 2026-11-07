@@ -130,6 +130,7 @@ export const feishuDocThreadContext: ThreadContext<FeishuDocConfig> = {
       return { messages, body: { status: messages.length ? 'parent' : 'no_parent', document: ref.document, commentId: ref.commentId, messages } }
     }
     const page = await replyPage(commands, ref.document, ref.commentId, cursor, CONTEXT_PAGE_SIZE, tally)
+    if (page.has_more && !page.next) throw new Error('Feishu comment reply pagination did not advance')
     const messages = page.replies.map(reply => contextMessage(reply, reader))
     const next = page.next
     return { messages, ...next ? { next } : {}, status: messages.length ? undefined : 'empty',

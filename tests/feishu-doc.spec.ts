@@ -143,6 +143,12 @@ describe('replying on a comment card', () => {
     expect(again.calls).toHaveLength(1)
 
   })
+  it('does not post when the pre-send reply list is truncated, because the mark cannot be ruled out', async () => {
+    const truncated = Array.from({ length: 10 }, (_, index) => ({ items: [], has_more: true, page_token: `p${index + 2}` }))
+    const { commands, calls } = stub(truncated)
+    await expect(sendFeishuDoc({ commands }, message('reply-8'))).rejects.toThrow('pre-send read')
+    expect(calls.some(args => args[0] === 'api')).toBe(false)
+  })
   it('refuses a reply longer than the comment API accepts, before posting it', async () => {
     const long = { ...message('reply-long'), text: 'x'.repeat(10_001) }
     await expect(sendFeishuDoc({ commands: stub([]).commands }, long)).rejects.toThrow('10000')
