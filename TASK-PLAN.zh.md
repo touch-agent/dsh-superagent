@@ -4,6 +4,24 @@
 > 依据：`PLATFORM-EVOLUTION.zh.md`（下称「方案」）· 本文只做**任务分解**，不重复方案里的取舍论证
 > 日期：2026-11-07 · 状态：草案，待拍板 D1–D5 后冻结第一版
 
+
+---
+
+## 0.0 进度（2026-11-07 晚）
+
+M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上跑过。
+
+| 任务 | 状态 | 落地 | 验收证据 |
+| --- | --- | --- | --- |
+| T0-01 trace 端口 + `span` 表 + schema 12 | 完成 | `fcbae91` | 62 files / 1212 tests；schema-11 库升 12，13 版库被拒 |
+| T0-02 十段埋点 | 完成 | `7f11e0d`、`ab8f6c5` | 一条 trace 从 intake 到首次报告十段齐全，重复发生各自成行 |
+| T0-03 四指标 + `GET metrics` | 完成 | `1377989` | `tests/metrics.spec.ts`；空样本给 `null` 不给 0 |
+| T0-04 面板只读健康区 | 完成 | `1377989` | Overview 页「运行健康」四个数字 + 中断/恢复提示 |
+| T0-05 changesets + 体积门 + 两段 CI | 完成 | `894c1a5` | `pnpm changeset status` 两包各一 minor；`release` dry-run 18s |
+| T0-06 runbook + 演练 + trace 读取面 | 完成 | `492e668`、`a3809b1` | 三次查找 36–50 ms；`docs/runbooks/why-not-sent.md` |
+
+基线随之变化：65 个 spec / 1232 个测试（13.2s），领域子集 496 个 / 549 ms，`src` + `packages` 代码量见 `git show --stat`；CI 三个工作流（`check` / `changesets` / `release`）均已实跑通过。
+
 ---
 
 ## 0. 今天在哪里
@@ -19,9 +37,9 @@
 | 源 | 2 个 kind（GitHub、Feishu），Feishu 默认 `disabled: true` | `src/sources/kind.ts` |
 | 存储 | 单 SQLite，`SCHEMA_VERSION = 11`，`OLDEST_SCHEMA = 10` | `src/app/migration.ts:20-22` |
 
-**相对方案 §8 的完成度**：M0 的「kernel 抽包 + 契约测试 + 架构规则进 CI」已完成，「观测」未开始；阶段 1 的「迁出 + 一段 CI」已完成，「changesets + 两段 CI」未做。
+**相对方案 §8 的完成度**：M0 六项任务全部完成（见 §0.0）；M1 尚未开始。
 
-**仍然缺的能力**（= 后面所有任务的来源）：没有 trace 与指标、源只能手写、动作不分级、没有审批与撤销、没有交付物与预览、单租户单实例。
+**仍然缺的能力**（= 后面所有任务的来源）：源只能手写、动作不分级、没有审批与撤销、没有交付物与预览、单租户单实例。trace 与指标已补齐（§0.0）。
 
 ---
 
