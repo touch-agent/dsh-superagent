@@ -21,7 +21,7 @@ export interface ActivityRecord {
   ticket?: string
   thread?: string
   data: Record<string, unknown>
-  /** Why a `notice`-worthy event stayed in the feed: its Ticket's latest report or a person's own action already said it. */
+  /** Why a `notice`-worthy event stayed in the feed: its Ticket's latest Assignment reported the outcome, or a person ended it. */
   suppressed?: 'report' | 'human'
 }
 
@@ -103,7 +103,7 @@ export function activityFeed(read: Pick<Store['activity'], 'latest' | 'after' | 
   return { items, latest, next: items.at(-1)?.seq ?? after }
 }
 
-/** Persists graded events and answers the system view and the future realtime reader. */
+/** Persists graded events for the system view and the notification budget. */
 export class ActivityLog {
   constructor(private readonly store: Pick<Store, 'activity' | 'tickets'>) {}
 
