@@ -283,8 +283,9 @@ export class Store implements Repositories {
     /** The newest records, newest first. */
     recent: (limit = 50, level?: ActivityLevel): ActivityRecord[] =>
       this.activityValues(`1=1${minLevel(level)} ORDER BY seq DESC LIMIT ?`, [limit]),
-    /** The highest stored sequence, or 0 for an empty feed. */
-    latest: (): number => Number(this.db.prepare('SELECT IFNULL(MAX(seq), 0) AS seq FROM activity').get()!.seq),
+    /** The highest stored sequence at `level`, or 0 when none matches. */
+    latest: (level?: ActivityLevel): number =>
+      Number(this.db.prepare(`SELECT IFNULL(MAX(seq), 0) AS seq FROM activity WHERE 1=1${minLevel(level)}`).get()!.seq),
   }
   /** Reads activity rows, restoring each row's sequence beside the JSON the grader stored. */
   private activityValues(sql: string, parameters: SQLInputValue[]): ActivityRecord[] {

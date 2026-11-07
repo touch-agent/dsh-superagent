@@ -1,6 +1,5 @@
 /** Grades domain events for the system view and the single-notification budget. */
-import type { DomainEvent, Ticket } from '@superagent/kernel'
-import type { Store } from './store.ts'
+import { latestAssignment, type DomainEvent, type Ticket } from '@superagent/kernel'
 
 /**
  * How far one recorded event may reach:
@@ -20,7 +19,6 @@ export interface ActivityRecord {
   summary: string
   ticket?: string
   thread?: string
-  data: Record<string, unknown>
   /** Why a `notice`-worthy event stayed in the feed: its Ticket's latest Assignment reported the outcome, or a person ended it. */
   suppressed?: 'report' | 'human'
 }
@@ -28,10 +26,23 @@ export interface ActivityRecord {
 /** One page of the activity feed and the two cursors a reader needs. */
 export interface ActivityFeed {
   items: ActivityRecord[]
-  /** The highest stored sequence, for unread counts and for noticing a backlog. */
+  /** The highest sequence at the requested level, for unread counts and for noticing a backlog. */
   latest: number
   /** The next `after`: the head after a first load, else the last sequence this page returned. Poll again while it is below `latest`. */
   next: number
+}
+
+/** The activity persistence an `ActivityLog` needs; `Store` implements it. */
+interface ActivityStore {
+  activity: { record: (record: Omit<ActivityRecord, 'seq'>) => ActivityRecord }
+  tickets: { get: (id: string) => Ticket | undefined }
+}
+
+/** The read side `activityFeed` needs; `Store.activity` implements it. */
+interface ActivityRead {
+  latest: (level?: ActivityLevel) => number
+  after: (after: number, limit: number, level?: ActivityLevel) => ActivityRecord[]
+  recent: (limit: number, level?: ActivityLevel) => ActivityRecord[]
 }
 
 /**
@@ -41,9 +52,9 @@ export interface ActivityFeed {
  * produce a second notification.
  * @returns Why it was covered, or `undefined` when the end is news.
  */
-export function endCoveredBy(ticket: Pick<Ticket, 'assignments' | 'ended'>): 'report' | 'human' | undefined {
+export function endCoveredBy(ticket: Ticket): 'report' | 'human' | undefined {
   if (ticket.ended?.by === 'human') return 'human'
-  const report = ticket.assignments.at(-1)?.report
+  const report = latestAssignment(ticket)?.report
   return report && (report.state === 'ready' || report.state === 'dropped') ? 'report' : undefined
 }
 
@@ -56,7 +67,7 @@ export function endCoveredBy(ticket: Pick<Ticket, 'assignments' | 'ended'>): 're
  */
 export function gradeEvent(event: DomainEvent, ticket: Ticket | undefined): Omit<ActivityRecord, 'seq'> {
   const at = event.at
-  const base = { at, event: event.type, data: event.data as Record<string, unknown> }
+  const base = { at, event: event.type }
   switch (event.type) {
     case 'trigger.received':
       return { ...base, level: 'feed', summary: `Trigger ${event.data.triggerId} received` }
@@ -93,11 +104,12 @@ export function gradeEvent(event: DomainEvent, ticket: Ticket | undefined): Omit
 }
 
 /**
- * Reads one page of records. A first load (`after` 0) returns the newest page and starts the reader at the head; a later
- * load returns records after the cursor oldest first and advances to the last one, so a backlog is paged without gaps.
+ * Reads one page of records at `level`. A first load (`after` 0) returns the newest page and starts the reader at the
+ * matching head; a later load returns records after the cursor oldest first and advances to the last one, so a backlog is
+ * paged without gaps. `latest` is the matching head, never a quiet event hidden by the filter.
  */
-export function activityFeed(read: Pick<Store['activity'], 'latest' | 'after' | 'recent'>, after: number, limit = 50, level?: ActivityLevel): ActivityFeed {
-  const latest = read.latest()
+export function activityFeed(read: ActivityRead, after: number, limit = 50, level?: ActivityLevel): ActivityFeed {
+  const latest = read.latest(level)
   if (after <= 0) return { items: read.recent(limit, level), latest, next: latest }
   const items = read.after(after, limit, level)
   return { items, latest, next: items.at(-1)?.seq ?? after }
@@ -105,7 +117,7 @@ export function activityFeed(read: Pick<Store['activity'], 'latest' | 'after' | 
 
 /** Persists graded events for the system view and the notification budget. */
 export class ActivityLog {
-  constructor(private readonly store: Pick<Store, 'activity' | 'tickets'>) {}
+  constructor(private readonly store: ActivityStore) {}
 
   /** Grades `event` and records it in the current transaction, returning the stored record. */
   record(event: DomainEvent): ActivityRecord {

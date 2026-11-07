@@ -537,3 +537,18 @@ it('delivers the candidate of an Eval in progress at the upgrade again, so its d
   expect(effects).toEqual([['e9', { triggerId: 'issue-9' }]])
   store.close()
 })
+
+it('opens a schema-12 database at schema 13 and records activity there', () => {
+  const path = join(directory, 'db.sqlite')
+  new Store(path).close()
+  // A database written before the activity table existed: schema 12 and no `activity` table.
+  const legacy = new DatabaseSync(path)
+  legacy.exec('DROP TABLE activity')
+  legacy.prepare('UPDATE kv SET value=? WHERE key=?').run('12', KV.store.schema)
+  legacy.close()
+  const opened = new Store(path)
+  expect(opened.get(KV.store.schema)).toBe(SCHEMA_VERSION)
+  const record = opened.activity.record({ at: '2026-01-01T00:00:01Z', event: 'trigger.received', level: 'feed', summary: 'Trigger x received' })
+  expect(opened.activity.latest()).toBe(record.seq)
+  opened.close()
+})

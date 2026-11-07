@@ -45,8 +45,8 @@ export const subscriptionNotice = (thread: string, at?: string): Notice => [`sub
 /**
  * Converts an unsolicited domain event into a main-Session notice (`ticket.ended`, `trigger.requeued`, or
  * `thread.unsubscribed` by a person or executor); returns `undefined` for events that require no notice.
- * A Ticket's end is one notification per outcome: when its latest report already said the work was ready or dropped, or a
- * person ended it themselves, the feed records the end and the main Session is not told a second time.
+ * A Ticket's end is one notification per outcome: when its latest Assignment's report already said the work was ready or
+ * dropped, or a person ended it themselves, the feed records the end and the main Session is not told a second time.
  */
 export function eventNotice(event: DomainEvent, ticket: (id: string) => Ticket | undefined = () => undefined): Notice | undefined {
   const { at } = event

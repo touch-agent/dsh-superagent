@@ -91,8 +91,8 @@ it('persists graded events with a monotonic cursor, filters by minimum level, an
 it('pages a backlog through `next` without skipping records, and filters to notices only', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   for (let index = 0; index < 5; index++) store.activity.record({ at: '2026-01-01T00:00:01Z', event: 'trigger.received', level: 'feed',
-    summary: `Trigger ${index} received`, data: { triggerId: String(index), threads: [] } })
-  store.activity.record({ at: '2026-01-01T00:00:02Z', event: 'trigger.requeued', level: 'notice', summary: 'Trigger x queued', data: { triggerId: 'x' } })
+    summary: `Trigger ${index} received` })
+  store.activity.record({ at: '2026-01-01T00:00:02Z', event: 'trigger.requeued', level: 'notice', summary: 'Trigger x queued' })
   const first = activityFeed(store.activity, 1, 2)
   expect(first.items.map(item => item.seq)).toEqual([2, 3])
   expect(first.next).toBe(3)
@@ -104,10 +104,23 @@ it('pages a backlog through `next` without skipping records, and filters to noti
   store.close()
 })
 
+it('keeps the head at the requested level, so a quiet event is not a false backlog', () => {
+  const store = new Store(join(directory, 'orchestrator.sqlite'))
+  store.activity.record({ at: '2026-01-01T00:00:01Z', event: 'trigger.received', level: 'feed', summary: 'Trigger 1 received' })
+  store.activity.record({ at: '2026-01-01T00:00:02Z', event: 'eval.started', level: 'quiet', summary: 'Evaluation e started' })
+  expect(activityFeed(store.activity, 0, 50, 'feed')).toMatchObject({ latest: 1, next: 1 })
+  expect(activityFeed(store.activity, 1, 50, 'feed')).toMatchObject({ items: [], latest: 1, next: 1 })
+  expect(activityFeed(store.activity, 0, 50, 'notice')).toMatchObject({ latest: 0, next: 0 })
+  store.activity.record({ at: '2026-01-01T00:00:03Z', event: 'trigger.requeued', level: 'notice', summary: 'Trigger x queued' })
+  expect(activityFeed(store.activity, 0, 50, 'notice')).toMatchObject({ latest: 3, next: 3 })
+  expect(store.activity.latest()).toBe(3)
+  store.close()
+})
+
 it('rolls activity back with the transaction that emitted it', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   expect(() => store.atomic(() => { store.activity.record({ at: '2026-01-01T00:00:01Z', event: 'trigger.received', level: 'feed',
-    summary: 'Trigger x received', data: { triggerId: 'x', threads: [] } }); throw new Error('rollback') })).toThrow('rollback')
+    summary: 'Trigger x received' }); throw new Error('rollback') })).toThrow('rollback')
   expect(store.activity.latest()).toBe(0)
   store.close()
 })
@@ -115,7 +128,7 @@ it('rolls activity back with the transaction that emitted it', () => {
 it('keeps the newest 5,000 records so the feed cannot grow without limit', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   for (let index = 0; index < 5100; index++) store.activity.record({ at: '2026-01-01T00:00:01Z', event: 'trigger.received', level: 'feed',
-    summary: `Trigger ${index} received`, data: { triggerId: String(index), threads: [] } })
+    summary: `Trigger ${index} received` })
   expect(store.activity.latest()).toBe(5100)
   expect(store.activity.after(0, 10_000)).toHaveLength(5000)
   expect(store.activity.after(0, 1)).toEqual([expect.objectContaining({ seq: 101 })])

@@ -132,7 +132,7 @@
 - 标题插槽显示未读数（`notice` 级事件中未读的条数），打开后清零并持久化 `lastSeenSeq`。
 - 首次收到 `notice` 级事件时自动打开一次；之后由用户关闭/展开，宿主记住面板状态。
 - 列表按 `seq` 倒序，显示时间、级别、摘要、工单链接；点击条目打开对应工单（`openTicket` 或面板路由）。
-- 加载：首屏 `GET activity?level=feed&limit=50`；轮询 `?after=<next>&level=feed`，若返回的 `next < latest` 说明有积压，立即再拉一页；`latest` 只用于未读数。SSE 升级时同一协议。
+- 加载：首屏 `GET activity?level=feed&limit=50`；轮询 `?after=<next>&level=feed`，若返回的 `next < latest` 说明同一级别下还有积压，立即再拉一页；`latest` 是该 `level` 下最新一条的 `seq`（不是全局），未读数用 `level=notice` 的 `latest` 比较。SSE 升级时同一协议。
 
 ### 3.5 事件分级（本 PR 已实现）
 
@@ -145,7 +145,7 @@
 | `notice` | `trigger.requeued`、`thread.unsubscribed`；以及**未被报告覆盖**的 `ticket.ended` | 进事件栏并通知主会话 |
 
 存储：`activity(seq, value)`，`value` 是整条事件记录（级别、摘要、工单/线程、抑制原因）；`seq` 单调递增，作为增量游标；保留最近 5,000 条。
-读取：`GET /orchestrator/api/activity?after=&limit=&level=`，返回 `{items, latest, next}`；首屏按 `seq` 倒序并从队头开始，带 `after` 的增量按 `seq` 升序返回新增，`next` 是本页最后一条（空页则是原游标）。`level=feed` 表示 feed 及以上，不含 quiet。
+读取：`GET /orchestrator/api/activity?after=&limit=&level=`，返回 `{items, latest, next}`；`latest` 是本次 `level` 过滤后的最高 `seq`（quiet 事件不会造成假积压），首屏按 `seq` 倒序并从该队头开始，带 `after` 的增量按 `seq` 升序返回新增，`next` 是本页最后一条（空页则是原游标）。`level=feed` 表示 feed 及以上，不含 quiet。
 
 ### 3.6 单一通知预算（本 PR 已实现）
 
@@ -195,7 +195,7 @@ domain event ──► ActivityLog（全部入库）
 1. **入口**：从 New Session 选「主会话」打开的是既有 `masterId`；连续点两次不产生第二个 router 会话；普通会话仍可正常新建。
 2. **页内视图**：主会话有「体系」tab，能看到健康/工单/最近事件；普通会话没有该内容或显示说明。
 3. **右侧栏**：主会话右侧出现「事件」tab，可关闭、可展开；新 `notice` 事件使未读数 +1；打开后清零。
-4. **推送**：轮询模式下 5 秒内可见新事件；断线后按 `after` 补拉不漏；SSE 模式同样。
+4. **推送**：轮询模式下 5 秒内可见新事件；断线后按 `next` 补拉不漏（`next === latest` 才算追平）；SSE 模式同样。
 5. **目录**：新装默认主会话 cwd 为 `<stateDir>/system`，新工单目录为 `<stateDir>/system/work/<name>`；已有工单目录不变；显式根覆盖生效。
 6. **通知预算**：`ready` 报告后只收到一条结果通知（其后的 PR 合并/关闭不再重复）；`ticket_ended` 出现在事件栏；`blocked` 后外部关闭仍收到结束通知。
 7. **回归**：`pnpm typecheck`、全量 `vitest`、`pnpm build`、`pnpm size` 全绿；schema 12 库可打开并升到 13。
