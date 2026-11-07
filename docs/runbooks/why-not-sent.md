@@ -26,10 +26,14 @@ Every Trigger's row carries a **Why** button. That is the whole of step 2.
 | Queued | The Thread was put in line for an Eval |
 | Gate | The deterministic half of the Eval judged it: allowed sender, mention, admission cell |
 | Admitted to an Eval | The Thread entered an Eval; the gate's strength and route are in its facts |
+| Assessed | The candidate reached the main Session, which is now judging it |
+| Decided | The Eval recorded what the Trigger became: accept, stop, ignore or unavailable |
+| Attached | An accept opened a Ticket for it, or the message joined a Ticket that already ran |
+| Dispatched | The Executor started an Assignment, a worker's Session, for that Ticket |
+| Reported | That worker reported: progress, waiting, ready, blocked, failed or dropped |
 
-The trace stops at **Admission** for now: the stages after it (`Assessed`, `Decided`, `Attached`, `Dispatched`, `Reported`) are
-declared in `packages/kernel/src/trace.ts` but not recorded yet. A trace that got past the gate therefore reads as incomplete,
-and the panel says so rather than pretending the last stage was the end.
+A trace that stops before **Decided** is still in flight, and the panel says so rather than pretending the last stage was the
+end. A trace with no stages at all is a different answer: the Trigger never reached the Store.
 
 ## 3. Read the stop
 
@@ -40,7 +44,9 @@ and the panel says so rather than pretending the last stage was the end.
 | Stops at **Gate**, reason "Observe mode: would accept (…)" | The gate admitted the message but the accept mode is `observe`, so the Decision was an ignore | Settings › Eval: accept mode `auto` |
 | Stops at **Deduplicated** | The Store already had this exact Trigger; look at the Trigger that arrived first | The earlier Trigger on the same Thread |
 | Stops at **Queued**, with no Gate stage | Nothing has evaluated the Thread yet: processing is paused, the passes are not running, or the Thread is still in line | Overview: Pause processing; the Eval tab's queue |
-| Stops at **Admission**, incomplete | The gate let it through; the Eval is (or was) running, and the Decision is on the Eval page | Eval tab: the Thread's latest Eval and the timeouts |
+| Stops at **Admission** or **Assessed**, incomplete | The gate let it through and the main Session is judging it (or never got to); no Decision was recorded | Eval tab: the Thread's latest Eval and its timeout |
+| Stops at **Decided** | The Trigger was judged but became no work: read the Decision's kind and reason on the Eval page | Eval tab: the Decision, then its reason |
+| Stops at **Dispatched** | Work started but no worker reported yet: the Assignment is running or failed to launch | Execution tab: the Ticket and its Assignment |
 
 If the trace is empty, the Trigger never reached the Store: that is a Source problem, not an Eval problem. Check the Source's
 state on the Source tab; a polling Source that fails reports it there.

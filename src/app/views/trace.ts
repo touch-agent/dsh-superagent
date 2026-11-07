@@ -8,7 +8,7 @@ export interface TraceStageView { kind: SpanKind; at: string; facts?: Record<str
 export interface TraceStopView { stage: SpanKind; reason?: string }
 /** The trace a person reads to answer why a Trigger did or did not become work. */
 export interface TriggerTraceView { trigger: string; source: string; stages: TraceStageView[]; stop?: TraceStopView
-  /** True while the Engine records fewer stages than `SpanKind` names, so a reader does not mistake the last stage for the end. */
+  /** True while a Trigger's Eval has neither decided it nor started its work, so a reader does not mistake the last stage for the end. */
   partial?: true }
 
 /**
@@ -22,9 +22,9 @@ export function triggerTrace(host: Pick<ViewHost, 'store'>, triggerId: string): 
   const stages = spans.map(span => ({ kind: span.kind, at: span.at, ...span.data ? { facts: span.data } : {} }))
   const gate = spans.find(span => span.kind === 'gate')
   const refused = gate?.data?.admitted === false
-  // The Engine records ingest through admission today; later stages are declared but not yet written, so a trace that
-  // got past the gate is incomplete rather than finished.
-  const complete = spans.some(span => span.kind === 'report')
+  // A Decision settles what the Trigger became: everything before it is still in flight, everything after it follows
+  // from it. A trace that ends before its Decision is incomplete, not finished.
+  const complete = spans.some(span => span.kind === 'decide')
   return {
     trigger: triggerId,
     source: trigger?.source ?? '',

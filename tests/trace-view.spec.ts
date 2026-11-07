@@ -37,9 +37,19 @@ it('lists the stages in the order they ran, and stops where the trace stops', ()
   expect(view.source).toBe('github')
   expect(view.stages.map(item => item.kind)).toEqual(['ingest', 'enqueue', 'gate', 'admission'])
   expect(view.stages[2]?.facts).toEqual({ admitted: true, strength: 'explicit', via: 'addressed' })
-  // Later stages are declared but not written yet, so the view says so instead of calling the last stage the end.
+  // No Decision yet, so the view says so instead of calling the last stage the end.
   expect(view.stop).toBeUndefined()
   expect(view.partial).toBe(true)
+})
+
+it('is complete once a Decision settles the Trigger, even before its work starts', () => {
+  const store = new Store(path())
+  stage(store, 't3', 'ingest', 0)
+  stage(store, 't3', 'decide', 1, { kind: 'ignore' })
+  const view = triggerTrace({ store }, 't3')
+  expect(view.stages.map(item => item.kind)).toEqual(['ingest', 'decide'])
+  expect(view.stop).toBeUndefined()
+  expect(view.partial).toBeUndefined()
 })
 
 it('reports the gate\'s refusal as the reason the Trigger stopped', () => {

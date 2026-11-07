@@ -52,6 +52,10 @@ export class Evals extends EnginePart {
     thread.evaluating.delivered = now
     thread.evaluating.deadline = new Date(Date.parse(now) + policy.evalTimeoutMs).toISOString()
     this.repo.threads.save(thread)
+    for (const triggerId of thread.evaluating.triggerIds) {
+      const trigger = this.repo.triggers.get(triggerId)
+      if (trigger) this.stage(trigger, 'assess', { evalId })
+    }
   }
   /**
    * An Eval past its deadline queues its Triggers again for a fresh Eval, up to `REQUEUES` times in a row, so a busy
@@ -338,6 +342,10 @@ export class Evals extends EnginePart {
     for (const id of evaluation.triggerIds) {
       const disposition = this.repo.triggers.disposition(id) ?? { fanout: [], at }
       this.repo.triggers.saveDisposition(id, { ...disposition, evalId: evaluation.id, decisionId: decision.id })
+    }
+    for (const id of evaluation.triggerIds) {
+      const trigger = this.repo.triggers.get(id)
+      if (trigger) this.stage(trigger, 'decide', { evalId: evaluation.id, data: { kind: decision.kind } })
     }
     this.emit('decision.recorded', { decisionId: decision.id, kind: decision.kind, threadKey: thread.key })
     return decision

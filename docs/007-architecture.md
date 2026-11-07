@@ -313,7 +313,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/kernel/src/errors.ts` | `UserError` and `USER_ERRORS` |
 | `packages/kernel/src/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
 | `packages/kernel/src/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
-| `packages/kernel/src/trace.ts` | `Span` and `SpanKind`, the ten stages `SPAN_KINDS` names in the order they run (`ingest`, `dedupe`, `enqueue`, `gate`, `admission`, …), and `traceId`/`spanId`: what the Engine reports as a Trigger moves, and the ids that keep one Trigger's stages together |
+| `packages/kernel/src/trace.ts` | `Span` and `SpanKind`, the ten stages `SPAN_KINDS` names in the order they run (`ingest`, `dedupe`, `enqueue`, `gate`, `admission`, `assess`, `decide`, `attach`, `dispatch`, `report`), and `traceId`/`spanId`: what the Engine reports as a Trigger moves, and the ids that keep one Trigger's stages together |
 | `packages/kernel/src/memory.ts` | `MemoryRepositories`: the Store's repositories in memory, in the Store's order and with its nested rollback, for domain tests |
 | `packages/kernel/src/index.ts` | The core's exports |
 | `src/app/runtime.ts` | The Runtime, the composition root, with its start and stop |
@@ -357,7 +357,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `src/app/views/sources.ts` | The Source status: each Source instance's state, its last day's counts, and what it filtered and dropped in that day |
 | `src/app/views/settings.ts` | The settings page's view: each block with its revision, each Source's settings with its kind's form, and the execution environment |
 | `src/app/views/overview.ts` | The overview: Tickets that need a person, problems, the last day's flow and the Executor's load |
-| `src/app/views/trace.ts` | One Trigger's trace as a person reads it: the stages in the order they ran, and the gate's reason when it refused |
+| `src/app/views/trace.ts` | One Trigger's trace as a person reads it: the stages in the order they ran, where it stopped, and the gate's reason when it refused |
 | `src/executor/dsh.ts` | The DshExecutor, `WorkerSlots`, `ticketExecution`, `inputMessage` and `mandateInstructions` |
 | `src/executor/background.ts` | A worker's background work in DeepSeek Harness, the shell jobs its Session owns (`ctx.jobs`) and its subagents (`ctx.subagents`): `runningJobs`, `untilQuiet`, `killJobs`, `collectJobs`, `stopSubagents`, `stopBackground`, `until`, and `cancelled`, the workers whose turn a stop of their subagents cancelled |
 | `src/infra/commands.ts` | `Commands`, the CLI transport: `run`; `api` and `pages`, limited to the configured repository and validated; `lark` as the bot; `git`. `CliError` carries the code a command's output reports, such as a GitHub HTTP status, and a command that prints nothing fails with how it ended, never with its arguments; `validItems` skips and counts the malformed items of a list |
@@ -440,7 +440,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/views.spec.ts` | What the management views derive from the Store, such as the Thread a dropped message belongs to |
 | `tests/timeline.spec.ts` | A Thread's pages and a Trigger's neighbours by time and then id, with every received Trigger's time in one form |
 | `tests/migration.spec.ts` | The schema 11 migration: every stored record in its current shape, and the refusal of older schemas |
-| `tests/trace-stages.spec.ts` | The stages the Engine records for one Trigger, in order, and why it stops after deduplication or after a refusal; and that a Trigger still works when no sink is configured |
+| `tests/trace-stages.spec.ts` | The stages the Engine records for one Trigger, in order: the whole journey of an accepted Trigger from intake to its first report, the stages a duplicate, an unheard Thread and a refused gate stop at, one row per happening, and that a Trigger still works when no sink is configured |
 | `tests/trace-view.spec.ts` | The panel's trace view: an unknown Trigger answers with an empty trace, the stages come back in order with their facts, and a refusal stops at the gate |
 | `tests/trace.spec.ts` | Trace and stage ids derived from their inputs, and the Store's `span` table: stages read back in recorded order, a repeated stage kept once, and a schema-11 database opened at schema 12 with its Triggers and no spans |
 | `tests/metrics.spec.ts` | The health figures: an empty Store reports no samples rather than zeros, each Trigger is measured once to its first Decision, the 24-hour window applies, repeated sends are counted, restart recovery spans the interrupted Assignment and the next, and throughput is per hour |
@@ -473,7 +473,7 @@ One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.
 | `ticket` | Tickets with their Mandate, origin, execution, Assignments, Channels, Inputs and the Threads they follow; the generated columns `open`, set while it has not ended, and `active`, set while Inputs are undelivered or the latest Assignment is pending or running | Engine |
 | `decision` | Decisions, by Thread | Engine |
 | `effect` | The effect queue: per kind and key, the payload, its order, failed attempts with the last error, and when it is due | Effects; the schema 11 migration queues what earlier versions kept for the main Session |
-| `span` | Each stage a Trigger passed, by its trace's id, with the kind of stage, its `at` and the bounded facts recorded for it; a stage recorded twice keeps its first row, because its id is derived from the trace and the stage | The Engine, through `SqliteTraceSink` |
+| `span` | Each stage a Trigger passed, by its trace's id, with the kind of stage, its `at` and the bounded facts recorded for it; a stage recorded twice keeps its first row, because its id is derived from the trace, the stage and an optional ref that tells repeated happenings apart | The Engine, through `SqliteTraceSink` |
 | `outbox` | The receipt of each message for a Channel, by id, with the Ticket it is for and its `status`, `pending`, `sent` or `dropped`, kept so an id is never queued twice; for a dropped message, when and why, as the generated column `dropped`, its time, and a reason code. A message that waits has a `reply` effect, which holds its attempts | The Outbox |
 | `kv` | Every other record, by key | The part that names it |
 

@@ -10,7 +10,8 @@ function trigger(id: string, overrides: Partial<Trigger> = {}): Trigger {
     channel: { source: 'chat', thread: 't1', address: { message: id } }, meta: {}, ...overrides }
 }
 /** An Engine on in-memory repositories whose stages are collected by `spans`, with a gate and a scope a test can replace. */
-function harness({ gate, scope, spans }: { gate?: Policy['gate']; scope?: EngineOptions['scope']; spans: SpanType[] }) {
+function harness({ gate, scope, spans, now }: { gate?: Policy['gate']; scope?: EngineOptions['scope']; spans: SpanType[]
+  now?: () => string }) {
   const repo = new MemoryRepositories()
   const policy: Policy = {
     version: 'v1', paused: false, evalTimeoutMs: 60_000,
@@ -22,7 +23,7 @@ function harness({ gate, scope, spans }: { gate?: Policy['gate']; scope?: Engine
   const trace: TraceSink = { record: span => { spans.push(span) } }
   const engine = new Engine({ repo, policy: () => policy, scope: scope ?? { scope: () => ({ listened: true, observed: false }) },
     assessor: { request: () => {} }, executor, outbox: { send: () => {}, status: () => undefined, withdraw: () => {} }, trace,
-    now: () => at })
+    now: now ?? (() => at) })
   return { engine, repo }
 }
 /** The stages recorded so far, in the order they were recorded. */
@@ -39,8 +40,8 @@ describe('the stages of one Trigger', () => {
       stages: ['ingest', 'dedupe'] },
     { what: 'stops after deduplication when the Source does not listen to the Thread',
       scope: { scope: () => ({ listened: false, reason: 'chat not allowed' }) }, stages: ['ingest', 'dedupe'] },
-    { what: 'stops after the gate refuses the Trigger, so no Eval starts',
-      gate: () => ({ admissible: false, reason: 'no_mention' }), stages: ['ingest', 'dedupe', 'enqueue', 'gate'] },
+    { what: 'stops after the gate refuses the Trigger, which the Eval records as an ignore',
+      gate: () => ({ admissible: false, reason: 'no_mention' }), stages: ['ingest', 'dedupe', 'enqueue', 'gate', 'decide'] },
   ]
   for (const { what, gate, scope, run, stages } of cases) {
     it(what, () => {
@@ -79,6 +80,48 @@ describe('the stages of one Trigger', () => {
     engine.receive(trigger('1'))
     engine.evaluateDue()
     expect(spans.find(span => span.kind === 'gate')!.data).toEqual({ admitted: false, reason: 'not_a_member' })
+  })
+
+  it('follows an accepted Trigger from the gate to the first report, in one trace', () => {
+    const spans: SpanType[] = []
+    const { engine, repo } = harness({ spans })
+    engine.receive(trigger('1'))
+    engine.evaluateDue()
+    // The candidate reached the assessor's Session, which then accepted it.
+    const evaluating = engine.candidate('1')!.evalId
+    engine.candidateDelivered(evaluating)
+    const decision = engine.decide('1', { kind: 'accept', title: 'Fix the login bug', scope: 'the login page', reason: 'asked for it' })
+    const ticketId = decision.ticketId!
+    const assignmentId = repo.tickets.get(ticketId)!.assignments[0]!.id
+    engine.assignmentStarted(ticketId, assignmentId)
+    engine.report(ticketId, { state: 'ready', summary: 'Opened a pull request' })
+    expect(kinds(spans)).toEqual(['ingest', 'dedupe', 'enqueue', 'gate', 'admission', 'assess', 'decide', 'attach', 'dispatch', 'report'])
+    const byKind = (kind: SpanKind): Span => spans.find(span => span.kind === kind)!
+    expect(byKind('assess').evalId).toBe(evaluating)
+    expect(byKind('decide').data).toEqual({ kind: 'accept' })
+    expect(byKind('attach').data).toEqual({ ticketId, created: true })
+    expect(byKind('dispatch').data).toEqual({ ticketId, assignmentId })
+    expect(byKind('report').data).toEqual({ ticketId, state: 'ready' })
+    // Every stage of the journey stays in the Trigger's one trace, after the Decision included.
+    expect(new Set(spans.map(span => span.traceId))).toEqual(new Set([traceId('1')]))
+  })
+
+  it('keeps one row per happening for stages that happen more than once', () => {
+    const spans: SpanType[] = []
+    let tick = 0
+    const { engine, repo } = harness({ spans, now: () => new Date(Date.parse(at) + tick++ * 1000).toISOString() })
+    engine.receive(trigger('1'))
+    engine.evaluateDue()
+    const decision = engine.decide('1', { kind: 'accept', title: 'Fix the login bug', scope: 'the login page', reason: 'asked for it' })
+    const ticketId = decision.ticketId!
+    const first = repo.tickets.get(ticketId)!.assignments[0]!.id
+    engine.assignmentStarted(ticketId, first)
+    engine.report(ticketId, { state: 'waiting', summary: 'Waiting for review' })
+    engine.report(ticketId, { state: 'ready', summary: 'Review passed' })
+    // Two reports are two happenings, each with its own row, not one overwritten.
+    const reports = spans.filter(span => span.kind === 'report')
+    expect(reports.map(span => span.data?.state)).toEqual(['waiting', 'ready'])
+    expect(new Set(reports.map(span => span.id)).size).toBe(2)
   })
 
   it('records no trace at all when no sink is configured, so tracing stays optional', () => {

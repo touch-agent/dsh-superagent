@@ -4,10 +4,6 @@
  */
 import { key } from './ids.ts'
 
-/**
- * The ten stages of a Trigger, in the order the Engine records them: five while the Trigger is admitted and queued,
- * five while its Eval decides and its work starts.
- */
 /** The stages of a Trigger's trace, in the order the Engine runs them: a Source hands it in, it is deduplicated, queued, gated, admitted, assessed, decided, attached, dispatched and reported on. */
 export const SPAN_KINDS = ['ingest', 'dedupe', 'enqueue', 'gate', 'admission', 'assess', 'decide', 'attach', 'dispatch', 'report'] as const
 /** One stage of `SPAN_KINDS`: what happened to a Trigger, not what its message said. */
@@ -33,5 +29,10 @@ export interface Span {
 
 /** The trace of one Trigger: every stage of its journey lands under this id. */
 export const traceId = (triggerId: string): string => key('trace', triggerId)
-/** The id of one stage of a trace, equal for equal inputs so a repeated report does not add a row. */
-export const spanId = (traceIdValue: string, kind: SpanKind): string => key('span', traceIdValue, kind)
+/**
+ * The id of one stage of a trace, equal for equal inputs so a repeated report does not add a row. A stage that may happen
+ * more than once for one Trigger — a ticket dispatched to a second Assignment, a second report — passes a `ref` that tells
+ * those happenings apart; without one the stage keeps its first row.
+ */
+export const spanId = (traceIdValue: string, kind: SpanKind, ref?: string): string =>
+  ref === undefined ? key('span', traceIdValue, kind) : key('span', traceIdValue, kind, ref)

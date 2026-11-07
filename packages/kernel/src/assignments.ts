@@ -38,6 +38,7 @@ export class Assignments extends EnginePart {
     assignment.state = 'running'; assignment.startedAt ??= this.now()
     ticket.updatedAt = this.now()
     this.repo.tickets.save(ticket)
+    this.stageOf(ticket, 'dispatch', { ref: assignmentId, data: { assignmentId } })
     if (liveTicket(ticket) && ticket.undelivered.length) this.options.executor.deliver(ticket, assignment)
     this.emit('assignment.started', { ticketId, assignmentId })
   }
@@ -120,6 +121,7 @@ export class Assignments extends EnginePart {
     // A replaced or cleared attention question withdraws any pending unsent reply for the previous question from the outbox.
     if (previous && previous.id !== attention?.id) this.replies.withdrawAttention(previous.id)
     assignment.report = { state: report.state, summary: report.summary, at }
+    this.stageOf(ticket, 'report', { ref: `${at}:${report.state}`, data: { state: report.state } })
     ticket.updatedAt = at
     if (report.answers && !ticket.answers?.includes(report.answers)) ticket.answers = [...ticket.answers ?? [], report.answers]
     if (report.answers) this.takeUp(ticketId, report.answers)

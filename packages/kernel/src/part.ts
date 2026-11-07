@@ -69,15 +69,22 @@ export abstract class EnginePart {
     this.options.emit?.({ type, at: this.now(), data } as DomainEvent)
   }
   /**
-   * Record one stage of a Trigger's trace, when a sink is configured. A stage recorded twice keeps its first row, since its
-   * id is derived from the trace and the stage.
+   * Record one stage of a Trigger's trace, when a sink is configured. A stage recorded twice with the same `ref` keeps its
+   * first row, since its id is derived from the trace, the stage and that ref.
    */
-  protected stage(trigger: Trigger, kind: SpanKind, extra: { data?: Record<string, unknown>; evalId?: string } = {}): void {
+  protected stage(trigger: Trigger, kind: SpanKind, extra: { data?: Record<string, unknown>; evalId?: string; ref?: string } = {}): void {
     const sink = this.options.trace
     if (!sink) return
+    const { ref, ...rest } = extra
     const trace = traceId(trigger.id)
-    sink.record({ id: spanId(trace, kind), traceId: trace, kind, at: this.now(),
-      ...trigger.threads.length ? { threadKey: threadKey(trigger.threads[0]!) } : {}, ...extra })
+    sink.record({ id: spanId(trace, kind, ref), traceId: trace, kind, at: this.now(),
+      ...trigger.threads.length ? { threadKey: threadKey(trigger.threads[0]!) } : {}, ...rest })
+  }
+  /** Record a stage on the trace of the Trigger a ticket was opened from, with that ticket named. */
+  protected stageOf(ticket: Ticket, kind: SpanKind, extra: { data?: Record<string, unknown>; ref?: string } = {}): void {
+    const trigger = this.repo.triggers.get(ticket.origin.triggerId)
+    if (!trigger) return
+    this.stage(trigger, kind, { ...extra, data: { ticketId: ticket.id, ...extra.data } })
   }
   protected require(ticketId: string): Ticket { const ticket = this.repo.tickets.get(ticketId); if (!ticket) throw new UserError('unknownTicket'); return ticket }
   /** Returns the stored Thread or an unsaved empty Thread aggregate. */

@@ -51,7 +51,10 @@ export class Tickets extends EnginePart {
     this.repo.tickets.save(ticket)
     for (const triggerId of triggerIds) for (const ref of this.repo.triggers.get(triggerId)?.threads ?? []) this.subscribe(id, ref)
     if (outcome.acknowledgement && primary) this.replies.acknowledgeAccepted(id, primary, outcome.acknowledgement)
-    this.options.executor.start(this.require(id), assignment)
+    const created = this.require(id)
+    const from = primary ?? this.repo.triggers.get(created.origin.triggerId)
+    if (from) this.stage(from, 'attach', { ref: id, data: { ticketId: id, created: true } })
+    this.options.executor.start(created, assignment)
     this.emit('ticket.created', { ticketId: id, decisionId, strength: mandate.strength })
   }
   /**
@@ -141,6 +144,7 @@ export class Tickets extends EnginePart {
     }
     // The worker has the message already, so the note comes with it again.
     else if (note) this.addInput(ticket, input(key('input', ticketId, 'trigger', trigger.id, 'note', note)))
+    this.stage(trigger, 'attach', { ref: ticketId, data: { ticketId, created: false } })
   }
   /**
    * Ask a running worker whose latest report is `waiting` for a status report; leaves any other ticket alone.

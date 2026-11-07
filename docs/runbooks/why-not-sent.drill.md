@@ -10,7 +10,7 @@ id derivation the Engine uses (`sha256(JSON.stringify([...]))`, first 32 hex cha
 | --- | --- | --- |
 | `github:issue:901` | Received, Deduplicated, Gate (`admitted: false`, `reason: not_a_member`) | The sender is not on the repository's list |
 | `feishu:om_2` | Received, Deduplicated (`duplicate: true`) | The Store already had this Trigger |
-| `feishu:om_3` | Received, Deduplicated, Queued, Gate (`admitted: true`), Admitted to an Eval | The gate let it through; read the Eval, the trace is incomplete by design |
+| `feishu:om_3` | Received, Deduplicated, Queued, Gate (`admitted: true`), Admitted to an Eval | The gate let it through; no Decision yet, so the trace is still in flight |
 
 ## What was done, and how long it took
 
@@ -21,7 +21,7 @@ Steps 2 and 3 were run with the runbook's shell commands, timed with `perf_count
 | --- | --- | --- | --- |
 | `github:issue:901` | 3 stages | Stopped at the gate: "The sender is not on the Source's list" → Settings › Sources | 50 ms |
 | `feishu:om_2` | 2 stages | Stopped at deduplication: this message was already a Trigger | 39 ms |
-| `feishu:om_3` | 5 stages | Past the gate, trace incomplete → Eval tab for the Decision | 36 ms |
+| `feishu:om_3` | 5 stages | Past the gate, still in flight → Eval tab for the Decision | 36 ms |
 
 All three are far inside the 30-second acceptance bar; the lookup itself is a single indexed read (`span_trace`).
 
@@ -34,8 +34,11 @@ All three are far inside the 30-second acceptance bar; the lookup itself is a si
   a Trigger whose Source dropped its own message never became a Trigger and will never have a trace. The runbook sends that
   case to the Source tab instead of to the Eval.
 - **"Incomplete" had to be said out loud.** Before this drill the panel labelled the last recorded stage as the end of the
-  trace, so a Trigger that passed the gate looked like it stopped at Admission. `TriggerTraceView.partial` now marks it, and
-  the panel says "later stages are not recorded yet" instead.
+  trace, so a Trigger that passed the gate looked like it stopped at Admission. `TriggerTraceView.partial` now marks a trace
+  with no Decision yet, and the panel says the later stages have not run instead.
+- **The fixture was made before the last five stages existed.** It was rebuilt with the same rule the Engine now uses — the
+  trace is complete once a Decision settles the Trigger — so a stage list ending at Admitted to an Eval reads as "still in
+  flight" rather than "the Engine stopped writing here".
 
 ## The same two steps, automated
 
