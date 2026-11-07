@@ -10,6 +10,7 @@ import { environmentOf, type Variable } from './execution-environment.ts'
 import { DshExecutor } from '../executor/dsh.ts'
 import { ticketCard } from './cards.ts'
 import { SqliteTraceSink } from './trace.ts'
+import { ActivityLog } from './activity.ts'
 import { MasterAssessor } from './assessment.ts'
 import { KV } from '../kv.ts'
 import type { Store } from './store.ts'
@@ -72,6 +73,8 @@ interface Parts {
   engine: Engine
   /** Where the Engine records the stages of a Trigger's trace, and where the panel reads one back. */
   trace: SqliteTraceSink
+  /** Grades every domain event for the system view and the single-notification budget. */
+  activity: ActivityLog
   passes: Passes
   masterId: string
   sourceLinks: TextCache
@@ -132,8 +135,11 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const outbox = parts.outbox = new Outbox({ store, effects, sources, commands, paused: () => host.paused() })
   const policy = () => settingsPolicy(store.settings(), sources)
   const trace = parts.trace = new SqliteTraceSink(store)
+  const activity = parts.activity = new ActivityLog(store)
   const engine = parts.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, outbox, trace,
     prepareTicket: (ticket, outcome) => executor.prepare(ticket, outcome), emit: event => {
+      // Record every event once, in the same transaction, then decide whether it may disturb a person.
+      activity.record(event)
       // Notify the main Session only about domain events it did not initiate itself.
       const notice = host.quiet() ? undefined : eventNotice(event, id => store.tickets.get(id))
       if (notice) sessions.notify(...notice)

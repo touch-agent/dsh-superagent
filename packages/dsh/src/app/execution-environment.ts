@@ -15,7 +15,10 @@ export const EXECUTOR_VARIABLES: readonly (VariableSpec & { ticket?: true })[] =
 ]
 export interface Variable { key: string; value: string; description: Localized; owner: string }
 
-export const executionRoot = (settings: Settings, stateDir: string): string => settings.executor.directory || join(stateDir, 'work')
+/** The system root of one process: the main Session's working directory and the parent of the default worker root. */
+export const systemRoot = (stateDir: string): string => join(stateDir, 'system')
+/** Where worker Sessions' ticket directories live: an explicit root, or `<systemRoot>/work` for one process one system. */
+export const executionRoot = (settings: Settings, stateDir: string): string => settings.executor.directory || join(systemRoot(stateDir), 'work')
 
 /** Lists all declared variables grouped by owner; `enabled` is false for Sources that are currently switched off. */
 export function declaredVariables(sources: SourceRegistry, settings?: Settings): { owner: string; enabled: boolean; variables: readonly VariableSpec[] }[] {

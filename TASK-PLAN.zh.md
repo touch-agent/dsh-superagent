@@ -24,6 +24,8 @@ M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上�
 
 基线随之变化：65 个 spec / 1232 个测试（13.2s），领域子集 496 个 / 549 ms，`src` + `packages` 代码量见 `git show --stat`；CI 三个工作流（`check` / `changesets` / `release`）均已实跑通过。
 
+**M1.6 入口已动一部分**：S-01（事件分级 + `activity` 表，schema 13 + `GET activity`）、S-02（单一通知预算）、S-03（`<stateDir>/system` 主会话根与 `<stateDir>/system/work` 默认工单根）随同批 PR 落地；S-04…S-08 等宿主界面任务。设计与宿主核验见 [`SESSION-ENTRY.zh.md`](SESSION-ENTRY.zh.md)。
+
 ---
 
 ## 0. 今天在哪里
@@ -91,6 +93,7 @@ graph LR
 | --- | --- | --- | --- | --- | --- | --- |
 | M0 眼睛 | 能回答「为什么没发出去」 | T0-01…06 | 14 人日 | — | 任意工单 30 秒定位卡点；领域测试 < 2s | §6.8、§8 |
 | M1 骨架 | 新源只写 manifest + adapter | T1-01…12 | 39 人日 | M0 | 新源 ≤ 2 人日；零手写表单；`kind.ts` 退役 | §6、§7.4 |
+| M1.6 入口 | 主会话=体系入口，页内看体系、右侧看事件；目录分级 | S-01…08 | 14.5 人日 | M1.5 | 主会话单例；目录根 `<stateDir>/system`；一个结果一条通知 | §10.2、`SESSION-ENTRY.zh.md` |
 | M2 闸门 | 不可逆动作有审批与撤销窗口 | T2-01…10 | 25 人日 | M0（与 M1 并行） | 断电注入 100 次重复发送 0；可撤回源 100% | §6.2、§6.3 |
 | M3 交付 | review 真可审；小活不付 Session 冷启动 | T3-01…08 | 36 人日 | M1、M2 | 小活 p50 < 10s；review 页必有 preview | §6.4–6.6 |
 | M4 多租户 | 能卖团队版/私有化 | T4-01…06 | 22 人日 | M3 | 单租户故障不影响他人；删除演练可验证 | §6.7 |
@@ -423,6 +426,39 @@ graph LR
 
 - 先做 T1-13/T1-14（4 人日，1 条泳道），把“派活→Eval→Ticket→回执”打通；T1-15 紧随其后。
 - T1-17 已随 M1.5 完成；后续按 M2 核心闸门（T2-01…05）推进。
+- S-01…S-03 已先落地；S-04…S-06 可平行于 M2 推进，S-07/S-08 在界面稳定后收口。
+
+
+---
+
+## 10.2 M1.6 入口与会话体验（S-01…S-08）
+
+设计、宿主扩展点核验与回退见 [`SESSION-ENTRY.zh.md`](SESSION-ENTRY.zh.md)。目标是让主会话成为「一个进程一个体系」的入口，
+同时不把事件通知变成第二条打扰通道。
+
+| 任务 | 内容 | 人日 | 依赖 |
+| --- | --- | --- | --- |
+| S-01 | 事件分级：`activity` 表（schema 13）、`quiet/feed/notice` 三级、`GET activity` 游标接口、保留窗口 | 1.5 | 无 |
+| S-02 | 单一通知预算：`endCoveredBy` 接入 `eventNotice`；`ready`/`dropped`/人自己停止的结束降级为 feed | 0.5 | S-01 |
+| S-03 | 目录分级：`<stateDir>/system` 为主会话根、默认工单根 `<stateDir>/system/work`、启动创建与文案 | 1 | 无 |
+| S-04 | 主会话入口：`conversation.hero.options` 打开既有 `masterId`、会话行「主」标记、面板回退按钮 | 2 | S-03 |
+| S-05 | 页内「体系」视图：`conversation.view` 仅主会话渲染，复用 Overview/工单/事件数据 hooks，只读 | 3 | S-01 |
+| S-06 | 右侧「事件」栏：`sidebar.right.pane.tab` + 未读标题、首屏/增量轮询、首次 notice 自动打开一次 | 3 | S-01、S-05 |
+| S-07 | SSE：exact 路由 `GET activity/stream`、`Last-Event-ID` 补拉、心跳、同源校验 | 1.5 | S-06 |
+| S-08 | 端到端与版本矩阵：slot 守卫、目录/通知验收、截图与操作手册 | 2 | S-04…S-07 |
+
+**总：14.5 人日。S-01…S-03 与宿主界面解耦，已随本 PR 落地；S-04…S-08 待排期。**
+
+**验收（M1.6 出口）**：
+
+1. New Session 选「主会话」打开既有单例，不新建第二个 router 会话；普通会话不受影响。
+2. 主会话页内有「体系」tab（健康、工单、最近事件）；右侧「事件」tab 可关闭/展开，未读数随新事件变化。
+3. 新装默认主会话 cwd 为 `<stateDir>/system`，新工单目录为 `<stateDir>/system/work/<短名>`；已有工单目录不迁移。
+4. 一个 `ready` 结果只产生一条通知；结束事件仍在事件栏可见；`blocked` 后的外部结束仍有通知。
+5. 全量 typecheck / tests / build 绿；schema 12 库可升 13。
+
+**进度（2026-11-07）**：S-01、S-02、S-03 已实现（`activity` 表与 `GET activity`、`endCoveredBy` 预算、`systemRoot`/默认工单根），
+测试覆盖分级、游标、保留窗口、通知去重与目录断言；S-04…S-08 仅有设计与宿主核验，未动 UI。
 
 ---
 

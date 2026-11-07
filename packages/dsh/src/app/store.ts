@@ -9,6 +9,7 @@ import { SettingsSchema, type Settings, type SettingsOrigin, type SettingsSave }
 import { OLDEST_SCHEMA, SCHEMA_VERSION, migrateTo11, tooOld } from './migration.ts'
 import { Versions } from './versions.ts'
 import { storeReads } from './store-read.ts'
+import type { ActivityLevel, ActivityRecord } from './activity.ts'
 
 /** A Trigger's position on its thread timeline, ordered by timestamp and then `id` as tie-breaker. */
 export interface TimelinePlace { at: string; id: string }
@@ -42,9 +43,13 @@ const SETS: Record<string, Record<string, string>> = {
   outbox: { dropped: "TEXT AS (value ->> '$.dropped.at')", pending: `TEXT AS (CASE WHEN value ->> '$.status' = 'pending'
     AND value ->> '$.ticketId' IS NOT NULL THEN (value ->> '$.ticketId') || ' ' || (value ->> '$.channel.thread') END)` },
 }
+/** SQL predicate for the minimum level a reader wants, in the quiet < feed < notice order the grader uses. */
+const minLevel = (level: ActivityLevel | undefined): string =>
+  level === 'notice' ? " AND level = 'notice'" : level === 'feed' ? " AND level <> 'quiet'" : ''
+
 export { SCHEMA_VERSION }
 /**
- * SQLite backing store implementing domain `Repositories`, view read queries, versioned settings, outbox receipts, key-value state, and the spans of a trace.
+ * SQLite backing store implementing domain `Repositories`, view read queries, versioned settings, outbox receipts, key-value state, the spans of a trace, and the graded activity feed.
  * The Runtime opens it after locking the state directory and automatically migrates supported older schemas on startup.
  * The Engine mutates domain aggregates inside `atomic` transactions while Sources, views, and the Outbox read state or update their own records.
  */
@@ -53,7 +58,7 @@ export class Store implements Repositories {
   /**
    * Opens or creates the SQLite database at `path`, rewriting schema 10 records to their current shapes in a single transaction.
    * @param report - Receives errors thrown by `afterCommit` callbacks without failing the committed transaction.
-   * @throws When the database schema is older than `OLDEST_SCHEMA` (10), newer than `SCHEMA_VERSION` (12), or when migration fails; in every case the database file is left unchanged and the SQLite handle is closed so a later attempt in the same process can open it.
+   * @throws When the database schema is older than `OLDEST_SCHEMA` (10), newer than `SCHEMA_VERSION` (13), or when migration fails; in every case the database file is left unchanged and the SQLite handle is closed so a later attempt in the same process can open it.
    */
   constructor(path: string, private readonly report: (error: unknown) => void = () => {}) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
@@ -78,6 +83,8 @@ export class Store implements Repositories {
             CREATE TABLE IF NOT EXISTS trigger_thread (thread TEXT NOT NULL, id TEXT NOT NULL, at TEXT NOT NULL, human INTEGER NOT NULL,
               PRIMARY KEY (thread, id));
             CREATE TABLE IF NOT EXISTS span (id TEXT PRIMARY KEY, trace TEXT NOT NULL, kind TEXT NOT NULL, at TEXT NOT NULL, value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS activity (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, level TEXT NOT NULL, event TEXT NOT NULL,
+              ticket TEXT, thread TEXT, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS effect (kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, seq INTEGER NOT NULL,
               generation INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', due INTEGER NOT NULL,
               since TEXT NOT NULL, PRIMARY KEY (kind, key));
@@ -87,10 +94,13 @@ export class Store implements Repositories {
             CREATE INDEX IF NOT EXISTS effect_due ON effect(kind, due, seq);
             CREATE INDEX IF NOT EXISTS span_trace ON span(trace, at);
             CREATE INDEX IF NOT EXISTS span_at ON span(at);
+            CREATE INDEX IF NOT EXISTS activity_at ON activity(at);
+            CREATE INDEX IF NOT EXISTS activity_level ON activity(level, seq);
           `)
           this.addColumns()
-          // Schema 12 only adds the `span` table, which the schema block above creates for every database it opens; its
-          // records need no conversion, so only a database older than schema 11 runs the record-rewriting migration.
+          // Schema 12 and 13 only add the `span` and `activity` tables, which the schema block above creates for every
+          // database it opens; their records need no conversion, so only a database older than schema 11 runs the
+          // record-rewriting migration.
           if (version !== undefined && version < 11) migrateTo11(this)
           if (version !== SCHEMA_VERSION) this.set(KV.store.schema, SCHEMA_VERSION)
         })
@@ -258,6 +268,32 @@ export class Store implements Repositories {
     trace: (traceIdValue: string): Span[] => this.values('SELECT value FROM span WHERE trace = ? ORDER BY at, rowid', traceIdValue),
     /** The newest spans of every trace, newest first. */
     recent: (limit = 50): Span[] => this.values('SELECT value FROM span ORDER BY at DESC, rowid DESC LIMIT ?', limit),
+  }
+
+  /** Graded domain events for the system view, newest first, with an incremental cursor; readers filter quiet events out. */
+  readonly activity = {
+    /** Appends one graded event and returns it with its sequence; keeps the newest 5,000 records. */
+    record: (record: Omit<ActivityRecord, 'seq'>): ActivityRecord => {
+      const row = this.db.prepare('INSERT INTO activity (at, level, event, ticket, thread, value) VALUES (?,?,?,?,?,?) RETURNING seq')
+        .get(record.at, record.level, record.event, record.ticket ?? null, record.thread ?? null, JSON.stringify(record))
+      const seq = Number(row!.seq)
+      // The feed is an operator convenience, not an audit log: retain a bounded window so it cannot grow without limit.
+      if (seq > 5000) this.db.prepare('DELETE FROM activity WHERE seq <= ?').run(seq - 5000)
+      return { ...record, seq }
+    },
+    /** Records newer than `after`, oldest first, bounded by `limit`. */
+    after: (after: number, limit = 50, level?: ActivityLevel): ActivityRecord[] =>
+      this.activityValues(`seq > ?${minLevel(level)} ORDER BY seq LIMIT ?`, [after, limit]),
+    /** The newest records, newest first. */
+    recent: (limit = 50, level?: ActivityLevel): ActivityRecord[] =>
+      this.activityValues(`1=1${minLevel(level)} ORDER BY seq DESC LIMIT ?`, [limit]),
+    /** The highest stored sequence, or 0 for an empty feed. */
+    latest: (): number => Number(this.db.prepare('SELECT IFNULL(MAX(seq), 0) AS seq FROM activity').get()!.seq),
+  }
+  /** Reads activity rows, restoring each row's sequence beside the JSON the grader stored. */
+  private activityValues(sql: string, parameters: SQLInputValue[]): ActivityRecord[] {
+    return this.db.prepare(`SELECT seq, value FROM activity WHERE ${sql}`).all(...parameters)
+      .map(row => ({ ...JSON.parse(String(row.value)) as Omit<ActivityRecord, 'seq'>, seq: Number(row.seq) }))
   }
 
   /** Read-only queries for management views, orchestrator tools, and source polling (see `storeReads`). */

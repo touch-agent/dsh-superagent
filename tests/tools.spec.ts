@@ -413,8 +413,10 @@ it('relays a worker\'s report with its ticket card and the start of its summary,
     read: `ticket/${ticket.id}/result` })
   expect(String(report.summary)).toBe(summary.slice(0, 600))
   expect(report.ticket).not.toHaveProperty('preview')
-  // The end of the ticket, which the ready report brought, comes with its card.
-  expect(notices().at(-1)).toMatchObject({ ticket_ended: { ticket_id: ticket.id, state: 'completed' } })
+  // The ready report already told the main Session the outcome, so the end it brought is feed activity, not a second notice.
+  expect(notices().some(notice => 'ticket_ended' in notice)).toBe(false)
+  expect(h.runtime.store.activity.recent(50).find(record => record.event === 'ticket.ended')).toMatchObject({
+    ticket: ticket.id, level: 'feed', suppressed: 'report' })
 })
 
 it('tells the main Session of the settings, prompts, requeues and unsubscriptions others made, never of its own', async () => {

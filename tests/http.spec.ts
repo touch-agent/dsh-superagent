@@ -67,6 +67,20 @@ it('decodes path parameters and parses each route\'s query', async () => {
   expect(seen).toEqual(['feishu:oc_1:om/root', { filter: { kinds: ['accept', 'reopen'], since: expect.any(String) }, offset: 0, limit: 200 }])
 })
 
+it('serves the activity feed by cursor and minimum level, and refuses an out-of-range page', async () => {
+  const seen: unknown[] = []
+  const call = serve({ store: { activity: {
+    latest: () => 7,
+    recent: (limit: number, level?: string) => { seen.push({ after: 0, limit, level }); return [] },
+    after: (after: number, limit: number, level?: string) => { seen.push({ after, limit, level }); return [] },
+  } } })
+  expect(await call('GET', 'activity?after=3&limit=20&level=feed')).toEqual({ status: 200, body: { items: [], latest: 7 } })
+  expect(await call('GET', 'activity')).toEqual({ status: 200, body: { items: [], latest: 7 } })
+  expect(seen).toEqual([{ after: 3, limit: 20, level: 'feed' }, { after: 0, limit: 50, level: undefined }])
+  expect(await call('GET', 'activity?limit=500')).toMatchObject({ status: 400, body: { error: expect.stringContaining('limit') } })
+  expect(await call('GET', 'activity?level=loud')).toMatchObject({ status: 400 })
+})
+
 it('answers only a same-origin request from the panel on the loopback address', async () => {
   const call = serve({ sessions: { delivery: async () => 'injected' }, engine: { unsubscribe: () => true } })
   const post = (headers: Headers) => call('POST', 'threads/github%3A1/unsubscribe', undefined, headers)

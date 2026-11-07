@@ -39,7 +39,7 @@ Shutdown cancels turns, waits for passes, effects and agents, restores the proce
 | Setup | `packages/dsh/src/app/setup.ts` | Resolves the repository and the accounts by probing their CLIs the way worker shells run them, writes and applies the workers' environment and command shims, and keeps the setup problems; Settings checks a changed account through it, and restarts through it, which runs setup again |
 | Passes | `packages/dsh/src/app/passes.ts` | One pass at a time, every two seconds and whenever a command asks: the due effects, then `Engine.evaluateDue`; a Source's Trigger reaches the Engine through it |
 | Outbox | `packages/dsh/src/app/outbox.ts` | The Engine's `Outbox` port, and the only writer of the receipts: `send` keeps a message's receipt and queues its `reply` effect in one transaction, and the effect's handler sends it through `SourceRegistry.send`; a message waits while its Source is off, and is dropped when the conversation is gone or not listened to |
-| Notices | `packages/dsh/src/app/notices.ts` | Converts domain events and worker activity into main-Session messages. `eventNotice` handles domain notices; `reportRelay` forwards questions immediately, keeps ordinary progress on its Ticket, and relays other reports; `followupRelay` names the Tickets that own a human follow-up. Relays arriving during a turn are delivered together at its next step through the DeepSeek Harness inbox |
+| Notices | `packages/dsh/src/app/notices.ts` | Converts domain events and worker activity into main-Session messages. `eventNotice` handles domain notices, and suppresses a Ticket's end when its latest report already gave the outcome or a person ended it, so one outcome costs one notification; `reportRelay` forwards questions immediately, keeps ordinary progress on its Ticket, and relays other reports; `followupRelay` names the Tickets that own a human follow-up. Relays arriving during a turn are delivered together at its next step through the DeepSeek Harness inbox |
 
 ### Engine
 
@@ -160,7 +160,7 @@ Its interfaces are grouped by purpose:
 - **Outbox receipts:** `replyStatus` and `receipts`, written only by Outbox. Receipt operations are `get`, `waiting`, `behind`, `add`, `settle` and `withdraw`. `behind` checks whether an earlier message for the same Ticket and conversation is waiting with fewer than three failures. A withdrawn message settles with `channelGone` or `channelIgnored`. Read queries expose failed and dropped replies through `failingReplies`, `droppedReplies` and `droppedSince`.
 - **Typed key-value records:** `get`, `set`, `delete` and `keys`, using entries from `KV`.
 
-`afterCommit` runs an action only after the transaction commits, never after rollback. Runtime reads records in their stored shape; the migration converts older supported records at startup. Schema 12 adds the `span` table without rewriting records: a database at schema 11 or 10 opens at 12 with its records untouched.
+`afterCommit` runs an action only after the transaction commits, never after rollback. Runtime reads records in their stored shape; the migration converts older supported records at startup. Schema 12 added the `span` table and schema 13 the `activity` table without rewriting records: a database at schema 11 or 10 opens at 13 with its records untouched.
 
 ### Effects
 
@@ -246,7 +246,8 @@ Each model request binds the Session to the current prompt revision. The revisio
 | Glue | Translates |
 | --- | --- |
 | `packages/dsh/src/app/runtime.ts` | The composition root: builds the parts with the interfaces they use, registers the routes and the Source host, and starts and stops dsh-superagent |
-| `packages/dsh/src/app/notices.ts` | Domain events and worker reports into notices and relays for the main Session |
+| `packages/dsh/src/app/notices.ts` | Domain events and worker reports into notices and relays for the main Session, under the one-notification-per-outcome budget |
+| `packages/dsh/src/app/activity.ts` | Domain events into graded activity records for the system view, and the rule that says when an end was already told |
 | `packages/dsh/src/app/tools/main.ts`, `packages/dsh/src/app/tools/executor.ts` | Tool arguments of the main Session and the Executor Sessions into calls of the core classes, and their results into cards |
 | `packages/dsh/src/app/http.ts`, `packages/dsh/src/app/views/`, `packages/dsh/src/app/api.ts` | HTTP requests into calls, and Store reads into the panel's views; `api.ts` types every route for the panel |
 | `packages/dsh/src/app/resources.ts`, `packages/dsh/src/app/links.ts`, `packages/dsh/src/app/cards.ts` | Resource names into reads, source messages into links, records into compact cards for models |
@@ -326,11 +327,12 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/passes.ts` | Passes, the pass scheduler |
 | `packages/dsh/src/app/outbox.ts` | The Outbox: the Engine's `Outbox` port, the receipts and the `reply` effects that send them |
 | `packages/dsh/src/app/notices.ts` | The main Session's notices and relays: `eventNotice`, `reportRelay`, `resultRelay` and `followupRelay` |
+| `packages/dsh/src/app/activity.ts` | `ActivityLog`: every domain event graded `quiet`, `feed` or `notice` and kept in the Store's `activity` table; `endCoveredBy` is the single-notification budget |
 | `packages/dsh/src/app/store.ts` | The Store, and `Receipt`, a message of the outbox |
 | `packages/dsh/src/app/store-read.ts` | `storeReads`: the Store's read queries for the views, the tools and the Sources' polls, which never write |
 | `packages/dsh/src/app/trace.ts` | `SqliteTraceSink`: the Engine's `TraceSink`, keeping each stage in the Store's `span` table and reading a trace back for the panel |
 | `packages/dsh/src/app/metrics.ts` | The health figures: time from a Trigger to its first Decision, repeated sends, restart recovery and judgements per hour, read from the Store for the panel and `GET metrics` |
-| `packages/dsh/src/app/migration.ts` | The schema migrations: one record-rewriting step from schema 10 to schema 11; schema 12 adds only the `span` table |
+| `packages/dsh/src/app/migration.ts` | The schema migrations: one record-rewriting step from schema 10 to schema 11; schema 12 added only the `span` table and schema 13 only the `activity` table |
 | `packages/dsh/src/app/effects.ts` | Effects |
 | `packages/dsh/src/app/versions.ts` | `Versions`: a record kept as numbered snapshots with a pointer to the current one, for the settings and the prompts |
 | `packages/dsh/src/app/cache.ts` | `TextCache`: texts kept in memory within a size, the least recently used dropped first |
@@ -447,7 +449,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/delivery.spec.ts` | `AgentDelivery` |
 | `tests/retry-health.spec.ts`, `tests/role-models.spec.ts` | Model budget retries, and the models of the two roles |
 | `tests/runtime.spec.ts` | The whole application on a simulated DeepSeek Harness host, through tools and HTTP |
-| `tests/tools.spec.ts` | The Sessions' tools: what `orchestrator_read` reads for each role, and the shapes and checks of the other main Session tools |
+| `tests/tools.spec.ts` | The Sessions' tools: what `orchestrator_read` reads for each role, and the shapes and checks of the other main Session tools, including the one notice a ready report and its ending cost |
 | `tests/runtime-concurrency.spec.ts` | Work that overlaps: Triggers during a pass, Tickets that change during deliveries and launches |
 | `tests/http.spec.ts` | The same-origin and loopback checks, the status of each kind of failure, the body limit, path parameters and queries |
 | `tests/settings.spec.ts` | Settings saves that race a model or account check, a Policy sync that a save outran, and the refusals of the pause, a sync and a block |
@@ -456,7 +458,8 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/migration.spec.ts` | The schema 11 migration: every stored record in its current shape, and the refusal of older schemas |
 | `tests/trace-stages.spec.ts` | The stages the Engine records for one Trigger, in order: the whole journey of an accepted Trigger from intake to its first report, the stages a duplicate, an unheard Thread and a refused gate stop at, one row per happening, and that a Trigger still works when no sink is configured |
 | `tests/trace-view.spec.ts` | The panel's trace view: an unknown Trigger answers with an empty trace, the stages come back in order with their facts, and a refusal stops at the gate |
-| `tests/trace.spec.ts` | Trace and stage ids derived from their inputs, and the Store's `span` table: stages read back in recorded order, a repeated stage kept once, and a schema-11 database opened at schema 12 with its Triggers and no spans |
+| `tests/trace.spec.ts` | Trace and stage ids derived from their inputs, and the Store's `span` table: stages read back in recorded order, a repeated stage kept once, and a schema-11 database opened at the current schema with its Triggers and no spans |
+| `tests/activity.spec.ts` | The activity grader and its Store: levels per event, the one-notification budget for a Ticket's end, the incremental cursor and level filter, and records that survive reopen |
 | `tests/metrics.spec.ts` | The health figures: an empty Store reports no samples rather than zeros, each Trigger is measured once to its first Decision, the 24-hour window applies, repeated sends are counted, restart recovery spans the interrupted Assignment and the next, and throughput is per hour |
 | `tests/store.spec.ts` | Repositories and their working sets, in SQLite as in memory, the kv area, with every key of `KV` spelled only in `packages/dsh/src/kv.ts` and the migration, settings history and queries |
 | `tests/prompts.spec.ts` | Prompt validation, assembly and versions |
@@ -488,6 +491,7 @@ One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.
 | `decision` | Decisions, by Thread | Engine |
 | `effect` | The effect queue: per kind and key, the payload, its order, failed attempts with the last error, and when it is due | Effects; the schema 11 migration queues what earlier versions kept for the main Session |
 | `span` | Each stage a Trigger passed, by its trace's id, with the kind of stage, its `at` and the bounded facts recorded for it; a stage recorded twice keeps its first row, because its id is derived from the trace, the stage and an optional ref that tells repeated happenings apart | The Engine, through `SqliteTraceSink` |
+| `activity` | Every domain event with its `quiet`, `feed` or `notice` level, a one-line summary, its Ticket and Thread, and why a notice-worthy event was suppressed; a monotonic `seq` is the system view's cursor. The newest 5,000 rows are kept | The Engine's emit hook, through `ActivityLog` |
 | `outbox` | The receipt of each message for a Channel, by id, with the Ticket it is for and its `status`, `pending`, `sent` or `dropped`, kept so an id is never queued twice; for a dropped message, when and why, as the generated column `dropped`, its time, and a reason code. A message that waits has a `reply` effect, which holds its attempts | The Outbox |
 | `kv` | Every other record, by key | The part that names it |
 
@@ -509,9 +513,9 @@ Dismissal is stored on its Decision. Input text is rendered from the Ticket when
 
 Read caches use bounded in-memory `TextCache` instances and are lost on restart. A Session paging through an original Source record or prompt preview must reread offset 0 after a restart. Feishu links resolved after intake are cached the same way; link-based search finds them only after that link has been read during the current process lifetime.
 
-Nothing deletes old records yet, so these grow without bound: the `trigger`, `disposition` and `decision` rows; ended Tickets and their Threads; the outbox's receipts; and in `kv`, every saved settings revision and prompt version, the prompt revisions each Session worked under, and the Sources' records per Thread and per Issue or pull request.
+Nothing deletes old records yet, so these grow without bound: the `trigger`, `disposition` and `decision` rows; ended Tickets and their Threads; the outbox's receipts; and in `kv`, every saved settings revision and prompt version, the prompt revisions each Session worked under, and the Sources' records per Thread and per Issue or pull request. The `activity` table is the exception: it keeps a bounded window of the newest 5,000 events.
 
-`SCHEMA_VERSION` only increases. A database of a newer version refuses to start; `packages/dsh/src/app/migration.ts` upgrades a database of the pre-release schema 10 once, at start, and refuses an older one.
+`SCHEMA_VERSION` only increases. A database of a newer version refuses to start; `packages/dsh/src/app/migration.ts` upgrades a database of the pre-release schema 10 once, at start, and refuses an older one. Schema 13 is current.
 
 ## Model-facing interfaces
 
