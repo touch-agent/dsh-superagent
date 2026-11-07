@@ -182,6 +182,7 @@ graph LR
 - **交付**：`tests/conformance/`：一组可被任何 adapter 复用 `describe` 的用例：幂等键生成、游标回退 5 秒、health claim 命名、`probe` 语义、scope 裁决、出站 `sent/gone` 两态。
 - **验收**：GitHub 与 Feishu 都跑通；故意写错幂等键的假 adapter 必须失败。
 - **依赖**：T1-04、T1-05。
+- **状态**：已完成（2026-11-07）。`tests/conformance/suite.ts` 由任何 Source 的 fixture 驱动；GitHub 与 Feishu 各有一个 spec，`tests/conformance/suite.spec.ts` 证明写错幂等键、漏掉 5 秒游标回退、丢掉出站幂等键的假 adapter 必红。probe 用例已留好，等 T2-06 给 adapter 加 `probe` 后填入。
 
 ### T1-07 / T1-08 / T1-09 三个新源：Gmail、飞书文档、日历 · Connector · 5 / 5 / 6 人日
 
