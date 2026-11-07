@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { Commands } from '../src/infra/commands.ts'
+import { Commands } from '@superagent/dsh/infra/commands.ts'
 import { testDeployment } from './fixtures/deployment.ts'
-import { readGithub, pullChecks } from '../src/sources/github-read.ts'
+import { readGithub, pullChecks } from '@superagent/dsh/sources/github-read.ts'
 
 const commands = new Commands(() => testDeployment(), {}, new AbortController().signal)
 afterEach(() => vi.restoreAllMocks())

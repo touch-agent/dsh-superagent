@@ -2,9 +2,9 @@
 // The Deployment settings and the Plugin Manager page.
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { PluginConfig } from '../src/client/deployment.tsx'
+import { PluginConfig } from '@superagent/dsh/client/deployment.tsx'
 import { expect, it, onTestFinished, vi } from 'vitest'
-import { zh } from '../src/client/locales.ts'
+import { zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, settle, all, find, tab, click, type, text, field, at, translator } from './fixtures/panel.tsx'
 import { server, problemOf, fakeForm } from './fixtures/panel-server.ts'
 

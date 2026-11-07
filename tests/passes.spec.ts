@@ -1,8 +1,8 @@
 /** Pass scheduling, coalescing, and runtime health reporting. */
 import { expect, it, vi } from 'vitest'
-import { Passes } from '../src/app/passes.ts'
+import { Passes } from '@superagent/dsh/app/passes.ts'
 import type { Trigger } from '@superagent/kernel'
-import { HealthBoard } from '../src/infra/health.ts'
+import { HealthBoard } from '@superagent/dsh/infra/health.ts'
 
 function passes(closing = () => false) {
   const health = new HealthBoard().claim('runtime', { state: 'starting', detail: '' })

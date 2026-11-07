@@ -2,7 +2,7 @@
 // Panel search, glossary, route persistence, and host-down fallback.
 import { act } from 'react'
 import { expect, it } from 'vitest'
-import { en, zh } from '../src/client/locales.ts'
+import { en, zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, settle, all, click, type, text, field } from './fixtures/panel.tsx'
 import { server, found } from './fixtures/panel-server.ts'
 

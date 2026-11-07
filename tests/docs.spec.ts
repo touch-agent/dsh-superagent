@@ -55,9 +55,9 @@ describe('documentation', () => {
   it('leaves no merge conflict markers in any document', () => {
     expect(documents.filter(path => /^(<{7}|>{7}) /m.test(read(path)))).toEqual([])
   })
-  it('lists every module of src in the module table of 007 Architecture, and only files that exist', () => {
+  it('lists every module under packages in the module table of 007 Architecture, and only files that exist', () => {
     const modules = listed('Modules')
-    expect([...files('src'), ...files('packages')].filter(path => /\.tsx?$/.test(path) && !modules.includes(path))).toEqual([])
+    expect([...files('packages')].filter(path => /\.tsx?$/.test(path) && !/^packages\/[^/]+\/lib\//.test(path) && !modules.includes(path))).toEqual([])
     expect(modules.filter(path => !existsSync(join(ROOT, path)))).toEqual([])
   })
   it('lists every test in the test table of 007 Architecture, and only files that exist', () => {

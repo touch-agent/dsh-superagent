@@ -2,7 +2,7 @@
 // The Source status and settings.
 import { act } from 'react'
 import { expect, it, onTestFinished, vi } from 'vitest'
-import { zh } from '../src/client/locales.ts'
+import { zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, settle, all, find, tab, click, type, text, field, at } from './fixtures/panel.tsx'
 import { server, problemOf, droppedReply } from './fixtures/panel-server.ts'
 

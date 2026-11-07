@@ -2,7 +2,7 @@
 
 > 面向「想在一两个小时内看懂这个项目」的工程师。每条非平凡结论都带 `文件:行号`，可直接跳读。
 > 项目自我定位（`README.md`）：**research prototype for reference only, not an official DeepSeek product**。
-> **路径注记（2026-11-06 阶段 0 之后）**：本文写作时领域层在 `src/core/`，现已整体迁到 `packages/kernel/src/`（`@superagent/kernel`，见提交 `3f7a158`）。文中所有 `src/core/...` 的引用按此一一对应，行号与内容未变。
+> **路径注记（2026-11-06 阶段 0 之后）**：本文写作时领域层在 `packages/dsh/src/core/`，现已整体迁到 `packages/kernel/src/`（`@superagent/kernel`，见提交 `3f7a158`）。文中所有 `packages/dsh/src/core/...` 的引用按此一一对应，行号与内容未变。
 
 > 本导览由 2026-11-06 的代码走读产出，基线提交 `6337fc8`；与 `docs/007-architecture.md`（作者权威文档，617 行）的分歧在文中标「文档/代码不一致」。
 
@@ -36,15 +36,15 @@
 
 | 事实 | 数值 | 证据 |
 | --- | --- | --- |
-| 代码规模 | `src/` 111 文件 / 15 205 行 | `find src -name '*.ts*' \| xargs wc -l` |
+| 代码规模 | `packages/dsh/src/` 111 文件 / 15 205 行 | `find src -name '*.ts*' \| xargs wc -l` |
 | 测试 | 59 文件 / **1 197 用例全绿**，22.28s | `./node_modules/.bin/vitest run`（本机实测） |
 | 运行时依赖 | 2 个（`proper-lockfile`、`zod`）；约 20 个 `@deepseek-ai/dsh-*` 是 **peerDependencies** | `package.json:48-86` |
 
 三条铁律（后面每一节都是它们的展开）：
 
-1. **模型只做判断，不做授权。** 「谁可以让智能体干活」由 `src/policy.ts` 的确定性 gate 决定；模型（主 Session 的研判步，assessment）只能在 gate 已经放行的范围里判断「这件事该不该接」，且接单强度被 gate 钉死（`docs/002-authorization.md:5`）。
-2. **先记账，后干活。** 任何对外副作用（发消息、起 Session、调模型）都不是在命令里直接执行，而是**与领域写同一事务**写入 `effect` 表，提交后再派发（`src/app/effects.ts:61-66`、`:84-88`）。所以「命令成功但副作用丢了」这种状态不存在。
-3. **一状态一写者。** Trigger/Thread/Decision/Ticket/Assignment 只有 `Engine` 能写；Thread 上的 label/url 归 Source；Settings/Prompts/outbox 收据/health 各有唯一 owner（`docs/007-architecture.md:259-271`）。Source 拿到的 context 是**被 `Pick` 收窄过的**，它物理上拿不到 `store.saveSettings` 或 `engine.decide`（`src/app/source-context.ts:11-27`）。
+1. **模型只做判断，不做授权。** 「谁可以让智能体干活」由 `packages/dsh/src/policy.ts` 的确定性 gate 决定；模型（主 Session 的研判步，assessment）只能在 gate 已经放行的范围里判断「这件事该不该接」，且接单强度被 gate 钉死（`docs/002-authorization.md:5`）。
+2. **先记账，后干活。** 任何对外副作用（发消息、起 Session、调模型）都不是在命令里直接执行，而是**与领域写同一事务**写入 `effect` 表，提交后再派发（`packages/dsh/src/app/effects.ts:61-66`、`:84-88`）。所以「命令成功但副作用丢了」这种状态不存在。
+3. **一状态一写者。** Trigger/Thread/Decision/Ticket/Assignment 只有 `Engine` 能写；Thread 上的 label/url 归 Source；Settings/Prompts/outbox 收据/health 各有唯一 owner（`docs/007-architecture.md:259-271`）。Source 拿到的 context 是**被 `Pick` 收窄过的**，它物理上拿不到 `store.saveSettings` 或 `engine.decide`（`packages/dsh/src/app/source-context.ts:11-27`）。
 
 ---
 
@@ -86,7 +86,7 @@ flowchart LR
 ```
 
 - 主 Session（代码里叫 `orchestrator`）**只路由**：转发原始 Trigger 与研判结论，不做技术决策，不等待，一轮里用 `orchestrator_route` 一次处理多个候选（`docs/004-prompts.md:77`）。
-- 执行器 Session（`worker`）一工单一个，在独立目录里读源码、改代码、跑测试、开 PR，通过 6 个工具向宿主汇报（`docs/004-prompts.md:63`、`src/app/tools/executor.ts`）。
+- 执行器 Session（`worker`）一工单一个，在独立目录里读源码、改代码、跑测试、开 PR，通过 6 个工具向宿主汇报（`docs/004-prompts.md:63`、`packages/dsh/src/app/tools/executor.ts`）。
 - 两者之间的所有状态变化都经 `Engine` 的原子命令，所以「谁在干什么、凭什么、到哪一步」永远可从库里回答，而不是从模型的对话历史里猜。
 
 ---
@@ -96,7 +96,7 @@ flowchart LR
 ### 2.1 分层（实测依赖方向）
 
 ```
-src/
+packages/dsh/src/
 ├── index.ts          插件入口：Cordis 的 name/inject/Config/apply（27 行）
 ├── policy.ts         授权链：gate / admission / revalidate / policyEffects（242 行）
 ├── deployment.ts     配置 schema 与 SetupError 解析（含 volatile 字段）
@@ -112,21 +112,21 @@ src/
 **依赖方向是单向的，而且可以机械验证**：
 
 ```bash
-grep -rn "@deepseek-ai" src/core/ | wc -l   # → 0
-grep -rn "from '\.\./" src/core/ | wc -l    # → 0
+grep -rn "@deepseek-ai" packages/dsh/src/core/ | wc -l   # → 0
+grep -rn "from '\.\./" packages/dsh/src/core/ | wc -l    # → 0
 ```
 
-`src/core/` 不 import 任何宿主包、也不 import 上层目录——它只依赖 `node:crypto` 和自己的同目录文件。外部世界通过 `src/core/ports.ts` 的接口（`Repositories` / `Executor` / `Assessor` / `Outbox` / `Policy`）注入。这就是为什么它能在 `src/core/memory.ts` 里有一份纯内存实现，使 1 197 个用例中的大部分不需要 SQLite（`src/core/memory.ts:16-24`）。
+`packages/dsh/src/core/` 不 import 任何宿主包、也不 import 上层目录——它只依赖 `node:crypto` 和自己的同目录文件。外部世界通过 `packages/dsh/src/core/ports.ts` 的接口（`Repositories` / `Executor` / `Assessor` / `Outbox` / `Policy`）注入。这就是为什么它能在 `packages/dsh/src/core/memory.ts` 里有一份纯内存实现，使 1 197 个用例中的大部分不需要 SQLite（`packages/dsh/src/core/memory.ts:16-24`）。
 
-**唯一允许的「反向」依赖是 type-only**：`src/app/api.ts` 从各 view 的返回类型推导 HTTP 契约，`src/client/api.ts` 再消费它，运行时无环，类型图有环（`src/app/api.ts:2-10`）。
+**唯一允许的「反向」依赖是 type-only**：`packages/dsh/src/app/api.ts` 从各 view 的返回类型推导 HTTP 契约，`packages/dsh/src/client/api.ts` 再消费它，运行时无环，类型图有环（`packages/dsh/src/app/api.ts:2-10`）。
 
 ### 2.2 三条总线
 
 | 总线 | 载体 | 一句话 |
 | --- | --- | --- |
-| **控制面** | `Engine` 的原子命令 + 5 个聚合 | 所有状态变化的唯一入口；调用方拿到的是角色化 `Pick`（`src/core/engine.ts:261-270`） |
-| **数据面** | `trigger` / `thread` / `ticket` / `decision` 等表 | 事实的唯一真相；生成列（`open`/`active`）把 JSON 里的集合关系变成可索引列（`src/app/store.ts:30-44`） |
-| **执行面** | `effect` 表 + 6 种 kind | 「提交后要做的事」的持久化队列；at-least-once，靠确定性 id 收敛（`src/app/effects.ts:11-24`） |
+| **控制面** | `Engine` 的原子命令 + 5 个聚合 | 所有状态变化的唯一入口；调用方拿到的是角色化 `Pick`（`packages/dsh/src/core/engine.ts:261-270`） |
+| **数据面** | `trigger` / `thread` / `ticket` / `decision` 等表 | 事实的唯一真相；生成列（`open`/`active`）把 JSON 里的集合关系变成可索引列（`packages/dsh/src/app/store.ts:30-44`） |
+| **执行面** | `effect` 表 + 6 种 kind | 「提交后要做的事」的持久化队列；at-least-once，靠确定性 id 收敛（`packages/dsh/src/app/effects.ts:11-24`） |
 
 ### 2.3 一个请求在层间的流动
 
@@ -151,7 +151,7 @@ sequenceDiagram
 
 ## 3. 领域模型：11 个概念，一个也不多
 
-全部定义在 `docs/001-domain.md`，代码里是 `src/core/model.ts`。先记住主干链条，其余都是从它长出来的属性：
+全部定义在 `docs/001-domain.md`，代码里是 `packages/dsh/src/core/model.ts`。先记住主干链条，其余都是从它长出来的属性：
 
 ```
 Source ──产生──▶ Trigger ──属于──▶ Thread ──▶ Eval ──accept──▶ Ticket ──▶ Assignment ──▶ Executor
@@ -195,23 +195,23 @@ Report     progress 进展 | waiting 等待 | ready 就绪 | blocked 受阻 | fa
 
 | 目录 | 行数 | 职责 | 入口文件 |
 | --- | --- | --- | --- |
-| `src/core/` | 2 088 | 领域层：Engine、五 Part、模型、纯内存实现、端口定义 | `engine.ts`（一入口）→ `stage.ts`（26 行，先读） |
-| `src/app/` | 5 292 | 组合根与适配器：Runtime、Store、Effects、Passes、Sessions、Prompts、HTTP、views | `runtime.ts`（254 行，全景） |
-| `src/sources/` | 2 059 | SourceKind 描述符 + registry + GitHub/Feishu 两套采集 | `kind.ts`（描述符）→ `registry.ts` |
-| `src/executor/` | 838 | 把 Assignment 变成 DSH Session（`dsh.ts` 673 行，最重的适配器） | `dsh.ts` |
-| `src/client/` | 4 037 | 面板：6 个 tab、设置草稿机、本地化 | `index.tsx`（挂载）→ `route.ts`（路由） |
-| `src/infra/` | 347 | Commands（起 CLI 子进程）、HealthBoard | `commands.ts` |
+| `packages/dsh/src/core/` | 2 088 | 领域层：Engine、五 Part、模型、纯内存实现、端口定义 | `engine.ts`（一入口）→ `stage.ts`（26 行，先读） |
+| `packages/dsh/src/app/` | 5 292 | 组合根与适配器：Runtime、Store、Effects、Passes、Sessions、Prompts、HTTP、views | `runtime.ts`（254 行，全景） |
+| `packages/dsh/src/sources/` | 2 059 | SourceKind 描述符 + registry + GitHub/Feishu 两套采集 | `kind.ts`（描述符）→ `registry.ts` |
+| `packages/dsh/src/executor/` | 838 | 把 Assignment 变成 DSH Session（`dsh.ts` 673 行，最重的适配器） | `dsh.ts` |
+| `packages/dsh/src/client/` | 4 037 | 面板：6 个 tab、设置草稿机、本地化 | `index.tsx`（挂载）→ `route.ts`（路由） |
+| `packages/dsh/src/infra/` | 347 | Commands（起 CLI 子进程）、HealthBoard | `commands.ts` |
 | 顶层 | ~700 | 插件入口、授权链、配置/部署、KV 键、限额 | `index.ts`(27) → `policy.ts`(242) |
 
 ### 4.2 五个「最大的文件」为什么这么大
 
 | 文件 | 行数 | 为什么 |
 | --- | --- | --- |
-| `src/client/locales.ts` | 770 | 中英两份文案的单一来源（面板 + 药丸提示 + 错误码） |
-| `src/executor/dsh.ts` | 673 | 整个 DSH 集成面：建 Session、注入 preset、投递输入、读 turn 结果、resume、中断——**难度集中在这里** |
-| `src/app/migration.ts` | 616 | schema 11 的具名迁移步骤；旧库拒绝启动而非静默降级（`migration.ts:20-25`） |
-| `src/sources/github.ts` | 459 | 四段轮询（通知 / 仓库流 / PR CI / 订阅线程）+ 各自游标与失败模型 |
-| `src/core/tickets.ts` | 423 | 工单生命周期：建单、attach、resume、retry、restart、stop、end、订阅增删、policy 变更通知 |
+| `packages/dsh/src/client/locales.ts` | 770 | 中英两份文案的单一来源（面板 + 药丸提示 + 错误码） |
+| `packages/dsh/src/executor/dsh.ts` | 673 | 整个 DSH 集成面：建 Session、注入 preset、投递输入、读 turn 结果、resume、中断——**难度集中在这里** |
+| `packages/dsh/src/app/migration.ts` | 616 | schema 11 的具名迁移步骤；旧库拒绝启动而非静默降级（`migration.ts:20-25`） |
+| `packages/dsh/src/sources/github.ts` | 459 | 四段轮询（通知 / 仓库流 / PR CI / 订阅线程）+ 各自游标与失败模型 |
+| `packages/dsh/src/core/tickets.ts` | 423 | 工单生命周期：建单、attach、resume、retry、restart、stop、end、订阅增删、policy 变更通知 |
 
 ### 4.3 测试怎么组织
 
@@ -224,7 +224,7 @@ Report     progress 进展 | waiting 等待 | ready 就绪 | blocked 受阻 | fa
 | `policy.spec.ts` | gate 的 7 步顺序、admission cell 优先级、revalidate 的 basis 分支 |
 | `effects.spec.ts` | 合并语义（generation）、`Later` 不增 attempts、回滚不派发 |
 | `persistence.spec.ts`(store) | 迁移、生成列重建、收据三态、SAVEPOINT 嵌套 |
-| `store.spec.ts:133-145` | **扫描测试**：KV 键必须由 `src/kv.ts` 拼写，禁止散落 |
+| `store.spec.ts:133-145` | **扫描测试**：KV 键必须由 `packages/dsh/src/kv.ts` 拼写，禁止散落 |
 
 没有端到端启动测试（`docs/007-architecture.md:402` 的测试表是模块级单测）——这是它作为 prototype 的一个已知缺口。
 
@@ -234,7 +234,7 @@ Report     progress 进展 | waiting 等待 | ready 就绪 | blocked 受阻 | fa
 
 ### 5.1 面板看到的 8 行状态判定
 
-`src/core/stage.ts` 只有 26 行，但它是整个项目**可检查定义的样板**：一条 if/else 链，**先命中先返回**，顺序即优先级。
+`packages/dsh/src/core/stage.ts` 只有 26 行，但它是整个项目**可检查定义的样板**：一条 if/else 链，**先命中先返回**，顺序即优先级。
 
 | # | 条件（`stage.ts`） | 结果 | 人话 |
 | --- | --- | --- | --- |
@@ -250,23 +250,23 @@ Report     progress 进展 | waiting 等待 | ready 就绪 | blocked 受阻 | fa
 三个坑（都写在测试里，文档没写）：
 
 1. **`ready` 优先于「Assignment 已结束」**——`ready` 即使 Assignment 已 `ended` 仍显示「等人验收」（`tests/stage.spec.ts:23`）。Assignment 结束 ≠ 工单结束。
-2. **blocked/failed 只在 `waitsForPerson` 为真时进 person**；如果人在这之后已经回过话，状态退回 `working`（`src/core/model.ts:349-353`、`tests/stage.spec.ts:26`）。
+2. **blocked/failed 只在 `waitsForPerson` 为真时进 person**；如果人在这之后已经回过话，状态退回 `working`（`packages/dsh/src/core/model.ts:349-353`、`tests/stage.spec.ts:26`）。
 3. **它读 `latestAssignment().report`，不是 `latestReport()`**（`stage.ts:13-14` vs `model.ts:336`）——代码里真实存在两套「最新报告」语义。
 
 ### 5.2 事务：手写的可重入 SAVEPOINT
 
-`src/app/store.ts:133-153` 是一个 `depth` 计数 + 分层 afterCommit 数组的实现：
+`packages/dsh/src/app/store.ts:133-153` 是一个 `depth` 计数 + 分层 afterCommit 数组的实现：
 
 - 进入：`SAVEPOINT orchestrator_atomic_<level>`；成功 `RELEASE`；失败 `ROLLBACK TO` + `RELEASE` + 重抛。
 - 嵌套失败只回滚内层（`tests/store.spec.ts:220-247`），成功时把本层 afterCommit 冒泡到上一层，**最外层提交后才执行**（`store.ts:149-150`）。
 - 回滚时该层 afterCommit 被丢弃 → 回滚的副作用不会执行（`tests/store.spec.ts:147-162`）。
-- `src/core/memory.ts:16-24` 对 5 张 Map 做全量快照来实现同样语义；测试同时跑两种后端并要求顺序一致。
+- `packages/dsh/src/core/memory.ts:16-24` 对 5 张 Map 做全量快照来实现同样语义；测试同时跑两种后端并要求顺序一致。
 
 **隐含前提**：`atomic` 的回调必须是同步的。effect 派发用 `queueMicrotask`（`effects.ts:84-88`），安全的前提是「命令全同步、事务在微任务运行前已提交」；类型系统并不禁止 async 回调，这是一个结构性风险点。
 
 ### 5.3 Effect 队列：六种 kind 与三档重试
 
-`src/app/effects.ts:11-24` 定义 payload，主键是 `(kind, key)`：
+`packages/dsh/src/app/effects.ts:11-24` 定义 payload，主键是 `(kind, key)`：
 
 | kind | key | 注册点与参数 | 干什么 |
 | --- | --- | --- | --- |
@@ -289,13 +289,13 @@ Report     progress 进展 | waiting 等待 | ready 就绪 | blocked 受阻 | fa
 
 ### 5.4 2 秒节拍 + 事件合并
 
-`src/app/passes.ts`：`setInterval(…, 2000)` 兜底（`:28`），`receive` 返回 `stored` 时立即 `request()`（`:34-39`）；`pump()` 是三态合并（`:56-62`）——没在跑就开一个，在跑就把并发请求折叠成**恰好一次**后续 pass（4 个并发请求测试断言只跑 2 次，`tests/passes.spec.ts:28-34`）。每个 pass 只做两件事：`effects.kick()` → `engine.evaluateDue()`（`:63-68`），且**一次 pass 共享一个 Policy 快照**（`engine.ts:76`）。
+`packages/dsh/src/app/passes.ts`：`setInterval(…, 2000)` 兜底（`:28`），`receive` 返回 `stored` 时立即 `request()`（`:34-39`）；`pump()` 是三态合并（`:56-62`）——没在跑就开一个，在跑就把并发请求折叠成**恰好一次**后续 pass（4 个并发请求测试断言只跑 2 次，`tests/passes.spec.ts:28-34`）。每个 pass 只做两件事：`effects.kick()` → `engine.evaluateDue()`（`:63-68`），且**一次 pass 共享一个 Policy 快照**（`engine.ts:76`）。
 
 ---
 
 ## 6. 授权链：gate → admission → assessment → Mandate
 
-这是全项目最值得读的 242 行（`src/policy.ts`）。
+这是全项目最值得读的 242 行（`packages/dsh/src/policy.ts`）。
 
 ### 6.1 gate 的 7 步（`policy.ts:191-211`）
 
@@ -360,7 +360,7 @@ Mandate 记录 `{strength, policyVersion, basis, actor, scope}`（`evals.ts:306-
 
 | # | 时刻 | 发生什么 | 写入了什么 | 代码 |
 | --- | --- | --- | --- | --- |
-| 1 | **采集** | GitHub 插件每 60 秒（可配 60–3600；GitHub 要求更长时以其为准）拉一次通知与游标流，把新评论/PR 事件转成 `Trigger` | `trigger` 表 + `trigger_thread` | `src/sources/github.ts:280-343` |
+| 1 | **采集** | GitHub 插件每 60 秒（可配 60–3600；GitHub 要求更长时以其为准）拉一次通知与游标流，把新评论/PR 事件转成 `Trigger` | `trigger` 表 + `trigger_thread` | `packages/dsh/src/sources/github.ts:280-343` |
 | 2 | **进域** | `Engine.receive` 开一个事务，交给 `Intake.receive`：算确定性 id → 重复就丢弃 → `scope()` 过滤掉不听的（bot 自己的话、无关仓库）→ 解析出所属 Thread → 扇出给所有订阅工单 → 需要新决策则排队等 Eval | 同上，一个原子事务 | `intake.ts:19-62`、`engine.ts:255-257` |
 | 3 | **过闸** | 2 秒节拍的 passes 被「有事件」立刻踢一脚 → `evaluateDue` → 该 Thread 没有正在跑的 Eval，就开一个 | `decision`（state=evaluating） | `passes.ts:56-68`、`evals.ts:71-119` |
 | 4 | **确定性准入** | `gate()` 依次问：在允许名单里并 @ 了机器人？→ explicit；否则在准入表哪一格？（listedUnaddressed → inferred、unlisted → 拒）→ 不在参与中的 Thread 就到此为止 | 不授权，只算出一个候选强度 | `policy.ts:191-211` |
@@ -393,7 +393,7 @@ Mandate 记录 `{strength, policyVersion, basis, actor, scope}`（`evals.ts:306-
 | 供应商/网络瞬时错误（408/429/5xx、连接重置） | 同一 Assignment 内退避重试 3 次（15/30/60 秒续推），超了才算失败 | `dsh.ts:548-576` |
 | worker 报 blocked / failed | 工单进入「等人」，自动 Input 暂停投递，但人可以直接进 Session 接手，工具不被锁 | `docs/003-execution.md` |
 | 主机重启 | 运行中的 Assignment 以 "host restarted" 结束，新 Assignment 带恢复提示；只重投「Session 还没取走」的消息 | `dsh.ts:524-537`、`dsh.ts:446-448` |
-| 评论发布失败 | 出站消息已在 `outbox`，5 秒起指数退避到 300 秒；同一工单对同一会话严格保序 | `src/app/outbox.ts`、`docs/003-execution.md` |
+| 评论发布失败 | 出站消息已在 `outbox`，5 秒起指数退避到 300 秒；同一工单对同一会话严格保序 | `packages/dsh/src/app/outbox.ts`、`docs/003-execution.md` |
 
 ### 7.4 全链路的一句话版本
 
@@ -419,11 +419,11 @@ Mandate 记录 `{strength, policyVersion, basis, actor, scope}`（`evals.ts:306-
 - **worker**：是 DSH `standard` preset 的裁剪版——shell 与 job 等待都压到 5 秒（这样一步之内还能收到人的插话）、`web.fetch=false`、subagent 保留但被强制走宿主 `standard` preset、无「问人 / present / plan / 插件管理 / 定时 / goal / workflow」。
 - **router**：更窄——文件系统只读（`write:false, edit:false`），无 web/subagent/todo/persona。主 Session 只做判断与转述，不亲自改代码。
 
-`Session.id` 用**推导**而不是映射表：`workerSessionId(ticketId) = 'worker-' + ticketId`（`src/executor/dsh.ts:24`）。所以重启后不需要查表就知道哪个 Session 属于哪个工单。
+`Session.id` 用**推导**而不是映射表：`workerSessionId(ticketId) = 'worker-' + ticketId`（`packages/dsh/src/executor/dsh.ts:24`）。所以重启后不需要查表就知道哪个 Session 属于哪个工单。
 
 ### 8.2 `ensure()` 的六件事
 
-`sessions.ensure(id, cwd, title, role)`（`src/app/sessions.ts:138-158`）做六件事，顺序有意义：
+`sessions.ensure(id, cwd, title, role)`（`packages/dsh/src/app/sessions.ts:138-158`）做六件事，顺序有意义：
 
 1. **解析或创建** Session：不存在就 `workspaceRegistry.create(cwd)` + `sessionController.create({sessionId, workspaceId, agentPreset})`。Session 只在创建时确定 preset，之后不会变。
 2. **绑模型**：`initializeRoleModel(ctx, agent, settings.eval.model | settings.executor.model)`——两个角色可以配不同模型（研判用小模型、干活用大模型是常见配置）。
@@ -434,7 +434,7 @@ Mandate 记录 `{strength, policyVersion, basis, actor, scope}`（`evals.ts:306-
 
 ### 8.3 `decorate()`：往 Session 上挂四样东西
 
-`src/app/sessions.ts:236-275`：
+`packages/dsh/src/app/sessions.ts:236-275`：
 
 | 挂什么 | 细节 |
 | --- | --- |
@@ -447,7 +447,7 @@ Mandate 记录 `{strength, policyVersion, basis, actor, scope}`（`evals.ts:306-
 
 ### 8.4 提示词装配：15 个内置部件 + 3 段团队文本
 
-内置文本都在 `prompts/*.md`（`src/app/context.ts` 导入），`composePrompt` 按固定顺序拼（`src/app/prompts.ts:102-119`）：
+内置文本都在 `prompts/*.md`（`packages/dsh/src/app/context.ts` 导入），`composePrompt` 按固定顺序拼（`packages/dsh/src/app/prompts.ts:102-119`）：
 
 ```
 1. runtime/shared          ← 两个角色共用的世界观
@@ -479,7 +479,7 @@ Mandate 记录 `{strength, policyVersion, basis, actor, scope}`（`evals.ts:306-
 
 ### 8.6 工具面：14 + 6
 
-主 Session 的 14 个工具（`src/app/tools/main.ts`）分成四组，命名即语义：
+主 Session 的 14 个工具（`packages/dsh/src/app/tools/main.ts`）分成四组，命名即语义：
 
 | 组 | 工具 |
 | --- | --- |
@@ -488,7 +488,7 @@ Mandate 记录 `{strength, policyVersion, basis, actor, scope}`（`evals.ts:306-
 | 沟通 | `orchestrator_reply` |
 | 配置 | `orchestrator_settings_save`、`orchestrator_policy_sync`、`orchestrator_prompts_save` |
 
-worker 的 6 个（`src/app/tools/executor.ts`）：`orchestrator_report`、`orchestrator_ack`、`orchestrator_thread_unrelated`、`orchestrator_thread_follow`、`orchestrator_trigger_handback`，外加一个通用的读资源工具。
+worker 的 6 个（`packages/dsh/src/app/tools/executor.ts`）：`orchestrator_report`、`orchestrator_ack`、`orchestrator_thread_unrelated`、`orchestrator_thread_follow`、`orchestrator_trigger_handback`，外加一个通用的读资源工具。
 
 两个细节值得注意：
 
@@ -538,7 +538,7 @@ worker 的 6 个（`src/app/tools/executor.ts`）：`orchestrator_report`、`orc
 
 5 行都**不带 config**：`stateDir` 由 profile 层补（`examples/profile.cordis.patch.yml:7-9`），缺了插件拒绝启动（`cordis.patch.yml:1-3`）。这是「bundle 只声明、profile 才配置」的分工。
 
-**没有自有 API**：入口契约就是 Cordis 标准四件套 `name/inject/Config/apply`（`src/index.ts:7-24`）；服务靠 `class Runtime extends Service` + `super(ctx,'orchestrator')` 提供（`runtime.ts:88`）；唯一主动注册的宿主能力是 HTTP 前缀 `ctx.webServer.register({kind:'prefix', path:'/orchestrator', handler})`（`src/app/http.ts:232`）——**不新开端口**。
+**没有自有 API**：入口契约就是 Cordis 标准四件套 `name/inject/Config/apply`（`packages/dsh/src/index.ts:7-24`）；服务靠 `class Runtime extends Service` + `super(ctx,'orchestrator')` 提供（`runtime.ts:88`）；唯一主动注册的宿主能力是 HTTP 前缀 `ctx.webServer.register({kind:'prefix', path:'/orchestrator', handler})`（`packages/dsh/src/app/http.ts:232`）——**不新开端口**。
 
 ### 9.2 主插件的 apply() 只做五件事（27 行）
 
@@ -552,16 +552,16 @@ worker 的 6 个（`src/app/tools/executor.ts`）：`orchestrator_report`、`orc
 
 ### 9.3 Source 协议：描述符 + 收窄的 context
 
-一个 Source kind 是一个**纯数据描述符**（`src/sources/kind.ts`）：`kind/title/description/schema(zod)/fields(表单)/facts(账号事实)/health(独占健康名)/scope(过滤)/channel(写)/threadContext(评估上下文)/find(搜索)/repliesTo/policy(名单与准入表)/refreshLabels/environment(执行环境变量)`。
+一个 Source kind 是一个**纯数据描述符**（`packages/dsh/src/sources/kind.ts`）：`kind/title/description/schema(zod)/fields(表单)/facts(账号事实)/health(独占健康名)/scope(过滤)/channel(写)/threadContext(评估上下文)/find(搜索)/repliesTo/policy(名单与准入表)/refreshLabels/environment(执行环境变量)`。
 
 泛型层（engine/outbox/assessment/views）**从不 import** `github.ts` 或 `feishu.ts`，只经 `SourceRegistry` 与这个接口通信——这就是「两种 Source 可插拔」的实际含义。
 
 ```ts
-// src/sources/github.ts:113 —— 注册就是一次 ctx.effect，注销即回收
+// packages/dsh/src/sources/github.ts:113 —— 注册就是一次 ctx.effect，注销即回收
 ctx.effect(() => ctx.orchestrator.sources.register(githubKind), 'github: source kind')
 ```
 
-Source 拿到的 context 是 `Pick` 过的（`src/app/source-context.ts:11-27`）：`engine` 只给 `bindThread/threadClosed`，`store` 不给 `saveSettings`，`outbox` 只给 `send`。**Source 实现者物理上无法越权改工单或设置**。
+Source 拿到的 context 是 `Pick` 过的（`packages/dsh/src/app/source-context.ts:11-27`）：`engine` 只给 `bindThread/threadClosed`，`store` 不给 `saveSettings`，`outbox` 只给 `send`。**Source 实现者物理上无法越权改工单或设置**。
 
 一个未文档化的现实约束：`registry.resolve` 永远用 `kind.kind` 当实例 id（`registry.ts:134-137`），所以**同一 kind 目前不能配两个实例**。
 
@@ -582,18 +582,18 @@ Source 拿到的 context 是 `Pick` 过的（`src/app/source-context.ts:11-27`�
 
 同源检查（`http.ts:75-79`）要求同时满足：`Host` 严格等于 `127.0.0.1:<port>`/`localhost:<port>`；自定义头 `x-orchestrator-request: 1`；`Origin` 缺失或等于 `http://<Host>`。挡的是 CSRF 与 DNS rebinding，**不挡同源 XSS，也没有 token / 限流**。
 
-25 条路由（`http.ts:151-213`），契约单点维护：`src/app/api.ts` 是 type-only，`Routes` 类型是 `{[K in keyof Api]: …}`，漏一条编译不过；客户端 `call('GET tickets/:id', {params})` 由同一份类型推导（`src/client/api.ts:105-117`）。加一条路由只改两处，两边立刻有类型。
+25 条路由（`http.ts:151-213`），契约单点维护：`packages/dsh/src/app/api.ts` 是 type-only，`Routes` 类型是 `{[K in keyof Api]: …}`，漏一条编译不过；客户端 `call('GET tickets/:id', {params})` 由同一份类型推导（`packages/dsh/src/client/api.ts:105-117`）。加一条路由只改两处，两边立刻有类型。
 
 **views 是纯读投影**：全目录没有 `.save(` / `.atomic(` / `.delete(`，写操作都在路由 handler 里（`http.ts:157-213`）。所以面板永远显示库里的事实，而不是自己缓存的状态。
 
 ### 9.6 面板
 
-6 个 tab（Overview / Source / Trigger / Eval / Execution / Settings），Settings 分 5 组。挂载点有三处（`src/client/index.tsx:50-58`）：keyed 主面板、侧栏入口（order 10）、Plugin Manager 的配置行。面板**不是 URL 路由页**，页内 tab 位置存 `sessionStorage`（`src/client/route.ts:52-66`）。
+6 个 tab（Overview / Source / Trigger / Eval / Execution / Settings），Settings 分 5 组。挂载点有三处（`packages/dsh/src/client/index.tsx:50-58`）：keyed 主面板、侧栏入口（order 10）、Plugin Manager 的配置行。面板**不是 URL 路由页**，页内 tab 位置存 `sessionStorage`（`packages/dsh/src/client/route.ts:52-66`）。
 
 两处值得学的实现：
 
-- **草稿机**（`src/client/draft.tsx:80-108`）：五动作状态机 `clean|editing|saving|awaitingRevision`，配三方合并 `merge3`——因为设置可能被 agent 工具或 `sync` 在后台改，没有 merge3 就只能整块覆盖别人的改动。
-- **轮询**（`src/client/api.ts:67-98`）：串行队列、值不变不 setState、`document.hidden` 时间隔 ×6；`PanelProvider` 5s 轮询并做重启检测（先 error 再恢复才 `restarts+1`）。
+- **草稿机**（`packages/dsh/src/client/draft.tsx:80-108`）：五动作状态机 `clean|editing|saving|awaitingRevision`，配三方合并 `merge3`——因为设置可能被 agent 工具或 `sync` 在后台改，没有 merge3 就只能整块覆盖别人的改动。
+- **轮询**（`packages/dsh/src/client/api.ts:67-98`）：串行队列、值不变不 setState、`document.hidden` 时间隔 ×6；`PanelProvider` 5s 轮询并做重启检测（先 error 再恢复才 `restarts+1`）。
 
 ---
 
@@ -606,49 +606,49 @@ Source 拿到的 context 是 `Pick` 过的（`src/app/source-context.ts:11-27`�
 - **问题**：让模型判断「要不要接活」= 授权不可证伪，prompt 注入即越权。
 - **做法**：两层 Eval——gate（确定性：名单、@、准入表、bot 名单）+ assessment（模型检讨：**由主 Session 这个模型角色**在 gate 已放行的范围内按 enabled rules 判；`MasterAssessor` 只负责投递卡片、缓存读取与超时）。模型输出还要过形状校验（每条 enabled rule 恰好判一次、accept 必须有 intent_evidence），不合格直接抛错。
 - **代价**：规则要人来维护；每加一类「主动工作」就要写一条 rule 并重新评估误报。
-- **证据**：`src/policy.ts:40-61`、`:191-211`；`docs/002-authorization.md:5`。
+- **证据**：`packages/dsh/src/policy.ts:40-61`、`:191-211`；`docs/002-authorization.md:5`。
 
 ### 10.2 先记账，后干活
 
 - **问题**：命令成功但副作用丢了（或反过来）会留下不可解释的状态。
 - **做法**：副作用不当场执行，而是与领域写**同一事务**写进 `effect` 表，提交后由微任务派发；失败按 kind 的曲线重试，进程崩溃则重启后继续。
 - **代价**：对外语义是 at-least-once，所有 downstream 必须幂等；`(kind,key)` 合并会丢弃中间 payload（只有最新一次会执行）。
-- **证据**：`src/app/effects.ts:61-66`、`:84-88`、`:130-146`；`tests/effects.spec.ts:29-49`。
+- **证据**：`packages/dsh/src/app/effects.ts:61-66`、`:84-88`、`:130-146`；`tests/effects.spec.ts:29-49`。
 
 ### 10.3 幂等靠确定性 id，不靠去重表
 
 - **问题**：Source 重放、轮询重叠、命令重试都会重复。
 - **做法**：`key(...values) = sha256(JSON.stringify(values)).slice(0,32)`；`ticket = key('ticket', eval.id)`、`decision = key('decision', eval.id)`、`assignment = key('assignment', ticket.id, index)`、`effect` 主键直接用聚合 id。
 - **代价**：id 里必须只含「同一事实必然相同」的字段——改 id 派生式就是破坏幂等（所以 `POLICY_REVISION = 'mandate-v3'` 这种版本前缀是必要的）。
-- **证据**：`src/core/ids.ts:3-5`、`evals.ts:311,329`、`tickets.ts:381-385`。
+- **证据**：`packages/dsh/src/core/ids.ts:3-5`、`evals.ts:311,329`、`tickets.ts:381-385`。
 
 ### 10.4 一工单 = 一个 Session + 一个目录
 
 - **问题**：一个长对话承载所有工单会互相污染；用映射表记 Session 会丢。
 - **做法**：Session id 与目录名从工单 id **推导**（`workerSessionId(ticketId)`、`ticket.execution.name/directory`），不需要映射表；重启后用同一推导去找回 Session 续跑。
 - **代价**：工单 id 一旦成为外部契约就不能随便改；删工单等于删目录语义。
-- **证据**：`src/executor/dsh.ts`（`workerSessionId`）、`docs/003-execution.md`；详见 §7。
+- **证据**：`packages/dsh/src/executor/dsh.ts`（`workerSessionId`）、`docs/003-execution.md`；详见 §7。
 
 ### 10.5 Source 是可插拔描述符，且能力被收窄
 
 - **问题**：加一个事件源不应该改核心。
 - **做法**：SourceKind 是纯数据描述符（schema/fields/scope/channel/policy/environment…），泛型层只依赖描述符；Source 拿到的 context 是 `Pick` 过的，物理上无法写工单或设置。
 - **代价**：能力不够时只能在 app 层开口子（如飞书的少量泄漏）；描述符字段一多，实现一个 kind 的门槛变高。
-- **证据**：`src/sources/kind.ts`、`src/app/source-context.ts:11-27`、`src/sources/registry.ts:34`。
+- **证据**：`packages/dsh/src/sources/kind.ts`、`packages/dsh/src/app/source-context.ts:11-27`、`packages/dsh/src/sources/registry.ts:34`。
 
 ### 10.6 提示词是「每次请求现算的部件树」，不是文件
 
 - **问题**：Policy 变了要立刻影响在跑的会话；升级不能覆盖团队自己的文本。
 - **做法**：内置部件 + 团队三段 + 技能 + 生成段（environment/policy）按固定 8 步装配；每次 model request 取最新版本；policy 段放最后，使它在 Policy 变更时前面的文本不变；override 记录它基于的内置文本，升级时标 `Default updated`。
 - **代价**：没有「建会话时快照」的稳定性——同一 turn 的后续步骤看到的提示词可能已变；排查时要记版本号。
-- **证据**：`docs/004-prompts.md:46-59,91-96`、`src/app/prompts.ts`。
+- **证据**：`docs/004-prompts.md:46-59,91-96`、`packages/dsh/src/app/prompts.ts`。
 
 ### 10.7 面板是只读投影，同意图靠同源 HTTP
 
 - **问题**：面板自己缓存状态会撒谎；同机另一个网站不该能触发写操作。
 - **做法**：views 里没有任何写语句，写操作全在路由 handler；`Host`、`x-orchestrator-request`、`Origin` 三重检查挡 CSRF 与 DNS rebinding。
 - **代价**：没有 token/限流，同源 XSS 可全权调用；面板与 agent 共用同一套权限。
-- **证据**：`src/app/http.ts:75-79`、`:151-213`；views 无 `.save(`/`.atomic(`。
+- **证据**：`packages/dsh/src/app/http.ts:75-79`、`:151-213`；views 无 `.save(`/`.atomic(`。
 
 ### 10.8 用「拒绝的概念」控制复杂度
 
@@ -665,18 +665,18 @@ Source 拿到的 context 是 `Pick` 过的（`src/app/source-context.ts:11-27`�
 
 | 欠账 | 事实 | 证据 |
 | --- | --- | --- |
-| **数据无界增长** | Trigger/Ticket/Decision/Thread 从不删除，只有一个 SQLite 文件；长期运行需外部清理 | 全仓无 `DELETE FROM trigger/ticket/decision/thread`；只有 `effect`/`outbox`/`kv` 会删（`src/app/effects.ts:80,135`、`store.ts:129,287`） |
-| **单实例** | `lockSync(stateDir)` 保证同一 stateDir 只能一个进程 | `src/app/runtime.ts:91-94` |
+| **数据无界增长** | Trigger/Ticket/Decision/Thread 从不删除，只有一个 SQLite 文件；长期运行需外部清理 | 全仓无 `DELETE FROM trigger/ticket/decision/thread`；只有 `effect`/`outbox`/`kv` 会删（`packages/dsh/src/app/effects.ts:80,135`、`store.ts:129,287`） |
+| **单实例** | `lockSync(stateDir)` 保证同一 stateDir 只能一个进程 | `packages/dsh/src/app/runtime.ts:91-94` |
 | **无端到端测试** | 全是模块级单测；启动、bundle 合成、HTTP 全链路没有测试 | `docs/007-architecture.md:402` |
 | **alpha 依赖** | `engines.dsh` 是 `^0.2.1-alpha.2`，而文档 pin `0.2.1-rc.3`；engines 挡不住更旧预发布 | `package.json:55` vs `docs/006-deployment.md:83` |
-| **revalidate 不看 policyVersion** | Mandate 的 policyVersion 只作审计，有效性完全按当前配置重推 | `src/policy.ts:213-240` |
-| **atomic 必须同步** | 类型没禁止 async 回调；一旦 await，微任务可能在提交前读到未提交行 | `src/app/store.ts:133-162` |
-| **HTTP 无 token / 无速率限制** | 只靠 loopback + 同源检查 | `src/app/http.ts:231-237` |
-| **一个 kind 一个实例** | `registry.resolve` 永远用 `kind.kind` 当 id，多实例未实现 | `src/sources/registry.ts:134-137` |
-| **client 控件是手抄副本** | `controls.tsx` 镜像 DSH ui-primitives 的 markup/键盘行为，升级不自动跟随 | `src/client/controls.tsx` 头注释 |
-| **面板全量轮询** | 5s 一次 `GET state`，`document.hidden` 时间隔 ×6 | `src/client/provider.tsx:89`、`src/client/api.ts:67-98` |
+| **revalidate 不看 policyVersion** | Mandate 的 policyVersion 只作审计，有效性完全按当前配置重推 | `packages/dsh/src/policy.ts:213-240` |
+| **atomic 必须同步** | 类型没禁止 async 回调；一旦 await，微任务可能在提交前读到未提交行 | `packages/dsh/src/app/store.ts:133-162` |
+| **HTTP 无 token / 无速率限制** | 只靠 loopback + 同源检查 | `packages/dsh/src/app/http.ts:231-237` |
+| **一个 kind 一个实例** | `registry.resolve` 永远用 `kind.kind` 当 id，多实例未实现 | `packages/dsh/src/sources/registry.ts:134-137` |
+| **client 控件是手抄副本** | `controls.tsx` 镜像 DSH ui-primitives 的 markup/键盘行为，升级不自动跟随 | `packages/dsh/src/client/controls.tsx` 头注释 |
+| **面板全量轮询** | 5s 一次 `GET state`，`document.hidden` 时间隔 ×6 | `packages/dsh/src/client/provider.tsx:89`、`packages/dsh/src/client/api.ts:67-98` |
 
-另有两处「文档说 A、代码是 B」，读文档时要注意：`docs/007:400` 说 patch 插 3 个插件（实际 5 行，含 2 个 preset）；`docs/007:107` 列 12 个域事件，`src/core/ports.ts:86-101` 实际 13 个（漏了 `trigger.followup`）。
+另有两处「文档说 A、代码是 B」，读文档时要注意：`docs/007:400` 说 patch 插 3 个插件（实际 5 行，含 2 个 preset）；`docs/007:107` 列 12 个域事件，`packages/dsh/src/core/ports.ts:86-101` 实际 13 个（漏了 `trigger.followup`）。
 
 ---
 
@@ -689,24 +689,24 @@ Source 拿到的 context 是 `Pick` 过的（`src/app/source-context.ts:11-27`�
 1. `README.md`（10 分钟）——它想解决什么。
 2. `docs/000-philosophy.md`（33 行）——全项目唯一判据：**take as little human attention as possible**。后面所有「为什么不做 X」都能用它解释。
 3. `docs/001-domain.md`（112 行，先看开头的 mermaid）——11 个概念与 12 个被拒绝的概念。
-4. `src/core/stage.ts`（26 行）——面板状态表。
+4. `packages/dsh/src/core/stage.ts`（26 行）——面板状态表。
 5. `docs/003-execution.md`（203 行）——一张工单从排队到结束的规则。
 6. 本导览的 §7（一次请求的旅程）。
 
 **第二档：半天，看懂工程实现（约 2 500 行）**
 
-7. `src/core/engine.ts`（约 270 行）+ `part.ts`——一入口五 Part、角色 Pick、事务边界。
-8. `src/app/effects.ts` + `passes.ts`——「先记账后干活」与 2 秒节拍真正怎么落地。
-9. `src/policy.ts:108-242`——gate → admission → revalidate。
-10. `src/app/store.ts:30-44,133-162`——生成列与 SAVEPOINT。
-11. `src/executor/dsh.ts`——最重的适配器，一次 launch 与一次 turn-end。
+7. `packages/dsh/src/core/engine.ts`（约 270 行）+ `part.ts`——一入口五 Part、角色 Pick、事务边界。
+8. `packages/dsh/src/app/effects.ts` + `passes.ts`——「先记账后干活」与 2 秒节拍真正怎么落地。
+9. `packages/dsh/src/policy.ts:108-242`——gate → admission → revalidate。
+10. `packages/dsh/src/app/store.ts:30-44,133-162`——生成列与 SAVEPOINT。
+11. `packages/dsh/src/executor/dsh.ts`——最重的适配器，一次 launch 与一次 turn-end。
 12. `docs/002` + `docs/004`——授权语义与提示词装配。
 
 **第三档：一周，吃透宿主集成**
 
 13. `cordis.patch.yml` + `examples/profile.cordis.patch.yml` + `docs/006-deployment.md`——bundle/profile/fiber。
-14. `src/sources/kind.ts` + `registry.ts` + `src/sources/github.ts`——Source 协议与两种采集哲学。
-15. `src/app/http.ts` + `src/app/api.ts` + `src/client/api.ts`——类型单点维护的 HTTP 契约。
+14. `packages/dsh/src/sources/kind.ts` + `registry.ts` + `packages/dsh/src/sources/github.ts`——Source 协议与两种采集哲学。
+15. `packages/dsh/src/app/http.ts` + `packages/dsh/src/app/api.ts` + `packages/dsh/src/client/api.ts`——类型单点维护的 HTTP 契约。
 16. `tests/`（1 197 用例）——当行为字典反查边界。
 17. `.analysis/verify-core.md` 与 `.analysis/verify-surface.md`（本轮的逐条核实笔记，带更多 path:line）。
 
@@ -736,9 +736,9 @@ pnpm check            # build + typecheck + test 三连；也可分开：./node_
 
 ### 12.3 一句话记忆法
 
-- 想改**授权**：`src/policy.ts`（gate / admission / revalidate）。
-- 想改**状态与规则**：`src/core/`（stage 是面板口径，tickets 是生命周期）。
-- 想改**副作用与重试**：`src/app/effects.ts`（kind 的 limit/retry 在各注册点）。
-- 想接**新的消息源**：`src/sources/kind.ts` 写一个描述符 + 一个插件入口。
-- 想改**智能体的行为**：`prompts/` 与面板的 Prompts 页，而不是代码。
-- 想改**面板**：`src/client/` + `src/app/views/`（只读投影）。
+- 想改**授权**：`packages/dsh/src/policy.ts`（gate / admission / revalidate）。
+- 想改**状态与规则**：`packages/dsh/src/core/`（stage 是面板口径，tickets 是生命周期）。
+- 想改**副作用与重试**：`packages/dsh/src/app/effects.ts`（kind 的 limit/retry 在各注册点）。
+- 想接**新的消息源**：`packages/dsh/src/sources/kind.ts` 写一个描述符 + 一个插件入口。
+- 想改**智能体的行为**：`packages/dsh/prompts/` 与面板的 Prompts 页，而不是代码。
+- 想改**面板**：`packages/dsh/src/client/` + `packages/dsh/src/app/views/`（只读投影）。

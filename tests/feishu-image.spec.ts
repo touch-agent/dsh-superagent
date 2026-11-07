@@ -5,10 +5,10 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { afterEach, beforeEach, expect, it, vi, type MockInstance } from 'vitest'
-import { Commands } from '../src/infra/commands.ts'
+import { Commands } from '@superagent/dsh/infra/commands.ts'
 import { testDeployment } from './fixtures/deployment.ts'
-import { admissionImageKeys, readAdmissionImage } from '../src/sources/feishu-image.ts'
-import type { FeishuRef } from '../src/sources/feishu-read.ts'
+import { admissionImageKeys, readAdmissionImage } from '@superagent/dsh/sources/feishu-image.ts'
+import type { FeishuRef } from '@superagent/dsh/sources/feishu-read.ts'
 
 let directory: string
 let agent: Agent

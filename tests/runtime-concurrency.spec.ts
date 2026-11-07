@@ -1,11 +1,11 @@
 /** Concurrent runtime behavior across overlapping triggers, deliveries, and worker launches. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { latestAssignment, waitsForPerson, type Ticket, type Trigger } from '@superagent/kernel'
-import { Later } from '../src/app/effects.ts'
-import { reportRelay } from '../src/app/notices.ts'
-import { WorkerSlots, inputMessage, mandateInstructions, ticketExecution, transient, triggerMessage } from '../src/executor/dsh.ts'
-import { SettingsSchema } from '../src/policy.ts'
-import { Commands } from '../src/infra/commands.ts'
+import { Later } from '@superagent/dsh/app/effects.ts'
+import { reportRelay } from '@superagent/dsh/app/notices.ts'
+import { WorkerSlots, inputMessage, mandateInstructions, ticketExecution, transient, triggerMessage } from '@superagent/dsh/executor/dsh.ts'
+import { SettingsSchema } from '@superagent/dsh/policy.ts'
+import { Commands } from '@superagent/dsh/infra/commands.ts'
 import { deferred, waitUntil } from './fixtures/async.ts'
 import { CHAT, MEMBER, feishu, startRuntime, type Host } from './fixtures/host.ts'
 

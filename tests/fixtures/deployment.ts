@@ -1,6 +1,6 @@
 /** Default deployment and machine fixtures for tests. */
 import type { Volatile } from '@deepseek-ai/cordis'
-import type { Deployment, Machine } from '../../src/deployment.ts'
+import type { Deployment, Machine } from '@superagent/dsh/deployment.ts'
 
 /** Mutable Volatile reference for simulating live configuration updates. */
 export const reference = <T>(value: T): Volatile<T> & { set(next: T): void } => {

@@ -16,8 +16,8 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      # The lockfile also guards the workspace shape: `packages/kernel` is an importer, and the run fails if a manifest
-      # and the lockfile disagree. The kernel boundary and the layer rules are tests, so `pnpm test` is what refuses a
+      # The lockfile also guards the workspace shape: `packages/kernel` and `packages/dsh` are importers, and the run fails if a
+      # manifest and the lockfile disagree. The kernel boundary and the layer rules are tests, so `pnpm test` is what refuses a
       # host dependency inside `packages/kernel` or a Source that imports `src/app`; nothing here needs a separate job.
       - run: pnpm install --frozen-lockfile
       - run: pnpm check

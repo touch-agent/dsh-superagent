@@ -4,7 +4,7 @@ This document explains what the agents read, what a team can edit, and when chan
 
 ## What a team writes
 
-A team can edit three team sections, add skills, and override every built-in system-prompt part. Most defaults live under `prompts/` and `skills/`. Tool descriptions, notices and cards remain in code and cannot be edited through prompt settings.
+A team can edit three team sections, add skills, and override every built-in system-prompt part. Most defaults live under `packages/dsh/prompts/` and `packages/dsh/skills/`. Tool descriptions, notices and cards remain in code and cannot be edited through prompt settings.
 
 | Section | Holds |
 | --- | --- |
@@ -54,7 +54,7 @@ The system prompt is assembled in this order:
 7. `runtime/environment`.
 8. `runtime/policy`, for the main Session only.
 
-Admission instructions come from `prompts/admission.md`. They describe proactive assessment and when an irrelevant candidate can be ignored from its card. `orchestrator_eval` returns context rather than repeating these instructions.
+Admission instructions come from `packages/dsh/prompts/admission.md`. They describe proactive assessment and when an irrelevant candidate can be ignored from its card. `orchestrator_eval` returns context rather than repeating these instructions.
 
 The environment section gives the main Session deployment-wide values and each Executor its Ticket-specific values. The Policy section is regenerated from settings on every model request. It contains the Policy version, accept mode, the explicit-request exemption, and enabled rules as `- <name> (<id>): <instruction>`, or a statement that none is enabled. It is last so a Policy change leaves the preceding prompt text unchanged.
 

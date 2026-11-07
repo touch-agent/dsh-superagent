@@ -32,7 +32,7 @@ Read the numbered documents in order; each builds only on the ones before it.
 
 ## Development
 
-`pnpm check` runs the typecheck, the tests and the build.
+`packages/kernel` is the domain library, `packages/dsh` is the runtime (`@superagent/dsh`), and the root package is the bundle (`dsh-superagent`) that installs it. `pnpm check` runs the typecheck, the tests and the build.
 
 ## License
 

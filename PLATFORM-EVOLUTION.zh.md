@@ -10,17 +10,17 @@
 | 关联 | [`ARCHITECTURE-TOUR.zh.md`](ARCHITECTURE-TOUR.zh.md)（现状讲解）、[`docs/001-domain.md`](docs/001-domain.md)、[`docs/002-authorization.md`](docs/002-authorization.md)、[`docs/003-execution.md`](docs/003-execution.md) |
 | 一句话 | 把「一个会干活的 agent」演进为「一个组织敢把权限交给它的行动平面」：内核只保留授权、账本、引用三件事，其余全部外置为插件。 |
 
-> **进度注记（2026-11-06）**：阶段 0 第一刀已落地——领域层从 `src/core/` 迁到 `packages/kernel/src/`（`@superagent/kernel`，提交 `3f7a158`），60 个测试文件 / 1200 个用例全绿，`tests/kernel-boundary.spec.ts` 已强制「kernel 只能引用自己与 `node:` 内建、且无任何依赖」。文中 `src/core/...` 的旧引用按此映射阅读。
+> **进度注记（2026-11-06）**：阶段 0 第一刀已落地——领域层从 `packages/dsh/src/core/` 迁到 `packages/kernel/src/`（`@superagent/kernel`，提交 `3f7a158`），60 个测试文件 / 1200 个用例全绿，`tests/kernel-boundary.spec.ts` 已强制「kernel 只能引用自己与 `node:` 内建、且无任何依赖」。文中 `packages/dsh/src/core/...` 的旧引用按此映射阅读。
 >
-> **第二刀（同日）**：装配层也拆开了——`src/app/assembly.ts` 的 `assemble()` 按显式依赖序构建 13 个协作者，`runtime.ts` 只剩状态目录锁、启动与关停（254 → 183 行）；`tests/layers.spec.ts` 把 docs/007 的分层规则变成断言（Sources 不得 import app、面板只拿类型与白名单值、`packages/` 只能经 `@superagent/kernel`、浏览器半不用 Node 内建），当前真实违规为 0；`.github/workflows/check.yml` 让这些守卫在 CI 上跑。提交 `5f8024d`。
+> **第二刀（同日）**：装配层也拆开了——`packages/dsh/src/app/assembly.ts` 的 `assemble()` 按显式依赖序构建 13 个协作者，`runtime.ts` 只剩状态目录锁、启动与关停（254 → 183 行）；`tests/layers.spec.ts` 把 docs/007 的分层规则变成断言（Sources 不得 import app、面板只拿类型与白名单值、`packages/` 只能经 `@superagent/kernel`、浏览器半不用 Node 内建），当前真实违规为 0；`.github/workflows/check.yml` 让这些守卫在 CI 上跑。提交 `5f8024d`。
 >
 > **迁出（2026-11-07）**：三个提交的树已复制到新仓库 `touch-agent/dsh-superagent`（private，阶段 1 提前落地，因为原仓库 `deepseek-ai/dsh-superagent-prototype` 对当前凭据只读）；`check` workflow 首次运行全绿（1m26s，含 `pnpm install --frozen-lockfile`），证明手写的 `packages/kernel` importer 与 workspace 形状成立。
 >
-> **第三刀 · T0-01（2026-11-07）**：观测的第一块地基——kernel 新增 `Span`/`SpanKind`（十段：ingest…report）与确定性 id（`traceId`/`spanId`），端口 `TraceSink` 只声明「记录一个阶段」；`src/app/trace.ts` 的 `SqliteTraceSink` 把阶段写进新表 `span`（同一阶段重复记录保留第一行），`SCHEMA_VERSION` 升到 12（schema 12 不重写任何记录，只加表与索引，旧库 10/11 在打开时补齐）；`tests/trace.spec.ts` 8 个用例覆盖顺序、幂等、重开存活与 11→12 打开。62 个测试文件 / 1212 用例全绿，浏览器半仍不含 `node:crypto`。
+> **第三刀 · T0-01（2026-11-07）**：观测的第一块地基——kernel 新增 `Span`/`SpanKind`（十段：ingest…report）与确定性 id（`traceId`/`spanId`），端口 `TraceSink` 只声明「记录一个阶段」；`packages/dsh/src/app/trace.ts` 的 `SqliteTraceSink` 把阶段写进新表 `span`（同一阶段重复记录保留第一行），`SCHEMA_VERSION` 升到 12（schema 12 不重写任何记录，只加表与索引，旧库 10/11 在打开时补齐）；`tests/trace.spec.ts` 8 个用例覆盖顺序、幂等、重开存活与 11→12 打开。62 个测试文件 / 1212 用例全绿，浏览器半仍不含 `node:crypto`。
 >
-> **第四刀 · T0-02 前半（2026-11-07）**：Engine 真的开始记流水——`EngineOptions.trace` 是可选端口，`receive` 记 `ingest`/`dedupe`/`enqueue`（排队发生在 `queueForEval`），`evaluateDue → Evals.start` 记 `gate`/`admission`（每一段写清 admitted/strength/via 或拒绝原因，admission 带 `evalId`）；`src/app/assembly.ts` 把 `SqliteTraceSink` 注入 Engine，所以一次真实 receive 就有 trace。同时发现并修正计划里的一处想当然：`SPAN_KINDS` 的顺序应是 `ingest → dedupe → enqueue → gate → admission → …`——排队先于准入，因为 gate 是在 Eval 开始时按当时的线程与工单快照判的（这也正是 trace 有用的地方：能看到「排上了、却在门口被拒」）。新增 `tests/trace-stages.spec.ts`（7 用例，表驱动：五段顺序、重复、未监听、被拒、无 sink 时不记录）。63 个测试文件 / 1219 用例全绿。
+> **第四刀 · T0-02 前半（2026-11-07）**：Engine 真的开始记流水——`EngineOptions.trace` 是可选端口，`receive` 记 `ingest`/`dedupe`/`enqueue`（排队发生在 `queueForEval`），`evaluateDue → Evals.start` 记 `gate`/`admission`（每一段写清 admitted/strength/via 或拒绝原因，admission 带 `evalId`）；`packages/dsh/src/app/assembly.ts` 把 `SqliteTraceSink` 注入 Engine，所以一次真实 receive 就有 trace。同时发现并修正计划里的一处想当然：`SPAN_KINDS` 的顺序应是 `ingest → dedupe → enqueue → gate → admission → …`——排队先于准入，因为 gate 是在 Eval 开始时按当时的线程与工单快照判的（这也正是 trace 有用的地方：能看到「排上了、却在门口被拒」）。新增 `tests/trace-stages.spec.ts`（7 用例，表驱动：五段顺序、重复、未监听、被拒、无 sink 时不记录）。63 个测试文件 / 1219 用例全绿。
 
-> **第五刀 · T0-03（2026-11-07）**：四个健康数字落地在 `src/app/metrics.ts` 并出现在面板概览的只读区与 `GET metrics`——① 判断耗时（Trigger 到首个 Decision 的中位/p90，24 小时）；② 重复发送（同一工单、同一会话、同样文字被回了多次，正常恒为 0，是回归报警）；③ 重启恢复（被 `restarted` 中断的 Assignment 到同工单下一次 Assignment 的中位间隔）；④ 判定吞吐（24 小时 Decision 数 / 24）。口径全部来自库里的行，没有样本时返回 `null` 而不是 0（面板显示 `—`），所以空库不会被误读成「一切正常」。64 个测试文件 / 1225 用例全绿，浏览器半仍不含 `node:crypto`。
+> **第五刀 · T0-03（2026-11-07）**：四个健康数字落地在 `packages/dsh/src/app/metrics.ts` 并出现在面板概览的只读区与 `GET metrics`——① 判断耗时（Trigger 到首个 Decision 的中位/p90，24 小时）；② 重复发送（同一工单、同一会话、同样文字被回了多次，正常恒为 0，是回归报警）；③ 重启恢复（被 `restarted` 中断的 Assignment 到同工单下一次 Assignment 的中位间隔）；④ 判定吞吐（24 小时 Decision 数 / 24）。口径全部来自库里的行，没有样本时返回 `null` 而不是 0（面板显示 `—`），所以空库不会被误读成「一切正常」。64 个测试文件 / 1225 用例全绿，浏览器半仍不含 `node:crypto`。
 
 ---
 
@@ -28,7 +28,7 @@
 
 ### 0.1 结论
 
-- **方向正确，位置偏窄。** 现有系统在代码域证明了「授权—记账—执行」这条链能跑通：一次 `accept` 在同一事务里写线程、工单、决定与副作用（`src/core/engine.ts:109-121`），六种 effect 各有并发上限与重试曲线。这套治理结构在办公域**更稀缺、更值钱**——因为办公里的每个动作几乎都不可逆（发邮件、改共享文档、占别人时间）。
+- **方向正确，位置偏窄。** 现有系统在代码域证明了「授权—记账—执行」这条链能跑通：一次 `accept` 在同一事务里写线程、工单、决定与副作用（`packages/dsh/src/core/engine.ts:109-121`），六种 effect 各有并发上限与重试曲线。这套治理结构在办公域**更稀缺、更值钱**——因为办公里的每个动作几乎都不可逆（发邮件、改共享文档、占别人时间）。
 - **但它的三个核心假设是 GitHub 特有的**：终态可机器判定（PR merge）、动作可回滚（git）、授权来源是仓库协作者。办公域三条全不成立。
 - **因此不是「加源」，是「换骨架」**：领域模型 1:1 可迁移，执行模型与终止模型必须重做。
 - **护城河不是「能碰多少系统」，是「敢让它碰」**。连接器是三个月的工作，信任是三年的工作。
@@ -45,10 +45,10 @@
 
 | # | 机制 | 现状（代码位置） | 目标 |
 | --- | --- | --- | --- |
-| 1 | 授权 | 名单 + 准入表 + gate（`src/policy.ts:171-211`） | per-source 授权证据 → 强度确定性映射，动作时点 revalidate |
-| 2 | 动作 | reply 自动发（`src/app/outbox.ts:24`） | 五级动作 + `maxActionLevel` + 独立 Approval + 撤销窗口 |
-| 3 | 账本 | 先记账、至多一次（`src/app/effects.ts:61-74`） | 加幂等键 `(source, object, action, revision, actor)` + `recalled` 态 + 补偿 |
-| 4 | 终止 | PR 全关 / 报告 ready（`src/core/stage.ts`） | 外部 `Acceptance` 事件，模型不得自述结单 |
+| 1 | 授权 | 名单 + 准入表 + gate（`packages/dsh/src/policy.ts:171-211`） | per-source 授权证据 → 强度确定性映射，动作时点 revalidate |
+| 2 | 动作 | reply 自动发（`packages/dsh/src/app/outbox.ts:24`） | 五级动作 + `maxActionLevel` + 独立 Approval + 撤销窗口 |
+| 3 | 账本 | 先记账、至多一次（`packages/dsh/src/app/effects.ts:61-74`） | 加幂等键 `(source, object, action, revision, actor)` + `recalled` 态 + 补偿 |
+| 4 | 终止 | PR 全关 / 报告 ready（`packages/dsh/src/core/stage.ts`） | 外部 `Acceptance` 事件，模型不得自述结单 |
 | 5 | 交付 | 只有 report 五态 | `Deliverable = artifact + previewer + 验收标准` |
 | 6 | 执行 | 一工单一 Session 一目录 | inline / warm / cold 三层 + workspace handle + 轻量工单 |
 
@@ -89,9 +89,9 @@
 
 - **模型只判断，不授权。** 授权由确定性 gate 产生，`Mandate` 由 `accept` 创建，只有人能 `stop` 撤回。
 - **先记账，后干活。** 任何跨进程副作用先落 `effect` 行，再由 pass 认领执行，崩溃后能续。
-- **一个状态一个写者。** `Engine` 是唯一写入口，五个 Part 通过角色化 `Pick` 暴露能力（`src/core/engine.ts:261-270`）。
+- **一个状态一个写者。** `Engine` 是唯一写入口，五个 Part 通过角色化 `Pick` 暴露能力（`packages/dsh/src/core/engine.ts:261-270`）。
 
-代码规模 111 文件 / 15205 行，59 个测试文件 / 1197 个用例全绿，`src/core` 对 DSH 的依赖数为 0——这三条说明它已经具备「被抽成底座」的物理条件。
+代码规模 111 文件 / 15205 行，59 个测试文件 / 1197 个用例全绿，`packages/dsh/src/core` 对 DSH 的依赖数为 0——这三条说明它已经具备「被抽成底座」的物理条件。
 
 ### 1.2 三个失败模式
 
@@ -162,18 +162,18 @@
 
 | 资产 | 判定 | 理由 | 目标位置 |
 | --- | --- | --- | --- |
-| `src/core`（2088 行，零外部依赖） | **保留** | 纯领域库，端口注入，天然可抽包 | `@superagent/kernel` |
+| `packages/dsh/src/core`（2088 行，零外部依赖） | **保留** | 纯领域库，端口注入，天然可抽包 | `@superagent/kernel` |
 | `Engine` + 五 Part + 角色 Pick | **保留** | 单写入口是核心资产，不能动 | kernel |
 | `stage.ts` 八条判定 | **改造** | 判定逻辑对，但终态语义要换成 acceptance | kernel（重写第 4/5 条） |
 | `policy.ts` gate / admission / revalidate | **改造** | 形状对，输入从「名单」换成「证据」 | kernel + `AuthorityPort` |
 | `effects.ts` 六种 kind + health | **保留** | 至少一次 + 并发上限 + 重试曲线的骨架很好 | kernel |
 | `store.ts`（SQLite + SAVEPOINT + 生成列） | **保留** | 事务语义正确；表要扩，schema 要继续只增 | kernel（`StoreAdapter`） |
 | `outbox.ts` reply effect | **改造** | 必须变成「需批准的动作」 | kernel Action + Approvals |
-| `src/sources/kind.ts` 描述符 | **删除重做** | 手工字段 + 手工 UI 的耦合点 | Source Kit v2（manifest 驱动） |
-| `src/app/runtime.ts` 装配器（13 个 new / 24 行关停） | **重写** | 手工装配不可扩展 | kernel 容器 + 生命周期钩子 |
-| `src/app/http.ts`（25 条手写路由） | **重写** | 手写 match + 手写 body 上限 | schema 驱动 router + `api.ts` 契约生成 |
-| `src/client`（29 文件，手抄 DSH primitives） | **改造** | 面板模型对，控件与设置页应归还宿主 | 独立 `@superagent/panel` |
-| `src/client/draft.tsx` + merge3（203 行） | **退役** | 用 schema 生成设置表单 | 宿主 settings |
+| `packages/dsh/src/sources/kind.ts` 描述符 | **删除重做** | 手工字段 + 手工 UI 的耦合点 | Source Kit v2（manifest 驱动） |
+| `packages/dsh/src/app/runtime.ts` 装配器（13 个 new / 24 行关停） | **重写** | 手工装配不可扩展 | kernel 容器 + 生命周期钩子 |
+| `packages/dsh/src/app/http.ts`（25 条手写路由） | **重写** | 手写 match + 手写 body 上限 | schema 驱动 router + `api.ts` 契约生成 |
+| `packages/dsh/src/client`（29 文件，手抄 DSH primitives） | **改造** | 面板模型对，控件与设置页应归还宿主 | 独立 `@superagent/panel` |
+| `packages/dsh/src/client/draft.tsx` + merge3（203 行） | **退役** | 用 schema 生成设置表单 | 宿主 settings |
 | 两套 preset + `WORK_TOOLS` 白名单（三处重复） | **合并** | 工具面单一真相 | `@superagent/runtime` 常量表 |
 | `docs/001–008`（编号依赖链） | **保留** | 少见的自洽文档集，是本项目最大软资产 | 随 kernel 走 |
 
@@ -195,21 +195,21 @@
 | 层 | 现状 | 判定 |
 | --- | --- | --- |
 | bundle | 一个 npm 包 = `cordis.patch.yml` 插 5 行（主插件、github、feishu、2 个 preset） | 合规 |
-| Cordis 插件 | 主插件 `src/index.ts:7` 提供 `orchestrator` 服务并 inject 11 个宿主服务；`src/sources/github.ts:110`、`src/sources/feishu.ts:130` inject `['orchestrator']`，用 `ctx.effect` 对称注册/注销、abort 传播、health claim | 合规 |
-| 浏览器半 | `src/client/index.tsx`，`__ModuleLoader__.load`，3 处 slot | 合规 |
-| 内部装配 | `Runtime` 构造器 `src/app/runtime.ts:98-157` 手写 `new` 13 个协作者，关停手写 24 行 `:229-253`，靠 getter 打破循环依赖 | **不合规** |
+| Cordis 插件 | 主插件 `packages/dsh/src/index.ts:7` 提供 `orchestrator` 服务并 inject 11 个宿主服务；`packages/dsh/src/sources/github.ts:110`、`packages/dsh/src/sources/feishu.ts:130` inject `['orchestrator']`，用 `ctx.effect` 对称注册/注销、abort 传播、health claim | 合规 |
+| 浏览器半 | `packages/dsh/src/client/index.tsx`，`__ModuleLoader__.load`，3 处 slot | 合规 |
+| 内部装配 | `Runtime` 构造器 `packages/dsh/src/app/runtime.ts:98-157` 手写 `new` 13 个协作者，关停手写 24 行 `:229-253`，靠 getter 打破循环依赖 | **不合规** |
 
-单体本身有正当理由——一次 `accept` 必须在同一 SAVEPOINT 里写线程、工单、决定与副作用（`src/core/engine.ts:109-121`），拆太碎会失去原子性。要拆的不是领域层，是**装配层**。
+单体本身有正当理由——一次 `accept` 必须在同一 SAVEPOINT 里写线程、工单、决定与副作用（`packages/dsh/src/core/engine.ts:109-121`），拆太碎会失去原子性。要拆的不是领域层，是**装配层**。
 
 **插件化改造清单（与里程碑对齐）**
 
 | 优先级 | 项 | 证据 | 目标 | 里程碑 |
 | --- | --- | --- | --- | --- |
 | P0 | 装配器解耦 | `runtime.ts:98-157` 手写 new、`:229-253` 手写关停 | `runtime` 容器 + 生命周期钩子 | M0 |
-| P0 | Store 服务化 | kernel 已有 `Repositories` 端口（`src/core/ports.ts:106`），但 `runtime.ts` 写死 `new Store(...orchestrator.sqlite)` | kernel `store-adapter` | M0 |
+| P0 | Store 服务化 | kernel 已有 `Repositories` 端口（`packages/dsh/src/core/ports.ts:106`），但 `runtime.ts` 写死 `new Store(...orchestrator.sqlite)` | kernel `store-adapter` | M0 |
 | P0 | HTTP schema 驱动 | `http.ts` 247 行手写路由表 + 手写 match + 手写 body 上限；契约在 `api.ts` 52 行 | `runtime` schema-router | M1 |
 | P0 | 设置页归还宿主 | `index.ts` 里 `settings.configure({auto:false})` 关掉自动设置页，又手写 `draft.tsx` 203 行 + merge3 | `panel` 只保留领域设置 | M3 |
-| P1 | Source 契约独立成包 | `src/sources/host.ts` 67 行，自造了第二套插件契约 | `source-kit` | M1 |
+| P1 | Source 契约独立成包 | `packages/dsh/src/sources/host.ts` 67 行，自造了第二套插件契约 | `source-kit` | M1 |
 | P1 | 工具面单一真相 | 同一份白名单出现在 `sessions.ts:61`（`WORK_TOOLS`）、`:263`（7 个工具）、2 个 preset yml，共三处 | `runtime` 常量表 | M1 |
 | P1 | 面板 push 化 | `provider.tsx:89` 5 秒轮询；`store.ts` 的 afterCommit 正好可以挂 SSE | `panel` | M3 |
 | P2 | effect kind 建表 | 六种 kind 分散在 4 个文件注册 | kernel 注册表 | M2 |
@@ -353,7 +353,7 @@ proposed ──accept──▶ authorized ──start──▶ active
 
 ### 6.1 Authority：用证据代替名单
 
-**问题。** 现在是 `allowed` 名单 + 准入表（`src/policy.ts:171-211`）。办公域里授权来源是组织关系，手工名单必然腐烂；而 `docs/001` 拒绝跨源身份映射的判断依然正确。
+**问题。** 现在是 `allowed` 名单 + 准入表（`packages/dsh/src/policy.ts:171-211`）。办公域里授权来源是组织关系，手工名单必然腐烂；而 `docs/001` 拒绝跨源身份映射的判断依然正确。
 
 **设计。**
 
@@ -407,7 +407,7 @@ export interface AuthorityPort {
 
 ### 6.2 Action：五级动作与出站闸门
 
-**问题。** `reply` 是排队自动发的（`src/app/outbox.ts:24`，失败重试到 5 分钟）。代码域被 PR 兜住，办公域没人兜。
+**问题。** `reply` 是排队自动发的（`packages/dsh/src/app/outbox.ts:24`，失败重试到 5 分钟）。代码域被 PR 兜住，办公域没人兜。
 
 **设计。**
 
@@ -474,7 +474,7 @@ export interface LedgerPort {
 
 ### 6.4 Acceptance：终止信号
 
-**问题。** 现在工单靠「本工单开的 PR 全关」或「report ready」结束（`src/core/stage.ts` 的 8 条判定 + `docs/003`）。办公没有 merge。
+**问题。** 现在工单靠「本工单开的 PR 全关」或「report ready」结束（`packages/dsh/src/core/stage.ts` 的 8 条判定 + `docs/003`）。办公没有 merge。
 
 **设计。**
 
@@ -556,7 +556,7 @@ export interface Previewer {
 
 - **workspace handle**：本地目录 / 云端工作区 / 临时桶，统一接口 `{ read, write, exec, url }`。
 - 工单不再强制绑定 Session；`Run` 是 `{ workItemId, mode, sessionRef?, workspaceRef }`。
-- 保持现有「提示词每次 model request 现算」与「策略 section 放最后」的设计（`src/app/prompts.ts`），否则策略变更会让缓存的 prompt 前缀失效。
+- 保持现有「提示词每次 model request 现算」与「策略 section 放最后」的设计（`packages/dsh/src/app/prompts.ts`），否则策略变更会让缓存的 prompt 前缀失效。
 
 **取舍。** inline 路径绕过工单粒度 → 必须引入轻量工单（§5.3）承载 action ledger，否则审计断链。
 
@@ -767,7 +767,7 @@ gantt
 
 | 阶段 | 仓库 | 动作 | 判据 |
 | --- | --- | --- | --- |
-| 阶段 0（M0，约 1 周） | 现仓库 `dsh-superagent-prototype` | 加 `pnpm-workspace.yaml`，把 `src/core` 挪成 `packages/kernel`，其余暂留原位；跑通 1197 个测试 | 领域测试 < 2s；CI 能拒绝 kernel 引入 `@deepseek-ai/*` |
+| 阶段 0（M0，约 1 周） | 现仓库 `dsh-superagent-prototype` | 加 `pnpm-workspace.yaml`，把 `packages/dsh/src/core` 挪成 `packages/kernel`，其余暂留原位；跑通 1197 个测试 | 领域测试 < 2s；CI 能拒绝 kernel 引入 `@deepseek-ai/*` |
 | 阶段 1（M0 末，半天） | 新仓库 `dsh-superagent` | 复制 `packages/*` + `docs/` + `tests/`；新仓库初始提交；配置 changesets 与两段 CI | 新仓库能独立构建、独立跑 conformance |
 | 阶段 2（M2 起） | 老仓库 | 打 tag `v0.1.0-prototype`，README 顶部加「已演进至 …」指针，archive | 两周 cherry-pick 窗口结束后归档 |
 
@@ -867,19 +867,19 @@ export interface Kernel {
 
 | 现状 | 行数 | 目标 |
 | --- | --- | --- |
-| `src/core/*`（engine/part/model/tickets/evals/assignments/replies/intake/stage/policy/effects/ids/memory/ports） | 2088 | `kernel`（stage 与 policy 重写，effects 扩 action） |
-| `src/policy.ts` | 242 | kernel `authority.ts` + `AuthorityPort` |
-| `src/app/store.ts` | 291 | kernel `store-adapter`（SQLite 实现留在 runtime） |
-| `src/app/effects.ts` | 161 | kernel ledger（保留 kind/limit/retry 骨架） |
-| `src/app/runtime.ts` | 254 | runtime 容器（13 个 new → 依赖注入） |
-| `src/app/http.ts` | 247 | runtime `schema-router` |
-| `src/sources/kind.ts` | 115 | `source-kit` manifest v2（退役） |
-| `src/sources/{github,feishu}*` | 2059 | `@superagent/sources/*`（拆包） |
-| `src/executor/dsh.ts` | 673 | runtime 执行层（加 inline/warm） |
-| `src/app/sessions.ts` | 352 | runtime session（工具面单一真相） |
-| `src/app/prompts.ts` | 247 | runtime prompt 装配（保留顺序与版本） |
-| `src/client/*` | 4037 | `@superagent/panel`（设置页归还宿主） |
-| `src/app/tools/*` | 441 | runtime 工具面（14 + 6 保持不变） |
+| `packages/dsh/src/core/*`（engine/part/model/tickets/evals/assignments/replies/intake/stage/policy/effects/ids/memory/ports） | 2088 | `kernel`（stage 与 policy 重写，effects 扩 action） |
+| `packages/dsh/src/policy.ts` | 242 | kernel `authority.ts` + `AuthorityPort` |
+| `packages/dsh/src/app/store.ts` | 291 | kernel `store-adapter`（SQLite 实现留在 runtime） |
+| `packages/dsh/src/app/effects.ts` | 161 | kernel ledger（保留 kind/limit/retry 骨架） |
+| `packages/dsh/src/app/runtime.ts` | 254 | runtime 容器（13 个 new → 依赖注入） |
+| `packages/dsh/src/app/http.ts` | 247 | runtime `schema-router` |
+| `packages/dsh/src/sources/kind.ts` | 115 | `source-kit` manifest v2（退役） |
+| `packages/dsh/src/sources/{github,feishu}*` | 2059 | `@superagent/sources/*`（拆包） |
+| `packages/dsh/src/executor/dsh.ts` | 673 | runtime 执行层（加 inline/warm） |
+| `packages/dsh/src/app/sessions.ts` | 352 | runtime session（工具面单一真相） |
+| `packages/dsh/src/app/prompts.ts` | 247 | runtime prompt 装配（保留顺序与版本） |
+| `packages/dsh/src/client/*` | 4037 | `@superagent/panel`（设置页归还宿主） |
+| `packages/dsh/src/app/tools/*` | 441 | runtime 工具面（14 + 6 保持不变） |
 
 ## 附录 C：术语表
 

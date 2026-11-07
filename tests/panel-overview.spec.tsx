@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The overview.
 import { expect, it } from 'vitest'
-import { en, zh } from '../src/client/locales.ts'
+import { en, zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, all, find, tab, click, text } from './fixtures/panel.tsx'
 import { server, droppedReply, threadSummary } from './fixtures/panel-server.ts'
 

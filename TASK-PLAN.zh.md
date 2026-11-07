@@ -20,6 +20,8 @@ M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上�
 | T0-05 changesets + 体积门 + 两段 CI | 完成 | `894c1a5` | `pnpm changeset status` 两包各一 minor；`release` dry-run 18s |
 | T0-06 runbook + 演练 + trace 读取面 | 完成 | `492e668`、`a3809b1` | 三次查找 36–50 ms；`docs/runbooks/why-not-sent.md` |
 
+**M1 前置已动**：X-07（包切分）于 2026-11-07 落地——`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`（`@superagent/dsh`），根包成为 meta（patch + locale + 三个 re-export 入口）；patch 行名与子路径不变（D7）。X-11 与 X-08 仍未做。
+
 基线随之变化：65 个 spec / 1232 个测试（13.2s），领域子集 496 个 / 549 ms，`src` + `packages` 代码量见 `git show --stat`；CI 三个工作流（`check` / `changesets` / `release`）均已实跑通过。
 
 ---
@@ -31,11 +33,11 @@ M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上�
 | 仓库 | 新仓库已立，原仓库只读（`deepseek-ai/dsh-superagent-prototype`，`push:false`） | `gh repo view` |
 | 提交 | 原型 + kernel 抽包 + 装配器拆解 + CI，共 4 个 | `git log --oneline` |
 | 测试 | 61 个 spec 文件 / 1204 个测试，全绿 15.6s；领域 + 守卫子集 479 个 / 641ms | `vitest run` |
-| 代码量 | `src/` + `packages/` 共 111 文件 / 15293 行 | `find` + `wc -l` |
+| 代码量 | `packages/dsh/src/` + `packages/` 共 111 文件 / 15293 行 | `find` + `wc -l` |
 | 依赖面 | kernel 包零依赖；全部 `@deepseek-ai/*` 走 peerDependencies | `packages/kernel/package.json` |
 | CI | 一段 `check`：typecheck → test → build；`--frozen-lockfile` 验 workspace 形状 | `.github/workflows/check.yml` |
-| 源 | 2 个 kind（GitHub、Feishu），Feishu 默认 `disabled: true` | `src/sources/kind.ts` |
-| 存储 | 单 SQLite，`SCHEMA_VERSION = 11`，`OLDEST_SCHEMA = 10` | `src/app/migration.ts:20-22` |
+| 源 | 2 个 kind（GitHub、Feishu），Feishu 默认 `disabled: true` | `packages/dsh/src/sources/kind.ts` |
+| 存储 | 单 SQLite，`SCHEMA_VERSION = 11`，`OLDEST_SCHEMA = 10` | `packages/dsh/src/app/migration.ts:20-22` |
 
 **相对方案 §8 的完成度**：M0 六项任务全部完成（见 §0.0）；M1 尚未开始。
 
@@ -104,28 +106,28 @@ graph LR
 ### T0-01 Trace 端口与 span 存储 · Kernel · 3 人日
 
 - **目标**：领域层能产 trace，但不认识 OTel、不新增依赖。
-- **交付**：`packages/kernel/src/trace.ts`（`Tracer` / `Span` 端口 + `NoopTracer`）；`src/app/trace.ts` 适配器（写 SQLite）；`src/app/store.ts` 建 `span` 表（`trace_id, span_id, parent_id, name, at, ms, attrs`）+ 索引；`migration.ts` `SCHEMA_VERSION` 11 → 12 与 11→12 迁移。
+- **交付**：`packages/kernel/src/trace.ts`（`Tracer` / `Span` 端口 + `NoopTracer`）；`packages/dsh/src/app/trace.ts` 适配器（写 SQLite）；`packages/dsh/src/app/store.ts` 建 `span` 表（`trace_id, span_id, parent_id, name, at, ms, attrs`）+ 索引；`migration.ts` `SCHEMA_VERSION` 11 → 12 与 11→12 迁移。
 - **验收**：`tests/trace.spec.ts`：一次 `accept` 恰好 1 条 traceId；父子 span 可还原成树；重启后 span 仍在；11→12 迁移可回放。
 - **依赖**：无。**回退**：NoopTracer 是默认值，关掉即回到现状。
 
 ### T0-02 十个阶段埋点 · Runtime · 4 人日
 
 - **目标**：方案 §6.8 的十段每段一个 span：`ingest → intake → gate → assess → decide → authorize → run → report → action → accept`。
-- **交付**：在 `src/core/engine.ts` 的角色方法边界与 `src/app/effects.ts` 的 dispatch 处开 span；属性至少 `tenant / workItem / actor / policyVersion / effectKind`。
+- **交付**：在 `packages/dsh/src/core/engine.ts` 的角色方法边界与 `packages/dsh/src/app/effects.ts` 的 dispatch 处开 span；属性至少 `tenant / workItem / actor / policyVersion / effectKind`。
 - **验收**：`tests/trace-journey.spec.ts`：一条真 trigger 走完 ≥9 段；故意让 gate 拒绝时，trace 停在第 3 段且带 reason；缺段能被测试断言出来（防止埋点悄悄丢）。
 - **依赖**：T0-01。**回退**：`machine.trace.enabled` 配置，默认开，可关。
 
 ### T0-03 四指标派生 · Runtime · 3 人日
 
 - **目标**：TTFA、duplicate-send rate、restart recovery rate、decision throughput，全部从 span + ledger 派生，不新增埋点。
-- **交付**：`src/app/metrics.ts`（纯 SQL 查询 + 计算）；HTTP `GET /metrics`（同源只读，复用 `http.ts` 的检查链）；主 Session 一个只读工具 `orchestrator_metrics`。
+- **交付**：`packages/dsh/src/app/metrics.ts`（纯 SQL 查询 + 计算）；HTTP `GET /metrics`（同源只读，复用 `http.ts` 的检查链）；主 Session 一个只读工具 `orchestrator_metrics`。
 - **验收**：`tests/metrics.spec.ts` 用合成 ledger：TTFA 取「trigger.at → 首条 outbox.sent」的 p50/p95；重复发送率 = 同幂等键多条 sent / sent 总数；重启恢复率 = 被 host restarted 结束且续跑成功的工单占比；决策吞吐 = 每小时 accept+stop 数。
 - **依赖**：T0-02。**回退**：`/metrics` 是只读端点，删掉不影响任何写入路径。
 
 ### T0-04 面板只读健康页 · Runtime · 2 人日
 
 - **目标**：方案 §9 的九个数字里先上四个，加上「按工单看 span」的入口。
-- **交付**：`src/app/views/overview.ts` 增一块；`src/client/` 增一个 `Trace` 视图（列表 + 时间轴），走 `api.ts` 的类型契约。
+- **交付**：`packages/dsh/src/app/views/overview.ts` 增一块；`packages/dsh/src/client/` 增一个 `Trace` 视图（列表 + 时间轴），走 `api.ts` 的类型契约。
 - **验收**：面板显示真实数字；无数据时整块不显示（docs/005「默认安静」）；`tests/panel.spec.ts` 覆盖空态与有数据态。
 - **依赖**：T0-03。**回退**：视图独立，隐藏即回退。
 
@@ -147,29 +149,29 @@ graph LR
 
 ## 4. M1 骨架：Source Kit v2（T1-01…12）
 
-**判断标准**：加一个源 = 写一个 manifest + 一个 adapter + 一份 conformance 测试，**不碰** `src/app`、不碰内核、不手写表单。
+**判断标准**：加一个源 = 写一个 manifest + 一个 adapter + 一份 conformance 测试，**不碰** `packages/dsh/src/app`、不碰内核、不手写表单。
 
 ### T1-01 `SourceManifest` 类型与校验 · Kernel · 2 人日
 
-- **交付**：`packages/kernel/src/manifest.ts`：`id / title / auth / fields / scope / channel / threadContext / find / repliesTo / policy / health / environment / limits`；zod schema + `extra` 逃生字段。
+- **交付**：`packages/kernel/src/manifest.ts` 只放纯类型：`id / title / auth / fields / scope / channel / threadContext / find / repliesTo / policy / health / environment / limits` 与 `extra` 逃生字段；zod schema 放 `packages/dsh/src/sources/manifest-schema.ts`（D6，kernel 零依赖不放宽）。
 - **验收**：`tests/manifest.spec.ts`：合法 manifest 通过；缺 `scope` 或 `id` 冲突时给出带路径的错误。
 - **依赖**：无。
 
 ### T1-02 manifest → 表单/权限表/健康项/限流 生成器 · Connector · 3 人日
 
-- **交付**：`src/sources/manifest-form.ts`：字段 → 面板控件（switch/select/number/text/rows）；scope → 权限提示；health → 健康条目名；limits → 轮询默认值。
+- **交付**：`packages/dsh/src/sources/manifest-form.ts`：字段 → 面板控件（switch/select/number/text/rows）；scope → 权限提示；health → 健康条目名；limits → 轮询默认值。
 - **验收**：给定 manifest，生成的表单 JSON 与手写版本一致（快照测试）；零 React 手写。
 - **依赖**：T1-01。
 
 ### T1-03 registry 按 manifest 装配 · Runtime · 2 人日
 
-- **交付**：`src/sources/registry.ts` 从「按 kind 对象注册」改为「按 manifest 注册 + adapter 工厂」；`resolve` 仍保证一 kind 一实例。
+- **交付**：`packages/dsh/src/sources/registry.ts` 从「按 kind 对象注册」改为「按 manifest 注册 + adapter 工厂」；`resolve` 仍保证一 kind 一实例。
 - **验收**：现有 GitHub/Feishu 行为不变（`tests/registry.spec.ts` + 全量绿）。
 - **依赖**：T1-01。
 
 ### T1-04 / T1-05 GitHub、Feishu adapter 迁到 manifest · Connector · 各 3 人日
 
-- **交付**：`src/sources/github*.ts`、`feishu*.ts` 拆成「manifest + adapter 实现」，旧 `kind.ts` 保留但不再被注册。
+- **交付**：`packages/dsh/src/sources/github*.ts`、`feishu*.ts` 拆成「manifest + adapter 实现」，旧 `kind.ts` 保留但不再被注册。
 - **验收**：`tests/bundle-patch.spec.ts` 与源相关测试全绿；行为差异逐条列出（应为空）。
 - **依赖**：T1-02、T1-03。
 
@@ -188,20 +190,20 @@ graph LR
 
 ### T1-10 `kind.ts` 退役与等价证明 · Connector · 2 人日
 
-- **交付**：删 `src/sources/kind.ts`（或缩成 manifest 的 re-export）；`docs/007` 与 `docs/001` 同步。
+- **交付**：删 `packages/dsh/src/sources/kind.ts`（或缩成 manifest 的 re-export）；`docs/007` 与 `docs/001` 同步。
 - **验收**：全量绿 + conformance 覆盖新旧两版；diff 里没有行为改动。
 - **依赖**：T1-07…09。
 
 ### T1-11 源配置页由 manifest 驱动 · Runtime · 3 人日
 
-- **交付**：`src/client/settings-sources.tsx` 改为渲染生成器产物；权限提示、健康条目、限流说明都从 manifest 读。
+- **交付**：`packages/dsh/src/client/source.tsx`（字段渲染在 `settings-kit.tsx`）改为渲染生成器产物；权限提示、健康条目、限流说明都从 manifest 读。
 - **验收**：加一个假源（测试 fixture）只改 manifest，面板自动出现正确的字段与标签。
 - **依赖**：T1-02。
 
 ### T1-12 文档：新增源 30 分钟指南 · Platform · 1 人日
 
 - **交付**：`docs/009-adding-a-source.md`；`docs.spec.ts` 的文档表同步。
-- **验收**：按指南从零写一个假源（noop），全程无 `src/app` 改动。
+- **验收**：按指南从零写一个假源（noop），全程无 `packages/dsh/src/app` 改动。
 
 ---
 
@@ -229,7 +231,7 @@ graph LR
 
 ### T2-04 outbox `pending-send` + 撤销窗口 + `recalled` 态 · Runtime · 3 人日
 
-- **交付**：`src/core/outbox.ts`（或 ticket part）引入 `pending` 状态与窗口计时；`effect` 增 `recalled` 终态；`delivery` 的 `limit` 与窗口关系写清。
+- **交付**：`packages/dsh/src/core/outbox.ts`（或 ticket part）引入 `pending` 状态与窗口计时；`effect` 增 `recalled` 终态；`delivery` 的 `limit` 与窗口关系写清。
 - **验收**：`tests/outbox.spec.ts`：窗口内 recall → 外发 0 次；窗口后 recall → 拒绝并说明原因。
 - **依赖**：T2-01。
 
@@ -282,7 +284,7 @@ graph LR
 
 ### T3-02 doc previewer（redline）· Runtime · 6 人日
 
-- **交付**：`src/app/preview/doc.ts`：解析 docx/markdown 的段落 diff，产出结构化 hint（增/删/改/移动）。
+- **交付**：`packages/dsh/src/app/preview/doc.ts`：解析 docx/markdown 的段落 diff，产出结构化 hint（增/删/改/移动）。
 - **验收**：固定 fixture 三份文档，diff 结果稳定；`tests/preview-doc.spec.ts`。
 - **回退**：解析失败降级为通用文本 diff + 原文链接（方案 D4）。
 
@@ -298,7 +300,7 @@ graph LR
 
 ### T3-05 inline 执行层（无 Assignment 的轻量工单）· Runtime · 6 人日
 
-- **交付**：`src/core/tickets.ts` 增 `tracked / lightweight` 两种形态；lightweight 不进 Session，走 inline 执行器；审计粒度 = action 序列。
+- **交付**：`packages/dsh/src/core/tickets.ts` 增 `tracked / lightweight` 两种形态；lightweight 不进 Session，走 inline 执行器；审计粒度 = action 序列。
 - **验收**：小活（改一个单元格、发一封草稿）端到端 < 10s；`tests/lightweight.spec.ts` 保证也写 disposition 与 trace。
 - **依赖**：T0-01（trace 是轻量工单唯一的审计来源）。
 
@@ -373,9 +375,9 @@ graph LR
 
 | PR | 标题 | 改哪些文件 | 验收（跑什么、看什么） |
 | --- | --- | --- | --- |
-| PR-1 | kernel: trace 端口 + `span` 表 + schema 12 | `packages/kernel/src/ports.ts`（新增 `TraceSink` / `SpanContext`，只有接口）、`packages/kernel/src/trace.ts`（`SpanKind` 十个枚举 + `TraceId`）、`src/app/trace.ts`（`SqliteTraceSink`，实现端口）、`src/app/store.ts`（`span` 表 + `trace_id`/`kind` 索引）、`src/app/migration.ts`（`SCHEMA_VERSION = 12`，11→12 迁移）、`docs/007-architecture.md`（表清单 + Modules 两行）、`tests/trace.spec.ts`、`tests/migration.spec.ts` | `tsc --noEmit`；`vitest run`（新增 ≥8 个断言：span 树可按 trace_id 取回、迁移 11→12 后可读旧 trigger、`OLDEST_SCHEMA` 仍为 10、旧库拒启文案不变）；`Makefile`/CI 无改动 |
-| PR-2 | runtime: 前五段埋点（ingest → authorize） | `src/core/engine.ts`（`receive` / `evaluateDue` 用注入的 `TraceSink` 开 span，不 import 实现）、`src/core/intake.ts`、`src/core/evals.ts`、`packages/kernel/src/part.ts`（`queueForEval` 里带 span）、`tests/trace-stages.spec.ts`（表驱动：断言一次 receive 产生且仅产生 `ingest / dedupe / gate / admission / enqueue` 五段，名字与顺序固定） | `vitest run tests/core-engine.spec.ts tests/trace-stages.spec.ts`；`grep -rn "trace" packages/kernel/src/*.ts` 只出现类型引用、无实现 |
-| PR-3 | panel: 四指标 + 只读健康页 | `src/app/metrics.ts`（TTFA / duplicate-send / restart-recovery / decision-throughput 四条 SQL 或增量派生）、`src/app/http.ts`（`GET /metrics`）、`src/app/views/overview.ts`（或新 `health.ts`）、`src/client/panels/health.tsx`、`src/client/locales.ts`、`tests/metrics.spec.ts` | `curl -s localhost:3082/api/metrics` 返回四个数字齐全；空库返回 0 而不是 `NaN`/`null`；面板在空库、有数据、查询失败三态都渲染过 |
+| PR-1 | kernel: trace 端口 + `span` 表 + schema 12 | `packages/kernel/src/ports.ts`（新增 `TraceSink` / `SpanContext`，只有接口）、`packages/kernel/src/trace.ts`（`SpanKind` 十个枚举 + `TraceId`）、`packages/dsh/src/app/trace.ts`（`SqliteTraceSink`，实现端口）、`packages/dsh/src/app/store.ts`（`span` 表 + `trace_id`/`kind` 索引）、`packages/dsh/src/app/migration.ts`（`SCHEMA_VERSION = 12`，11→12 迁移）、`docs/007-architecture.md`（表清单 + Modules 两行）、`tests/trace.spec.ts`、`tests/migration.spec.ts` | `tsc --noEmit`；`vitest run`（新增 ≥8 个断言：span 树可按 trace_id 取回、迁移 11→12 后可读旧 trigger、`OLDEST_SCHEMA` 仍为 10、旧库拒启文案不变）；`Makefile`/CI 无改动 |
+| PR-2 | runtime: 前五段埋点（ingest → authorize） | `packages/dsh/src/core/engine.ts`（`receive` / `evaluateDue` 用注入的 `TraceSink` 开 span，不 import 实现）、`packages/dsh/src/core/intake.ts`、`packages/dsh/src/core/evals.ts`、`packages/kernel/src/part.ts`（`queueForEval` 里带 span）、`tests/trace-stages.spec.ts`（表驱动：断言一次 receive 产生且仅产生 `ingest / dedupe / gate / admission / enqueue` 五段，名字与顺序固定） | `vitest run tests/core-engine.spec.ts tests/trace-stages.spec.ts`；`grep -rn "trace" packages/kernel/src/*.ts` 只出现类型引用、无实现 |
+| PR-3 | panel: 四指标 + 只读健康页 | `packages/dsh/src/app/metrics.ts`（TTFA / duplicate-send / restart-recovery / decision-throughput 四条 SQL 或增量派生）、`packages/dsh/src/app/http.ts`（`GET /metrics`）、`packages/dsh/src/app/views/overview.ts`（或新 `health.ts`）、`packages/dsh/src/client/panels/health.tsx`、`packages/dsh/src/client/locales.ts`、`tests/metrics.spec.ts` | `curl -s localhost:3082/api/metrics` 返回四个数字齐全；空库返回 0 而不是 `NaN`/`null`；面板在空库、有数据、查询失败三态都渲染过 |
 
 **三个 PR 的共同约束**：kernel 仍然零依赖；每个 PR 自带迁移或不动 schema；不动 `docs/007` 的表结构描述就会红（`docs.spec.ts` 强制）。
 
@@ -390,6 +392,8 @@ graph LR
 | D3 | 放弃一工单一 Session | T3-05、T3-06 | 先把 `tracked/lightweight` 类型加上，不切默认行为 | M3 开始前 |
 | D4 | 自建预览器只做 3 个 | T3-02…T3-04 | 只做 doc/sheet/mail，其余用通用 diff | M3 第 2 周 |
 | D5 | 单租户优先 | T4-01…T4-06 | M4 整体后置，控制面只留接口 | M3 中期 |
+| D6 | manifest 的类型与校验分处两包 | T1-01、T1-02 | A（已定）：kernel 只放纯类型，zod 校验放 `@superagent/dsh`；kernel 零依赖不变 | 已定（2026-11-07） |
+| D7 | 切包后 patch 行名是否改 | X-07、X-11 | 不改：保留 `dsh-superagent` 与三个子路径 exports，已装 profile 不受影响 | 已定（2026-11-07） |
 
 ---
 
@@ -403,7 +407,7 @@ graph LR
 | R4 | previewer 吃人 | 单个 previewer 超 6 人日仍在调 | 降级为通用文本 diff + 原文链接（D4） |
 | R5 | inline 执行削弱审计 | 轻量工单说不清「凭什么做」 | 轻量工单只能做 `read/draft`，`send` 以上必须 tracked |
 | R6 | 本机 pnpm 不可用（corepack EPERM） | 装依赖失败 | 用 CI 或另一台机器装；本文所有「验收」都不依赖本机装包 |
-| R7 | 真宿主（DSH alpha）行为变化 | 契约测试红 | `src/app` 的适配层隔离 `^0.2.x-alpha`；X-03 先 fake host |
+| R7 | 真宿主（DSH alpha）行为变化 | 契约测试红 | `packages/dsh/src/app` 的适配层隔离 `^0.2.x-alpha`；X-03 先 fake host |
 
 ---
 

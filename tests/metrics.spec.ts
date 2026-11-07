@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { metrics } from '../src/app/metrics.ts'
-import { Store } from '../src/app/store.ts'
+import { metrics } from '@superagent/dsh/app/metrics.ts'
+import { Store } from '@superagent/dsh/app/store.ts'
 
 let directory: string
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'orchestrator-metrics-')) })

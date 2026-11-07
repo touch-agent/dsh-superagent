@@ -1,8 +1,8 @@
 /** Follow-up routing: human messages on subscribed threads go directly to the ticket worker and notify the main session without starting an Eval. */
 import { afterEach, expect, it, vi } from 'vitest'
 import { CHAT, feishu, startRuntime, type Host } from './fixtures/host.ts'
-import { repliedTo } from '../src/app/links.ts'
-import { inputMessage } from '../src/executor/dsh.ts'
+import { repliedTo } from '@superagent/dsh/app/links.ts'
+import { inputMessage } from '@superagent/dsh/executor/dsh.ts'
 
 let h: Host | undefined
 afterEach(async () => { await h?.stop(); h = undefined })

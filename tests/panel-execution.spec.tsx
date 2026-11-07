@@ -2,7 +2,7 @@
 // The Execution status, a Ticket, and the Execution settings.
 import { act } from 'react'
 import { expect, it } from 'vitest'
-import { en, zh } from '../src/client/locales.ts'
+import { en, zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, all, find, tab, click, type, text, field, at } from './fixtures/panel.tsx'
 import { MEMBER, server, ticketSummary, threadSummary } from './fixtures/panel-server.ts'
 

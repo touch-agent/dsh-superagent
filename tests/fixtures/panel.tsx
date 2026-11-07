@@ -2,10 +2,10 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { expect, vi } from 'vitest'
-import { App } from '../../src/client/app.tsx'
-import { usePageForm } from '../../src/client/deployment.tsx'
-import { zh } from '../../src/client/locales.ts'
-import type { T } from '../../src/client/text.ts'
+import { App } from '@superagent/dsh/client/app.tsx'
+import { usePageForm } from '@superagent/dsh/client/deployment.tsx'
+import { zh } from '@superagent/dsh/client/locales.ts'
+import type { T } from '@superagent/dsh/client/text.ts'
 import { server, usePanelServer } from './panel-server.ts'
 
 declare global { var IS_REACT_ACT_ENVIRONMENT: boolean }

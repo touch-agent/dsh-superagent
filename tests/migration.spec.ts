@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { SCHEMA_VERSION, Store } from '../src/app/store.ts'
-import { KV } from '../src/kv.ts'
-import { basisOf, reasonsOf, withoutCopies } from '../src/app/migration.ts'
-import { Prompts, composePrompt, defaultPrompts } from '../src/app/prompts.ts'
-import { masterPrompt } from '../src/app/context.ts'
+import { SCHEMA_VERSION, Store } from '@superagent/dsh/app/store.ts'
+import { KV } from '@superagent/dsh/kv.ts'
+import { basisOf, reasonsOf, withoutCopies } from '@superagent/dsh/app/migration.ts'
+import { Prompts, composePrompt, defaultPrompts } from '@superagent/dsh/app/prompts.ts'
+import { masterPrompt } from '@superagent/dsh/app/context.ts'
 
 let directory: string
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'orchestrator-migration-')) })

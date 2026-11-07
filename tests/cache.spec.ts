@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { TextCache } from '../src/app/cache.ts'
+import { TextCache } from '@superagent/dsh/app/cache.ts'
 
 it('drops the least recently used texts once they exceed the limit, but never the text just set', () => {
   const cache = new TextCache(10)

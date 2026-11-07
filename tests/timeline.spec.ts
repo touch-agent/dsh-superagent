@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { Engine, type ChannelRef, type Trigger } from '@superagent/kernel'
-import { Store } from '../src/app/store.ts'
-import { threadDetail } from '../src/app/views/threads.ts'
-import { SettingsSchema, settingsPolicy } from '../src/policy.ts'
-import { githubKind } from '../src/sources/github.ts'
-import { githubLink } from '../src/sources/github-channel.ts'
-import { SourceRegistry } from '../src/sources/registry.ts'
+import { Store } from '@superagent/dsh/app/store.ts'
+import { threadDetail } from '@superagent/dsh/app/views/threads.ts'
+import { SettingsSchema, settingsPolicy } from '@superagent/dsh/policy.ts'
+import { githubKind } from '@superagent/dsh/sources/github.ts'
+import { githubLink } from '@superagent/dsh/sources/github-channel.ts'
+import { SourceRegistry } from '@superagent/dsh/sources/registry.ts'
 
 let directory: string
 let store: Store

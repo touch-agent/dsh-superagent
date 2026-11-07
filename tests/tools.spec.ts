@@ -1,12 +1,12 @@
 /** Session tool registration, role-scoped resource reads, and routing/settings tool contracts. */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { TICKET_STATES } from '../src/app/cards.ts'
-import { builtInBase, builtInParts, defaultPrompts } from '../src/app/prompts.ts'
+import { TICKET_STATES } from '@superagent/dsh/app/cards.ts'
+import { builtInBase, builtInParts, defaultPrompts } from '@superagent/dsh/app/prompts.ts'
 import { UserError } from '@superagent/kernel'
-import { KV } from '../src/kv.ts'
-import { RESOURCES } from '../src/app/resources.ts'
-import { CliError, Commands } from '../src/infra/commands.ts'
-import { IM_WORDS, NOTE_WORDS } from '../src/infra/text.ts'
+import { KV } from '@superagent/dsh/kv.ts'
+import { RESOURCES } from '@superagent/dsh/app/resources.ts'
+import { CliError, Commands } from '@superagent/dsh/infra/commands.ts'
+import { IM_WORDS, NOTE_WORDS } from '@superagent/dsh/infra/text.ts'
 import { CHAT, feishu, startRuntime, type Host } from './fixtures/host.ts'
 
 let h: Host

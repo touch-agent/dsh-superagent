@@ -1,7 +1,7 @@
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { expect, it } from 'vitest'
-import { RetryHealth, type RetryHealthEvent } from '../src/app/retry-health.ts'
+import { RetryHealth, type RetryHealthEvent } from '@superagent/dsh/app/retry-health.ts'
 
 const epoch = Date.parse('2026-09-21T08:00:00Z')
 const event = (type: string, seq: number, data: unknown): RetryHealthEvent => ({ type, seq, time: epoch + seq * 1000, data })

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const TREES = ['src', join('packages', 'kernel', 'src')]
+const TREES = [join('packages', 'dsh', 'src'), join('packages', 'kernel', 'src')]
 
 it('gives every class declaration in the source trees a JSDoc block right before it', () => {
   const undocumented = TREES.flatMap(tree => readdirSync(join(ROOT, tree), { recursive: true, encoding: 'utf8' })

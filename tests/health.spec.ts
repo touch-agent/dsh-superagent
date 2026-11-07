@@ -1,6 +1,6 @@
 /** Runtime health reporting: per-component error states and recovery on subsequent success. */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { Commands } from '../src/infra/commands.ts'
+import { Commands } from '@superagent/dsh/infra/commands.ts'
 import { feishu, startRuntime, type Host } from './fixtures/host.ts'
 
 let h: Host

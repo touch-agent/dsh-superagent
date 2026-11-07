@@ -12,7 +12,7 @@
     "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
-    "rewriteRelativeImportExtensions": true,
+    "rewriteRelativeImportExtensions": false,
     "declaration": true,
     "types": [
       "node"
@@ -21,15 +21,32 @@
     "paths": {
       "@superagent/kernel": [
         "./packages/kernel/src/index.ts"
+      ],
+      "@superagent/dsh": [
+        "./packages/dsh/src/index.ts"
+      ],
+      "@superagent/dsh/github-watch": [
+        "./packages/dsh/src/sources/github.ts"
+      ],
+      "@superagent/dsh/feishu-watch": [
+        "./packages/dsh/src/sources/feishu.ts"
+      ],
+      "@superagent/dsh/*": [
+        "./packages/dsh/src/*"
       ]
     }
   },
+  "exclude": [
+    "node_modules",
+    "lib",
+    "packages/*/lib"
+  ],
   "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
     "tests/**/*.ts",
     "tests/**/*.tsx",
-    "packages/**/*.ts",
+    "meta/**/*.ts",
     "tsdown.config.ts"
   ]
 }

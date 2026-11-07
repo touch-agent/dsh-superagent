@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { Effects, Later } from '../src/app/effects.ts'
-import { Store } from '../src/app/store.ts'
-import { HealthBoard } from '../src/infra/health.ts'
+import { Effects, Later } from '@superagent/dsh/app/effects.ts'
+import { Store } from '@superagent/dsh/app/store.ts'
+import { HealthBoard } from '@superagent/dsh/infra/health.ts'
 import { deferred } from './fixtures/async.ts'
 
 let directory: string

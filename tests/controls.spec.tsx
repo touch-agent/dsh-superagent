@@ -4,13 +4,13 @@ import { join } from 'node:path'
 import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it } from 'vitest'
-import { Modal, SegmentedTabs } from '../src/client/controls.tsx'
+import { Modal, SegmentedTabs } from '@superagent/dsh/client/controls.tsx'
 
 declare global { var IS_REACT_ACT_ENVIRONMENT: boolean }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 it('imports no DSH client runtime package, only React and type declarations', () => {
-  const dir = join(process.cwd(), 'src/client')
+  const dir = join(process.cwd(), 'packages/dsh/src/client')
   for (const name of readdirSync(dir)) {
     const source = readFileSync(join(dir, name), 'utf8')
     for (const match of source.matchAll(/^import (type )?[^'"]*from '(@deepseek-ai\/[^']+)'/gm)) expect({ name, from: match[2], typeOnly: !!match[1] }).toMatchObject({ typeOnly: true })
@@ -19,7 +19,7 @@ it('imports no DSH client runtime package, only React and type declarations', ()
 })
 
 it('imports each module of the panel only from modules that do not import it back', () => {
-  const dir = join(process.cwd(), 'src/client')
+  const dir = join(process.cwd(), 'packages/dsh/src/client')
   const graph = new Map(readdirSync(dir).filter(name => /\.tsx?$/.test(name)).map(name => [name, [...readFileSync(join(dir, name), 'utf8')
     .matchAll(/^import [^'"]*from '\.\/([\w-]+\.tsx?)'/gm)].map(match => match[1]!)]))
   const done = new Set<string>(), cycles: string[] = []
@@ -34,7 +34,7 @@ it('imports each module of the panel only from modules that do not import it bac
 })
 
 it('describes the management API in a module the panel can bundle, which imports types only', () => {
-  const source = readFileSync(join(process.cwd(), 'src/app/api.ts'), 'utf8')
+  const source = readFileSync(join(process.cwd(), 'packages/dsh/src/app/api.ts'), 'utf8')
   expect([...source.matchAll(/^import (type )?/gm)].every(match => match[1])).toBe(true)
 })
 

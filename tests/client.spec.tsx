@@ -2,10 +2,10 @@
 import { act, useState, type ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { ApiError, caller, usePoll } from '../src/client/api.ts'
-import { apply } from '../src/client/index.tsx'
-import { zh } from '../src/client/locales.ts'
-import { SettingsSchema } from '../src/policy.ts'
+import { ApiError, caller, usePoll } from '@superagent/dsh/client/api.ts'
+import { apply } from '@superagent/dsh/client/index.tsx'
+import { zh } from '@superagent/dsh/client/locales.ts'
+import { SettingsSchema } from '@superagent/dsh/policy.ts'
 
 declare global { var IS_REACT_ACT_ENVIRONMENT: boolean }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true

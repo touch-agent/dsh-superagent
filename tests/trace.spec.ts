@@ -5,9 +5,9 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { SPAN_KINDS, spanId, traceId, type Span } from '@superagent/kernel'
-import { SCHEMA_VERSION, Store } from '../src/app/store.ts'
-import { SqliteTraceSink } from '../src/app/trace.ts'
-import { KV } from '../src/kv.ts'
+import { SCHEMA_VERSION, Store } from '@superagent/dsh/app/store.ts'
+import { SqliteTraceSink } from '@superagent/dsh/app/trace.ts'
+import { KV } from '@superagent/dsh/kv.ts'
 
 let directory: string
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'orchestrator-trace-')) })

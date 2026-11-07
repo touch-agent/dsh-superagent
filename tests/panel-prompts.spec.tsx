@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 // The Prompts settings.
 import { act } from 'react'
-import { builtInBase, builtInParts, defaultPrompts } from '../src/app/prompts.ts'
+import { builtInBase, builtInParts, defaultPrompts } from '@superagent/dsh/app/prompts.ts'
 import { expect, it } from 'vitest'
-import { zh } from '../src/client/locales.ts'
+import { zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, settle, all, tab, click, type, text, field, at } from './fixtures/panel.tsx'
 import { server, promptVersion } from './fixtures/panel-server.ts'
 

@@ -2,7 +2,7 @@
 // The Trigger status and a Thread.
 import { act } from 'react'
 import { expect, it, onTestFinished, vi } from 'vitest'
-import { en, zh } from '../src/client/locales.ts'
+import { en, zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, settle, all, find, click, text, at } from './fixtures/panel.tsx'
 import { server, trigger, threadSummary, ticketSummary } from './fixtures/panel-server.ts'
 

@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest'
-import { masterPrompt, workerPrompt } from '../src/app/context.ts'
-import { composePrompt, defaultPrompts } from '../src/app/prompts.ts'
-import { bundledSkills, promptFile } from '../src/app/skill-files.ts'
-import { TICKET_STATES, decisionCard, decisionDetails, ticketCard, ticketDetails, triggerCard, threadCard } from '../src/app/cards.ts'
+import { masterPrompt, workerPrompt } from '@superagent/dsh/app/context.ts'
+import { composePrompt, defaultPrompts } from '@superagent/dsh/app/prompts.ts'
+import { bundledSkills, promptFile } from '@superagent/dsh/app/skill-files.ts'
+import { TICKET_STATES, decisionCard, decisionDetails, ticketCard, ticketDetails, triggerCard, threadCard } from '@superagent/dsh/app/cards.ts'
 import { key, said, type Decision, type Thread, type Ticket, type Trigger } from '@superagent/kernel'
 
 /**

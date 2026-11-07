@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { inlines, linkify, markdownBlocks } from '../src/client/markdown.ts'
+import { inlines, linkify, markdownBlocks } from '@superagent/dsh/client/markdown.ts'
 
 it('reads headings, paragraphs and lists, a list ending at a blank line or at an item of the other kind', () => {
   expect(markdownBlocks('# Plan\nFirst line\n- a\n- b\n\n- c\n1. d\n\n')).toEqual([{ kind: 'heading', text: 'Plan' },

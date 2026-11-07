@@ -24,9 +24,9 @@
 | --- | --- |
 | 安装单位是 npm 包，bundle patch 声明在 manifest | `package.json` 的 `dsh.bundle.patch: ./cordis.patch.yml` |
 | patch 插 5 行：主插件、GitHub 源、Feishu 源（默认 disabled）、worker preset（order 90）、router preset（order 91） | `cordis.patch.yml` |
-| 服务端是 3 个 Cordis 插件：主插件提供 `orchestrator` 服务（`inject` 11 个宿主服务）；两个 Source 插件 `inject ['orchestrator']` | `src/index.ts`、`src/sources/github.ts`、`src/sources/feishu.ts` |
-| 浏览器半是一个独立入口，通过 `__ModuleLoader__.load` 装配 | `lib/client.js` banner、`src/client/index.tsx` |
-| 入口 UI 已经占三个 slot：主面板 `main`、侧边栏图标 `sidebar.panellist`（order 10）、插件管理配置行 `plugins.row.config` | `src/client/index.tsx:73-79` |
+| 服务端是 3 个 Cordis 插件：主插件提供 `orchestrator` 服务（`inject` 11 个宿主服务）；两个 Source 插件 `inject ['orchestrator']` | `packages/dsh/src/index.ts`、`packages/dsh/src/sources/github.ts`、`packages/dsh/src/sources/feishu.ts` |
+| 浏览器半是一个独立入口，通过 `__ModuleLoader__.load` 装配 | `lib/client.js` banner、`packages/dsh/src/client/index.tsx` |
+| 入口 UI 已经占三个 slot：主面板 `main`、侧边栏图标 `sidebar.panellist`（order 10）、插件管理配置行 `plugins.row.config` | `packages/dsh/src/client/index.tsx:73-79` |
 | 宿主 CLI 有一等的插件安装命令 | `dsh plugin --profile <name> add <pkg>`（转发 pnpm 到 profile 目录） |
 | profile 是「有序的 bundle patch 层栈」，可 dump 出合成结果 | `dsh --help`：`--dump-config`、`--patch <path>` |
 
@@ -70,7 +70,7 @@ dsh plugin remove dsh-superagent --profile work
       ↑
 @superagent/dsh          Cordis 宿主插件 + 浏览器半：跟宿主 alpha 走
       ↑
-dsh-superagent           meta：bundle patch + 2 个 preset + locale + skills
+dsh-superagent           meta：bundle patch + 2 个 preset + locale
       ↑
 （用户安装的就是它）
 ```
@@ -78,14 +78,18 @@ dsh-superagent           meta：bundle patch + 2 个 preset + locale + skills
 | 包 | 内容 | 依赖 | 发布节奏 | 现在的状态 |
 | --- | --- | --- | --- | --- |
 | `@superagent/kernel` | `packages/kernel/src/*`（engine/part/model/tickets/evals/assignments/intake/replies/stage/reasons/errors/ids/memory/ports） | 仅 `node:crypto` | 季度，破坏性变更走 major | **已存在**（提交 `3f7a158`） |
-| `@superagent/dsh` | `src/index.ts`（服务注册）、`src/app/**`、`src/client/**`、`src/sources/**`、`src/executor/**`、`src/infra/**` | peer：`@deepseek-ai/dsh-*` alpha；dep：`@superagent/kernel`、`zod`、`proper-lockfile` | 双周，紧跟宿主 | 现在与 meta 混在一个包 |
-| `dsh-superagent`（meta） | `cordis.patch.yml`、`dsh.client` 段、两个 preset 的配置行、`locale/*.json`、`skills/*`、`docs/` | `@superagent/dsh` | 双周 | 现在的包同时承担这个角色 |
+| `@superagent/dsh` | `packages/dsh/src/index.ts`（服务注册）、`packages/dsh/src/app/**`、`packages/dsh/src/client/**`、`packages/dsh/src/sources/**`、`packages/dsh/src/executor/**`、`packages/dsh/src/infra/**`，以及运行时要读的 `skills/`、`prompts/` | peer：`@deepseek-ai/dsh-*` alpha；dep：`@superagent/kernel`、`zod`、`proper-lockfile` | 双周，紧跟宿主 | **已拆出**（2026-11-07，`packages/dsh`） |
+| `dsh-superagent`（meta） | `cordis.patch.yml`、`dsh.client` 段、两个 preset 的配置行、`locale/*.json`，以及三个 node 入口（`lib/index.js` 与两个 watch 入口的 re-export） | `@superagent/dsh` | 双周 | **已是仓库根包**（2026-11-07） |
 
-**为什么 meta 不能省**：`bundle.patch` 只能由被安装的包自己声明（`dsh.bundle.patch`），preset 是「配置行」不是代码，locale/skills 是包内资源。把这些塞进 runtime 包会让「改一个文案」也要发一次 runtime 版本。
+**为什么 meta 不能省**：`bundle.patch` 只能由被安装的包自己声明（`dsh.bundle.patch`），preset 是「配置行」不是代码，locale 是包内资源。把这些塞进 runtime 包会让「改一个文案」也要发一次 runtime 版本。
+
+**skills 与 prompts 随 runtime 走**：它们由 `packageRoot()` 在运行时从「正在执行的那个包」里读（`packages/dsh/src/infra/paths.ts`），放进 meta 会让运行时的根目录指向错误的位置；内容随行为变化，本来就该与 runtime 同版本。locale 留在 meta，改文案只发 meta。
+
+**宿主 peer 依赖只声明一次**：声明在 runtime 上（它才是 `import` 的一方），由 pnpm 的 autoInstallPeers 随依赖安装；meta 不再重复这 23 行，装的是 meta、查的是 runtime 的 peer，`engines.dsh` 仍在 meta 上表达「这个 bundle 能装进哪版宿主」。
 
 **什么时候把 `@superagent/source-kit` 单独拆出来**：出现第三个非官方 adapter 作者时。在此之前 manifest 类型与 conformance helper 放在 kernel 的 `manifest.ts` 与 `tests/conformance/` 就够——过早拆包会把「一次改两个包、跑两次 CI」变成日常。
 
-**拆分动作本身是机械的**（kernel 那次已经验证过路径）：`git mv` + 三处解析（tsconfig paths / vitest alias / tsdown resolveId）+ 一条边界测试。真正的成本在 meta 包：要把 `package.json` 的 `dsh` 段、exports、files 字段重新分配，并保证 `bundle-patch.spec.ts` 仍然能断言合成结果。
+**拆分动作已完成**（2026-11-07）：`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`；根包保留 `dsh` 段与三个 exports，入口改为 `meta/*.ts` 的 re-export；tsconfig paths / vitest 插件 / tsdown resolveId 三处解析同步；`tests/layers.spec.ts` 的边界规则改为「按包名，不按相对路径」。决定 D7：**patch 行名与子路径不改**（`dsh-superagent`、`dsh-superagent/github-watch`、`dsh-superagent/feishu-watch`），所以已装 profile 不受影响。
 
 ---
 
@@ -126,7 +130,7 @@ dsh-superagent           meta：bundle patch + 2 个 preset + locale + skills
 | 场景 | 行为 | 谁保证 |
 | --- | --- | --- |
 | 首次安装 | profile 加一条依赖；patch 插入 5 行；`stateDir` 由 profile 提供 | `bundle-patch.spec.ts` + `dsh --dump-config` |
-| 缺 `stateDir` | 插件拒绝启动并说明原因 | `src/index.ts` 的 machineOf 校验（已有） |
+| 缺 `stateDir` | 插件拒绝启动并说明原因 | `packages/dsh/src/index.ts` 的 machineOf 校验（已有） |
 | 升级跨 schema | `SCHEMA_VERSION` 只增；旧库迁移或拒启 | `migration.ts`（已有，当前 11） |
 | 升级跨宿主版本 | peer 依赖 + compat matrix；启动时校验必需服务是否都在 | 新增 X-10 |
 | 卸载 | 插件行消失；stateDir 保留；重装恢复 | 新增 X-08 |

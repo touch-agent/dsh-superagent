@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
-import { SKILL_NAME, defaultPrompts } from '../src/app/prompts.ts'
+import { SKILL_NAME, defaultPrompts } from '@superagent/dsh/app/prompts.ts'
 import { changedSections, lineDiff, partText, partWith, sectionText, skillNameFree, withOverride, withOverrides, withSection, withoutSkill }
-  from '../src/client/prompt-config.ts'
+  from '@superagent/dsh/client/prompt-config.ts'
 
 it('reads and writes a configuration by section, and lists the sections two configurations differ in', () => {
   const config = withSection(defaultPrompts(), 'skill/testing', 'Run the tests.')

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { zh } from '../src/client/locales.ts'
-import { decisionMark, reportDot, sourceMark, threadMark, ticketMark } from '../src/client/marks.ts'
+import { zh } from '@superagent/dsh/client/locales.ts'
+import { decisionMark, reportDot, sourceMark, threadMark, ticketMark } from '@superagent/dsh/client/marks.ts'
 import { translator } from './fixtures/panel.tsx'
 
 const t = translator(zh)

@@ -2,7 +2,7 @@
 // The Eval status and settings.
 import { act } from 'react'
 import { expect, it } from 'vitest'
-import { en, zh } from '../src/client/locales.ts'
+import { en, zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, settle, all, find, tab, click, type, text, field } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
 

@@ -4,11 +4,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { Store, SCHEMA_VERSION } from '../src/app/store.ts'
+import { Store, SCHEMA_VERSION } from '@superagent/dsh/app/store.ts'
 import { MemoryRepositories, key, type Assignment, type Decision, type Repositories, type Thread, type Ticket } from '@superagent/kernel'
-import { threadFacts } from '../src/app/views/records.ts'
-import { KV } from '../src/kv.ts'
-import { SettingsSchema } from '../src/policy.ts'
+import { threadFacts } from '@superagent/dsh/app/views/records.ts'
+import { KV } from '@superagent/dsh/kv.ts'
+import { SettingsSchema } from '@superagent/dsh/policy.ts'
 
 
 let directory: string
@@ -131,7 +131,7 @@ it('sets and removes a Source\'s keys in a Thread\'s meta', () => {
   store.close()
 })
 it('spells every kv key in KV alone, so each record is named by its entry there', () => {
-  const src = join(dirname(fileURLToPath(import.meta.url)), '..', 'src')
+  const src = join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'dsh', 'src')
   const entries = Object.values(KV).flatMap(group => Object.values(group) as (string | { prefix: string })[])
   // Ignore single-word keys that collide with unrelated string literals.
   const keys = entries.map(entry => typeof entry === 'string' ? entry : entry.prefix).filter(name => /[-:]/.test(name))

@@ -10,11 +10,14 @@ export function packageRoot(): string {
   for (let depth = 0; depth < 6; depth++) {
     const manifest = join(directory, 'package.json')
     if (existsSync(manifest)) {
-      try { if ((JSON.parse(readFileSync(manifest, 'utf8')) as { name?: string }).name === 'dsh-superagent') return cached = directory }
-      catch { /* A foreign package.json on the way up is not this package. */ }
+      try {
+        const { name } = JSON.parse(readFileSync(manifest, 'utf8')) as { name?: string }
+        // The runtime package owns the packaged skills and prompts, so the search stops at its manifest, not the bundle's.
+        if (name === '@superagent/dsh') return cached = directory
+      } catch { /* A foreign package.json on the way up is not this package. */ }
     }
     directory = dirname(directory)
   }
-  throw new Error('dsh-superagent package root not found')
+  throw new Error('@superagent/dsh package root not found')
 }
 export const packagePath = (...parts: string[]): string => join(packageRoot(), ...parts)

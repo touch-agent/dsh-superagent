@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
-import type { EffectKind } from '../src/app/effects.ts'
-import { en, zh, type DshSuperagentKey } from '../src/client/locales.ts'
-import { reasonLabel, type T } from '../src/client/text.ts'
+import type { EffectKind } from '@superagent/dsh/app/effects.ts'
+import { en, zh, type DshSuperagentKey } from '@superagent/dsh/client/locales.ts'
+import { reasonLabel, type T } from '@superagent/dsh/client/text.ts'
 import { REASONS, USER_ERRORS } from '@superagent/kernel'
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort()

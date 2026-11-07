@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { draftReducer, merge3, saveBarText, type DraftAction, type DraftState } from '../src/client/draft.tsx'
-import type { T } from '../src/client/text.ts'
+import { draftReducer, merge3, saveBarText, type DraftAction, type DraftState } from '@superagent/dsh/client/draft.tsx'
+import type { T } from '@superagent/dsh/client/text.ts'
 
 const merged = (base: unknown, mine: unknown, theirs: unknown) => { const conflicts: string[][] = []; return { value: merge3(base, mine,
   theirs, conflicts), conflicts } }

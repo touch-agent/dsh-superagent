@@ -2,9 +2,9 @@
 // The Settings groups, drafts, save bars and history.
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Fields } from '../src/client/settings-kit.tsx'
+import { Fields } from '@superagent/dsh/client/settings-kit.tsx'
 import { expect, it, onTestFinished } from 'vitest'
-import { zh } from '../src/client/locales.ts'
+import { zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, settle, all, find, tab, click, type, text, field } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
 

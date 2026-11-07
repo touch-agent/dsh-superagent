@@ -1,0 +1,63 @@
+{
+  "name": "@superagent/dsh",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The dsh-superagent runtime: Cordis plugins, management API, Source kinds and the browser half. Installed through the dsh-superagent bundle.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./github-watch": {
+      "types": "./lib/github-watch.d.ts",
+      "default": "./lib/github-watch.js"
+    },
+    "./feishu-watch": {
+      "types": "./lib/feishu-watch.d.ts",
+      "default": "./lib/feishu-watch.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "skills",
+    "prompts"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": "^0.2.1-alpha.2"
+  },
+  "dependencies": {
+    "@superagent/kernel": "workspace:*",
+    "proper-lockfile": "4.1.2",
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.5-alpha.1",
+    "@deepseek-ai/dsh-agent": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-api-session-controller": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-attachment": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-client-locale": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-client-ui-layout": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-client-ui-workspace": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-host-webserver": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-llm": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-permission-presets": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-scope": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-session": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-session-persistence": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-skill": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-subprocess": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-system-prompt": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-tools": "^0.2.1-alpha.2",
+    "@deepseek-ai/dsh-workspace": "^0.2.1-alpha.2",
+    "@deepseek-ai/schemastery": "3.18.5-alpha.1"
+  }
+}

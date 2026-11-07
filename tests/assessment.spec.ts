@@ -1,15 +1,15 @@
 /** Main-session assessor per-eval state and context loading. */
 import { expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { AssessmentSchema, EvalReadSchema, MasterAssessor, type AssessorHost } from '../src/app/assessment.ts'
-import { mainAdmissionPolicy } from '../src/app/context.ts'
+import { AssessmentSchema, EvalReadSchema, MasterAssessor, type AssessorHost } from '@superagent/dsh/app/assessment.ts'
+import { mainAdmissionPolicy } from '@superagent/dsh/app/context.ts'
 import { Engine, MemoryRepositories, type Executor, type Policy, type Trigger } from '@superagent/kernel'
-import type { Commands } from '../src/infra/commands.ts'
-import { SettingsSchema } from '../src/policy.ts'
+import type { Commands } from '@superagent/dsh/infra/commands.ts'
+import { SettingsSchema } from '@superagent/dsh/policy.ts'
 import { testDeployment } from './fixtures/deployment.ts'
 import { deferred } from './fixtures/async.ts'
-import { githubKind } from '../src/sources/github.ts'
-import { SourceRegistry } from '../src/sources/registry.ts'
+import { githubKind } from '@superagent/dsh/sources/github.ts'
+import { SourceRegistry } from '@superagent/dsh/sources/registry.ts'
 
 /** Assessor fixture backed by in-memory repositories and fake GitHub Issue and file reads. */
 function setup(strength: 'explicit' | 'inferred' = 'inferred', bodies = Array.from({ length: 5 }, (_, i) => `comment ${i}`),

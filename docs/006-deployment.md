@@ -164,7 +164,7 @@ Send requests to `http://127.0.0.1:<port>/orchestrator/api/` with `x-orchestrato
 
 API saves have the panel's permissions. They can change execution environment and setup account fields, unlike saves made through the main Session's tools.
 
-Agents may rely on these routes and fields. The other routes in `src/app/api.ts` serve the panel and change with it.
+Agents may rely on these routes and fields. The other routes in `packages/dsh/src/app/api.ts` serve the panel and change with it.
 
 | Request | Answer |
 | --- | --- |

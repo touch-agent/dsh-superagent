@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { spanId, traceId, type Span, type SpanKind } from '@superagent/kernel'
-import { Store } from '../src/app/store.ts'
-import { triggerTrace } from '../src/app/views/trace.ts'
+import { Store } from '@superagent/dsh/app/store.ts'
+import { triggerTrace } from '@superagent/dsh/app/views/trace.ts'
 
 let directory: string
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'orchestrator-trace-view-')) })

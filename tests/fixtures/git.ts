@@ -1,5 +1,5 @@
 /** The environment of the git processes the tests start. */
-import { GIT_LOCATION } from '../../src/infra/environment.ts'
+import { GIT_LOCATION } from '@superagent/dsh/infra/environment.ts'
 
 /**
  * The process environment with `extra`, and without the variables that tell git which repository to act on (`GIT_LOCATION`):

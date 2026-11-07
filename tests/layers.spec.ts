@@ -15,7 +15,7 @@ const HOST_PREFIXES = ['../app/', '../sources/', '../infra/'] as const
 /** The plain-value modules the panel may import as values, per the Dependency rules. */
 const VALUE_MODULES = new Set(['../admission.ts', '../limits.ts', '../setup.ts', '../navigation.ts', '../sources/host.ts'])
 
-/** `src/app/api.ts` is a whitelist for its filter constants, which are its whole value surface. */
+/** `packages/dsh/src/app/api.ts` is a whitelist for its filter constants, which are its whole value surface. */
 const FILTER_CONSTANTS: Record<string, readonly string[]> = { '../app/api.ts': ['TICKET_FILTERS', 'THREAD_FILTERS'] }
 
 /** Every TypeScript file under a tree, as a path relative to the repository root. */
@@ -57,14 +57,14 @@ function valueBindings(statement: string): string[] | null {
 }
 
 describe('the layers of docs/007-architecture.md', () => {
-  it('keeps Sources free of the host: nothing under src/sources imports from src/app', () => {
-    const offenders = files('src/sources').flatMap(path => importsOf(path)
+  it('keeps Sources free of the host: nothing under packages/dsh/src/sources imports from packages/dsh/src/app', () => {
+    const offenders = files('packages/dsh/src/sources').flatMap(path => importsOf(path)
       .filter(({ specifier }) => specifier.startsWith('../app/'))
       .map(({ specifier }) => `${path} → ${specifier}`))
     expect(offenders).toEqual([])
   })
   it('lets the panel take only types and the whitelisted plain values from the host side, never the Runtime', () => {
-    const offenders = files('src/client').flatMap(path => importsOf(path).flatMap(({ statement, specifier }) => {
+    const offenders = files('packages/dsh/src/client').flatMap(path => importsOf(path).flatMap(({ statement, specifier }) => {
       const where = `${path} → ${specifier}`
       if (specifier === '../app/runtime.ts') return [where]
       if (isTypeOnly(statement)) return []
@@ -79,14 +79,14 @@ describe('the layers of docs/007-architecture.md', () => {
     }))
     expect(offenders).toEqual([])
   })
-  it('reaches packages/ only through @superagent/kernel, never by relative path', () => {
-    const offenders = [...files('src'), ...files('tests')].flatMap(path => importsOf(path)
+  it('reaches packages/ only by package name, never by relative path', () => {
+    const offenders = [...files('packages/dsh/src'), ...files('tests')].flatMap(path => importsOf(path)
       .filter(({ specifier }) => specifier.startsWith('.') && /(^|\/)packages\//.test(specifier))
       .map(({ specifier }) => `${path} → ${specifier}`))
     expect(offenders).toEqual([])
   })
   it('keeps the browser half free of Node built-ins', () => {
-    const offenders = files('src/client').flatMap(path => importsOf(path)
+    const offenders = files('packages/dsh/src/client').flatMap(path => importsOf(path)
       .filter(({ specifier }) => specifier.startsWith('node:'))
       .map(({ specifier }) => `${path} → ${specifier}`))
     expect(offenders).toEqual([])
