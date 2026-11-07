@@ -100,6 +100,8 @@ export function docTrigger(reply: unknown, card: DocCard, doc: DocTarget, bot: D
   const root = card.rootReplyId ?? parsed.reply_id
   // The card's quote is the document text the comment itself is about; a reply does not need it twice.
   const quote = parsed.reply_id === root ? card.quote?.trim() : undefined
+  // A comment names its author by user_id with no sender type; only this bot is known, so another app is treated as a person.
+  // The manifest hint therefore keeps app accounts off the Policy's allowed list.
   return {
     id: docTriggerId(parsed.reply_id), source: SOURCE, threads: [docThread(card.commentId)],
     actor: { source: SOURCE, id: parsed.user_id }, human: true,
