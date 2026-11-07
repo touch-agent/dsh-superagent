@@ -2,7 +2,8 @@
 import { UserError } from './errors.ts'
 import { followupOwners, reached, threadKey } from './model.ts'
 import type { Thread, ThreadRef, Ticket, Trigger } from './model.ts'
-import type { Assessor, AssessmentOutcome, DomainEvent, DomainEvents, Executor, Outbox, Policy, Repositories, SourceScope } from './ports.ts'
+import type { Assessor, AssessmentOutcome, DomainEvent, DomainEvents, Executor, Outbox, Policy, Repositories, SourceScope, TraceSink } from './ports.ts'
+import { spanId, traceId, type SpanKind } from './trace.ts'
 
 export interface EngineOptions {
   repo: Repositories
@@ -15,6 +16,8 @@ export interface EngineOptions {
   prepareTicket?: (ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>) => Ticket
   now?: () => string
   emit?: (event: DomainEvent) => void
+  /** Where the stages of a Trigger's trace are reported; without one the Engine records no trace. */
+  trace?: TraceSink
 }
 
 /**
@@ -59,10 +62,22 @@ export abstract class EnginePart {
     if (primary.pending.includes(trigger.id) || primary.evaluating?.triggerIds.includes(trigger.id)) return false
     primary.pending.push(trigger.id)
     this.repo.threads.save(primary)
+    this.stage(trigger, 'enqueue')
     return true
   }
   protected emit<K extends keyof DomainEvents>(type: K, data: DomainEvents[K]): void {
     this.options.emit?.({ type, at: this.now(), data } as DomainEvent)
+  }
+  /**
+   * Record one stage of a Trigger's trace, when a sink is configured. A stage recorded twice keeps its first row, since its
+   * id is derived from the trace and the stage.
+   */
+  protected stage(trigger: Trigger, kind: SpanKind, extra: { data?: Record<string, unknown>; evalId?: string } = {}): void {
+    const sink = this.options.trace
+    if (!sink) return
+    const trace = traceId(trigger.id)
+    sink.record({ id: spanId(trace, kind), traceId: trace, kind, at: this.now(),
+      ...trigger.threads.length ? { threadKey: threadKey(trigger.threads[0]!) } : {}, ...extra })
   }
   protected require(ticketId: string): Ticket { const ticket = this.repo.tickets.get(ticketId); if (!ticket) throw new UserError('unknownTicket'); return ticket }
   /** Returns the stored Thread or an unsaved empty Thread aggregate. */

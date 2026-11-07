@@ -313,7 +313,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/kernel/src/errors.ts` | `UserError` and `USER_ERRORS` |
 | `packages/kernel/src/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
 | `packages/kernel/src/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
-| `packages/kernel/src/trace.ts` | `Span` and `SpanKind`, the ten stages `SPAN_KINDS` names, and `traceId`/`spanId`: what the Engine reports as a Trigger moves, and the ids that keep one Trigger's stages together |
+| `packages/kernel/src/trace.ts` | `Span` and `SpanKind`, the ten stages `SPAN_KINDS` names in the order they run (`ingest`, `dedupe`, `enqueue`, `gate`, `admission`, …), and `traceId`/`spanId`: what the Engine reports as a Trigger moves, and the ids that keep one Trigger's stages together |
 | `packages/kernel/src/memory.ts` | `MemoryRepositories`: the Store's repositories in memory, in the Store's order and with its nested rollback, for domain tests |
 | `packages/kernel/src/index.ts` | The core's exports |
 | `src/app/runtime.ts` | The Runtime, the composition root, with its start and stop |
@@ -438,6 +438,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/views.spec.ts` | What the management views derive from the Store, such as the Thread a dropped message belongs to |
 | `tests/timeline.spec.ts` | A Thread's pages and a Trigger's neighbours by time and then id, with every received Trigger's time in one form |
 | `tests/migration.spec.ts` | The schema 11 migration: every stored record in its current shape, and the refusal of older schemas |
+| `tests/trace-stages.spec.ts` | The stages the Engine records for one Trigger, in order, and why it stops after deduplication or after a refusal; and that a Trigger still works when no sink is configured |
 | `tests/trace.spec.ts` | Trace and stage ids derived from their inputs, and the Store's `span` table: stages read back in recorded order, a repeated stage kept once, and a schema-11 database opened at schema 12 with its Triggers and no spans |
 | `tests/store.spec.ts` | Repositories and their working sets, in SQLite as in memory, the kv area, with every key of `KV` spelled only in `src/kv.ts` and the migration, settings history and queries |
 | `tests/prompts.spec.ts` | Prompt validation, assembly and versions |

@@ -27,7 +27,7 @@ it('derives a trace id from the Trigger and a stage id from the trace and the st
   expect(spanId(trace, 'gate')).toBe(spanId(trace, 'gate'))
   // Every stage of one trace has its own id, so a trace holds one row per stage.
   expect(new Set(SPAN_KINDS.map(kind => spanId(trace, kind))).size).toBe(SPAN_KINDS.length)
-  expect(SPAN_KINDS).toEqual(['ingest', 'dedupe', 'gate', 'admission', 'enqueue', 'assess', 'decide', 'attach', 'dispatch', 'report'])
+  expect(SPAN_KINDS).toEqual(['ingest', 'dedupe', 'enqueue', 'gate', 'admission', 'assess', 'decide', 'attach', 'dispatch', 'report'])
 })
 
 it('reads a trace back in the order its stages happened, not the order they were written', () => {

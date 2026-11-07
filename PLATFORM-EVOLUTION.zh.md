@@ -17,6 +17,8 @@
 > **迁出（2026-11-07）**：三个提交的树已复制到新仓库 `touch-agent/dsh-superagent`（private，阶段 1 提前落地，因为原仓库 `deepseek-ai/dsh-superagent-prototype` 对当前凭据只读）；`check` workflow 首次运行全绿（1m26s，含 `pnpm install --frozen-lockfile`），证明手写的 `packages/kernel` importer 与 workspace 形状成立。
 >
 > **第三刀 · T0-01（2026-11-07）**：观测的第一块地基——kernel 新增 `Span`/`SpanKind`（十段：ingest…report）与确定性 id（`traceId`/`spanId`），端口 `TraceSink` 只声明「记录一个阶段」；`src/app/trace.ts` 的 `SqliteTraceSink` 把阶段写进新表 `span`（同一阶段重复记录保留第一行），`SCHEMA_VERSION` 升到 12（schema 12 不重写任何记录，只加表与索引，旧库 10/11 在打开时补齐）；`tests/trace.spec.ts` 8 个用例覆盖顺序、幂等、重开存活与 11→12 打开。62 个测试文件 / 1212 用例全绿，浏览器半仍不含 `node:crypto`。
+>
+> **第四刀 · T0-02 前半（2026-11-07）**：Engine 真的开始记流水——`EngineOptions.trace` 是可选端口，`receive` 记 `ingest`/`dedupe`/`enqueue`（排队发生在 `queueForEval`），`evaluateDue → Evals.start` 记 `gate`/`admission`（每一段写清 admitted/strength/via 或拒绝原因，admission 带 `evalId`）；`src/app/assembly.ts` 把 `SqliteTraceSink` 注入 Engine，所以一次真实 receive 就有 trace。同时发现并修正计划里的一处想当然：`SPAN_KINDS` 的顺序应是 `ingest → dedupe → enqueue → gate → admission → …`——排队先于准入，因为 gate 是在 Eval 开始时按当时的线程与工单快照判的（这也正是 trace 有用的地方：能看到「排上了、却在门口被拒」）。新增 `tests/trace-stages.spec.ts`（7 用例，表驱动：五段顺序、重复、未监听、被拒、无 sink 时不记录）。63 个测试文件 / 1219 用例全绿。
 
 ---
 

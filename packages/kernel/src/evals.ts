@@ -94,6 +94,9 @@ export class Evals extends EnginePart {
     let strongest: { trigger: Trigger; strength: Strength; basis: MandateBasis } | undefined
     for (const trigger of triggers) {
       const gate = policy.gate(trigger, thread, tickets)
+      this.stage(trigger, 'gate', { data: gate.admissible
+        ? { admitted: true, strength: gate.strength, via: gate.basis.via }
+        : { admitted: false, reason: gate.reason } })
       if (!gate.admissible) { reasons.push({ code: gate.reason, triggerId: trigger.id }); continue }
       const later = gate.strength === strongest?.strength && trigger.at >= strongest.trigger.at
       const weaker = !strongest || stronger(strongest.strength, gate.strength) !== strongest.strength
@@ -111,6 +114,8 @@ export class Evals extends EnginePart {
       policyVersion: policy.version, startedAt: at, deadline }
     thread.pending = []
     this.repo.threads.save(thread)
+    this.stage(strongest.trigger, 'admission', { evalId, data: { strength, via: basis.via,
+      ...'cell' in basis ? { cell: basis.cell } : {}, ...basis.sender ? { sender: basis.sender } : {} } })
     for (const trigger of triggers) {
       this.repo.triggers.saveDisposition(trigger.id, { ...(this.repo.triggers.disposition(trigger.id) ?? { fanout: [], at }), evalId })
     }

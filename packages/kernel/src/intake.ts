@@ -20,7 +20,9 @@ export class Intake extends EnginePart {
     // Normalize source timestamps (such as GitHub whole seconds) to canonical ISO form.
     const trigger = { ...received, at: isoTime(received.at) }
     if (!trigger.threads.length) throw new Error('A trigger must belong to at least one thread')
-    if (this.repo.triggers.get(trigger.id)) return 'duplicate'
+    this.stage(trigger, 'ingest')
+    if (this.repo.triggers.get(trigger.id)) { this.stage(trigger, 'dedupe', { data: { duplicate: true } }); return 'duplicate' }
+    this.stage(trigger, 'dedupe', { data: { duplicate: false } })
     const at = this.now()
     const filter = this.options.scope.scope(trigger)
     if (!filter.listened) {
