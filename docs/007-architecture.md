@@ -316,6 +316,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/kernel/src/assignments.ts` | `Assignments`: the Executor's facts and its workers' Reports |
 | `packages/kernel/src/replies.ts` | `Replies`: the Engine's Channel writes |
 | `packages/kernel/src/stage.ts` | `ticketStage` and `canRetry`: the Ticket stages of [003 Execution](003-execution.md) |
+| `packages/kernel/src/action.ts` | `Action` and the five `ActionLevel`s, the `ActionCost` a spend carries, `actionKey` and `createAction`, which derives the idempotency key and refuses a spend without a money or time cost |
 | `packages/kernel/src/errors.ts` | `UserError` and `USER_ERRORS` |
 | `packages/kernel/src/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
 | `packages/kernel/src/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
@@ -436,6 +437,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/layers.spec.ts` | The dependency rules of this document, read off the imports: Sources never import the host, the panel takes only types and whitelisted plain values, `packages/` is reached only as `@superagent/kernel` or `@superagent/dsh`, and the browser half uses no Node built-in |
 | `tests/core-engine.spec.ts` | Domain rules on in-memory repositories: receiving, Eval, fan-out, resume and stop, interrupted Assignments, the pause, Policy changes, reports and outcomes, attaching, replies, failed deliveries and dismissed problems |
 | `tests/stage.spec.ts` | The Ticket stages, row by row |
+| `tests/action.spec.ts` | The five action levels and their distinct idempotency keys, the key moving with every part of an action's identity, and a spend requiring a money or time cost |
 | `tests/policy.spec.ts` | Source scope, the gate, the admission table, Mandate revalidation, the Policy version, settings migrations and assessment outcomes |
 | `tests/dispatch.spec.ts` | Conversation dispatch: the latest person message becomes a task, a repeated dispatch is not accepted twice, a disabled Source and a non-person or non-text message are refused, and older requests are not revived |
 | `tests/conversation.spec.ts` | The conversation Source: a dispatched message names its task thread and channel, its trigger id is stable per message, replies resolve to the request, the adapter needs no configuration, delivery reaches the main Session, and the trusted gate admits and revalidates the local user |

@@ -222,6 +222,7 @@ graph LR
 - **交付**：`packages/kernel/src/action.ts`：`read / draft / commit / send / spend`；`Action` 对象带 `source / objectId / revision / actor / level / idempotencyKey`。
 - **验收**：`tests/action.spec.ts`：五级的幂等键互不相同；`spend` 必须带金额或时间成本字段（日历占他人时间也映射到 spend）。
 - **依赖**：无（可与 M0 并行）。
+- **状态**：实现完成（2026-11-07，PR #5 待合并）。`packages/kernel/src/action.ts` 导出五级、`Action`（kind / source / objectId / revision / actor / level / idempotencyKey）、`actionKey` 与 `createAction`；`ActionCost` 分 money/time 两种，日历占他人时间用 time 表达；`tests/action.spec.ts` 覆盖五级键互异、键随身份各部分变化与成本拒绝。
 
 ### T2-02 `Approval` 对象与状态机 · Kernel · 3 人日
 
