@@ -2,6 +2,8 @@
 
 This cookbook shows how to extend dsh-superagent. It uses the terms in [001 Domain model](001-domain.md) and [002 Authorization](002-authorization.md), and the components in [007 Architecture](007-architecture.md).
 
+> **Revision 2026-11-07.** Sources now register a **manifest and an adapter** through `registerDefinition`; admission (the rows and the explicit-request note) lives in the adapter's policy part, because rows depend on configuration and follow the Policy version. The flat `SourceKind` the earlier recipe used is a migration view that T1-10 retires (see [007 Architecture](007-architecture.md)). This recipe was rewritten for that split; it no longer registers a `webhookKind` object.
+
 ## Add a Source
 
 This recipe implements a Source kind called `webhook`. It reads an imaginary message queue through an invented CLI, `hookq`, and converts messages to Triggers. All other interfaces are part of dsh-superagent.
@@ -14,7 +16,7 @@ The example assumes this CLI contract:
 - `hookq reply --conversation <id> --to <message id> --key <key> --text <text>` replies under a message, once per key. For a conversation that was deleted it fails with `{"error": {"code": 410, "message": "…"}}` on standard error.
 - `hookq thread --conversation <id> --root <message id> --json`, with `--after <cursor>` for a later page, prints a page of a thread, oldest first: `{"items": […], "next": "<cursor>"}`, without `next` on the last page.
 
-Put the kind and its plugin entry in `packages/dsh/src/sources/webhook.ts`, following `packages/dsh/src/sources/github.ts`. If the Source grows, split translation, Channel and polling code into separate modules as the Feishu Source does.
+Put the manifest, the adapter and the plugin entry in `packages/dsh/src/sources/webhook.ts`, following `packages/dsh/src/sources/github.ts`. If the Source grows, split translation, Channel and polling code into separate modules as the Feishu Source does.
 
 ### 1. Map the events onto the domain
 
@@ -36,11 +38,12 @@ The module imports what the steps below use:
 import type { Context } from '@deepseek-ai/cordis'
 import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
-import { key, threadKey, type OutboundMessage, type Trigger } from '../core/index.ts'
+import { key, threadKey, type OutboundMessage, type Trigger } from '@superagent/kernel'
 import { CliError } from '../infra/commands.ts'
 import { KV } from '../kv.ts'
 import { health, sourceContext, type SourceContext } from './host.ts'
-import type { SourceKind } from './kind.ts'
+import type { SourceAdapter, SourceDefinition } from './kind.ts'
+import type { SourceManifest } from '@superagent/kernel'
 ```
 
 ```ts
@@ -53,11 +56,11 @@ const ConfigSchema = z.object({
 }).strict()
 export type WebhookConfig = z.infer<typeof ConfigSchema>
 
-export const webhookKind: SourceKind<WebhookConfig> = {
-  kind: 'webhook',
+export const webhookManifest: SourceManifest = {
+  id: 'webhook',
   title: { zh: 'Webhook 队列', en: 'Webhook queue' },
   description: { zh: '接收 webhook 队列里下列对话的消息。', en: 'Receives the messages of these conversations from the webhook queue.' },
-  schema: ConfigSchema,
+  auth: { kind: 'none', fields: [] },
   fields: [
     { key: 'conversations', type: 'rows', label: { zh: '接收的对话', en: 'Conversations' }, columns: [
       { key: 'id', type: 'text', label: { zh: '对话', en: 'Conversation' }, pattern: '[a-z0-9-]+' },
@@ -68,19 +71,25 @@ export const webhookKind: SourceKind<WebhookConfig> = {
       label: { zh: '轮询间隔 / 秒', en: 'Polling interval / seconds' } },
   ],
   health: ['webhook'],
-  // find, scope, channel, threadContext, policy and environment follow in the next steps.
+  limits: { pollSeconds: 30 },
 }
+/** Behavior only: schema, find, scope, channel, threadContext, policy and environment follow in the next steps. */
+export const webhookAdapter: SourceAdapter<WebhookConfig> = { schema: ConfigSchema }
+export const webhookDefinition: SourceDefinition<WebhookConfig> = { manifest: webhookManifest, adapter: webhookAdapter }
 ```
 
-- `kind` is the stable Source id. It appears in Trigger `source`, Thread-key prefixes, the `source:webhook` settings block and the Source Policy.
-- `schema` validates stored configuration and supplies defaults. Before an operator saves an instance, the registry creates an enabled instance from those defaults. Make defaults receive nothing; this example defaults to no conversations.
+- `id` is the stable Source id. It appears in Trigger `source`, Thread-key prefixes, the `source:webhook` settings block and the Source Policy.
+- `auth` names the fields that carry the credential; `{kind: 'none', fields: []}` describes a Source that signs in with nothing extra. The panel renders those fields as the sign-in part of the card.
+- The adapter's `schema` validates stored configuration and supplies defaults. Before an operator saves an instance, the registry creates an enabled instance from those defaults. Make defaults receive nothing; this example defaults to no conversations.
 - `fields` generates the Source settings form without custom panel code. A `rows` field edits entries keyed by its first column; `advanced` hides less common settings. Implement `refreshLabels` if the Source can resolve ids to display names. Save those names under `KV.sources.labels(kind)`. Columns with `choose` and `refresh` can then offer them.
 - Optional `facts(deployment)` displays values derived by setup, such as the account behind a CLI. Setup currently checks only GitHub and Feishu fields listed in `SETUP_FIELDS`, so this example supplies no facts.
 - `health` declares the Source's health entries, initially `starting`. Registration claims each name and refuses collisions with entries such as `runtime`, `reply`, `worker` or effect kinds. Use the kind's name and reserve `sync:<id>` for Policy syncs. An `error` makes the status script exit 2 and the hourly check notify the operator, so report it only when human action may be needed.
+- `limits` supplies defaults such as `pollSeconds`; it never replaces the adapter's schema defaults.
+- Registration hands the manifest to the panel and the adapter to the Engine. `registerDefinition` validates the manifest first, so a malformed manifest fails at load with the path of the violation.
 
 ### 3. Translate a message into a Trigger
 
-Validate CLI responses before converting them:
+The snippets in steps 3–8 add properties to `webhookAdapter`; they are shown without the surrounding object. Validate CLI responses before converting them:
 
 ```ts
 /** One message as `hookq pull` and `hookq thread` print it. */
@@ -124,7 +133,7 @@ export function webhookTrigger(message: QueueMessage, me: string): Trigger | und
 
 Agents can read the new kind through `orchestrator_read trigger/<id>` and `thread/<key>`. These expose message text, disposition and neighboring Triggers. A new kind does not automatically receive a built-in skill, resources for original service records or pull-request binding.
 
-Text search works without extra code. Implement `find(query)` when people use Source-specific references such as message ids, URLs or `#12`. Return the Thread keys and search terms those references identify:
+Text search works without extra code. Add `find(query)` to `webhookAdapter` when people use Source-specific references such as message ids, URLs or `#12`. Return the Thread keys and search terms those references identify:
 
 ```ts
   find: query => ({ threads: [], terms: [...new Set(query.match(/\bm[0-9]+\b/g) ?? [])] }),
@@ -255,9 +264,9 @@ The prepare command reads environment variables; the worker reads their values i
 export const name = 'dsh-superagent-webhook'
 export const inject = ['orchestrator']
 export function apply(ctx: Context): void {
-  ctx.effect(() => ctx.orchestrator.sources.register(webhookKind), 'webhook: source kind')
+  ctx.effect(() => ctx.orchestrator.sources.registerDefinition(webhookDefinition), 'webhook: source kind')
   ctx.effect(() => {
-    const source = sourceContext(ctx.orchestrator, webhookKind)
+    const source = sourceContext(ctx.orchestrator, { kind: webhookManifest.id, health: webhookManifest.health })
     const controller = new AbortController()
     // DSH ends its process on an unhandled rejection, so a failure that escapes the loop becomes the Source's health.
     const running = watch(source, controller.signal)
@@ -267,7 +276,7 @@ export function apply(ctx: Context): void {
 }
 ```
 
-The plugin injects `orchestrator`. Its first effect registers the kind and unregisters it on disposal. The second runs the polling loop with a `SourceContext`. Disposal aborts the loop and awaits completion, including during application stop or restart.
+The plugin injects `orchestrator`. Its first effect registers the definition and unregisters it on disposal. The second runs the polling loop with a `SourceContext`. Disposal aborts the loop and awaits completion, including during application stop or restart.
 
 ```ts
 async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
@@ -365,10 +374,10 @@ function host(overrides: Partial<SourceContextDeps> = {}) {
     sources: { webhook: { enabled: true, config: { conversations: [{ id: 'ops', listen: 'mentions' }] } } },
     policy: { sources: { webhook: { allowed: [{ id: 'alice' }] } } },
   }))
-  // The registry claims the kind's health entries on the board, where the test reads them.
+  // The registry claims the manifest's health entries on the board, where the test reads them.
   const board = new HealthBoard()
   const sources = new SourceRegistry(() => store.settings(), board)
-  sources.register(webhookKind)
+  sources.registerDefinition(webhookDefinition)
   const engine = new Engine({ repo: store, scope: sources, policy: () => settingsPolicy(store.settings(), sources),
     assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
     outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn() } })
@@ -377,7 +386,7 @@ function host(overrides: Partial<SourceContextDeps> = {}) {
   // The Source's own notices go to the outbox, which keeps their receipts and sends nothing here.
   const deps: SourceContextDeps = { store, engine, outbox: { send: message => { store.receipts.add(message) } }, commands, sources,
     deployment: testDeployment(), ready: Promise.resolve(), configured: () => true, receive, ...overrides }
-  return { ...deps, store, engine, commands, receive, health: board.all, ctx: sourceContextOf(deps, webhookKind) }
+  return { ...deps, store, engine, commands, receive, health: board.all, ctx: sourceContextOf(deps, { kind: 'webhook', health: ['webhook'] }) }
 }
 /** The queue as `hookq` answers it. */
 function queue(h: ReturnType<typeof host>, answer: () => unknown) {
@@ -407,15 +416,15 @@ it('takes in what the queue holds after the cursor, once, and moves the cursor a
 - a round cut short, which keeps its cursor;
 - `send`: `sent`, `gone` for a 410 only, and a throw for any other failure, with the CLI's error built by `commandError`;
 - the Thread context: the messages of a page and the cursor of the next, as `tests/registry.spec.ts` reads a kind's Threads through `SourceRegistry.threadContext`;
-- the plugin: `apply` registers the kind and reports `setupPending` while setup waits, its disposers unregister the kind, and a failure that escapes the loop becomes the Source's health instead of an unhandled rejection;
+- the plugin: `apply` registers the definition and reports `setupPending` while setup waits, its disposers unregister it, and a failure that escapes the loop becomes the Source's health instead of an unhandled rejection;
 - the Source's part of the Policy and its admission rows, as `tests/registry.spec.ts` and `tests/policy.spec.ts` check the Feishu Source's.
 
 ### Checklist
 
 1. Map Triggers, Threads, actors, Channel addresses and receiving scopes.
-2. Write the kind: `schema`, `fields`, `health`, and `facts` if setup derives any.
+2. Write the manifest (`id`, `title`, `description`, `auth`, `fields`, `health`, optional `limits`) and the adapter (`schema`, `facts` if setup derives any, then the behavior below); register the pair with `registerDefinition`.
 3. Translate events into Triggers with stable ids, and drop the agent's own.
-4. Decide what the Source receives in `scope`, from `meta` alone.
+4. Decide what the Source receives in the adapter's `scope`, from `meta` alone.
 5. Give it a Channel whose `send` posts each message once and answers `gone` only when the conversation can never receive it.
 6. Give assessments its Thread context, if it can read a Thread.
 7. Give it a part of the Policy with `allowed` and the admission rows.
