@@ -2,8 +2,8 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import { chmodSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { key, threadKey, type ChannelRef, type Decision, type OutboundMessage, type ReplyStatus, type Repositories, type Span, type Thread, type ThreadFact,
-  type ThreadFacts, type Ticket, type Trigger, type TriggerDisposition } from '@superagent/kernel'
+import { key, threadKey, type Approval, type ChannelRef, type Decision, type OutboundMessage, type ReplyStatus, type Repositories, type Span, type Thread,
+  type ThreadFact, type ThreadFacts, type Ticket, type Trigger, type TriggerDisposition } from '@superagent/kernel'
 import { KV, type Family, type Key } from '../kv.ts'
 import { SettingsSchema, type Settings, type SettingsOrigin, type SettingsSave } from '../policy.ts'
 import { OLDEST_SCHEMA, SCHEMA_VERSION, migrateTo11, tooOld } from './migration.ts'
@@ -42,6 +42,11 @@ const SETS: Record<string, Record<string, string>> = {
   // Composite key (ticketId + thread) used to preserve per-conversation reply order.
   outbox: { dropped: "TEXT AS (value ->> '$.dropped.at')", pending: `TEXT AS (CASE WHEN value ->> '$.status' = 'pending'
     AND value ->> '$.ticketId' IS NOT NULL THEN (value ->> '$.ticketId') || ' ' || (value ->> '$.channel.thread') END)` },
+  // A Ticket's approvals and the queue of those still waiting for a decision.
+  approval: {
+    ticket: "TEXT AS (value ->> '$.ticketId')",
+    pending: "TEXT AS (CASE WHEN value ->> '$.state' = 'requested' THEN value ->> '$.ticketId' END)",
+  },
 }
 /** SQL predicate for the minimum level a reader wants, in the quiet < feed < notice order the grader uses. */
 const minLevel = (level: ActivityLevel | undefined): string =>
@@ -58,7 +63,7 @@ export class Store implements Repositories {
   /**
    * Opens or creates the SQLite database at `path`, rewriting schema 10 records to their current shapes in a single transaction.
    * @param report - Receives errors thrown by `afterCommit` callbacks without failing the committed transaction.
-   * @throws When the database schema is older than `OLDEST_SCHEMA` (10), newer than `SCHEMA_VERSION` (13), or when migration fails; in every case the database file is left unchanged and the SQLite handle is closed so a later attempt in the same process can open it.
+   * @throws When the database schema is older than `OLDEST_SCHEMA` (10), newer than `SCHEMA_VERSION` (14), or when migration fails; in every case the database file is left unchanged and the SQLite handle is closed so a later attempt in the same process can open it.
    */
   constructor(path: string, private readonly report: (error: unknown) => void = () => {}) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
@@ -79,6 +84,7 @@ export class Store implements Repositories {
             CREATE TABLE IF NOT EXISTS thread (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS ticket (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS decision (id TEXT PRIMARY KEY, thread TEXT NOT NULL, value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS approval (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS outbox (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS trigger_thread (thread TEXT NOT NULL, id TEXT NOT NULL, at TEXT NOT NULL, human INTEGER NOT NULL,
               PRIMARY KEY (thread, id));
@@ -95,8 +101,8 @@ export class Store implements Repositories {
             CREATE INDEX IF NOT EXISTS span_at ON span(at);
           `)
           this.addColumns()
-          // Schema 12 and 13 only add the `span` and `activity` tables, which the schema block above creates for every
-          // database it opens; their records need no conversion, so only a database older than schema 11 runs the
+          // Schema 12, 13 and 14 only add the `span`, `activity` and `approval` tables, which the schema block above creates
+          // for every database it opens; their records need no conversion, so only a database older than schema 11 runs the
           // record-rewriting migration.
           if (version !== undefined && version < 11) migrateTo11(this)
           if (version !== SCHEMA_VERSION) this.set(KV.store.schema, SCHEMA_VERSION)
@@ -256,6 +262,14 @@ export class Store implements Repositories {
     get: (id: string): Decision | undefined => { const row = this.db.prepare('SELECT value FROM decision WHERE id=?').get(id); return row ? JSON.parse(String(row.value)) as Decision : undefined },
     save: (decision: Decision): void => { this.db.prepare('INSERT INTO decision VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value, thread=excluded.thread').run(decision.id, decision.threadKey, JSON.stringify(decision)) },
     byThread: (threadKeyValue: string): Decision[] => this.db.prepare('SELECT value FROM decision WHERE thread=? ORDER BY rowid').all(threadKeyValue).map(row => JSON.parse(String(row.value)) as Decision),
+  }
+  readonly approvals = {
+    get: (id: string): Approval | undefined => { const row = this.db.prepare('SELECT value FROM approval WHERE id=?').get(id); return row ? JSON.parse(String(row.value)) as Approval : undefined },
+    save: (approval: Approval): void => { this.db.prepare('INSERT INTO approval (id, value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value').run(approval.id, JSON.stringify(approval)) },
+    /** A Ticket's Approvals, oldest first. */
+    byTicket: (ticketId: string): Approval[] => this.values('SELECT value FROM approval WHERE ticket = ? ORDER BY rowid', ticketId),
+    /** Approvals still waiting for a decision, oldest first. */
+    pending: (): Approval[] => this.values('SELECT value FROM approval WHERE pending IS NOT NULL ORDER BY rowid'),
   }
   /** The stages of each Trigger's trace, written by the tracing sink and read by the panel and the tools. */
   readonly spans = {

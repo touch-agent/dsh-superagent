@@ -1,4 +1,5 @@
 /** In-memory repository implementation for testing and ephemeral engine instances. */
+import type { Approval } from './approval.ts'
 import { latestAssignment, type Decision, type Thread, type Ticket, type Trigger, type TriggerDisposition } from './model.ts'
 import type { Repositories } from './ports.ts'
 
@@ -13,8 +14,9 @@ export class MemoryRepositories implements Repositories {
   private readonly threadRows = new Map<string, Thread>()
   private readonly ticketRows = new Map<string, Ticket>()
   private readonly decisionRows = new Map<string, Decision>()
+  private readonly approvalRows = new Map<string, Approval>()
   atomic<T>(work: () => T): T {
-    const maps: Map<string, unknown>[] = [this.triggerRows, this.dispositions, this.threadRows, this.ticketRows, this.decisionRows]
+    const maps: Map<string, unknown>[] = [this.triggerRows, this.dispositions, this.threadRows, this.ticketRows, this.decisionRows, this.approvalRows]
     const snapshot = maps.map(map => new Map(map))
     try { return work() }
     catch (error) {
@@ -46,5 +48,11 @@ export class MemoryRepositories implements Repositories {
     get: (id: string) => clone(this.decisionRows.get(id)),
     save: (decision: Decision) => { this.decisionRows.set(decision.id, clone(decision)) },
     byThread: (key: string) => [...this.decisionRows.values()].filter(decision => decision.threadKey === key).map(clone),
+  }
+  readonly approvals = {
+    get: (id: string) => clone(this.approvalRows.get(id)),
+    save: (approval: Approval) => { this.approvalRows.set(approval.id, clone(approval)) },
+    byTicket: (ticketId: string) => [...this.approvalRows.values()].filter(approval => approval.ticketId === ticketId).map(clone),
+    pending: () => [...this.approvalRows.values()].filter(approval => approval.state === 'requested').map(clone),
   }
 }
