@@ -19,8 +19,9 @@ import { testDeployment } from './fixtures/deployment.ts'
 const MEMBER = 'ou_alice'
 const BOT = 'ou_bot'
 const DOC = 'https://example.feishu.cn/docx/DOC1'
-const SINCE = '2026-11-06T00:00:00.000Z'
 const DAY = 86_400
+/** One day back, so replies two and three days old stay behind the cursor whatever the calendar date is. */
+const SINCE = new Date(Date.now() - DAY * 1000).toISOString()
 const at = (when: number) => Math.floor(Date.now() / 1000) + when
 const text = (value: string) => ({ type: 'text_run', text_run: { text: value } })
 const mention = (id: string) => ({ type: 'person', person: { user_id: id } })
