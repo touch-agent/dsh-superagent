@@ -83,6 +83,8 @@ describe('polling document comments', () => {
 
   it('reports an error only after the configured number of failed rounds, not on the first interruption', async () => {
     vi.useFakeTimers()
+    const controller = new AbortController()
+    let running: Promise<unknown> | undefined
     try {
       const h = open = harness(feishuDocAdapter.schema.parse({ documents: [{ url: DOC, listen: 'mentions' }], pollSeconds: 30, failuresBeforeError: 2 }))
       h.store.set(KV.feishuDoc.since(DOC), SINCE)
@@ -91,16 +93,20 @@ describe('polling document comments', () => {
         if (args[1] === '+list-comments') throw new Error('network down')
         return {}
       })
-      const controller = new AbortController()
-      const running = runFeishuDoc(h.ctx, controller.signal)
+      running = runFeishuDoc(h.ctx, controller.signal)
       await vi.advanceTimersByTimeAsync(0)
       expect(h.health).toMatchObject({ state: 'starting' })
-      // Each advance flushes a round and then its pause; allow for the round still running when the clock moves.
-      for (let round = 0; round < 6 && h.health?.state !== 'error'; round += 1) await vi.advanceTimersByTimeAsync(30_000)
+      // Each advance flushes a round and then its pause; let the round's promise chain finish before the next advance.
+      for (let round = 0; round < 20 && h.health?.state !== 'error'; round += 1) {
+        await vi.advanceTimersByTimeAsync(30_000)
+        for (let turn = 0; turn < 5; turn += 1) await Promise.resolve()
+      }
       expect(h.health).toMatchObject({ state: 'error', detail: expect.stringContaining('2') })
+    } finally {
       controller.abort()
       await running
-    } finally { vi.useRealTimers() }
+      vi.useRealTimers()
+    }
   })
 
   it('returns a failed document and holds its cursor, leaving the error threshold to the watch loop', async () => {
