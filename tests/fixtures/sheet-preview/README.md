@@ -8,6 +8,7 @@ updating the expected result with it.
 | `ledger-before.csv`, `ledger-after.csv` | CSV quoting, a plain value change, a formula change, an added cell, a removed cell and an added row |
 | `ledger-before.xlsx`, `ledger-after.xlsx` | A real workbook with two sheets before and two after: shared strings, an inline string, a shared formula expanded from its master, a formula change with the same cached value, a formula change whose cached value also moved, a value change under the same formula, a plain value change, an added row, a removed column, and a whole sheet added and removed |
 | `stored.xlsx` | A valid package whose worksheet XML is ZIP-stored rather than deflated |
+| `empty-shared-string.xlsx` | Shared strings include a self-closing empty `<si/>`, so later string indices must not shift |
 | `large-before.xlsx`, `large-after.xlsx` | Two 10,001-row sheets with one changed value, for the under-two-second acceptance |
 | `broken-before.xlsx`, `broken-after.xlsx` | Text files with an `.xlsx` name; the previewer cannot read them as a ZIP and degrades to a line diff of the decoded text |
 | `no-workbook.xlsx`, `missing-sheet.xlsx`, `missing-relationship.xlsx` | A package without `xl/workbook.xml`, a workbook that names a sheet the archive does not hold, and a workbook whose relationships part does not name the sheet it lists; the three structured parse failures |

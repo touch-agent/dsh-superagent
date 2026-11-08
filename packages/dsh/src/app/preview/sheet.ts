@@ -448,10 +448,12 @@ function worksheetPath(target: string): string {
   return joined.startsWith('xl/') ? joined : `xl/${joined}`
 }
 
-/** Read the shared strings, one entry per `<si>`, concatenating the runs of rich text. */
+/** Read the shared strings, one entry per `<si>`, concatenating the runs of rich text; `<si/>` is an empty entry. */
 function sharedStrings(xml: string): string[] {
   const strings: string[] = []
-  for (const match of xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)) strings.push(fragmentText(match[1]!))
+  for (const match of xml.matchAll(/<si\b[^>]*?(?:\/>|>([\s\S]*?)<\/si>)/g)) {
+    strings.push(match[1] === undefined ? '' : fragmentText(match[1]))
+  }
   return strings
 }
 

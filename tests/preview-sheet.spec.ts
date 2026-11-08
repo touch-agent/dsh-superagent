@@ -150,6 +150,12 @@ describe('the sheet previewer', () => {
       .toEqual(['Summary', 'B2*C2'])
   })
 
+  it('keeps a self-closing empty shared string at its index', () => {
+    const parsed = parseXlsx(bytes('empty-shared-string.xlsx'))
+    expect(parsed[0]!.rows.map(row => row.cells.map(cell => [cell.address, cell.value])))
+      .toEqual([[['A1', 'first']], [['A3', 'third']]])
+  })
+
   it('degrades an unreadable workbook to a line diff with the original link and the parse code', () => {
     const preview = previewSheet({
       before: { format: 'xlsx', content: bytes('broken-before.xlsx'), text: read('broken-before.xlsx') },
