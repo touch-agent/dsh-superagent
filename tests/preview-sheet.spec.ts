@@ -190,6 +190,9 @@ describe('the sheet previewer', () => {
     expect((failure as SheetParseError).code).toBe('missingWorkbook')
     try { parseXlsx(bytes('missing-sheet.xlsx')) } catch (error) { failure = error }
     expect((failure as SheetParseError).code).toBe('missingSheet')
+    failure = undefined
+    try { parseXlsx(bytes('missing-relationship.xlsx')) } catch (error) { failure = error }
+    expect((failure as SheetParseError).code).toBe('missingSheet')
     expect(() => previewSheet({ before: { format: 'csv', content: 'a' }, after: { format: 'xlsx', content: bytes('ledger-after.xlsx') }, link }))
       .toThrow(TypeError)
     expect(() => previewSheet({ before: { format: 'csv', content: 'a' }, after: { format: 'csv', content: 'b' }, link: ' ' }))

@@ -10,7 +10,7 @@ updating the expected result with it.
 | `stored.xlsx` | A valid package whose worksheet XML is ZIP-stored rather than deflated |
 | `large-before.xlsx`, `large-after.xlsx` | Two 10,001-row sheets with one changed value, for the under-two-second acceptance |
 | `broken-before.xlsx`, `broken-after.xlsx` | Text files with an `.xlsx` name; the previewer cannot read them as a ZIP and degrades to a line diff of the decoded text |
-| `no-workbook.xlsx`, `missing-sheet.xlsx` | A package without `xl/workbook.xml`, and a workbook that names a sheet the archive does not hold; the two structured parse failures |
+| `no-workbook.xlsx`, `missing-sheet.xlsx`, `missing-relationship.xlsx` | A package without `xl/workbook.xml`, a workbook that names a sheet the archive does not hold, and a workbook whose relationships part does not name the sheet it lists; the three structured parse failures |
 
 The `.xlsx` files were written by Python's `zipfile` with the minimal package parts a workbook needs
 (`[Content_Types].xml`, `_rels/.rels`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/sharedStrings.xml`,

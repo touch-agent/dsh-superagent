@@ -417,15 +417,21 @@ function workbookSheets(xml: string): WorkbookSheet[] {
   return sheets
 }
 
-/** Read the workbook relationships, keeping the target of each worksheet. */
-function workbookRelationships(xml: string): Map<string, string> {
-  const relationships = new Map<string, string>()
+/** One workbook relationship: where it points and whether it is a worksheet rather than, say, a chart sheet. */
+interface WorkbookRelationship {
+  target: string
+  worksheet: boolean
+}
+
+/** Read the workbook relationships, keeping every target and whether it is a worksheet. */
+function workbookRelationships(xml: string): Map<string, WorkbookRelationship> {
+  const relationships = new Map<string, WorkbookRelationship>()
   for (const match of xml.matchAll(/<Relationship\b([^>]*?)\/?>/g)) {
     const attributes = match[1] ?? ''
     const id = xmlAttribute(attributes, 'Id')
     const target = xmlAttribute(attributes, 'Target')
     const type = xmlAttribute(attributes, 'Type')
-    if (id && target && type?.endsWith('/worksheet')) relationships.set(id, target)
+    if (id && target) relationships.set(id, { target, worksheet: type?.endsWith('/worksheet') === true })
   }
   return relationships
 }
@@ -598,14 +604,23 @@ export function parseXlsx(bytes: Uint8Array): Sheet[] {
   const sheets = workbookSheets(textDecoder.decode(workbook))
   if (!sheets.length) throw new SheetParseError('invalidWorkbook', 'the workbook has no sheets')
   const rels = zipEntry(bytes, WORKBOOK_RELS_ENTRY)
-  const relationships = rels ? workbookRelationships(textDecoder.decode(rels)) : new Map<string, string>()
+  const relationships = rels ? workbookRelationships(textDecoder.decode(rels)) : new Map<string, WorkbookRelationship>()
   const shared = zipEntry(bytes, SHARED_STRINGS_ENTRY)
   const strings = shared ? sharedStrings(textDecoder.decode(shared)) : []
   const parsed: Sheet[] = []
   for (const sheet of sheets) {
-    const target = sheet.relationship ? relationships.get(sheet.relationship) : undefined
-    if (sheet.relationship && !target) continue
-    const path = target ? worksheetPath(target) : `xl/worksheets/sheet${sheet.fallback}.xml`
+    let path = `xl/worksheets/sheet${sheet.fallback}.xml`
+    if (sheet.relationship) {
+      const relationship = relationships.get(sheet.relationship)
+      if (!relationship) {
+        // Without a relationships part at all, the sheet parts follow workbook order. With one, a missing
+        // relationship is a malformed workbook, not an invitation to skip a sheet and hide its changes.
+        if (rels) throw new SheetParseError('missingSheet', sheet.name)
+      } else {
+        if (!relationship.worksheet) continue
+        path = worksheetPath(relationship.target)
+      }
+    }
     const xml = zipEntry(bytes, path)
     if (!xml) throw new SheetParseError('missingSheet', sheet.name)
     parsed.push(parseWorksheet(sheet.name, textDecoder.decode(xml), strings))
