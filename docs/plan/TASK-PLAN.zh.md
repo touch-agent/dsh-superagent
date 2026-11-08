@@ -562,6 +562,7 @@ graph LR
 - **验收**：故意制造缺行、`进行中` 无 PR、`已完成` 指向 open PR、坏日期四类错误时 CI 红；无网络环境本地测试仍可跑；`tests/docs.spec.ts` 与新增检查同时绿。
 - **估时**：2 人日。**依赖**：X-12（已完成）。**回退**：脚本独立，移除即回退；不自动改状态表。
 - **泳道**：Platform。
+- **实现（2026-11-09，PR #34 进行中）**：`scripts/check-tracking.mjs` 做离线语义检查（任务集、五字段、状态、证据、日期、PR 链接格式），`--check-prs` 用 GitHub token 查询存在性与 merge 状态；`tests/tracking.spec.ts` 覆盖缺行、`进行中` 无 PR、`已完成` 指向 open PR、坏日期与豁免路径。`pnpm check` 接入离线检查，CI `tracking` job 接入联网检查；豁免清单 `docs/plan/TRACKING-EXEMPTIONS.json` 当前为空，格式与规则见 [`README.md`](README.md) 的「显式豁免」。
 
 ---
 
