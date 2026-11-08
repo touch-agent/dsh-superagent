@@ -298,6 +298,9 @@ it('treats answer and delivery work as needing a person and keeps a recorded end
   const title = activityTitle(t, ended)
   expect(title).toContain('固定标题')
   expect(title).toContain('manual')
+  const stopped = { ...ended, summary: 'Ticket t1 ended (不要继续)', detail: { outcome: 'stopped' as const, reason: '不要继续' } }
+  expect(activityTitle(t, stopped)).toContain('不要继续')
+  expect(activityTitle(t, stopped)).toContain('人工停止')
 })
 it('opens the Events tab once when the first unread notice reaches the main Session', async () => {
   serve()

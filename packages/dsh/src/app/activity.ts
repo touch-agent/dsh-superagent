@@ -343,9 +343,11 @@ function endedFacts(record: ActivityRecord, ticket: Ticket | undefined): Activit
   if (record.event !== 'ticket.ended') return undefined
   if (record.detail?.outcome) return { outcome: record.detail.outcome, ...record.detail.reason ? { reason: record.detail.reason } : {} }
   const legacy = record.detail ? {} : legacyEnd(record)
-  const current = record.detail || legacy.outcome || legacy.reason ? undefined : ticket?.ended
+  // Only a person's stop records words as the reason, so a legacy summary naming a reason carries the stopped outcome.
+  if (legacy.reason) return { outcome: 'stopped', reason: legacy.reason }
+  const current = record.detail || legacy.outcome ? undefined : ticket?.ended
   const outcome = record.detail?.outcome ?? legacy.outcome ?? current?.outcome
-  const reason = record.detail?.reason ?? legacy.reason ?? current?.reason
+  const reason = record.detail?.reason ?? current?.reason
   return outcome || reason ? { ...outcome ? { outcome } : {}, ...reason ? { reason } : {} } : undefined
 }
 

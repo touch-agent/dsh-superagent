@@ -206,6 +206,13 @@ it('keeps an earlier ending when its ticket was resumed and ended again', () => 
   expect(presentActivity(legacy, { ...lookup, ticket: () => live })).toMatchObject({ status: 'done', detail: { outcome: 'completed' } })
 })
 
+it('reads a legacy ending that recorded only a stop reason as a stopped end', () => {
+  const record = { seq: 15, at: '2026-01-01T00:10:00Z', event: 'ticket.ended' as const, level: 'notice' as const,
+    summary: 'Ticket t1 ended (不要继续)', ticket: 't1' }
+  const live = { ...ownerTicket, ended: { at: '2026-01-01T00:10:00Z', by: 'human' as const, outcome: 'stopped' as const, reason: '不要继续' } }
+  expect(presentActivity(record, { ...lookup, ticket: () => live })).toMatchObject({ status: 'failed',
+    detail: { outcome: 'stopped', reason: '不要继续' }, task: { status: 'failed' } })
+})
 it('gives a legacy unsubscribe row its Thread subject and completes legacy trigger notices', () => {
   const unsubscribed = { seq: 13, at: '2026-01-01T00:00:00Z', event: 'thread.unsubscribed' as const, level: 'notice' as const,
     summary: 'Ticket t1 unsubscribed from github:8 (person)', ticket: 't1', thread: 'github:8' }
