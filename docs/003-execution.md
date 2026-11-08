@@ -20,6 +20,12 @@ A `person` stage means the Ticket cannot continue without human input. A new hum
 
 An `idle` Ticket has finished its turn without an outstanding question. A Trigger on a subscribed Thread can continue it.
 
+### Deliverables and review
+
+A `ready` Report says the work is done; a Deliverable says what a person should review. The kernel's `Deliverable` (`packages/kernel/src/deliverable.ts`) holds one artifact at one revision — a file, document, spreadsheet, mail draft or calendar invite — a `previewRef` to the structured preview of that revision, and its acceptance criteria. The kernel refuses to enter review without a deliverable, or without a preview of the artifact's revision. A rule criterion counts only when the kernel can judge it; one it cannot judge becomes a human confirmation that keeps the reason.
+
+The runtime does not submit Deliverables yet, so the stage table above still derives `person / review` from the latest Report alone; the review surface will require the preview when it starts reading Deliverables.
+
 ## The Executor
 
 Each Ticket gets an Executor Session named `worker-<ticket id>` and a directory named after the Ticket's short name. Directories are created under the configured execution root, which defaults to `<stateDir>/system/work`.

@@ -2,6 +2,7 @@
 export * from './model.ts'
 export * from './action.ts'
 export * from './approval.ts'
+export * from './deliverable.ts'
 export * from './ports.ts'
 export * from './manifest.ts'
 export { Engine, type EngineForExecutor, type EngineForMainSession, type EngineForPeople, type EngineForSettings, type EngineForSources,
