@@ -307,3 +307,51 @@ describe('a context-only follower', () => {
     expect(result.attached).toBe(true)
   })
 })
+
+describe('repeating a plan with an attach', () => {
+  it('reports a repeated whole-message attach as duplicate', () => {
+    const h = harness('single')
+    const target = h.dispatch({ title: 'Target', scope: 'Target.' }, 'Target', 'msg_1')
+    if ('refused' in target) throw new Error(target.refused)
+    const first = h.dispatch({ ticketId: target.ticket!.id, note: 'status' }, 'Status?', 'msg_2')
+    if ('refused' in first) throw new Error(first.refused)
+    expect(first.attached).toBe(true)
+    const second = h.dispatch({ ticketId: target.ticket!.id, note: 'status' }, 'Status?', 'msg_2')
+    expect(second).toEqual({ triggerId: first.triggerId, duplicate: true })
+    expect(openTickets(h.repo)).toHaveLength(1)
+  })
+
+  it('reports a repeated mixed plan with an attach as duplicate', () => {
+    const h = harness('auto')
+    const target = h.dispatch({ title: 'Target', scope: 'Target.' }, 'Target', 'msg_1')
+    if ('refused' in target) throw new Error(target.refused)
+    const input = { items: [{ title: 'New', scope: 'Do new.' }, { ticketId: target.ticket!.id, scope: 'Status.' }] }
+    const first = h.dispatch(input, 'New and status', 'msg_2')
+    if ('refused' in first) throw new Error(first.refused)
+    const tickets = openTickets(h.repo).length
+    const inputs = h.repo.tickets.get(target.ticket!.id)!.inputs.length
+    const second = h.dispatch(input, 'New and status', 'msg_2')
+    if ('refused' in second) throw new Error(second.refused)
+    expect(second.duplicate).toBe(true)
+    expect(openTickets(h.repo)).toHaveLength(tickets)
+    expect(h.repo.tickets.get(target.ticket!.id)!.inputs).toHaveLength(inputs)
+  })
+})
+
+describe('more status questions', () => {
+  it('does not split a list that asks whether items are done', () => {
+    expect(explicitItems('确认 A、B 完成了没有')).toBeUndefined()
+    expect(explicitItems('确认 A、B 完成没')).toBeUndefined()
+    expect(explicitItems('1、A 完成了没有\n2、B 完成了没有')).toBeUndefined()
+  })
+
+  it('keeps a Session item that is not in the parsed list', () => {
+    const h = harness('auto')
+    const result = h.dispatch({ items: [{ title: 'C', scope: 'Do C.' }] }, '拆成以下任务：\n1、A\n2、B')
+    if ('refused' in result) throw new Error(result.refused)
+    const scope = openTickets(h.repo)[0]!.mandate.scope
+    expect(scope).toContain('A')
+    expect(scope).toContain('B')
+    expect(scope).toContain('Do C.')
+  })
+})

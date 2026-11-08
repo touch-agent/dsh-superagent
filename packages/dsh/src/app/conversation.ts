@@ -125,10 +125,12 @@ function inlineItems(text: string): string[] | undefined {
  */
 export function explicitItems(text: string): string[] | undefined {
   // A question about items is a status question, not an instruction to split them.
-  if (/[?？]\s*$/u.test(text) || /(?:吗|么)[。.!！?？\s]*$/u.test(text)) return undefined
+  if (/(?:[?？]|没有|没|吧|怎么样)\s*$/u.test(text) || /(?:吗|么)[。.!！?？\s]*$/u.test(text)) return undefined
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const questions = /(?:[?？]|没有|没|吧|怎么样|是否|状态|进展|完成情况|都完成)[。.!！?？\s]*$/u
   // An inline list asking whether or how items are doing is a status question; a multi-line task list is not.
   if (lines.length === 1 && /[、,，]/u.test(text) && /(?:是否|状态|进展|完成情况|都完成)/u.test(text)) return undefined
+  if (lines.length > 1 && lines.every(line => questions.test(line))) return undefined
   if (lines.length >= 2) {
     // One non-item line before the list is its lead-in; any other prose means the list is not the message's content.
     const numbered = lines.flatMap(line => { const match = NUMBERED.exec(line); return match?.[1] ? [match[1].trim()] : [] })
@@ -195,10 +197,15 @@ function planDispatch(input: DispatchInput, text: string, config: DispatchConfig
   // One item that names a ticket is an attach, not new work; a whole-message attach normally takes the other path.
   if (items?.length === 1 && items[0]!.ticketId) return { items, split: false }
   if (!items || items.length < 2) {
-    // One Session item must not hide the rest of an explicit list: combine the list into the single ticket instead.
+    // One Session item must not hide the rest of an explicit list: combine the list, and the Session's item, into one ticket.
     const listed = config.mode === 'auto' && items?.length ? explicitItems(text)?.flatMap(item =>
       plannedItem({ title: titleFrom(item), scope: item }, text) ?? []) : undefined
-    return fallback(listed && listed.length > 1 ? listed : items)
+    if (listed?.length) {
+      const seen = new Set<string>()
+      const merged = [...items ?? [], ...listed].filter(item => { const id = sameIntent(item); if (seen.has(id)) return false; seen.add(id); return true })
+      return fallback(merged)
+    }
+    return fallback(items)
   }
   const seen = new Set<string>()
   const unique = items.filter(item => { const id = sameIntent(item); if (seen.has(id)) return false; seen.add(id); return true })
@@ -233,7 +240,9 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
   // A whole-message attach keeps the original trigger id and the message text; it neither splits nor creates work.
   if (input.ticketId) {
     const trigger = conversationTrigger({ messageId: message.id, text: message.text, at: message.at, sessionId: agent.id })
-    if (host.disposition(trigger.id)?.decisionId) return { triggerId: trigger.id, duplicate: true }
+    // Any disposition means the message was received before, including an attach that withdraws its pending Trigger
+    // rather than deciding it; repeating it is a duplicate, not a changed plan.
+    if (host.disposition(trigger.id)) return { triggerId: trigger.id, duplicate: true }
     // A whole-message attach shares the message's Thread: if that Thread already reached a ticket, receiving it here would
     // add an input to those siblings before the attach. Refuse before receiving, as a changed split plan does.
     if (reachedThread(host.thread?.(threadKey(trigger.threads[0]!)))) {
@@ -264,7 +273,7 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
     triggerIds.push(trigger.id)
     return { item, trigger }
   })
-  if (prepared.every(entry => host.disposition(entry.trigger.id)?.decisionId)) {
+  if (prepared.every(entry => host.disposition(entry.trigger.id))) {
     return { triggerId: triggerIds[0]!, duplicate: true, ...plan.split ? { items: prepared.map(entry => ({ triggerId: entry.trigger.id,
       title: entry.item.title, duplicate: true })) } : {} }
   }

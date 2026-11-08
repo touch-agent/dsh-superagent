@@ -154,9 +154,9 @@ export const EvalConfigSchema = z.object({
  * How a dispatched message becomes Tickets, as docs/009 describes. `single` keeps the original behavior, one Ticket at
  * most; `explicit` splits only when the message lists its items explicitly (a numbered or bulleted list, or a launching
  * or confirming phrase followed by items), by deterministic parsing; `auto` takes the main Session's own reading of the
- * message into items; when it supplies none, the explicit parser runs and then one Ticket. A parse that is ambiguous, or
- * that yields more than `maxTickets` new tickets, keeps one Ticket, and attach items do not count. Dispatch limits how a
- * person's message is accepted; it does not
+ * message into items, and merges an explicit list when that reading covers fewer items than the list; with no items the
+ * parser runs alone, then one Ticket. A parse that is ambiguous, or that yields more than `maxTickets` new tickets,
+ * keeps one Ticket, and attach items do not count. Dispatch limits how a person's message is accepted; it does not
  * invalidate existing Mandates and is not part of the Policy version.
  */
 export const DispatchConfigSchema = z.object({
