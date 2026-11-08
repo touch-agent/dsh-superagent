@@ -206,7 +206,11 @@ catch (error) {
   process.exitCode = 1
 }
 finally {
-  if (child !== undefined && child.exitCode === null) child.kill('SIGKILL')
+  if (child !== undefined && child.exitCode === null) {
+    child.kill('SIGKILL')
+    // Do not leave the host behind when a failed step skips the graceful stop above.
+    await Promise.race([new Promise(resolve => child.once('exit', resolve)), new Promise(resolve => setTimeout(resolve, 5_000))])
+  }
   if (!keep) rmSync(temporary, { recursive: true, force: true })
   else console.log(`kept the temporary home: ${temporary}`)
 }

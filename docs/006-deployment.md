@@ -92,7 +92,7 @@ Run the profile-creation command only for a new installation. If the profile alr
 
 - the bundle becomes a profile dependency and a registered patch layer, and `dsh --dump-config` composes all six rows;
 - the panel's `GET /orchestrator/api/state` answers, reports the temporary `stateDir`, and the Overview page loads `dsh-superagent/client.js`;
-- after `dsh plugin remove`, the dependency and the patch rows are gone while `stateDir/orchestrator.sqlite` remains, so a reinstall finds its data.
+- after `dsh plugin remove`, the dependency and the patch rows are gone while `stateDir/orchestrator.sqlite` remains, so a reinstall can still find its data.
 
 The `install-e2e` CI workflow runs this check on pull requests and `main`; locally, put `dsh` on `PATH` (or set `DSH_BIN`) and run `pnpm test:install-e2e`. `KEEP=1` leaves the temporary home for inspection.
 
