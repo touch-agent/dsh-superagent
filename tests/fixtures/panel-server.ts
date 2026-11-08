@@ -371,6 +371,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     server.tickets.open = []; server.person = server.person.filter(ticket => ticket.id !== params.id)
     return { stopped: true }
   } },
+  'POST outbox/:id/recall': { answer: () => ({ status: 'recalled' }) },
   'POST approvals/:id/approve': { body: true, answer: ({ params, body }) => {
     const approval = server.approvals.find(item => item.id === params.id)
     if (!approval) return refuse(404, 'Approval not found')

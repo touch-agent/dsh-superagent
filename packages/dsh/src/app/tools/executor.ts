@@ -27,7 +27,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
       true, (resource, offset, limit, signal) => readResource(host.resources, resource, offset, limit, ticketId, signal)),
     tool({
       name: 'orchestrator_ack',
-      description: 'Acknowledge one original human request before substantial work, as the replies section says; it posts as a reply to that message.',
+      description: 'Acknowledge one original human request before substantial work, as the replies section says; it posts as a reply to that message. While the Policy undo window is open it stays queued and returns pending.',
       schema: z.object({
         trigger_id: z.string(),
         text: AcknowledgementSchema.describe(`At most ${IM_WORDS} words; Markdown is supported.`),

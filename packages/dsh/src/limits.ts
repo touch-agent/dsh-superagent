@@ -10,4 +10,6 @@ export const LIMITS = {
   admissionContextTimeoutMs: { min: 1, max: 90_000 },
   /** Minutes a Mandate may authorize actions; 0 means until revoked, and a year is the practical ceiling. */
   mandateMinutes: { min: 0, max: 525_600 },
+  /** Seconds an outbound message waits before it is sent; 0 disables the undo window. */
+  undoWindowSeconds: { min: 0, max: 300 },
 } as const

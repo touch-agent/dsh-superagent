@@ -211,7 +211,8 @@ beforeEach(async () => {
   await runtime.ready
   // Source kinds are normally registered by plugins that are not loaded in unit tests.
   runtime.sources.register(feishuKind); runtime.sources.register(githubKind)
-  runtime.store.saveSettings({ ...runtime.store.settings(), policy: { ...runtime.store.settings().policy, sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } } }, eval: { ...runtime.store.settings().eval, mode: 'auto' }, sources: { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT() } }, feishu: { enabled: true, config: { cli: BOT(), chats: [{ chatId: CHAT, listen: 'all' }], directMessages: true } } } })
+  // The suite runs an IM tenant, which sets the undo window to 0; tests that exercise the window set it themselves.
+  runtime.store.saveSettings({ ...runtime.store.settings(), policy: { ...runtime.store.settings().policy, undoWindowSeconds: 0, sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } } }, eval: { ...runtime.store.settings().eval, mode: 'auto' }, sources: { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT() } }, feishu: { enabled: true, config: { cli: BOT(), chats: [{ chatId: CHAT, listen: 'all' }], directMessages: true } } } })
   deliveries.mockClear()
 })
 afterEach(async () => { expect(controller.prompt).not.toHaveBeenCalled(); await runtime?.stop(); vi.restoreAllMocks(); rmSync(directory, { recursive: true, force: true }) })
@@ -452,6 +453,16 @@ it('acknowledges a follow-up from the worker once and rejects events outside the
   await receive(stranger)
   await expect(runTool(sessionId, 'orchestrator_ack', { trigger_id: stranger.id, text: 'x' })).rejects.toThrow('does not belong')
   expect(runtime.store.tickets.get(ticket.id)!.inputs.map(input => input.kind)).toEqual(['trigger'])
+})
+
+it('keeps an acknowledgement pending while the undo window is open', async () => {
+  const { sessionId } = await acceptedTicket()
+  const policy = runtime.store.settings().policy
+  await runtime.settings.save('policy', { ...policy, undoWindowSeconds: 30 }, runtime.store.blockRevision('policy'), 'panel')
+  const followup = feishu('12', '还有这个', { mentions: [], root_id: 'om_1' })
+  await receive(followup)
+  expect(await runTool(sessionId, 'orchestrator_ack', { trigger_id: followup.id, text: '收到，也处理这个。' }))
+    .toMatchObject({ acknowledgement: 'pending', reused: false })
 })
 
 it('treats GitHub comments through the same gate: mentions by members are explicit, others need an existing task', async () => {

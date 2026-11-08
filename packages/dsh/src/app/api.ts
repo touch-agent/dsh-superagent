@@ -1,5 +1,6 @@
 /** Type-only management API contract between the web panel and host routes, imported by the panel without bundling host code. */
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { ReplyStatus } from '@superagent/kernel'
 import type { PromptConfig, Prompts } from './prompts.ts'
 import type { PromptsView, StateView, TicketPageView } from './http.ts'
 import type { HistoryView } from './settings-history.ts'
@@ -42,6 +43,7 @@ export interface Api {
   'GET tickets/:id': { response: TicketPageView }
   'POST tickets/:id/retry': { response: { retried: true } }
   'POST tickets/:id/stop': { response: { stopped: true } }
+  'POST outbox/:id/recall': { response: { status: ReplyStatus } }
   'POST approvals/:id/approve': { body: { level?: ApprovalRow['action']['level'] };
     response: { state: 'approved'; level: ApprovalRow['action']['level'] } }
   'POST approvals/:id/deny': { response: { state: 'denied' } }

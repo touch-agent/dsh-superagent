@@ -43,7 +43,7 @@ function harness(docConfig: FeishuDocConfig = config) {
   const assessor: Assessor = { request: vi.fn(async () => {}) }
   const executor: Executor = { start: vi.fn(async () => {}), deliver: vi.fn(async () => {}), stop: vi.fn(async () => {}) }
   const engine = new Engine({ repo: store, scope: sources, policy: () => settingsPolicy(store.settings(), sources), assessor, executor,
-    outbox: { send: () => {}, status: () => undefined, withdraw: () => {} } })
+    outbox: { send: () => {}, status: () => undefined, withdraw: () => {}, recall: () => 'recalled' as const } })
   const receive = vi.fn(async (trigger: Trigger) => { const result = engine.receive(trigger); engine.evaluateDue(); return result })
   const parts: SourceContextDeps = { store, engine, outbox: { send: message => store.receipts.add(message) }, commands, sources, deployment,
     ready: Promise.resolve(), configured: () => true, receive }

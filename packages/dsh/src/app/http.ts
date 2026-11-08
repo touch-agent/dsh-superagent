@@ -11,7 +11,7 @@ import { PromptConflict, SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, b
 import { policyVersion } from '../policy.ts'
 import { SettingsConflict, type Settings } from './settings.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
-import { ACTION_LEVELS, UserError, type EngineForPeople, type Ticket } from '@superagent/kernel'
+import { ACTION_LEVELS, UserError, type EngineForPeople, type Outbox, type Ticket } from '@superagent/kernel'
 import type { Deployment, Machine } from '../deployment.ts'
 import type { DshExecutor } from '../executor/dsh.ts'
 import type { Health } from '../sources/host.ts'
@@ -42,6 +42,7 @@ export interface HttpHost {
   readonly settings: Pick<Settings, 'view' | 'save' | 'pause' | 'sync' | 'refreshLabels'>
   readonly engine: EngineForPeople
   readonly executor: Pick<DshExecutor, 'activeCount'>
+  readonly outbox: Pick<Outbox, 'recall'>
   readonly health: Record<string, Health>
   readonly machine: Machine
   readonly masterId: string
@@ -205,6 +206,7 @@ function routes(runtime: HttpHost): Routes {
     'GET tickets/:id': ({ params }) => ticketPage(runtime, params.id),
     'POST tickets/:id/retry': ({ params }) => { const id = ticket(params.id); runtime.engine.retryTicket(id); return { retried: true } },
     'POST tickets/:id/stop': ({ params }) => { const id = ticket(params.id); runtime.engine.stopTicket(id); return { stopped: true } },
+    'POST outbox/:id/recall': ({ params }) => ({ status: runtime.outbox.recall(decoded(params.id)) }),
     'POST approvals/:id/approve': async ({ params, body }) => {
       const { level } = ApprovalDecision.parse(await body())
       const approval = decideApproval(store, params.id, 'approved', new Date().toISOString(), level)

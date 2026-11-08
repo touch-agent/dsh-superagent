@@ -46,7 +46,7 @@ function setup(strength: 'explicit' | 'inferred' = 'inferred', bodies = Array.fr
     revalidate: () => ({ ok: true }), mandateLimits: () => ({ maxActionLevel: 'send' }), admitsInferred: rules => rules.length > 0 }
   const executor: Executor = { start: async () => {}, deliver: async () => {}, stop: async () => {} }
   const scope = { scope: () => ({ listened: true as const, observed: true }) }
-  const outbox = { send: () => {}, status: () => undefined, withdraw: () => {} }
+  const outbox = { send: () => {}, status: () => undefined, withdraw: () => {}, recall: () => 'recalled' as const }
   engine = new Engine({ repo, policy: () => policy, scope, assessor, executor, outbox })
   const tools: Record<string, (args: unknown, signal: AbortSignal) => Promise<unknown>> = {}
   tools.orchestrator_eval_read = (args, signal) => assessor.read({} as Agent, EvalReadSchema.parse(args), signal)

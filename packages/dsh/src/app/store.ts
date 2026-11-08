@@ -15,8 +15,21 @@ import type { ActivityLevel, ActivityRecord } from './activity.ts'
 export interface TimelinePlace { at: string; id: string }
 /** Why a message was dropped: its conversation can never receive it (`channelGone`), or its Source no longer listens to it (`channelIgnored`). */
 export type DropReason = 'channelGone' | 'channelIgnored'
-/** Outbound message receipt tracked in the outbox from the moment it is queued (`pending`, `sent`, or `dropped`); delivery attempt counts live on its `reply` effect. */
-export interface Receipt extends OutboundMessage { status: ReplyStatus; dropped?: { at: string; reason: DropReason } }
+/**
+ * Outbound message receipt tracked in the outbox from the moment it is queued (`pending`, `sent`, `recalled`, or
+ * `dropped`); delivery attempt counts live on its `reply` effect. A pending message records the end of its undo window,
+ * before which it can still be recalled.
+ */
+export interface Receipt extends OutboundMessage {
+  status: ReplyStatus
+  /** When the undo window ends; a pending message can be recalled only before this moment. */
+  dueAt?: string
+  /** The undo window applied when the message was queued, in milliseconds. */
+  windowMs?: number
+  /** When a message was recalled inside its undo window instead of being sent. */
+  recalled?: { at: string }
+  dropped?: { at: string; reason: DropReason }
+}
 /** A dropped outbound message receipt, with the timestamp and reason it was dropped. */
 export type Dropped = Receipt & { dropped: { at: string; reason: DropReason } }
 /** Saved settings snapshot with the policy version and ticket notifications it produced (`internal` saves have no origin). */
@@ -325,30 +338,44 @@ export class Store implements Repositories {
       WHERE earlier.pending = message.pending AND earlier.rowid < message.rowid AND IFNULL(effect.attempts, 0) < ? LIMIT 1`).get(id, failures),
     /**
      * Records a new pending message receipt; an already-recorded message ID keeps its original receipt.
+     * @param window - The undo window and the moment it ends; a missing window means the message may be sent at once and
+     * cannot be recalled, as for receipts migrated from versions that had no window.
      * @returns Whether the message ID was newly recorded.
      */
-    add: (message: OutboundMessage): boolean => {
-      const receipt: Receipt = { ...message, status: 'pending' }
+    add: (message: OutboundMessage, window?: { dueAt: string; windowMs: number }): boolean => {
+      const receipt: Receipt = { ...message, status: 'pending', ...window }
       return Number(this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)').run(message.id, JSON.stringify(receipt)).changes) > 0
     },
     /**
-     * Marks a pending receipt as sent or dropped (with drop reason and timestamp), recreating the receipt if the message
-     * was withdrawn while being sent so its ID cannot be queued again.
+     * Marks a receipt as sent or dropped (with drop reason and timestamp). A message withdrawn while its send was in flight
+     * settles from `recalled` to what actually happened, so the receipt stays truthful and its ID remains terminal; an older
+     * receipt missing altogether is recreated for the same reason.
      */
     settle: (message: OutboundMessage, outcome: 'sent' | DropReason): void => {
-      const settled = outcome === 'sent' ? { status: 'sent' } : { status: 'dropped', dropped: { at: new Date().toISOString(), reason: outcome } }
+      const settled = outcome === 'sent' ? { status: 'sent', recalled: null } : { status: 'dropped', recalled: null, dropped: { at: new Date().toISOString(), reason: outcome } }
       const { id, channel, text, kind, ticketId } = message
-      const updated = this.db.prepare("UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' = 'pending'")
+      const updated = this.db.prepare("UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' IN ('pending', 'recalled')")
         .run(JSON.stringify(settled), id)
       if (!Number(updated.changes)) this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)')
         .run(id, JSON.stringify({ id, channel, text, kind, ...ticketId ? { ticketId } : {}, ...settled }))
     },
     /**
-     * Withdraws a pending message that has not yet been sent.
-     * @returns Whether a pending message with `id` was waiting and removed.
+     * Recalls a still-pending message whose undo window is open at `at`, keeping its receipt as `recalled`
+     * so the same ID cannot be queued again.
+     * @returns Whether a pending message with an open window was recalled.
      */
-    withdraw: (id: string): boolean =>
-      Number(this.db.prepare("DELETE FROM outbox WHERE id = ? AND value ->> '$.status' = 'pending'").run(id).changes) > 0,
+    recall: (id: string, at: string): boolean =>
+      Number(this.db.prepare(`UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' = 'pending'
+        AND value ->> '$.dueAt' IS NOT NULL AND value ->> '$.dueAt' > ?`)
+        .run(JSON.stringify({ status: 'recalled', recalled: { at } }), id, at).changes) > 0,
+    /**
+     * Withdraws a pending message regardless of its window, such as one whose retries keep failing after the window or an
+     * attention message a later report replaced. Like `recall`, it marks the receipt `recalled`.
+     * @returns Whether a pending message with `id` was withdrawn.
+     */
+    withdraw: (id: string, at: string): boolean =>
+      Number(this.db.prepare(`UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' = 'pending'`)
+        .run(JSON.stringify({ status: 'recalled', recalled: { at } }), id).changes) > 0,
   }
 }
 export { key, threadKey }

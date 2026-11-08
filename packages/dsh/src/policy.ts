@@ -86,6 +86,11 @@ export const PolicyConfigSchema = z.object({
   maxActionLevel: z.enum(ACTION_LEVELS).default(DEFAULT_MAX_ACTION_LEVEL),
   /** How many minutes a new Mandate authorizes actions; 0 keeps it valid until revoked. */
   mandateMinutes: z.number().int().min(LIMITS.mandateMinutes.min).max(LIMITS.mandateMinutes.max).default(0),
+  /**
+   * How many seconds an outbound message stays recallable before it is sent; 0 delivers at once. The platform default is
+   * 30 seconds for mail-like actions, while IM tenants normally set 0 to avoid delaying replies.
+   */
+  undoWindowSeconds: z.number().int().min(LIMITS.undoWindowSeconds.min).max(LIMITS.undoWindowSeconds.max).default(30),
   sources: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), SourcePolicySchema).default({}),
 }).strict()
 export const EvalConfigSchema = z.object({

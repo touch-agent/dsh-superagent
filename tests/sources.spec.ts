@@ -34,7 +34,7 @@ function host(overrides: Partial<SourceContextDeps> = {}) {
   sources.register(feishuKind); sources.register(githubKind)
   const assessor: Assessor = { request: vi.fn(async () => {}) }
   const executor: Executor = { start: vi.fn(async () => {}), deliver: vi.fn(async () => {}), stop: vi.fn(async () => {}) }
-  const outbox = { send: () => {}, status: () => undefined, withdraw: () => {} }
+  const outbox = { send: () => {}, status: () => undefined, withdraw: () => {}, recall: () => 'recalled' as const }
   const engine = new Engine({ repo: store, scope: sources, policy: () => settingsPolicy(store.settings(), sources), assessor, executor, outbox })
   const commands = new Commands(() => deployment, {}, new AbortController().signal)
   const receive = vi.fn(async (trigger: Trigger) => { const result = engine.receive(trigger); engine.evaluateDue(); return result })
@@ -1073,7 +1073,7 @@ describe('feishu event consumer', () => {
     sources.register(feishuKind)
     const assessor: Assessor = { request: vi.fn(async () => {}) }
     const executor: Executor = { start: vi.fn(async () => {}), deliver: vi.fn(async () => {}), stop: vi.fn(async () => {}) }
-    const outbox = { send: () => {}, status: () => undefined, withdraw: () => {} }
+    const outbox = { send: () => {}, status: () => undefined, withdraw: () => {}, recall: () => 'recalled' as const }
     const policy = () => settingsPolicy(store.settings(), sources)
     const engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, outbox })
     const deployment = testDeployment({ feishu: { ...testDeployment().feishu!, cli: path } })

@@ -178,11 +178,13 @@ A malformed item in a GitHub list or a Feishu page is skipped, and the Source's 
 
 Outgoing messages are stored and sent as stored work, retried with backoff from 5 seconds, doubling up to 300.
 
+Before it is due, a message waits out the Policy's undo window (`undoWindowSeconds`, 30 seconds by default; 0 sends at once). Recalling it inside that window keeps its record as `recalled` and cancels its delivery, so it is never sent; a recall after the window is refused with the time the window closed. A message ID that is already in the outbox cannot be queued again, so reusing it never delivers another copy.
+
 A Ticket's messages to one conversation go out in the order they were queued, so its acknowledgement comes before its later answer or result: a message waits while an earlier one of the same Ticket to the same conversation has not gone out, until that one has failed three times in a row and shows as a problem.
 
 Messages of other Tickets, and messages of no Ticket, do not wait for it.
 
-A message with failed attempts is a system problem until it goes out or is withdrawn.
+A message with failed attempts is a system problem until it goes out or is recalled.
 
 A message is dropped only when its Source no longer listens to the conversation, or when the Source answers that the conversation can never receive it; while its Source is off, it waits.
 

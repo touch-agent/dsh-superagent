@@ -85,16 +85,28 @@ export interface Executor {
 
 /** A message for a Channel; `ticketId` names the Ticket it is for, when there is one. */
 export interface OutboundMessage { id: string; channel: ChannelRef; text: string; kind: 'acknowledgement' | 'reply' | 'notice'; ticketId?: string }
-/** A queued message waits (`pending`), went out (`sent`), or was dropped because its conversation can never receive it (`dropped`). */
-export type ReplyStatus = 'pending' | 'sent' | 'dropped'
+/**
+ * A queued message waits (`pending`) for its undo window, went out (`sent`), was recalled inside that window
+ * (`recalled`), or was dropped because its conversation can never receive it (`dropped`).
+ */
+export type ReplyStatus = 'pending' | 'sent' | 'recalled' | 'dropped'
 /** The messages queued for Channels; the Engine queues them inside its commands, and a sender delivers them later. */
 export interface Outbox {
   /** Queue a message idempotently; an id queued before keeps its first message. */
   send(message: OutboundMessage): void
   /** Whether a message was queued, and what became of it. */
   status(id: string): ReplyStatus | undefined
-  /** Withdraw a message that has not gone out. */
+  /**
+   * Withdraw a message that has not gone out, as a best-effort cancellation; unlike `recall`, it also stops one whose
+   * retries keep failing after its undo window.
+   */
   withdraw(id: string): void
+  /**
+   * Recall a message still waiting inside its undo window, before it is sent, and keep its receipt as `recalled`.
+   * A repeated recall of a recalled message is idempotent.
+   * @throws UserError when the message is unknown, already settled, or its undo window has closed.
+   */
+  recall(id: string): ReplyStatus
 }
 
 /** What the Engine reports after a change, by event type. */

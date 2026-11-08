@@ -130,7 +130,8 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const assessor = parts.assessor = new MasterAssessor({ get engine() { return parts.engine }, commands, get deployment() { return setup.deployment },
     effects, settings: () => store.settings(), paused: () => host.paused(), threadContext: trigger => sources.threadContext(trigger),
     deliver: (id, text) => sessions.prompt(masterId, id, text, 'steer'), candidateCard: candidate => candidateCard(links, candidate) })
-  const outbox = parts.outbox = new Outbox({ store, effects, sources, commands, paused: () => host.paused() })
+  const outbox = parts.outbox = new Outbox({ store, effects, sources, commands, paused: () => host.paused(),
+    undoWindowMs: () => store.settings().policy.undoWindowSeconds * 1000 })
   const policy = () => settingsPolicy(store.settings(), sources)
   const trace = parts.trace = new SqliteTraceSink(store)
   // Every domain event is graded and stored in the same transaction that produced it; no other part needs the log itself.

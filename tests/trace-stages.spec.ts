@@ -23,7 +23,7 @@ function harness({ gate, scope, spans, now }: { gate?: Policy['gate']; scope?: E
   const executor: Executor = { start: () => {}, deliver: () => {}, stop: () => {} }
   const trace: TraceSink = { record: span => { spans.push(span) } }
   const engine = new Engine({ repo, policy: () => policy, scope: scope ?? { scope: () => ({ listened: true, observed: false }) },
-    assessor: { request: () => {} }, executor, outbox: { send: () => {}, status: () => undefined, withdraw: () => {} }, trace,
+    assessor: { request: () => {} }, executor, outbox: { send: () => {}, status: () => undefined, withdraw: () => {}, recall: () => 'recalled' as const }, trace,
     now: now ?? (() => at) })
   return { engine, repo }
 }
@@ -132,7 +132,7 @@ describe('the stages of one Trigger', () => {
       mandateLimits: () => ({ maxActionLevel: 'send' }), admitsInferred: () => true }
     const engine = new Engine({ repo, policy: () => policy, scope: { scope: () => ({ listened: true, observed: false }) },
       assessor: { request: () => {} }, executor: { start: () => {}, deliver: () => {}, stop: () => {} },
-      outbox: { send: () => {}, status: () => undefined, withdraw: () => {} }, now: () => at })
+      outbox: { send: () => {}, status: () => undefined, withdraw: () => {}, recall: () => 'recalled' as const }, now: () => at })
     engine.receive(trigger('1'))
     engine.evaluateDue()
     // The Trigger still went to an Eval: only the trace is missing.

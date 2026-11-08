@@ -244,6 +244,7 @@ graph LR
 - **交付**：`packages/dsh/src/core/outbox.ts`（或 ticket part）引入 `pending` 状态与窗口计时；`effect` 增 `recalled` 终态；`delivery` 的 `limit` 与窗口关系写清。
 - **验收**：`tests/outbox.spec.ts`：窗口内 recall → 外发 0 次；窗口后 recall → 拒绝并说明原因。
 - **依赖**：T2-01。
+- **状态**：实现完成（2026-11-08，PR #12 待合并）。`packages/dsh/src/app/outbox.ts` 的 `send` 把收据与 `reply` effect 一起写入，effect 的 `due` 设为窗口结束；`receipts.recall` 只在 `dueAt` 前把待发送收据置为 `recalled` 并取消 effect，`withdraw` 退化为 best-effort；窗口由 Policy 的 `undoWindowSeconds` 控制（0–300 秒，默认 30，IM 租户可设 0），收据记录 `dueAt/windowMs`。管理 API 的 `POST outbox/:id/recall` 暴露撤回（`unknownReply` 404，`replySettled`/`undoClosed` 400）。`tests/outbox.spec.ts` 覆盖窗口内 recall 外发 0 次、到期发送、窗口后 recall 拒绝并给出 `undoClosed` 原因、重复 ID 不重发与冻结窗口；`tests/runtime.spec.ts` 覆盖默认窗口下 ack 返回 `pending`，`tests/http.spec.ts` 覆盖撤回路由。
 
 ### T2-05 幂等键改造 · Kernel + Runtime · 2 人日
 

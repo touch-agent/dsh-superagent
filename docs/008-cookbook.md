@@ -380,7 +380,7 @@ function host(overrides: Partial<SourceContextDeps> = {}) {
   sources.registerDefinition(webhookDefinition)
   const engine = new Engine({ repo: store, scope: sources, policy: () => settingsPolicy(store.settings(), sources),
     assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
-    outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn() } })
+    outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn(), recall: vi.fn(() => 'recalled' as const) } })
   const commands = new Commands(() => testDeployment(), {}, new AbortController().signal)
   const receive = vi.fn((trigger: Trigger) => { const result = engine.receive(trigger); engine.evaluateDue(); return result })
   // The Source's own notices go to the outbox, which keeps their receipts and sends nothing here.
