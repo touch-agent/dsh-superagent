@@ -5,3 +5,4 @@ Repeating the same question reuses its request; a different question replaces it
 Clear a resolved question explicitly rather than treating later progress as its resolution.
 Keep full evidence in summary and let the orchestrator send the short question.
 Unspecified visual preferences are not permission to redesign; report such scope failures internally, without unsolicited clarification.
+With a ready result, submit the artifact and a previewRef of the same revision; without a preview the Ticket cannot be reviewed.

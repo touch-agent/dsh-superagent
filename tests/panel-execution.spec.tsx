@@ -63,6 +63,32 @@ it('stops an open Ticket from its page after confirmation', async () => {
   expect(server.requests.some(request => request.path === 'tickets/t1/stop' && request.method === 'POST')).toBe(true)
 })
 
+it('renders a review-stage Ticket\'s preview and approves that revision', async () => {
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never, review: { canReview: true,
+    deliverable: { artifact: { kind: 'document', ref: 'docs/review.md', revision: 'rev-1' }, acceptanceCriteria: [],
+      previewRef: { kind: 'text/redline', ref: 'https://example.test/preview/rev-1', revision: 'rev-1' } },
+    criteria: [{ kind: 'rule', rule: 'pr.merged' }],
+    confirmations: [{ kind: 'human', reason: { code: 'said', values: { text: 'Check the tone' } } }], summary: 'Ready for review' } }
+  await mount()
+  await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
+  expect(all('.dt-section-title .dt-section-name').map(name => name.textContent)).toContain(zh.reviewSection)
+  expect(text()).toContain('https://example.test/preview/rev-1')
+  expect(text()).toContain(zh['acceptanceRule.pr.merged'])
+  expect(text()).toContain('Check the tone')
+  await click(zh.approve)
+  expect(server.requests.some(request => request.path === 'tickets/t1/approve' && request.method === 'POST')).toBe(true)
+  expect(text()).toContain('已于')
+  expect(all('button').some(button => button.textContent === zh.approve)).toBe(false)
+})
+
+it('says a review-stage Ticket without a preview cannot be reviewed and offers no approval', async () => {
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never, review: { canReview: false } }
+  await mount()
+  await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
+  expect(text()).toContain(zh.reviewUnavailable)
+  expect(all('button').some(button => button.textContent === zh.approve)).toBe(false)
+})
+
 it('shows a Ticket with its stage, its Mandate details with the Trigger and Decision behind it, its Threads, and the rest behind disclosures', async () => {
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)

@@ -45,6 +45,7 @@ export interface Api {
   'GET tickets/:id': { response: TicketPageView }
   'POST tickets/:id/retry': { response: { retried: true } }
   'POST tickets/:id/stop': { response: { stopped: true } }
+  'POST tickets/:id/approve': { response: { approved: true } }
   'POST outbox/:id/recall': { response: { status: ReplyStatus } }
   'POST approvals/:id/approve': { body: { level?: ApprovalRow['action']['level'] };
     response: { state: 'approved'; level: ApprovalRow['action']['level'] } }

@@ -23,7 +23,7 @@ import { githubLink } from '@superagent/dsh/sources/github-channel.ts'
 import { githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
 import { conversationDefinition, conversationTrigger } from '@superagent/dsh/sources/conversation.ts'
 import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
-import { createAction, createApproval, followupOwners, outboundAction, type ChannelRef } from '@superagent/kernel'
+import { createAction, createApproval, enterReview, followupOwners, outboundAction, type ChannelRef } from '@superagent/kernel'
 import { fakeDefinition, fakeManifest } from './fixtures/fake-source.ts'
 
 let directory: string
@@ -403,4 +403,24 @@ it('reads each ticket a page\'s follow-ups reached once, and nothing for a messa
   const records = { tickets: { get: vi.fn() }, threads: { get: vi.fn() }, triggers: store.triggers }
   expect(followupOwners(store.triggers.get('f3')!, records)).toEqual([])
   expect([records.tickets.get, records.threads.get].map(read => read.mock.calls.length)).toEqual([0, 0])
+})
+
+it('projects a review-stage Ticket\'s deliverable preview, and marks a review without one', () => {
+  const host = views()
+  const review = enterReview({ artifact: { kind: 'document', ref: 'docs/review.md', revision: 'rev-1' },
+    previewRef: { kind: 'text/redline', ref: 'https://example.test/preview/rev-1', revision: 'rev-1' },
+    acceptanceCriteria: [{ kind: 'rule', rule: 'pr.merged' }, { kind: 'human', reason: 'Check the tone' }] })
+  const ticket = (id: string, report: object) => store.tickets.save({ id, title: 'Review me', decisionId: 'd', channels: [], undelivered: [],
+    createdAt: at, updatedAt: at,
+    mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou_alice' }, scope: '' },
+    origin: { triggerId: 'e0', triggerIds: ['e0'] }, inputs: [],
+    assignments: [{ id: `a-${id}`, state: 'running', createdAt: at, startedAt: at, report: { state: 'ready', summary: 'Ready for review', at,
+      ...report } }] })
+  ticket('t1', { review, accepted: { by: { source: 'feishu', id: 'ou_alice' }, at } })
+  ticket('t2', {})
+  expect(ticketDetail(host, 't1')!.review).toMatchObject({ canReview: true, deliverable: review.deliverable,
+    criteria: [{ kind: 'rule', rule: 'pr.merged' }], confirmations: [{ kind: 'human', reason: { code: 'said' } }],
+    summary: 'Ready for review', accepted: { by: { source: 'feishu', id: 'ou_alice' } } })
+  // A review-stage Ticket whose report carried no deliverable says that it cannot be reviewed; it has nothing to approve.
+  expect(ticketDetail(host, 't2')!.review).toEqual({ canReview: false })
 })

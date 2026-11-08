@@ -399,6 +399,13 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     server.tickets.open = []; server.person = server.person.filter(ticket => ticket.id !== params.id)
     return { stopped: true }
   } },
+  'POST tickets/:id/approve': { answer: ({ params }) => {
+    const detail = server.ticketDetails[params.id]
+    if (!detail) return refuse(404, 'Ticket not found')
+    if (!detail.review?.canReview) return refuse(400, 'This review has no preview to approve', { code: 'deliverablePreviewMissing', values: {} })
+    detail.review = { ...detail.review, accepted: { by: { source: 'panel', id: 'local' }, at: '2026-09-22T00:05:00Z' } }
+    return { approved: true }
+  } },
   'POST outbox/:id/recall': { answer: () => ({ status: 'recalled' }) },
   'POST approvals/:id/approve': { body: true, answer: ({ params, body }) => {
     const approval = server.approvals.find(item => item.id === params.id)

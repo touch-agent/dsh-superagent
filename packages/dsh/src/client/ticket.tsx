@@ -1,9 +1,9 @@
 /** Ticket detail page: stage and actions, Mandate details, undelivered/delivered Inputs, subscribed Threads, and Assignments. */
 import { useState, type ReactNode } from 'react'
 import { ApiError, usePoll, type TicketPageView } from './api.ts'
-import { DisclosureRow, Dot, Icon, Tag, type IconName } from './controls.tsx'
+import { Button, DisclosureRow, Dot, Icon, Tag, type IconName } from './controls.tsx'
 import { decisionMark, reportDot, ticketMark } from './marks.ts'
-import { usePanel } from './provider.tsx'
+import { useAction, usePanel } from './provider.tsx'
 import { settingsRoute } from './route.ts'
 import { Earlier, ThreadLine, automatedRuns } from './rows.tsx'
 import { actorName, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
@@ -66,6 +66,43 @@ function Assignments({ ticket }: { ticket: TicketPageView }) {
       sessionId={item.ref} /></div>}
   </li>)}</ul>
 }
+/**
+ * The review stage's structural gate: render the deliverable preview, or say the Ticket cannot be reviewed. Approval is
+ * offered only when that preview exists; the server refuses it otherwise.
+ */
+function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChanged: () => Promise<void> }) {
+  const { t, call } = usePanel()
+  const approve = useAction(() => call('POST tickets/:id/approve', { id: ticket.id }), { reload: onChanged })
+  const review = ticket.review
+  if (!review) return null
+  const deliverable = review.deliverable
+  if (!review.canReview || !deliverable) return <Section title={t('reviewSection')} icon="review">
+    <Hint>{t('reviewUnavailable')}</Hint>
+  </Section>
+  const reference = (ref: string) => /^https?:\/\//.test(ref) ? <ExternalLink href={ref}>{ref}</ExternalLink>
+    : <span className="dt-mono dt-clamp">{ref}</span>
+  const criteria = [
+    ...(review.criteria ?? []).map(criterion => criterion.window
+      ? t('reviewWindowedRule', { rule: valueLabel(t, 'acceptanceRule', criterion.rule), hours: criterion.window })
+      : valueLabel(t, 'acceptanceRule', criterion.rule)),
+    ...(review.confirmations ?? []).map(criterion => criterion.reason ? reasonLabel(t, criterion.reason) : t('reviewHumanConfirm')),
+  ]
+  return <Section title={t('reviewSection')} icon="review">
+    <KeyValues rows={[
+      [t('reviewArtifact'), `${valueLabel(t, 'artifact', deliverable.artifact.kind)} · ${deliverable.artifact.ref}`],
+      [t('reviewRevision'), <span className="dt-mono">{deliverable.artifact.revision}</span>],
+      [t('reviewPreviewKind'), valueLabel(t, 'previewKind', deliverable.previewRef.kind)],
+      [t('reviewPreviewRef'), reference(deliverable.previewRef.ref)],
+      ...criteria.length > 0 ? [[t('reviewCriteria'), <ul className="dt-plain-list">{criteria.map((criterion, index) =>
+        <li key={index}>{criterion}</li>)}</ul>] as [string, ReactNode]] : [],
+    ]} />
+    {review.summary && <div className="dt-row-quote"><MarkdownLite text={review.summary} /></div>}
+    {review.accepted ? <Hint>{t('reviewAccepted', { by: actorName(t, review.accepted.by), time: when(review.accepted.at, t('lang')) })}</Hint>
+      : <div className="dt-row-buttons"><Button variant="primary" size="sm" disabled={approve.busy} onClick={() => void approve.run()}>
+        {t('approve')}</Button></div>}
+  </Section>
+}
+
 function MandateDetails({ ticket, actor }: { ticket: TicketPageView; actor: string }) {
   const { t, navigate } = usePanel()
   const { mandate, decision } = ticket
@@ -156,6 +193,7 @@ export function TicketPage({ id }: { id: string }) {
     {data.deliveryError && <p className="dt-banner dt-danger dt-mono">
       <span className="dt-banner-label">{t('deliveryFailedPrefix')}</span>{data.deliveryError}
     </p>}
+    <ReviewSection ticket={data} onChanged={reload} />
     <MandateDetails ticket={data} actor={actor} />
     {undelivered.length > 0 && <Section title={t('undeliveredInputs')} count={undelivered.length}>
       <Hint>{data.deliveryError ? t('inputRetryHint') : data.paused ? t('inputPausedHint') : t('inputWaitingHint')}</Hint>

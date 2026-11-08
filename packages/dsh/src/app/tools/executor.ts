@@ -1,6 +1,6 @@
 /** Executor Session tools for reading ticket context, acknowledging requests, managing threads, handing back out-of-scope triggers, and reporting status. */
 import { z } from 'zod'
-import { liveTicket, type EngineForExecutor, type Ticket } from '@superagent/kernel'
+import { ARTIFACT_KINDS, PREVIEW_KINDS, liveTicket, type EngineForExecutor, type Ticket } from '@superagent/kernel'
 import { IM_WORDS } from '../../infra/text.ts'
 import { claimPull, readPull } from '../../sources/github-pull.ts'
 import type { SourceContext } from '../../sources/host.ts'
@@ -9,6 +9,21 @@ import type { Store } from '../store.ts'
 import { reportRelay, threadFollowedNotice } from '../notices.ts'
 import type { Sessions } from '../sessions.ts'
 import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
+
+/** One criterion as a worker declares it; `enterReview` keeps only the parts the kernel can judge and reasons about the rest. */
+const CriterionSchema = z.object({
+  kind: z.enum(['rule', 'human']),
+  rule: z.string().optional(),
+  who: z.object({ source: z.string().min(1), id: z.string().min(1) }).optional(),
+  window: z.number().positive().optional(),
+  reason: z.string().min(1).optional(),
+}).strict()
+/** The artifact and preview of one revision; `enterReview` refuses a preview of another revision. */
+const DeliverableSchema = z.object({
+  artifact: z.object({ kind: z.enum(ARTIFACT_KINDS), ref: z.string().min(1), revision: z.string().min(1) }).strict(),
+  previewRef: z.object({ kind: z.enum(PREVIEW_KINDS), ref: z.string().min(1), revision: z.string().min(1) }).strict(),
+  acceptanceCriteria: z.array(CriterionSchema).optional(),
+}).strict()
 
 export interface ExecutorToolsHost {
   readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'>
@@ -81,6 +96,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
         pr_number: z.number().int().positive().nullish().describe(`The ticket's PR: its source PR, or one by ${host.github.deployment.github.login} from a branch named after this ticket (DSH_SUPERAGENT_NAME).`),
         reply_to_trigger_id: z.string().optional().describe('The explicit human question this report answers; never for ordinary progress.'),
+        deliverable: DeliverableSchema.nullish().describe('A ready result: artifact and previewRef of the same revision; approval needs it.'),
       }).strict(),
       execute: async (args, signal) => {
         const current = host.store.tickets.get(ticketId)
@@ -92,7 +108,8 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
           if (refused) throw new Error(refused)
           const report = { state: args.state, summary: args.summary, ...(args.human_action !== undefined ? { question: args.human_action } : {}),
             ...(args.question_for_trigger_id ? { askedBy: args.question_for_trigger_id } : {}),
-            ...(args.reply_to_trigger_id ? { answers: args.reply_to_trigger_id } : {}) }
+            ...(args.reply_to_trigger_id ? { answers: args.reply_to_trigger_id } : {}),
+            ...(args.deliverable ? { deliverable: args.deliverable } : {}) }
           const updated = host.engine.report(ticketId, report)
           const relay = reportRelay(updated, report)
           if (relay) host.sessions.relay(relay.id, relay.text)

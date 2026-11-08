@@ -21,7 +21,7 @@ The tabs follow the workflow: **Overview**, **Tasks** (任务), **Source**, **Tr
 | Source | Source state, setup problems and non-zero counts. Filtered Triggers and dropped messages cover the same 24-hour window as Overview |
 | Trigger | Threads filtered by Subscribed, Evaluating, New Triggers in 24 h, or All Threads. Each Thread shows its Triggers newest first, Decisions and Subscriptions |
 | Eval | Decisions with their reason and matched rules |
-| Execution | Executor state, Pause processing, and Tickets filtered by Open, Pending, Working, Waiting for a Trigger or Ended. Ticket details show actions, authorization, waiting Inputs, Subscriptions and Assignments |
+| Execution | Executor state, Pause processing, and Tickets filtered by Open, Pending, Working, Waiting for a Trigger or Ended. Ticket details show actions, the review preview, authorization, waiting Inputs, Subscriptions and Assignments |
 | Settings | Sources, Eval, Execution, Prompts and Deployment. Each group includes its save history |
 
 ### Tasks
@@ -54,6 +54,18 @@ A dropped message links to its Ticket, or to its Thread when it has no Ticket. T
 A human follow-up still owned by an Executor is marked **Delivered to Ticket**, without an Eval. The Thread also shows hand-back reasons and context-only Subscriptions. **Evaluate again** can send that follow-up to Eval, or retry a Trigger with no effective judgement: one filtered by its Source, an unavailable Eval, or a delivered message with neither a non-stop Decision nor an Executor acknowledgement. **Why**, on every Trigger, opens the stages it went through in the order the Engine ran them, from intake to the first report of the work it became, and stops where the trace stops — the gate's reason when it refused the Trigger, and an explicit "still in flight" before the Decision.
 
 Ticket details show the originating Trigger, Decision and reason, scope and Policy version. Assignments and secondary details are folded below the immediate actions. **Retry** is available for failed Input delivery or a Ticket waiting for a person after a blocked or failed Report. Ended Tickets show outcomes such as **Pull request merged** or **Stopped by a person**.
+
+A Ticket at `person / review` shows its review above the Mandate details: the artifact kind and reference, the revision, the preview kind and a link to the preview, the worker's summary, and the acceptance criteria. **批准 / Approve** accepts that revision and is shown only when the Report carried a preview; the button records the panel as the accepting actor, while the Ticket stays open for its followed pull request. A review-stage Ticket without a preview, or with a preview of another revision, shows **无法审核** and no approval button, and the HTTP route refuses the same request.
+
+| Before (main `a45e643`) | After (this change) |
+| --- | --- |
+| ![Review-stage Ticket without a preview section](images/review-preview/before-review.png) | ![Review-stage Ticket with its preview and Approve button](images/review-preview/after-review.png) |
+
+Same 1440×1000 viewport and light theme, with the same synthetic review-stage Ticket, pull request Thread and report. Before is the merge of #21, which has no review section; after is this branch, which renders the preview and offers **Approve**.
+
+![The same Ticket when its report has no preview](images/review-preview/after-review-missing.png)
+
+The same Ticket when its latest Report has no Deliverable preview: the review section says **无法审核** and offers no approval.
 
 ### Work assigned in the conversation
 

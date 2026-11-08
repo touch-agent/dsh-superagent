@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Engine, MemoryRepositories, UserError, followupOwners, key, outboundAction, runningAssignment, ticketOutcome, ticketStage,
-  waitsForPerson } from '@superagent/kernel'
+import { Engine, MemoryRepositories, UserError, followupOwners, key, latestAssignment, outboundAction, runningAssignment, ticketOutcome,
+  ticketStage, waitsForPerson } from '@superagent/kernel'
 import type { Action, Assessor, Assignment, Candidate, EngineOptions, Executor, OutboundMessage, Outcome, Policy, Ticket, Trigger } from '@superagent/kernel'
 
 const member = { source: 'chat', id: 'alice' }
@@ -1469,6 +1469,50 @@ describe('final review: close times', () => {
     expect(ended.ended).toMatchObject({ at: '2026-09-23T00:00:05.000Z', outcome: 'merged' })
     expect(ended.follows).toEqual([{ thread: 'gh:pr-1', own: true, closed: { at: '2026-09-23T00:00:05.000Z', outcome: 'merged' } }])
     expect(ended.updatedAt >= before).toBe(true)
+  })
+})
+describe('review preview', () => {
+  const deliverable = { artifact: { kind: 'document' as const, ref: 'docs/review.md', revision: 'rev-1' },
+    previewRef: { kind: 'text/redline' as const, ref: 'https://example.test/preview/rev-1', revision: 'rev-1' },
+    acceptanceCriteria: [{ kind: 'rule' as const, rule: 'pr.merged' }, { kind: 'human' as const, reason: 'Check the tone' }] }
+  it('records a ready deliverable and accepts its preview without ending the Ticket', () => {
+    const h = harness()
+    const ticketId = accepted(h).ticketId!
+    h.engine.bindThread(ticketId, { source: 'gh', id: 'pr-9' }, true)
+    expect(() => h.engine.reviewTicket(ticketId, member)).toThrow(new UserError('reviewNotReady'))
+    h.engine.report(ticketId, { state: 'ready', summary: 'Ready for review', deliverable })
+    const report = latestAssignment(h.repo.tickets.get(ticketId)!)!.report!
+    expect(report.review).toMatchObject({ deliverable: { artifact: deliverable.artifact, previewRef: deliverable.previewRef },
+      criteria: [{ kind: 'rule', rule: 'pr.merged' }],
+      confirmations: [{ kind: 'human', reason: { code: 'said', values: { text: 'Check the tone' } } }] })
+    expect(ticketStage(h.repo.tickets.get(ticketId)!)).toEqual({ stage: 'person', action: 'review' })
+    const reviewed = h.engine.reviewTicket(ticketId, member)
+    expect(latestAssignment(reviewed)!.report!.accepted).toMatchObject({ by: member })
+    // A followed pull request still ends the Ticket with its Thread; approval itself does not.
+    expect(reviewed.ended).toBeUndefined()
+    // A later report replaces the deliverable and clears the acceptance with it.
+    h.tick(1)
+    h.engine.report(ticketId, { state: 'ready', summary: 'A new revision' })
+    expect(latestAssignment(h.repo.tickets.get(ticketId)!)!.report).toMatchObject({ summary: 'A new revision' })
+    expect(latestAssignment(h.repo.tickets.get(ticketId)!)!.report!.accepted).toBeUndefined()
+  })
+  it('refuses approval of a review-stage Ticket whose report has no deliverable preview', () => {
+    const h = harness()
+    const ticketId = accepted(h).ticketId!
+    h.engine.bindThread(ticketId, { source: 'gh', id: 'pr-9' }, true)
+    h.engine.report(ticketId, { state: 'ready', summary: 'Done, but no deliverable' })
+    expect(ticketStage(h.repo.tickets.get(ticketId)!)).toEqual({ stage: 'person', action: 'review' })
+    expect(() => h.engine.reviewTicket(ticketId, member)).toThrow(new UserError('deliverablePreviewMissing'))
+    expect(latestAssignment(h.repo.tickets.get(ticketId)!)!.report!.accepted).toBeUndefined()
+  })
+  it('refuses a preview of another revision and records no report', () => {
+    const h = harness()
+    const ticketId = accepted(h).ticketId!
+    h.engine.bindThread(ticketId, { source: 'gh', id: 'pr-9' }, true)
+    expect(() => h.engine.report(ticketId, { state: 'ready', summary: 'Ready',
+      deliverable: { ...deliverable, previewRef: { ...deliverable.previewRef, revision: 'rev-2' } } }))
+      .toThrow(new UserError('deliverablePreviewStale', { preview: 'rev-2', revision: 'rev-1' }))
+    expect(runningAssignment(h.repo.tickets.get(ticketId)!)!.report).toBeUndefined()
   })
 })
 describe('model-surface review', () => {

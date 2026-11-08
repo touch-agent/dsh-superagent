@@ -1,5 +1,5 @@
 /** Ticket list, ticket detail, mandate basis formatting, and executor load views. */
-import { channelThread, liveTicket, threadKey, ticketStage, type AcceptMode, type AdmissionCell, type MandateBasis, type Ticket,
+import { channelThread, latestReport, liveTicket, threadKey, ticketStage, type AcceptMode, type AdmissionCell, type MandateBasis, type Ticket,
   type TicketStage } from '@superagent/kernel'
 import { workerSessionId } from '../../executor/dsh.ts'
 import type { Store } from '../store.ts'
@@ -60,7 +60,8 @@ export function ticketDetail(host: ViewHost, id: string) {
   const ticket = store.tickets.get(id)
   if (!ticket) return undefined
   const view = snapshot(host)
-  const { stage } = ticketStage(ticket)
+  const current = ticketStage(ticket)
+  const { stage } = current
   const decision = store.decisions.get(ticket.decisionId)
   const input = (value: Ticket['inputs'][number]) => {
     const trigger = value.kind === 'trigger' ? store.triggers.get(value.triggerId) : undefined
@@ -75,7 +76,15 @@ export function ticketDetail(host: ViewHost, id: string) {
   const human = ticket.mandate.basis.via !== 'bot'
   // A conversation task can be read in the main Session it came from; its Trigger records that Session.
   const origin = store.triggers.get(ticket.origin.triggerId)
-  return { ...ticketLine(view, ticket), ...origin?.source === 'conversation' && typeof origin.meta.sessionId === 'string'
+  const report = latestReport(ticket)
+  const review = report?.review
+  // A review stage renders the deliverable preview, or says plainly that the Ticket cannot be reviewed; approval is never offered without one.
+  const reviewView = current.stage === 'person' && current.action === 'review' ? { review: {
+    canReview: !!review,
+    ...review ? { deliverable: review.deliverable, criteria: review.criteria, confirmations: review.confirmations,
+      summary: markdown(report?.summary ?? ''), ...report?.accepted ? { accepted: { ...report.accepted, by: view.actor(report.accepted.by) } } : {} } : {},
+  } } : {}
+  return { ...ticketLine(view, ticket), ...reviewView, ...origin?.source === 'conversation' && typeof origin.meta.sessionId === 'string'
     ? { conversationSession: origin.meta.sessionId } : {}, mandate: { ...ticket.mandate, actor: view.actor(ticket.mandate.actor, human) },
     basis: basisFacts(ticket.mandate.basis, view.rule), paused: store.settings().paused,
     channels: ticket.channels.map(channel => channelLink(view, channel)),

@@ -301,7 +301,7 @@ graph LR
 - **交付**：`packages/kernel/src/deliverable.ts`：`artifact`（文件/文档/表格/邮件草稿/日历邀请）+ `previewRef` + `acceptanceCriteria[]`（机器可判的才算）。
 - **验收**：`tests/deliverable.spec.ts`：没有 previewRef 的 review 工单被拒绝；criteria 不可判时降级为「人工确认」并记原因。
 - **依赖**：M2（Approval 复用）。
-- **状态**：实现完成（2026-11-08，PR #21 待审查合并）。`packages/kernel/src/deliverable.ts` 导出 `Deliverable`（artifact 五类 + `previewRef` + `acceptanceCriteria`）、`enterReview` 与工件/预览/规则的校验；缺交付物、缺预览或预览属于另一修订时分别以 `deliverableMissing` / `deliverablePreviewMissing` / `deliverablePreviewStale` 拒绝。`pr.merged` / `artifact.sent` / `artifact.unchanged`（正的小时窗口）之外的规则、缺失的规则与缺窗口的窗口规则降级为人工确认，保留可本地化的 `reason` 与 `degradedRule`；`values.match` 在带上期望值载荷前不算机器可判。`tests/deliverable.spec.ts` 覆盖上述两类验收、五类工件/预览、拒绝码与边界。**运行时尚未提交 Deliverable**，面板在 review 阶段强制渲染预览仍属 T3-07。
+- **状态**：实现完成（2026-11-08，PR #21 已合并）。`packages/kernel/src/deliverable.ts` 导出 `Deliverable`（artifact 五类 + `previewRef` + `acceptanceCriteria`）、`enterReview` 与工件/预览/规则的校验；缺交付物、缺预览或预览属于另一修订时分别以 `deliverableMissing` / `deliverablePreviewMissing` / `deliverablePreviewStale` 拒绝。`pr.merged` / `artifact.sent` / `artifact.unchanged`（正的小时窗口）之外的规则、缺失的规则与缺窗口的窗口规则降级为人工确认，保留可本地化的 `reason` 与 `degradedRule`；`values.match` 在带上期望值载荷前不算机器可判。`tests/deliverable.spec.ts` 覆盖上述两类验收、五类工件/预览、拒绝码与边界。运行时的交付与 review 页见 T3-07。
 
 ### T3-02 doc previewer（redline）· Runtime · 6 人日
 
@@ -334,7 +334,8 @@ graph LR
 ### T3-07 review 页的结构性约束 · Runtime · 3 人日
 
 - **交付**：`views/tickets.ts` 在 stage=person/review 时强制渲染 preview；缺 preview 显示「无法审核」而不是「批准」按钮。
-- **验收**：`tests/panel.spec.ts` 断言无 preview 时 approve 按钮不存在。
+- **验收**：`tests/panel-execution.spec.tsx` 断言无 preview 时 approve 按钮不存在。
+- **状态**：实现完成（2026-11-08，PR 待创建）。`orchestrator_report` 接受可选 `deliverable`，`Assignments.report` 用 `enterReview` 归一化并随 Report 保存；`ticketDetail` 在 `person/review` 投影交付物、修订、预览与验收标准，`TicketPage` 只在有 preview 时显示批准并调用 `POST tickets/:id/approve`，缺 preview 显示「无法审核」；`Engine.reviewTicket` 记录批准人，不结束工单。`tests/core-engine.spec.ts`、`tests/views.spec.ts`、`tests/http.spec.ts`、`tests/panel-execution.spec.tsx` 覆盖有/无 preview 两条路径。
 
 ### T3-08 工单时间线（审计视图）· Runtime · 3 人日
 
