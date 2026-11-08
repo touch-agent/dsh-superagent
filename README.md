@@ -85,7 +85,7 @@ The Tasks tab then folds Tickets into milestones and plan tasks by the ids their
 
 ### Attention is the budget
 
-Everything above serves one rule: take as little human attention as possible and give as much value as possible. The panel opens with what needs a person, not with a dashboard; a healthy state takes no space; one outcome costs one notification; the agent confirms a request once, stays quiet while it works, and writes again only when a result is ready, a decision is needed, or it cannot finish. The same rule applies to this README: the rest is in `docs/`, in order.
+Everything above serves one rule: take as little human attention as possible and give as much value as possible. The panel opens with what needs a person, not with a dashboard; a healthy state takes no space; one outcome costs one notification; the agent confirms a request once, stays quiet while it works, and writes again only when a result is ready, a decision is needed, or it cannot finish. The same rule applies to this README: the rest is in `docs/`, in order. The design principles that follow from it — internalized organization, independent evolution, composable context and replaceable boundaries — are in [DESIGN-PRINCIPLES.zh.md](DESIGN-PRINCIPLES.zh.md).
 
 ## Repository layout
 
@@ -200,7 +200,7 @@ Read the numbered documents in order; each builds only on the ones before it.
 - [009 Conversation tasks](docs/009-conversation-tasks.md): assigning work by talking to the agent, and multi-source tasks.
 - [010 Adding a Source in 30 minutes](docs/010-adding-a-source.md): the fast path from an empty checkout to a registered, panel-visible Source.
 
-The larger design and planning notes are in Chinese: [PLATFORM-EVOLUTION.zh.md](PLATFORM-EVOLUTION.zh.md) explains why the project has this shape, and [TASK-PLAN.zh.md](TASK-PLAN.zh.md) records the milestones, tasks and evidence. They are working documents and can be ahead of, or behind, the numbered set.
+The larger design and planning notes are in Chinese: [DESIGN-PRINCIPLES.zh.md](DESIGN-PRINCIPLES.zh.md) states the product and organization principles above the numbered set, [PLATFORM-EVOLUTION.zh.md](PLATFORM-EVOLUTION.zh.md) explains why the project has this shape, and [TASK-PLAN.zh.md](TASK-PLAN.zh.md) records the milestones, tasks and evidence. They are working documents and can be ahead of, or behind, the numbered set.
 
 ## Development
 
