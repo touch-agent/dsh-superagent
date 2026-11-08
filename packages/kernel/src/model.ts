@@ -292,6 +292,12 @@ export interface PolicyEffect {
 export type TicketEndBy = 'executor' | 'human'
 /** How a ticket ended: with its result, with its pull request merged or closed unmerged, with nothing to do, or stopped by a person. */
 export type TicketOutcome = 'completed' | 'merged' | 'closed' | 'dropped' | 'stopped'
+/**
+ * How a ticket runs. A tracked ticket goes to an Executor through Assignments and worker Sessions, and its trace records
+ * what happened to each Assignment. A lightweight ticket is one small action sequence that runs inline, without an
+ * Assignment or a Session, and its trace records each action.
+ */
+export type TicketForm = 'tracked' | 'lightweight'
 /** A question for a person; `triggerId` is the human message that raised it, whose conversation it goes back to. */
 export interface Attention { id: string; question: string; triggerId?: string }
 /** Ticket aggregate: an authorized work item with its assignments, channels, thread bindings, and inputs. */
@@ -300,6 +306,11 @@ export interface Ticket {
   title: string
   decisionId: string
   mandate: Mandate
+  /**
+   * How it runs. A ticket created before forms existed has none and is tracked. A lightweight ticket has no Assignment and
+   * runs its actions inline (see `InlineExecutor`); a tracked ticket gets an Assignment and a worker Session.
+   */
+  form?: TicketForm
   /** The Channels of the messages it was accepted from, which its replies go to. */
   channels: ChannelRef[]
   /** When, by whom, and how the ticket ended, with a person's or the host's reason beyond the outcome; an open ticket has none. */
@@ -337,6 +348,8 @@ export interface Execution { name: string; directory: string; assignment: string
 
 /** Whether a ticket is open: it has not ended. */
 export const liveTicket = (ticket: Pick<Ticket, 'ended'>): boolean => !ticket.ended
+/** How a ticket runs; a ticket recorded before forms existed runs tracked. */
+export const ticketForm = (ticket: Pick<Ticket, 'form'>): TicketForm => ticket.form ?? 'tracked'
 /** How a ticket ended. */
 export const ticketOutcome = (ticket: Pick<Ticket, 'ended'>): TicketOutcome | undefined => ticket.ended?.outcome
 export const runningAssignment = (ticket: Ticket): Assignment | undefined => ticket.assignments.find(assignment => assignment.state === 'running')

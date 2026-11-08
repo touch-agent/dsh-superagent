@@ -30,13 +30,21 @@ The runtime stores a Deliverable carried by a `ready` Report (`orchestrator_repo
 
 ## The Executor
 
-Each Ticket gets an Executor Session named `worker-<ticket id>` and a directory named after the Ticket's short name. Directories are created under the configured execution root, which defaults to `<stateDir>/system/work`.
+Each tracked Ticket gets an Executor Session named `worker-<ticket id>` and a directory named after the Ticket's short name. Directories are created under the configured execution root, which defaults to `<stateDir>/system/work`. A lightweight Ticket gets no Assignment, Session or directory: its actions run inline, as [Lightweight tickets](#lightweight-tickets) describes.
 
 The main Session works in the system root, `<stateDir>/system`, which dsh-superagent creates on startup. One process is one system: the main Session's directory is the context root, and every worker directory is a tier below it. A configured execution root may point elsewhere; it still separates Tickets by directory only and is not a security boundary.
 
 Executor Sessions run commands without approval as the operator's OS user. Their `dsh-superagent-worker` preset contains the tools needed for work and moves foreground shell commands to background jobs after 5 seconds. This lets a worker receive new messages at the next step instead of waiting for a long command to finish.
 
 The main Session uses `dsh-superagent-router`, with the same 5-second shell and job-wait limits and a smaller tool set for routing. Sessions retain the preset selected at creation. Worker subagents use DeepSeek Harness's `standard` preset.
+
+### Lightweight tickets
+
+A lightweight Ticket is one small action sequence that runs inline through the `InlineExecutor` port, without an Assignment, an Executor Session or a workspace directory. It ends `completed` when the work is done, or `dropped` when there was nothing to do. Because it has no worker to judge and no place to stage work, its actions are limited to the `read` and `draft` levels (R5): a `commit`, `send` or `spend` action needs a tracked Ticket, and the kernel refuses a lightweight result that names one.
+
+The action sequence is its audit. The kernel records one `action` span per step under the Trigger's trace as the step runs, in the order the actions happen, each naming the Action's kind, source, object, revision and level, and a `report` span with the end state. A run that never finishes keeps the actions it already recorded. Each run has a token the Engine gives its executor; a callback from an earlier run is refused, and the run and the step's position make each action's stage id unique, so a repeated Action is still one row per time it ran. Its disposition records that it took the person's message up, so the message is not handed back to Eval; the Inputs the run read are named when it ends, so a person's later message it handled is taken up too, while an Input it did not read keeps waiting until the run ends and, if the ticket ends then, goes back to Eval rather than being lost. A person's later message on one of its Threads resumes it inline under the same Mandate, still without an Assignment.
+
+The assessment does not choose the lightweight form yet, so every accept remains tracked, as D3 requires. The form and the kernel path are in place for the runtime that runs small actions inline; a deployment without an `InlineExecutor` refuses a lightweight accept, and the Decision is rolled back rather than leaving work that cannot run.
 
 ### Background work and worker slots
 

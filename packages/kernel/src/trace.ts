@@ -4,8 +4,12 @@
  */
 import { key } from './ids.ts'
 
-/** The stages of a Trigger's trace, in the order the Engine runs them: a Source hands it in, it is deduplicated, queued, gated, admitted, assessed, decided, attached, dispatched and reported on. */
-export const SPAN_KINDS = ['ingest', 'dedupe', 'enqueue', 'gate', 'admission', 'assess', 'decide', 'attach', 'dispatch', 'report'] as const
+/**
+ * The stages of a Trigger's trace, in the order the Engine runs them: a Source hands it in, it is deduplicated, queued,
+ * gated, admitted, assessed, decided, attached and dispatched, then a lightweight ticket's actions run inline and the
+ * ticket reports on it. A tracked ticket records no `action` stage: its actions happen inside its worker's Session.
+ */
+export const SPAN_KINDS = ['ingest', 'dedupe', 'enqueue', 'gate', 'admission', 'assess', 'decide', 'attach', 'dispatch', 'action', 'report'] as const
 /** One stage of `SPAN_KINDS`: what happened to a Trigger, not what its message said. */
 export type SpanKind = typeof SPAN_KINDS[number]
 

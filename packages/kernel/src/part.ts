@@ -2,7 +2,8 @@
 import { UserError } from './errors.ts'
 import { followupOwners, reached, threadKey } from './model.ts'
 import type { Thread, ThreadRef, Ticket, Trigger } from './model.ts'
-import type { Assessor, AssessmentOutcome, DomainEvent, DomainEvents, Executor, Outbox, Policy, Repositories, SourceScope, TraceSink } from './ports.ts'
+import type { Assessor, AssessmentOutcome, DomainEvent, DomainEvents, Executor, InlineExecutor, Outbox, Policy, Repositories, SourceScope, TraceSink }
+  from './ports.ts'
 import { spanId, traceId, type SpanKind } from './trace.ts'
 
 export interface EngineOptions {
@@ -12,6 +13,8 @@ export interface EngineOptions {
   scope: SourceScope
   assessor: Assessor
   executor: Executor
+  /** Runs lightweight tickets inline, without an Assignment; an accept must not choose that form without one. */
+  inline?: InlineExecutor
   outbox: Outbox
   prepareTicket?: (ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>) => Ticket
   now?: () => string
@@ -70,18 +73,19 @@ export abstract class EnginePart {
   }
   /**
    * Record one stage of a Trigger's trace, when a sink is configured. A stage recorded twice with the same `ref` keeps its
-   * first row, since its id is derived from the trace, the stage and that ref.
+   * first row, since its id is derived from the trace, the stage and that ref. `at` lets an action ledger keep the time each
+   * action ran instead of the time the Engine heard about it.
    */
-  protected stage(trigger: Trigger, kind: SpanKind, extra: { data?: Record<string, unknown>; evalId?: string; ref?: string } = {}): void {
+  protected stage(trigger: Trigger, kind: SpanKind, extra: { data?: Record<string, unknown>; evalId?: string; ref?: string; at?: string } = {}): void {
     const sink = this.options.trace
     if (!sink) return
-    const { ref, ...rest } = extra
+    const { ref, at, ...rest } = extra
     const trace = traceId(trigger.id)
-    sink.record({ id: spanId(trace, kind, ref), traceId: trace, kind, at: this.now(),
+    sink.record({ id: spanId(trace, kind, ref), traceId: trace, kind, at: at ?? this.now(),
       ...trigger.threads.length ? { threadKey: threadKey(trigger.threads[0]!) } : {}, ...rest })
   }
   /** Record a stage on the trace of the Trigger a ticket was opened from, with that ticket named. */
-  protected stageOf(ticket: Ticket, kind: SpanKind, extra: { data?: Record<string, unknown>; ref?: string } = {}): void {
+  protected stageOf(ticket: Ticket, kind: SpanKind, extra: { data?: Record<string, unknown>; ref?: string; at?: string } = {}): void {
     const trigger = this.repo.triggers.get(ticket.origin.triggerId)
     if (!trigger) return
     this.stage(trigger, kind, { ...extra, data: { ticketId: ticket.id, ...extra.data } })

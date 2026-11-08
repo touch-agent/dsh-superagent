@@ -55,9 +55,12 @@ export interface Candidate {
 export type AssessmentOutcome =
   | { kind: 'ignore'; reason: string | Reason; audit?: Record<string, unknown> }
   | { kind: 'unavailable'; reason: string | Reason; audit?: Record<string, unknown> }
-  /** An accept: `rules` the assessment matched, `name` the ticket's requested short name, and `note` a routing note for its worker. */
+  /**
+   * An accept: `rules` the assessment matched, `name` the ticket's requested short name, `note` a routing note for its
+   * worker, and `form` how it runs (tracked unless the accept chooses the lightweight inline path).
+   */
   | { kind: 'accept'; title: string; scope: string; reason: string | Reason; acknowledgement?: string; rules?: string[]; audit?: Record<string, unknown>;
-    name?: string; note?: string }
+    name?: string; note?: string; form?: 'lightweight' }
   | { kind: 'stop'; ticketId: string; reason: string | Reason; audit?: Record<string, unknown> }
 
 /** Semantic judgement. `request` queues the assessment, idempotently per `evalId`; the outcome returns through `Engine.decide`. */
@@ -81,6 +84,49 @@ export interface Executor {
   deliver(ticket: Ticket, assignment: Assignment): void
   /** End an assignment's work, such as cancelling its Session's turn; called after the ticket or assignment has already ended in the domain. */
   stop(ticket: Ticket, assignment: Assignment, reason: string): void
+}
+
+/** One Action a lightweight ticket ran, with when it ran and whether it succeeded. */
+export interface InlineStep {
+  action: Action
+  /** When it ran, so the action ledger keeps the order the steps actually happened in. */
+  at: string
+  ok: boolean
+  /** Why it failed, kept to a bounded length; absent when it succeeded. */
+  error?: string
+}
+
+/**
+ * What an inline execution ends with. A lightweight ticket runs at most `read` and `draft` actions (R5); a `commit`, `send`
+ * or `spend` action needs a tracked ticket and a worker Session.
+ */
+export interface InlineResult {
+  /** `completed` when the work is done, or `dropped` when there was nothing to do. */
+  outcome: Extract<TicketOutcome, 'completed' | 'dropped'>
+  /** A person-readable account of what it did, recorded as the ticket's end reason. */
+  summary: string
+  /**
+   * The Inputs the run read, by Input id. A trigger Input's message counts as taken up, so ending the ticket does not hand it
+   * back to Eval; an Input the run did not name keeps waiting. An Input that is not the ticket's own is refused.
+   */
+  read?: readonly string[]
+}
+
+/**
+ * Runs a lightweight ticket inline: without an Assignment, a worker Session or a workspace. The Engine calls it inside its
+ * commands, so it only queues the work. Each action comes back through `Engine.inlineAction` as it runs, with the run token
+ * `start` was given, so the action ledger survives a run that never finishes and a late callback from an earlier run is
+ * refused; the end comes through `Engine.inlineFinished`. An Input that arrives while it runs stays with the ticket and is
+ * read by the next run.
+ */
+export interface InlineExecutor {
+  /**
+   * Queue `ticket` for an inline run under `run`; the ticket has no Assignment. Every callback for this run names `run`, and
+   * the run is current until `inlineFinished` or the ticket's end.
+   */
+  start(ticket: Ticket, run: string): void
+  /** Stop a queued or running inline execution, for this run or whatever it queued for the ticket. */
+  stop(ticket: Ticket, reason: string): void
 }
 
 /**

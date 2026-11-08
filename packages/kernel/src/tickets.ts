@@ -1,11 +1,12 @@
 /** Tickets: their lifecycle from an accept to their end, their Subscriptions and their Inputs. */
-import { acknowledgementAction } from './action.ts'
+import { acknowledgementAction, withinActionLevel } from './action.ts'
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
-import { channelThread, latestAssignment, latestReport, liveTicket, readUntil, runningAssignment, settled, threadKey, waitsForPerson } from './model.ts'
+import { channelThread, latestAssignment, latestReport, liveTicket, readUntil, runningAssignment, settled, threadKey, ticketForm, waitsForPerson }
+  from './model.ts'
 import type { Assignment, ChannelRef, Evaluation, Follow, Mandate, PolicyEffect, ThreadRef, Ticket, TicketEndBy, TicketInput, TicketOutcome,
   Trigger, TriggerDisposition } from './model.ts'
-import type { AssessmentOutcome } from './ports.ts'
+import type { AssessmentOutcome, InlineResult, InlineStep } from './ports.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
 import { canRetry } from './stage.ts'
@@ -24,16 +25,22 @@ const STATUS_REQUEST = 'Report the current ticket status with orchestrator_repor
 /**
  * Manages each ticket's lifecycle: creates the ticket for an accept decision with its Mandate, Subscriptions, and first
  * Assignment, binds and attaches Threads, adds Inputs, resumes, retries, restarts, and ends tickets, and drops Subscriptions.
- * Coordinates with Replies for the acknowledgement an accept carries and with Executor to start, deliver to, and stop assignments.
+ * Coordinates with Replies for the acknowledgement an accept carries, with Executor to start, deliver to, and stop assignments,
+ * and with the inline executor to run a lightweight ticket's action sequence and record it in the ticket's trace.
  * Intake, Evals, Assignments, and Engine delegate ticket and subscription mutations here.
  */
 export class Tickets extends EnginePart {
+  /** The inline run each lightweight ticket is on, so a late callback from an earlier run is refused and its steps get unique refs. */
+  private readonly inlineRuns = new Map<string, { run: string; startedAt: string; lastAt: string; steps: number }>()
+  private inlineSeq = 0
   constructor(options: EngineOptions, private readonly replies: Replies) { super(options) }
 
   /**
    * Create the ticket an accept decided, under `mandate`, with the Channels and Threads of the Eval's Triggers, its first
    * Assignment, and the acknowledgement the accept carries, and queue its launch. Its origin is the admissible Trigger that
-   * gave the Eval its strength, or the Eval's last Trigger for an Eval recorded before `primary` existed.
+   * gave the Eval its strength, or the Eval's last Trigger for an Eval recorded before `primary` existed. A lightweight
+   * accept gets no Assignment: its actions run inline instead.
+   * @throws TypeError when the accept chose the lightweight form but no inline executor is configured.
    */
   create(id: string, decisionId: string, mandate: Mandate, evaluation: Pick<Evaluation, 'triggerIds' | 'primary'>,
     outcome: Extract<AssessmentOutcome, { kind: 'accept' }>, at: string): void {
@@ -41,22 +48,104 @@ export class Tickets extends EnginePart {
     // Fall back to the last trigger for Evals recorded before `primary` existed.
     const primary = this.repo.triggers.get(evaluation.primary ?? triggerIds.at(-1)!)
     const origin = { triggerId: primary?.id ?? triggerIds[0]!, triggerIds }
-    let ticket: Ticket = { id, title: outcome.title, decisionId, mandate, channels: [], assignments: [], inputs: [], undelivered: [],
-      createdAt: at, updatedAt: at, origin }
+    let ticket: Ticket = { id, title: outcome.title, decisionId, mandate, form: outcome.form ?? 'tracked', channels: [], assignments: [],
+      inputs: [], undelivered: [], createdAt: at, updatedAt: at, origin }
     for (const triggerId of triggerIds) {
       const channel = this.repo.triggers.get(triggerId)?.channel
       if (channel && !ticket.channels.some(item => sameChannel(item, channel))) ticket.channels.push(channel)
     }
     ticket = this.options.prepareTicket?.(ticket, outcome) ?? ticket
-    const assignment = this.newAssignment(ticket)
+    const lightweight = ticketForm(ticket) === 'lightweight'
+    // A lightweight ticket cannot wait for a Session that never starts, so the deployment must provide the inline path.
+    if (lightweight && !this.options.inline) throw new TypeError('A lightweight Ticket needs an inline executor')
+    const assignment = lightweight ? undefined : this.newAssignment(ticket)
     this.repo.tickets.save(ticket)
     for (const triggerId of triggerIds) for (const ref of this.repo.triggers.get(triggerId)?.threads ?? []) this.subscribe(id, ref)
     if (outcome.acknowledgement && primary) this.replies.acknowledgeAccepted(id, primary, outcome.acknowledgement)
     const created = this.require(id)
     const from = primary ?? this.repo.triggers.get(created.origin.triggerId)
     if (from) this.stage(from, 'attach', { ref: id, data: { ticketId: id, created: true } })
-    this.options.executor.start(created, assignment)
+    if (lightweight) this.startInline(created, { ref: 'inline' })
+    else this.options.executor.start(created, assignment!)
     this.emit('ticket.created', { ticketId: id, decisionId, strength: mandate.strength })
+  }
+  /**
+   * Start an inline run of `ticket`, record its dispatch stage and hand the host its run token. The token names every
+   * callback of this run, so a callback left over from an earlier run is refused instead of acting on this one.
+   */
+  private startInline(ticket: Ticket, dispatch: { ref: string; data?: Record<string, unknown> }): void {
+    const run = key('inline', ticket.id, String(++this.inlineSeq))
+    const startedAt = this.now()
+    this.inlineRuns.set(ticket.id, { run, startedAt, lastAt: startedAt, steps: 0 })
+    this.stageOf(ticket, 'dispatch', { ref: dispatch.ref, data: { form: 'lightweight', ...dispatch.data } })
+    this.options.inline!.start(ticket, run)
+  }
+  /**
+   * Record one Action a lightweight ticket's inline run performed, as it runs: an `action` stage under the Trigger's trace,
+   * naming the Action's kind, source, object, revision and level. The run token and the step's position make the stage id
+   * unique, so a repeated Action is still one row per time it ran. A step above `draft` is refused, as that level needs a
+   * tracked ticket and a worker Session (R5), and the Mandate is revalidated at the Action's level.
+   * @throws UserError when the ticket has ended or its Mandate no longer allows the Action.
+   * @throws TypeError when the run is not the ticket's current one, the ticket is not lightweight, has an Assignment, the
+   * step's time is invalid or before the run, or the step is above `draft`.
+   */
+  inlineAction(ticketId: string, run: string, step: InlineStep): void {
+    const ticket = this.require(ticketId)
+    const state = this.inlineRuns.get(ticketId)
+    if (state?.run !== run) throw new TypeError('The inline run is no longer current')
+    if (!liveTicket(ticket)) throw new UserError('ticketEnded')
+    if (ticketForm(ticket) !== 'lightweight') throw new TypeError('Only a lightweight Ticket records inline actions')
+    if (ticket.assignments.length) throw new TypeError('A lightweight Ticket runs without an Assignment')
+    if (typeof step.at !== 'string' || !Number.isFinite(Date.parse(step.at)) || Date.parse(step.at) < Date.parse(state.startedAt)) {
+      throw new TypeError('An inline action needs a valid time at or after its run started')
+    }
+    if (!withinActionLevel(step.action.level, 'draft')) throw new TypeError(`A lightweight Ticket cannot record a ${step.action.level} action`)
+    if (!this.policy().revalidate(ticket.mandate, step.at, { level: step.action.level }).ok
+      || (ticket.mandate.maxActionLevel !== undefined && !withinActionLevel(step.action.level, ticket.mandate.maxActionLevel))) {
+      throw new UserError('mandateRevoked')
+    }
+    state.steps += 1
+    state.lastAt = state.lastAt > step.at ? state.lastAt : step.at
+    this.stageOf(ticket, 'action', { at: step.at, ref: `${run}:${state.steps}`, data: {
+      action: { kind: step.action.kind, source: step.action.source, objectId: step.action.objectId, revision: step.action.revision,
+        level: step.action.level, actor: step.action.actor }, ok: step.ok, ...step.error === undefined ? {} : { error: step.error.slice(0, 300) } } })
+  }
+  /**
+   * Record that a lightweight ticket's inline run ended and end it: the trigger Inputs it read are taken up in their
+   * dispositions, the person's original message is taken up, and a `report` stage names the outcome. Its actions are
+   * already recorded by `inlineAction`, and the report is dated no earlier than the last of them.
+   * @throws UserError when the ticket has ended.
+   * @throws TypeError when the run is not the ticket's current one, the ticket is not lightweight, has an Assignment, names
+   * an Input that is not its own, or carries an outcome or summary that is not a result.
+   */
+  inlineFinished(ticketId: string, run: string, result: InlineResult): Ticket {
+    const ticket = this.require(ticketId)
+    const state = this.inlineRuns.get(ticketId)
+    if (state?.run !== run) throw new TypeError('The inline run is no longer current')
+    if (!liveTicket(ticket)) throw new UserError('ticketEnded')
+    if (ticketForm(ticket) !== 'lightweight') throw new TypeError('Only a lightweight Ticket finishes inline')
+    if (ticket.assignments.length) throw new TypeError('A lightweight Ticket runs without an Assignment')
+    if (result.outcome !== 'completed' && result.outcome !== 'dropped') throw new TypeError('A lightweight Ticket ends completed or dropped')
+    if (typeof result.summary !== 'string' || (result.read !== undefined && !Array.isArray(result.read))) {
+      throw new TypeError('An inline result needs a summary and, when given, a list of Input ids')
+    }
+    const read = (result.read ?? []).map(id => {
+      const input = ticket.inputs.find(item => item.id === id)
+      if (!input) throw new TypeError('A lightweight Ticket can only read its own Inputs')
+      return input
+    })
+    const at = this.now()
+    const reportAt = at > state.lastAt ? at : state.lastAt
+    for (const input of read) if (input.kind === 'trigger') input.readAt ??= reportAt
+    ticket.undelivered = ticket.undelivered.filter(id => !read.some(input => input.id === id))
+    // A run that read a person's later message did that message too, so its disposition says so rather than handing it back.
+    for (const input of read) if (input.kind === 'trigger') this.takeUp(ticket.id, input.triggerId)
+    // The ticket did the person's original message, so its disposition says it was taken up rather than left for Eval again.
+    this.takeUp(ticket.id, ticket.origin.triggerId)
+    this.repo.tickets.save(ticket)
+    this.stageOf(ticket, 'report', { at: reportAt, ref: `${run}:report`, data: { state: result.outcome, form: 'lightweight' } })
+    this.end(ticketId, 'executor', result.outcome, reportAt, result.summary)
+    return this.require(ticketId)
   }
   /**
    * Subscribes an open ticket to `thread` and records it in `ticket.follows` (`own` when opened by the ticket).
@@ -274,6 +363,7 @@ export class Tickets extends EnginePart {
    * and no Decision, since nothing new is authorized. One whose Mandate the current Policy no longer holds stays ended and
    * takes nothing (see `refuse`). While processing is paused the message waits, and the first pass after the pause resumes
    * the ticket under the Policy then. Reads the ticket afresh, so it is idempotent and leaves an already-resumed ticket alone.
+   * A lightweight ticket runs inline again, with the person's message waiting for its next run.
    */
   wake(ticketId: string): void {
     const ticket = this.repo.tickets.get(ticketId)
@@ -285,13 +375,16 @@ export class Tickets extends EnginePart {
     // Only a human's message resumes an ended ticket; bot/CI triggers wait alongside inputs from before the ticket ended.
     const first = ticket.undelivered.map(id => ticket.inputs.find(input => input.id === id)).find(input => input?.kind === 'trigger' && input.human)
     if (first?.kind !== 'trigger') return
+    const lightweight = ticketForm(ticket) === 'lightweight'
+    if (lightweight && !this.options.inline) { this.refuse(ticket); return }
     delete ticket.ended; ticket.updatedAt = at
-    const assignment = this.newAssignment(ticket)
+    const assignment = lightweight ? undefined : this.newAssignment(ticket)
     // Prepend the resumed marker so it is delivered ahead of the waiting messages.
     const resumed: TicketInput = { id: key('input', ticket.id, 'resumed', first.triggerId), kind: 'resumed', triggerId: first.triggerId, at }
     ticket.inputs.push(resumed); ticket.undelivered.unshift(resumed.id)
     this.repo.tickets.save(ticket)
-    this.options.executor.start(ticket, assignment)
+    if (lightweight) this.startInline(ticket, { ref: `inline:${resumed.id}`, data: { resumed: true } })
+    else this.options.executor.start(ticket, assignment!)
     this.emit('ticket.resumed', { ticketId, triggerId: first.triggerId })
   }
   /** The Triggers of a ticket's trigger Inputs, or of those of them whose Input ids are `ids`. */
@@ -389,6 +482,11 @@ export class Tickets extends EnginePart {
     this.letGo(ticketId, waiting, left)
     this.emit('ticket.ended', { ticketId, by, outcome, ...why })
     for (const assignment of stopping) this.options.executor.stop(ticket, assignment, reason ?? outcome)
+    // A lightweight ticket's run has no Assignment; only a person's stop cancels it, since a normal finish already ended it.
+    if (ticketForm(ticket) === 'lightweight') {
+      if (by === 'human') this.options.inline?.stop(ticket, reason ?? outcome)
+      this.inlineRuns.delete(ticketId)
+    }
   }
   /**
    * Whether a ticket's work has not finished at a close at `at`: its worker took up a person's message the ticket decides and
