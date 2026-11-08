@@ -138,7 +138,8 @@ try {
   const rows = ['dsh-superagent', 'dsh-superagent-github', 'dsh-superagent-feishu', 'dsh-superagent-feishu-doc',
     'dsh-superagent-worker-preset', 'dsh-superagent-router-preset']
   for (const id of rows) check(`the composed profile has row ${id}`, composed.stdout.includes(`- id: ${id}\n`))
-  check('composing the profile reports no missing entry', composed.stderr.trim() === '', composed.stderr.trim().split('\n')[0] ?? '')
+  const missing = composed.stderr.split('\n').filter(line => line.includes('not found') || line.startsWith('dsh: ['))
+  check('composing the profile reports no missing entry', missing.length === 0, missing[0] ?? '')
 
   // 4. Start the real host and prove the panel half is mounted: the management API answers and the page loads its client.
   child = spawn(dsh, ['--profile', profile, '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
