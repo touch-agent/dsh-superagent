@@ -77,10 +77,18 @@ export const AdmissionRowSchema: z.ZodType<AdmissionRow> = z.object({ listedUnad
 export const AdmissionTableSchema = z.record(z.string(), AdmissionRowSchema)
 export const SourcePolicySchema = z.object({ allowed: z.array(AllowedSchema).default([]), admission: AdmissionTableSchema.default({}) }).catchall(z.unknown())
 export type SourcePolicy = z.infer<typeof SourcePolicySchema>
+/**
+ * Whether `value` is a lower-case domain name with at least two labels: each label at most 63 characters, the whole name
+ * at most 253, and a letter in the last label so an IP literal is not mistaken for a domain.
+ */
+export function isDomainName(value: string): boolean {
+  if (value.length > 253) return false
+  const labels = value.split('.')
+  return labels.length >= 2 && labels.every(label => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))
+    && /[a-z]/.test(labels.at(-1)!)
+}
 /** A domain an Action's target may belong to: one or more labels, lower-cased for comparison. */
-export const DomainSchema = z.string().trim().toLowerCase().regex(
-  /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/,
-  'A domain name such as corp.example')
+export const DomainSchema = z.string().trim().toLowerCase().refine(isDomainName, 'A domain name such as corp.example')
 const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'A local time as HH:MM')
 /** A local working-hours window: the whole days it covers and a start and end time in its own zone. */
 export const WorkHoursSchema = z.object({
@@ -91,15 +99,20 @@ export const WorkHoursSchema = z.object({
   timeZone: z.string().trim().min(1).refine(zone => {
     try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); return true } catch { return false }
   }, 'An IANA time zone such as Asia/Shanghai'),
-}).strict().refine(window => window.end > window.start, { path: ['end'], message: 'The end must be after the start' })
+}).strict().refine(window => window.end > window.start, { path: ['end'], message: 'The end must be after the start; a window cannot cross midnight' })
 export type WorkHours = z.infer<typeof WorkHoursSchema>
 /** The internal-domain whitelist for one scope: targets whose domain matches, and when it applies. */
 export const AutoApproveRuleSchema = z.object({
   /** Internal domains; a target domain matches one of them or any of its subdomains. Empty disables approval. */
   domains: z.array(DomainSchema).default([]),
-  /** The local window in which the rule applies; omitted means any time. */
+  /** The local window in which the rule applies. A rule with domains needs either this or `always: true`. */
   hours: WorkHoursSchema.optional(),
+  /** Apply a domains-only rule at any time. Explicit, so omitting `hours` is not silently 24/7 approval. */
+  always: z.boolean().optional(),
 }).strict()
+  .refine(rule => rule.domains.length === 0 || rule.hours !== undefined || rule.always === true,
+    { path: ['hours'], message: 'A rule with domains needs working hours, or always: true for any time' })
+  .refine(rule => !(rule.always === true && rule.hours !== undefined), { path: ['always'], message: 'Choose working hours or always, not both' })
 export type AutoApproveRule = z.infer<typeof AutoApproveRuleSchema>
 /** Auto-approval at the tenant level, and per Source overriding it, as TASK-PLAN T2-08 describes. */
 export const ApprovalPolicySchema = z.object({
@@ -125,7 +138,8 @@ export const PolicyConfigSchema = z.object({
   undoWindowSeconds: z.number().int().min(LIMITS.undoWindowSeconds.min).max(LIMITS.undoWindowSeconds.max).default(30),
   /**
    * When an Approval may be decided by this Policy instead of a person: an Action whose target is on the internal-domain
-   * whitelist during the configured local working hours. Empty, the default, leaves every decision to a person.
+   * whitelist during the configured local working hours. Empty, the default, leaves every decision to a person. Like the
+   * undo window, this is not part of the Policy version: it governs later requests, not the Mandates and Evals in flight.
    */
   approval: ApprovalPolicySchema.default(() => ApprovalPolicySchema.parse({})),
   sources: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), SourcePolicySchema).default({}),

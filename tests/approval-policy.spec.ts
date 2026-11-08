@@ -4,13 +4,15 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { approvalId, createAction, createApproval, MemoryRepositories, type Action } from '@superagent/kernel'
 import { AUTO_APPROVAL_ACTOR, approvalTargetDomain, requestApproval, withinWorkingHours } from '@superagent/dsh/app/approvals.ts'
-import { PolicyConfigSchema, policyVersion, SettingsSchema, WorkHoursSchema, type PolicyConfig } from '@superagent/dsh/policy.ts'
+import { PolicyConfigSchema, policyVersion, SettingsSchema, WorkHoursSchema, type ApprovalPolicy } from '@superagent/dsh/policy.ts'
 import { Store } from '@superagent/dsh/app/store.ts'
 
 /** A five-day, local-time window; 09:00–18:00 in Shanghai. */
 const WINDOW = { days: [1, 2, 3, 4, 5], start: '09:00', end: '18:00', timeZone: 'Asia/Shanghai' }
 /** Monday 10:00 in Shanghai (02:00 UTC). */
 const MONDAY_10 = '2026-11-09T02:00:00.000Z'
+/** Monday 12:00 in Shanghai (04:00 UTC). */
+const MONDAY_12 = '2026-11-09T04:00:00.000Z'
 /** Monday 20:00 in Shanghai, outside the window. */
 const MONDAY_20 = '2026-11-09T12:00:00.000Z'
 /** Sunday 10:00 in Shanghai, a day outside the window. */
@@ -22,16 +24,23 @@ const action = (level: 'send' | 'spend' = 'send'): Action => level === 'spend'
   ? createAction({ kind: 'mail.reply', source: 'feishu', objectId: 'om_1', revision: 'rev-1', actor: operator, level: 'spend',
     cost: { kind: 'money', amount: 10, currency: 'CNY' } })
   : createAction({ kind: 'mail.reply', source: 'feishu', objectId: 'om_1', revision: 'rev-1', actor: operator, level: 'send' })
-/** A Policy with only the auto-approval part supplied; every other part keeps its default. */
-const policy = (approval: Record<string, unknown> = {}): PolicyConfig => PolicyConfigSchema.parse({ approval })
+/** The auto-approval settings of a Policy; every other policy part keeps its default. */
+const policy = (approval: Record<string, unknown> = {}): ApprovalPolicy => PolicyConfigSchema.parse({ approval }).approval
+/** A deterministic clock for `requestApproval`; production uses the real one. */
+const clock = (at: string) => () => at
 /** A request for the default Ticket and Action, sending to `alice@corp.example`. */
 const request = (overrides: Partial<Parameters<typeof requestApproval>[1]> = {}): Parameters<typeof requestApproval>[1] =>
   ({ ticketId: 't1', action: action(), expiresAt: EXPIRES, target: 'alice@corp.example', ...overrides })
 
+let directory: string
+beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'dsh-approval-policy-')) })
+afterEach(() => { rmSync(directory, { recursive: true, force: true }) })
+
 describe('the approval whitelist', () => {
   it('auto-approves an internal-domain action inside the working window and keeps the approval record', () => {
     const store = new MemoryRepositories()
-    const approval = requestApproval(store, request(), policy({ tenant: { domains: ['corp.example'], hours: WINDOW } }), MONDAY_10)
+    const approval = requestApproval(store, request({ target: ' alice@corp.example ' }),
+      policy({ tenant: { domains: ['corp.example'], hours: WINDOW } }), clock(MONDAY_10))
     expect(approval).toMatchObject({ state: 'approved', decidedAt: MONDAY_10, decidedBy: AUTO_APPROVAL_ACTOR,
       requestedAt: MONDAY_10, target: 'alice@corp.example' })
     // It is an ordinary Approval, not a skipped request: by id, by Ticket, with what decided it and why.
@@ -45,7 +54,7 @@ describe('the approval whitelist', () => {
   it('leaves an action whose target is outside the whitelist waiting for a person', () => {
     const store = new MemoryRepositories()
     const approval = requestApproval(store, request({ target: 'alice@outside.test' }),
-      policy({ tenant: { domains: ['corp.example'], hours: WINDOW } }), MONDAY_10)
+      policy({ tenant: { domains: ['corp.example'], hours: WINDOW } }), clock(MONDAY_10))
     expect(approval).toMatchObject({ state: 'requested', requestedAt: MONDAY_10 })
     expect(approval).not.toHaveProperty('decidedBy')
     expect(approval).not.toHaveProperty('decidedAt')
@@ -56,79 +65,107 @@ describe('the approval whitelist', () => {
     const scoped = policy({ tenant: { domains: ['corp.example'], hours: WINDOW } })
     for (const at of [SUNDAY_10, MONDAY_20]) {
       const store = new MemoryRepositories()
-      expect(requestApproval(store, request(), scoped, at)).toMatchObject({ state: 'requested', requestedAt: at })
+      expect(requestApproval(store, request(), scoped, clock(at))).toMatchObject({ state: 'requested', requestedAt: at })
     }
   })
 
   it('never auto-approves a spend action, even on an internal domain inside the window', () => {
     const approval = requestApproval(new MemoryRepositories(), request({ action: action('spend') }),
-      policy({ tenant: { domains: ['corp.example'], hours: WINDOW } }), MONDAY_10)
+      policy({ tenant: { domains: ['corp.example'], hours: WINDOW } }), clock(MONDAY_10))
     expect(approval).toMatchObject({ state: 'requested', action: { level: 'spend' } })
     expect(approval).not.toHaveProperty('decidedBy')
   })
 
   it('lets a source rule replace the tenant rule, and an empty source rule disables it', () => {
     const replaced = policy({ tenant: { domains: ['corp.example'], hours: WINDOW },
-      sources: { feishu: { domains: ['partner.test'] } } })
-    expect(requestApproval(new MemoryRepositories(), request(), replaced, MONDAY_10)).toMatchObject({ state: 'requested' })
-    // The source rule names another domain and no hours, so any moment approves it.
-    expect(requestApproval(new MemoryRepositories(), request({ target: 'bob@partner.test' }), replaced, SUNDAY_10))
+      sources: { feishu: { domains: ['partner.test'], always: true } } })
+    expect(requestApproval(new MemoryRepositories(), request(), replaced, clock(MONDAY_10))).toMatchObject({ state: 'requested' })
+    // The source rule has its own explicit always exemption, so a Sunday moment approves it.
+    expect(requestApproval(new MemoryRepositories(), request({ target: 'bob@partner.test' }), replaced, clock(SUNDAY_10)))
       .toMatchObject({ state: 'approved', decidedBy: AUTO_APPROVAL_ACTOR })
     expect(requestApproval(new MemoryRepositories(), request(), policy({ tenant: { domains: ['corp.example'], hours: WINDOW },
-      sources: { feishu: { domains: [] } } }), MONDAY_10)).toMatchObject({ state: 'requested' })
+      sources: { feishu: { domains: [] } } }), clock(MONDAY_10))).toMatchObject({ state: 'requested' })
   })
 
   it('matches domains case-insensitively and includes their subdomains', () => {
     const scoped = policy({ tenant: { domains: ['corp.example'], hours: WINDOW } })
-    expect(requestApproval(new MemoryRepositories(), request({ target: 'Alice@MAIL.CORP.EXAMPLE' }), scoped, MONDAY_10))
+    expect(requestApproval(new MemoryRepositories(), request({ target: 'Alice@MAIL.CORP.EXAMPLE' }), scoped, clock(MONDAY_10)))
       .toMatchObject({ state: 'approved' })
-    expect(requestApproval(new MemoryRepositories(), request({ target: 'https://docs.corp.example/doc/1' }), scoped, MONDAY_10))
+    expect(requestApproval(new MemoryRepositories(), request({ target: 'https://docs.corp.example/doc/1' }), scoped, clock(MONDAY_10)))
       .toMatchObject({ state: 'approved' })
     // A sibling domain that only ends in the whitelisted text is not a subdomain.
-    expect(requestApproval(new MemoryRepositories(), request({ target: 'alice@evilcorp.example' }), scoped, MONDAY_10))
+    expect(requestApproval(new MemoryRepositories(), request({ target: 'alice@evilcorp.example' }), scoped, clock(MONDAY_10)))
       .toMatchObject({ state: 'requested' })
   })
 
-  it('keeps a target without a domain waiting for a person', () => {
+  it('keeps a target without one readable internal domain waiting for a person', () => {
     const scoped = policy({ tenant: { domains: ['corp.example'], hours: WINDOW } })
-    for (const target of ['om_1', 'corp.example.evil', 'https://corp.example.evil/doc']) {
-      expect(requestApproval(new MemoryRepositories(), request({ target }), scoped, MONDAY_10)).toMatchObject({ state: 'requested' })
+    for (const target of [undefined, 'om_1', 'Alice <alice@corp.example>', 'alice@evil.test, bob@corp.example',
+      'mailto:bob@corp.example?cc=evil@outside.test']) {
+      expect(requestApproval(new MemoryRepositories(), request({ target }), scoped, clock(MONDAY_10))).toMatchObject({ state: 'requested' })
+    }
+    // A look-alike domain is readable but not whitelisted; it is not the same case as an opaque target.
+    for (const target of ['alice@corp.example.evil', 'https://corp.example.evil/doc']) {
+      expect(requestApproval(new MemoryRepositories(), request({ target }), scoped, clock(MONDAY_10))).toMatchObject({ state: 'requested' })
     }
     expect(approvalTargetDomain('Alice@MAIL.CORP.EXAMPLE')).toBe('mail.corp.example')
     expect(approvalTargetDomain('https://docs.corp.example:8443/doc')).toBe('docs.corp.example')
-    expect(approvalTargetDomain('mailto:bob@corp.example?subject=hi')).toBe('corp.example')
+    expect(approvalTargetDomain('mailto:bob@corp.example')).toBe('corp.example')
+    expect(approvalTargetDomain('mailto:bob@corp.example?subject=hi')).toBeUndefined()
+    expect(approvalTargetDomain('alice@evil.test, bob@corp.example')).toBeUndefined()
+    expect(approvalTargetDomain('Alice <alice@corp.example>')).toBeUndefined()
     expect(approvalTargetDomain('om_1')).toBeUndefined()
   })
 
   it('keeps the first record and decision when the same request arrives again', () => {
     const store = new MemoryRepositories()
     const scoped = policy({ tenant: { domains: ['corp.example'], hours: WINDOW } })
-    const first = requestApproval(store, request(), scoped, MONDAY_10)
+    const first = requestApproval(store, request(), scoped, clock(MONDAY_10))
     // A later attempt under a narrower rule neither reopens the approved record nor creates another one.
-    const again = requestApproval(store, request({ target: 'alice@outside.test' }), policy(), MONDAY_10)
+    const again = requestApproval(store, request(), policy(), clock(MONDAY_10))
     expect(again).toEqual(first)
     expect(store.approvals.byTicket('t1')).toHaveLength(1)
     // The same holds for a request that is still waiting: it is not auto-approved after the fact.
     const waitingStore = new MemoryRepositories()
-    const waiting = requestApproval(waitingStore, request({ target: 'alice@outside.test' }), policy(), MONDAY_10)
-    expect(requestApproval(waitingStore, request(), scoped, MONDAY_10)).toEqual(waiting)
+    const waiting = requestApproval(waitingStore, request(), policy(), clock(MONDAY_10))
+    expect(requestApproval(waitingStore, request(), scoped, clock(MONDAY_10))).toEqual(waiting)
     expect(waitingStore.approvals.pending(Date.parse(MONDAY_10))).toHaveLength(1)
+  })
+
+  it('refuses to reuse an approval for a different target', () => {
+    const store = new MemoryRepositories()
+    const scoped = policy({ tenant: { domains: ['corp.example'], hours: WINDOW } })
+    const first = requestApproval(store, request(), scoped, clock(MONDAY_10))
+    expect(() => requestApproval(store, request({ target: 'bob@evil.test' }), scoped, clock(MONDAY_10)))
+      .toThrow(/different target/)
+    expect(store.approvals.byTicket('t1')).toEqual([first])
+  })
+
+  it('refuses a request whose approval already expired, after recording the expiry', () => {
+    const store = new MemoryRepositories()
+    const expiresAt = '2026-11-09T03:00:00.000Z'
+    const first = requestApproval(store, request({ expiresAt }), policy(), clock(MONDAY_10))
+    expect(first.state).toBe('requested')
+    expect(() => requestApproval(store, request({ expiresAt }), policy(), clock(MONDAY_12))).toThrow(/expired at/)
+    expect(store.approvals.get(first.id)?.state).toBe('expired')
+    // A later request for the same expired action still refuses instead of returning a stale request.
+    expect(() => requestApproval(store, request({ expiresAt }), policy(), clock(MONDAY_20))).toThrow(/expired at/)
   })
 
   it('requires a person when the Policy configures no rule, and leaves the Policy version unchanged', () => {
     const empty = policy()
-    expect(empty.approval).toEqual({ sources: {} })
-    expect(requestApproval(new MemoryRepositories(), request(), empty, MONDAY_10)).toMatchObject({ state: 'requested' })
+    expect(empty).toEqual({ sources: {} })
+    expect(requestApproval(new MemoryRepositories(), request(), empty, clock(MONDAY_10))).toMatchObject({ state: 'requested' })
     const scoped = policy({ tenant: { domains: ['corp.example'], hours: WINDOW } })
     // Auto-approval is not a reason to discard running Evals or revoke a Mandate.
-    expect(policyVersion(SettingsSchema.parse({ policy: { approval: scoped.approval } })))
+    expect(policyVersion(SettingsSchema.parse({ policy: { approval: scoped } })))
       .toBe(policyVersion(SettingsSchema.parse({})))
   })
 
   it('records the automatic decision in the Store, and the pending query leaves it out', () => {
     const store = new Store(join(directory, 'db.sqlite'))
     try {
-      const approval = requestApproval(store, request(), policy({ tenant: { domains: ['corp.example'], hours: WINDOW } }), MONDAY_10)
+      const approval = requestApproval(store, request(), policy({ tenant: { domains: ['corp.example'], hours: WINDOW } }), clock(MONDAY_10))
       expect(store.approvals.get(approval.id)).toEqual(approval)
       expect(store.approvals.pending(Date.parse(MONDAY_10))).toEqual([])
     } finally { store.close() }
@@ -141,16 +178,27 @@ describe('the auto-approval settings', () => {
     expect(withinWorkingHours(hours, MONDAY_10)).toBe(true)
     expect(withinWorkingHours(hours, MONDAY_20)).toBe(false)
     expect(withinWorkingHours(hours, SUNDAY_10)).toBe(false)
+    // The start is inclusive and the end exclusive.
+    expect(withinWorkingHours(hours, '2026-11-09T01:00:00.000Z')).toBe(true)
+    expect(withinWorkingHours(hours, '2026-11-09T10:00:00.000Z')).toBe(false)
     // The same instant in another zone is another local time.
     expect(withinWorkingHours(WorkHoursSchema.parse({ ...WINDOW, timeZone: 'UTC' }), MONDAY_10)).toBe(false)
   })
 
-  it('rejects an impossible window and an unknown zone', () => {
+  it('rejects an impossible window, a loose domain, and a rule without hours or an explicit exemption', () => {
     expect(() => WorkHoursSchema.parse({ ...WINDOW, end: '08:00' })).toThrow(/end must be after the start/i)
     expect(() => WorkHoursSchema.parse({ ...WINDOW, timeZone: 'Mars/Olympus' })).toThrow(/IANA time zone/)
     expect(() => WorkHoursSchema.parse({ ...WINDOW, days: [1, 1] })).toThrow(/Each day at most once/)
     expect(() => WorkHoursSchema.parse({ ...WINDOW, start: '9:00' })).toThrow(/HH:MM/)
     expect(() => PolicyConfigSchema.parse({ approval: { tenant: { domains: ['not a domain'] } } })).toThrow(/domain name/)
+    expect(() => PolicyConfigSchema.parse({ approval: { tenant: { domains: ['127.0.0.1'] } } })).toThrow(/domain name/)
+    expect(() => PolicyConfigSchema.parse({ approval: { tenant: { domains: [`${'a'.repeat(64)}.example`] } } })).toThrow(/domain name/)
+    // Domains without hours must opt into always explicitly, so forgetting the window cannot approve all day.
+    expect(() => PolicyConfigSchema.parse({ approval: { tenant: { domains: ['corp.example'] } } })).toThrow(/working hours/)
+    expect(() => PolicyConfigSchema.parse({ approval: { tenant: { domains: ['corp.example'], hours: WINDOW, always: true } } }))
+      .toThrow(/not both/)
+    expect(PolicyConfigSchema.parse({ approval: { tenant: { domains: ['corp.example'], always: true } } }).approval.tenant)
+      .toEqual({ domains: ['corp.example'], always: true })
     // Deliberately accepting an empty whitelist gives no automatic approval.
     expect(PolicyConfigSchema.parse({ approval: { tenant: { domains: [] } } }).approval.tenant).toEqual({ domains: [] })
   })
@@ -160,7 +208,3 @@ describe('the auto-approval settings', () => {
       .toThrow(/target/)
   })
 })
-
-let directory: string
-beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'dsh-approval-policy-')) })
-afterEach(() => { rmSync(directory, { recursive: true, force: true }) })

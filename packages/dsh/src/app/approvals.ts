@@ -1,7 +1,7 @@
 /** The approval commands: request one, decide it under the Policy's auto-approval whitelist, or record a person's decision. */
-import { approvalId, approve, createApproval, deny, type Action, type ActionLevel, type ActorRef, type Approval, type Repositories }
-  from '@superagent/kernel'
-import type { ApprovalPolicy, PolicyConfig, WorkHours } from '../policy.ts'
+import { approvalId, approve, createApproval, deny, expire, UserError, type Action, type ActionLevel, type ActorRef, type Approval,
+  type ApprovalRequest, type Repositories } from '@superagent/kernel'
+import { isDomainName, type ApprovalPolicy, type WorkHours } from '../policy.ts'
 import type { Store } from './store.ts'
 
 /** The person at the local management panel: the operator has no Source identity, so the audit names the panel. */
@@ -14,14 +14,7 @@ export const PANEL_ACTOR = { source: 'panel', id: 'local' } as const
 export const AUTO_APPROVAL_ACTOR: ActorRef = { source: 'policy', id: 'auto-approval' }
 
 /** What a caller supplies to request one Approval; the request time is the moment `requestApproval` is called. */
-export interface ApprovalRequestInput {
-  ticketId: string
-  action: Action
-  expiresAt: string
-  /** Where the Action reaches, when it is more specific than the Action's object, such as a mail recipient. */
-  target?: string
-  requestedBy?: ActorRef
-}
+export type ApprovalRequestInput = Omit<ApprovalRequest, 'requestedAt'>
 
 /** Whether the Policy decides this Approval itself: a match names the reason it records, a refusal what a person must decide. */
 export type AutoApprovalVerdict =
@@ -31,25 +24,33 @@ export type AutoApprovalVerdict =
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
 /**
- * The domain a target names, lower-cased: the part after `@` of an address, the host of a URL, or the target itself when
- * it is already a domain. An opaque target such as a message id names no domain.
+ * The domain a target names, lower-cased: the part after `@` of one address, the host of a URL, or the target itself when
+ * it is already a domain. A multi-recipient, display-name, or mailto target with a query names no single domain, so it
+ * never matches; an opaque target such as a message id names none either.
  */
 export function approvalTargetDomain(target: string | undefined): string | undefined {
   if (!target) return undefined
   const value = target.trim()
-  if (!value) return undefined
-  if (/^mailto:/i.test(value)) return approvalTargetDomain(value.slice('mailto:'.length).split('?')[0])
+  // One address or URL only: a list could hide an external recipient behind a whitelisted one.
+  if (!value || /[,;<>]/.test(value) || /\s/.test(value)) return undefined
+  if (/^mailto:/i.test(value)) {
+    const address = value.slice('mailto:'.length)
+    // A query can carry cc and bcc recipients, which this parser does not judge.
+    if (!address || /[?#]/.test(address)) return undefined
+    return approvalTargetDomain(address)
+  }
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
     try {
       const host = new URL(value).hostname.toLowerCase().replace(/\.$/, '')
-      return host.includes('.') ? host : undefined
+      return isDomainName(host) ? host : undefined
     } catch {
       return undefined
     }
   }
-  const at = value.lastIndexOf('@')
+  const at = value.indexOf('@')
+  if (at !== value.lastIndexOf('@')) return undefined
   const domain = (at >= 0 ? value.slice(at + 1) : value).toLowerCase().replace(/\.$/, '')
-  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(domain) ? domain : undefined
+  return isDomainName(domain) ? domain : undefined
 }
 
 /** The local weekday and minute of the day at `at` in `timeZone`, which is what a working-hours window compares. */
@@ -88,35 +89,51 @@ export function evaluateAutoApproval(policy: ApprovalPolicy, approval: Pick<Appr
   if (!rule.domains.length) return { approved: false, reason: `${scope} auto-approval allows no domain` }
   if (!approval.target) return { approved: false, reason: `${scope} auto-approval needs a target domain` }
   const domain = approvalTargetDomain(approval.target)
-  if (!domain) return { approved: false, reason: `${scope} auto-approval cannot read a domain from the target` }
+  if (!domain) return { approved: false, reason: `${scope} auto-approval cannot read one domain from the target` }
   const allowed = rule.domains.find(item => domain === item || domain.endsWith(`.${item}`))
   if (!allowed) return { approved: false, reason: `${domain} is not on ${scope} internal-domain whitelist` }
   if (rule.hours && !withinWorkingHours(rule.hours, approval.requestedAt)) {
     return { approved: false, reason: `${domain} is outside ${scope} window ${windowText(rule.hours)}` }
   }
-  return { approved: true, reason: `${domain} is on ${scope} internal-domain whitelist${rule.hours ? ` within ${windowText(rule.hours)}` : ''}` }
+  const when = rule.hours ? ` within ${windowText(rule.hours)}` : rule.always === true ? ' at any time' : ''
+  return { approved: true, reason: `${domain} is on ${scope} internal-domain whitelist${when}` }
 }
 
 /**
  * Record one Approval request, then let the Policy decide it when the whitelist matches; an automatic approval is saved
- * as a normal `approved` record with `AUTO_APPROVAL_ACTOR` and its reason, never skipped. The request time is `at` for
- * both the request and a decision made from it. A request that already exists is returned unchanged, so a repeated
- * request never reopens or re-decides it.
+ * as a normal `approved` record with `AUTO_APPROVAL_ACTOR` and its reason, never skipped. `now` is a clock seam: the
+ * request and an automatic decision share its one moment, and production uses the real clock. An existing record is
+ * returned unchanged only when it has the same target; a different target, or an expired request, is refused, so no
+ * grant for one destination can authorize another.
  */
-export function requestApproval(store: Pick<Repositories, 'atomic' | 'approvals'>, request: ApprovalRequestInput, policy: PolicyConfig,
-  at = new Date().toISOString()): Approval {
+export function requestApproval(store: Pick<Repositories, 'atomic' | 'approvals'>, request: ApprovalRequestInput, policy: ApprovalPolicy,
+  now: () => string = () => new Date().toISOString()): Approval {
+  const at = now()
+  if (request.target !== undefined && !request.target.trim()) throw new TypeError('The Approval target must be a non-empty string')
+  const target = request.target === undefined ? undefined : request.target.trim()
   const id = approvalId(request.ticketId, request.action.idempotencyKey)
-  return store.atomic(() => {
+  // An expiry is saved before the refusal is thrown, so it must not share a transaction that the throw rolls back.
+  const result = store.atomic((): { approval?: Approval; expiredAt?: string } => {
     const existing = store.approvals.get(id)
-    if (existing) return existing
-    const requested = createApproval({ ...request, requestedAt: at })
-    const verdict = evaluateAutoApproval(policy.approval, requested)
+    if (existing) {
+      if ((existing.target ?? '') !== (target ?? '')) throw new UserError('approvalTargetMismatch')
+      if (existing.state === 'expired') return { expiredAt: existing.expiresAt }
+      if (existing.state === 'requested' && Date.parse(at) >= Date.parse(existing.expiresAt)) {
+        store.approvals.save(expire(existing, at))
+        return { expiredAt: existing.expiresAt }
+      }
+      return { approval: existing }
+    }
+    const requested = createApproval({ ...request, target, requestedAt: at })
+    const verdict = evaluateAutoApproval(policy, requested)
     const approval = verdict.approved
       ? approve(requested, { by: AUTO_APPROVAL_ACTOR, at, reason: `Auto-approved by policy: ${verdict.reason}.` })
       : requested
     store.approvals.save(approval)
-    return approval
+    return { approval }
   })
+  if (result.expiredAt) throw new UserError('approvalExpired', { at: result.expiredAt })
+  return result.approval!
 }
 
 /**

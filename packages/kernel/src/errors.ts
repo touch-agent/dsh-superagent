@@ -10,6 +10,7 @@ export const USER_ERRORS = {
   ticketEnded: ['refused', 'Ticket has ended'],
   assignmentEnded: ['refused', 'Assignment has ended; a newer assignment owns this ticket'],
   approvalDecided: ['refused', 'Approval is no longer requested; only a requested approval can change'],
+  approvalTargetMismatch: ['refused', 'This Action already has an approval request for a different target; prepare a new revision and request it again'],
   approvalExpired: ['refused', 'Approval expired at {at}; prepare a new revision and request it again'],
   approvalLevelExceeded: ['refused', 'An approval cannot grant {level}; the requested Action is {max}'],
   evalFinished: ['refused', 'Eval {eval} has finished or a later eval replaced it; decide the trigger\'s current eval'],

@@ -838,6 +838,7 @@ const TEXT = {
   'userError.ticketEnded': ['工单已结束。', USER_ERRORS.ticketEnded[1]],
   'userError.assignmentEnded': ['这个派工已结束，工单已由较新的派工接手。', USER_ERRORS.assignmentEnded[1]],
   'userError.approvalDecided': ['这个审批已经结束；只有待处理的审批才能改变。', USER_ERRORS.approvalDecided[1]],
+  'userError.approvalTargetMismatch': ['这个动作已有针对其他目标的审批请求；请针对新修订重新发起审批。', USER_ERRORS.approvalTargetMismatch[1]],
   'userError.approvalExpired': ['审批已于 {at} 过期；请针对新修订重新发起审批。', USER_ERRORS.approvalExpired[1]],
   'userError.approvalLevelExceeded': ['审批不能授予 {level}：请求的动作等级是 {max}。', USER_ERRORS.approvalLevelExceeded[1]],
   'userError.evalFinished': ['评估 {eval} 已结束，或已被之后的评估取代；请对这个触发当前的评估做决定。', USER_ERRORS.evalFinished[1]],

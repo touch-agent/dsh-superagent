@@ -1,4 +1,4 @@
-/** Approvals: a person's explicit consent to one Action, and the state machine that keeps the record auditable. */
+/** Approvals: a person's or the Policy's explicit consent to one Action, and the state machine that keeps the record auditable. */
 import { actionKey, isActionLevel, withinActionLevel, type Action, type ActionLevel } from './action.ts'
 import { UserError } from './errors.ts'
 import { key } from './ids.ts'
@@ -11,8 +11,8 @@ export type ApprovalState = typeof APPROVAL_STATES[number]
 
 /**
  * One Approval request: the Ticket it belongs to, the exact Action and revision it approves, the moment it stops being
- * decidable, and the person who decided it. The Action is kept as requested so the approved revision and level stay
- * auditable after it runs. A Ticket may hold many Approvals; each Action holds at most one Approval per Ticket.
+ * decidable, and who decided it. The Action is kept as requested so the approved revision and level stay auditable after
+ * it runs. A Ticket may hold many Approvals; each Action holds at most one Approval per Ticket.
  */
 export interface Approval {
   id: string
@@ -50,7 +50,7 @@ export interface ApprovalRequest {
   requestedBy?: ActorRef
 }
 
-/** A person's decision on an Approval: who decided, when, optionally why, and the lower level they grant instead. */
+/** A decision on an Approval: who decided (a person, the panel or the Policy), when, optionally why, and the lower level they grant instead. */
 export interface ApprovalDecision {
   by: ActorRef
   at: string
@@ -117,7 +117,7 @@ export function createApproval(input: ApprovalRequest): Approval {
   const requestedAt = requireTime(input.requestedAt, 'The Approval request time')
   const expiresAt = requireTime(input.expiresAt, 'The Approval expiry')
   if (Date.parse(expiresAt) <= Date.parse(requestedAt)) throw new TypeError('An Approval must expire after it was requested')
-  const target = input.target === undefined ? undefined : requireText(input.target, 'The Approval target')
+  const target = input.target === undefined ? undefined : requireText(input.target, 'The Approval target').trim()
   const requestedBy = input.requestedBy === undefined ? undefined : requireActor(input.requestedBy, 'The Approval requester')
   return { id: approvalId(ticketId, action.idempotencyKey), ticketId, action, state: 'requested', requestedAt, expiresAt,
     ...(target ? { target } : {}), ...(requestedBy ? { requestedBy } : {}) }

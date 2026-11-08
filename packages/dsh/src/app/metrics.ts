@@ -73,15 +73,17 @@ export function metrics(store: Store, now = Date.now()): MetricsView {
     return value === null ? [] : [value]
   })
   const decisions = Number(db.prepare(`SELECT COUNT(*) AS n FROM decision WHERE json_extract(value, '$.at') >= ?`).get(since)?.n ?? 0)
-  // A person's approval, denial or an expiry is a decision; a withdrawal by the requester is not. A request past its
-  // expiry counts at that expiry even before anything records the `expired` state, so the wait is not lost.
+  // A person's approval, denial or an expiry is a decision; a withdrawal by the requester is not. A policy auto-approval
+  // is automation rather than a human wait, so it is left out and cannot pull the median down. A request past its expiry
+  // counts at that expiry even before anything records the `expired` state, so the wait is not lost.
   const waited = db.prepare(`SELECT requested, decided FROM (
     SELECT json_extract(value, '$.requestedAt') AS requested,
       CASE WHEN json_extract(value, '$.state') = 'requested' THEN json_extract(value, '$.expiresAt')
         ELSE json_extract(value, '$.decidedAt') END AS decided
     FROM approval
-    WHERE json_extract(value, '$.state') IN ('approved', 'denied', 'expired')
-      OR (json_extract(value, '$.state') = 'requested' AND json_extract(value, '$.expiresAt') <= ?)
+    WHERE (json_extract(value, '$.state') IN ('approved', 'denied', 'expired')
+      OR (json_extract(value, '$.state') = 'requested' AND json_extract(value, '$.expiresAt') <= ?))
+      AND COALESCE(json_extract(value, '$.decidedBy.source'), '') <> 'policy'
   ) WHERE decided >= ?`).all(new Date(now).toISOString(), since)
   const approvalDelays = waited.flatMap(row => {
     const value = seconds(row.requested === null ? null : String(row.requested), row.decided === null ? null : String(row.decided))
