@@ -65,7 +65,7 @@
 | X-09 | 未开始 | — | — | 2026-11-08 |
 | X-10 | 未开始 | — | — | 2026-11-08 |
 | X-11 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/19 | `tests/dump-config.spec.ts`；六行齐全 | 2026-11-08 |
-| X-12 | 进行中 | — | `tests/docs.spec.ts` 新增文档结构与跟踪表校验 | 2026-11-08 |
+| X-12 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/31 | `tests/docs.spec.ts` 新增文档结构与跟踪表校验 | 2026-11-08 |
 | S-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity.spec.ts`；`activity` 表与三级分级 | 2026-11-08 |
 | S-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity-feed.spec.ts`；`endCoveredBy` 单一通知预算 | 2026-11-08 |
 | S-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | `tests/runtime.spec.ts` 的 `<stateDir>/system` 目录断言 | 2026-11-08 |
