@@ -1,6 +1,6 @@
 /** Builds the application's collaborators in one explicit dependency order, so `Runtime` keeps only lifecycle and its SourceHost surface. */
 import type { Context } from '@deepseek-ai/cordis'
-import { Engine, key, type EngineForSettings, type Ticket, type Trigger } from '@superagent/kernel'
+import { Engine, key, ticketForm, type EngineForSettings, type Ticket, type Trigger } from '@superagent/kernel'
 import { settingsPolicy } from '../policy.ts'
 import { SourceRegistry } from '../sources/registry.ts'
 import { Commands } from '../infra/commands.ts'
@@ -138,7 +138,8 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   // Every domain event is graded and stored in the same transaction that produced it; no other part needs the log itself.
   const activity = new ActivityLog(store)
   const engine = parts.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, outbox, trace,
-    prepareTicket: (ticket, outcome) => executor.prepare(ticket, outcome), emit: event => {
+    // A lightweight ticket runs inline and has no workspace or assignment text, so it must not claim execution metadata.
+    prepareTicket: (ticket, outcome) => ticketForm(ticket) === 'lightweight' ? ticket : executor.prepare(ticket, outcome), emit: event => {
       // Record every event once, in the same transaction, then decide whether it may disturb a person.
       activity.record(event)
       // Notify the main Session only about domain events it did not initiate itself.
