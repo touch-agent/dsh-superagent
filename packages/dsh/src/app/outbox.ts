@@ -63,6 +63,9 @@ export class Outbox implements OutboxPort {
     const dueAt = new Date(now + windowMs).toISOString()
     store.atomic(() => {
       const ticket = message.ticketId === undefined ? undefined : store.tickets.get(message.ticketId)
+      // A replay of a recorded revision is ignored before it can request another Approval; its receipt already says
+      // whether it is held, sent, recalled or dropped.
+      if (store.receipts.get(id)) return
       // A message no Ticket owns is a system write, and a ticket that no longer exists cannot authorize one.
       if (message.ticketId !== undefined && !ticket) {
         if (store.receipts.add(message, { dueAt, windowMs })) {
@@ -91,8 +94,9 @@ export class Outbox implements OutboxPort {
   }
   status(id: string): ReplyStatus | undefined { return this.host.store.receipts.get(id)?.status }
   /**
-   * Reconcile held messages with their Approvals: an approval releases the receipt and queues its effect, a denial, expiry,
-   * revocation or a lower grant settles it as dropped, and a request past its expiry is recorded before it is dropped.
+   * Reconcile held messages with their Approvals: an approval revalidates the Mandate once more, then releases the receipt
+   * and queues its effect; a denial, expiry, revocation, lower grant or a Mandate that no longer holds settles it as
+   * dropped, and a request past its expiry is recorded before it is dropped.
    * It runs on every pass and before `sent`, so a panel decision needs no separate wiring.
    */
   reconcile(now: Date = new Date()): void {
@@ -114,6 +118,14 @@ export class Outbox implements OutboxPort {
       }
       const granted = approval.grantedLevel ?? approval.action.level
       if (approval.state === 'approved' && withinActionLevel(receipt.action.level, granted)) {
+        // The grant may be older than a Policy or Mandate change: revalidate at the moment the held message would run.
+        const ticket = receipt.ticketId === undefined ? undefined : store.tickets.get(receipt.ticketId)
+        if (!ticket) { store.atomic(() => { store.receipts.settle(receipt, 'ticketMissing', { at }) }); continue }
+        const revalidation = this.host.policy().revalidate(ticket.mandate, at, { level: receipt.action.level })
+        if (!revalidation.ok) {
+          store.atomic(() => { store.receipts.settle(receipt, dropReason(revalidation.reason.code), { at, values: revalidation.reason.values }) })
+          continue
+        }
         const due = receipt.dueAt === undefined ? now.getTime() : Math.max(now.getTime(), Date.parse(receipt.dueAt) || 0)
         store.atomic(() => {
           if (store.receipts.release(receipt.id, at)) effects.enqueue('reply', receipt.id, {}, due)

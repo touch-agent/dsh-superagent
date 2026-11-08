@@ -8,7 +8,8 @@ external Channel for a Ticket now revalidates its Mandate at the `send` level
 and requests an Approval for the Action and its exact revision, recording the
 destination as the target; the receipt waits as `pending` with no `reply`
 effect until the Policy's whitelist approves it or a person decides in the
-panel. A denial, expiry, revocation, missing record or lower grant settles the
+panel. Release revalidates the Mandate once more, so a Policy or Mandate lowered while the request waited refuses there
+with the same reason. A denial, expiry, revocation, missing record or lower grant settles the
 receipt as dropped with that reason and never sends; a recall while waiting
 revokes the request, and a new Action revision asks again. The built-in
 conversation Source stays direct, and ticketless system writes are unchanged.

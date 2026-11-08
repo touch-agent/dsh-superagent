@@ -139,6 +139,20 @@ it('refuses a message whose Mandate no longer authorizes its level, without aski
   expect(sent()).toBe(0)
 })
 
+it('revalidates at release, so a Policy lowered while the request waited drops the approved message', async () => {
+  const { trigger, ticket } = await h.acceptedTicket(feishu('9', '@bot 修一下回归'))
+  const approval = request()
+  const settings = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...settings, policy: { ...settings.policy, maxActionLevel: 'draft' } })
+  await approve(approval)
+  await h.runtime.sendReplies()
+  const receipt = acknowledgement(trigger.id)
+  expect(receipt.status).toBe('dropped')
+  expect(receipt.dropped).toMatchObject({ reason: 'actionLevelExceeded', values: { level: 'send', max: 'draft' } })
+  expect(h.runtime.store.approvals.get(approval.id)?.state).toBe('approved')
+  expect(sent()).toBe(0)
+})
+
 it('lets the Policy approve an internal target itself, and never approves a spend automatically', async () => {
   const settings = h.runtime.store.settings()
   h.runtime.store.saveSettings({ ...settings, policy: { ...settings.policy, maxActionLevel: 'spend',
