@@ -4,7 +4,7 @@ import type { OutboundMessage } from '@superagent/kernel'
 import { CliError } from '../infra/commands.ts'
 import { sameName } from '../infra/text.ts'
 import type { SourceContext } from './host.ts'
-import type { ChannelLink, ChannelLinks, ProbeAnswer } from './kind.ts'
+import type { ChannelLink, ChannelLinks, ProbeAnswer, Withdrawal } from './kind.ts'
 import { githubAddress, githubPage } from './github-trigger.ts'
 
 const CommentSchema = z.looseObject({
@@ -68,6 +68,27 @@ export async function probeGithub(host: Pick<SourceContext, 'commands'>, message
   } catch (error) {
     // A deleted or locked conversation is gone either way; anything else leaves the answer unknown.
     return gone(error) ? 'gone' : 'unknown'
+  }
+}
+/**
+ * Takes back the marked comment this message posted, for a Source whose comment can still be removed. A comment that is
+ * already absent is `gone`; a refusal names why, such as a locked conversation, instead of reporting a withdrawal that
+ * did not happen. A review thread whose root is gone cannot be located, so its reply is not guessed to be withdrawn.
+ */
+export async function withdrawGithub(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<Withdrawal> {
+  const { commands } = host
+  try {
+    const target = await commentTarget(host, message)
+    if (target.rootMissing) return { status: 'refused', reason: 'The review thread root is gone, so the reply cannot be located' }
+    const comment = (await commands.pages(CommentSchema, target.path)).find(target.mine)
+    if (!comment) return { status: 'gone' }
+    const collection = target.path.startsWith('pulls/') ? 'pulls/comments' : 'issues/comments'
+    // The delete answers 204 with no body, so use the raw path overload; the JSON overload would parse an empty body.
+    await commands.api(`${collection}/${comment.id}`, '--method', 'DELETE')
+    return { status: 'withdrawn' }
+  } catch (error) {
+    if (missing(error)) return { status: 'gone' }
+    return { status: 'refused', reason: `GitHub did not withdraw the comment: ${String(error)}` }
   }
 }
 export function githubLink(address: Record<string, string>, links: ChannelLinks): ChannelLink {

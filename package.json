@@ -50,6 +50,7 @@
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "drill:withdraw": "vitest run tests/withdraw-drill.spec.ts",
     "check:size": "node scripts/check-bundle-size.mjs",
     "check": "pnpm typecheck && pnpm test && pnpm build && pnpm check:size",
     "changeset": "changeset"

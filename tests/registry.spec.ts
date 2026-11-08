@@ -47,9 +47,11 @@ describe('Source registry', () => {
   it('sends, links and reads a kind\'s Threads through its own channel and context, and nothing for a kind without them', async () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({ sources: { probe: { enabled: true, config: { interval: 7 } } } }))
     const sent: OutboundMessage[] = []
+    const withdrawn: OutboundMessage[] = []
     const read: unknown[] = []
     sources.register({ ...probe,
       channel: { send: async (_host, message) => { sent.push(message); return 'sent' }, probe: async () => 'sent',
+        withdraw: async (_host, message) => { withdrawn.push(message); return { status: 'withdrawn' } },
         link: address => ({ url: `https://probe/${address.room}`, label: { zh: '探针', en: 'Probe' } }) },
       threadContext: { messageId: trigger => String(trigger.meta.id), read: async (_commands, trigger, part, cursor, config) => {
         read.push([trigger.id, part, cursor, config.interval])
@@ -61,10 +63,13 @@ describe('Source registry', () => {
       text: 'hi', kind: 'reply' })
     expect(await sources.send(message('probe'), commands)).toBe('sent')
     expect(await sources.probe(message('probe'), commands)).toBe('sent')
+    expect(await sources.withdraw(message('probe'), commands)).toEqual({ status: 'withdrawn' })
     expect(sent).toEqual([message('probe')])
+    expect(withdrawn).toEqual([message('probe')])
     // A kind that is not installed keeps its replies waiting; links to it have no page, and it has no probe to ask.
     expect(await sources.send(message('retired'), commands)).toBe('waiting')
     expect(await sources.probe(message('retired'), commands)).toBeUndefined()
+    expect(await sources.withdraw(message('retired'), commands)).toBeUndefined()
     expect(sources.link(message('probe').channel, {})).toEqual({ url: 'https://probe/r', label: { zh: '探针', en: 'Probe' } })
     expect(sources.link(message('retired').channel, {})).toEqual({ url: '', label: { zh: 'retired', en: 'retired' } })
     const trigger = { id: 't1', source: 'probe', threads: [{ source: 'probe', id: '1' }], actor: { source: 'probe', id: 'u' }, human: true,
@@ -80,6 +85,7 @@ describe('Source registry', () => {
     sources.register({ ...probe, kind: 'quiet' })
     expect(await sources.send(message('quiet'), commands)).toBe('gone')
     expect(await sources.probe(message('quiet'), commands)).toBeUndefined()
+    expect(await sources.withdraw(message('quiet'), commands)).toBeUndefined()
     expect(sources.threadContext({ ...trigger, source: 'quiet' })).toBeUndefined()
   })
   it('refuses a kind that declares a health entry another kind or dsh-superagent itself reports, and gives up its entries at unregister', () => {

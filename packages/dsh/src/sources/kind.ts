@@ -34,6 +34,12 @@ export type ChannelLinks = Partial<Pick<Deployment, 'repository' | 'feishu'>>
  * sending it is safe), and `'unknown'` when the Source cannot tell, which a retry must treat as possibly sent.
  */
 export type ProbeAnswer = 'sent' | 'gone' | 'unknown'
+/**
+ * What happened when a sent message was taken back: `withdrawn` when the remote service removed it, `gone` when it was
+ * already absent, or `refused` with the reason this message cannot be withdrawn. A Source without `withdraw` keeps every
+ * sent message, which a drill reports rather than pretending the message was taken back.
+ */
+export type Withdrawal = { status: 'withdrawn' | 'gone' } | { status: 'refused'; reason: string }
 /** Outbound messaging adapter for a source kind's threads. */
 export interface SourceChannel<C> {
   /** Whether a reply may still go to `address`; without it, every address may receive replies. */
@@ -49,6 +55,12 @@ export interface SourceChannel<C> {
    * never a guess.
    */
   probe?(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<ProbeAnswer>
+  /**
+   * Takes back a message already sent through this Channel, for a Source whose object can still be changed (a mail
+   * draft, a calendar invite, a comment). Without it a sent message stays: the Outbox never guesses that it can undo
+   * a write, and a drill reports the Channel as unable to withdraw.
+   */
+  withdraw?(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<Withdrawal>
   /** Returns the URL and label for `address`; `url` is empty when `links` lack the required deployment info. */
   link(address: Record<string, string>, links: ChannelLinks): ChannelLink
 }
