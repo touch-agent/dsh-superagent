@@ -1,0 +1,4 @@
+Item,Q1,Q2,Total
+Widgit,10,12,=B2+C2
+Gadget,7,,=B3+C3
+Doohickey,4,5,=B4*C4
