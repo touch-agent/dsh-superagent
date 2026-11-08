@@ -272,6 +272,7 @@ graph LR
 - **交付**：租户级/源级白名单（内部域、工作时间内）自动批准；每条自动批留痕为 approval 而非跳过。
 - **验收**：`tests/approval-policy.spec.ts`：白名单外仍需人工；自动批不能用于 spend。
 - **依赖**：T2-07。
+- **状态**：实现完成（2026-11-08，PR #16 待审查）。`Approval` 增可选 `target`（动作到达的地址，如邮件收件人）；Policy 的 `approval` 块配置租户级与源级内部域白名单及可选工作时段（星期、本地起止、IANA 时区，源级规则优先于租户）。`packages/dsh/src/app/approvals.ts` 的 `requestApproval` 创建审批并交由 `evaluateAutoApproval` 判定：命中时以 `policy/auto-approval` 记一条普通 `approved` 记录（含原因与决定时间），不跳过；spend 永不自动批，白名单外或时段外仍为 `requested`，重复请求保留首条记录。白名单配置不进 Policy 版本，不影响已有 Mandate。`tests/approval-policy.spec.ts` 覆盖上述验收、时区/子域/大小写、源级覆盖、SQLite 持久化与 pending 队列。
 
 ### T2-09 断电注入测试 · Platform · 3 人日
 
