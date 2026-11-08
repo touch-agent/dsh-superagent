@@ -31,7 +31,7 @@
 | conformance 套件 | **不存在** | `tests/conformance/` 无此目录 |
 | `dump-config` 断言 | **不存在**，X-11 未开始 | `grep -rn "dump-config" tests src scripts` 无结果 |
 | lint | **不存在**，X-01 未开始 | 无 eslint/oxlint 配置 |
-| 宿主版本 | 本机 `0.2.1-rc.5`；`docs/006` 仍写 `rc.3` | `dsh --version`；`docs/006-deployment.md:76` |
+| 宿主版本 | 本机与 `docs/006` 均为 `0.2.1-rc.5` | `dsh --version`；`docs/006-deployment.md:76` |
 | 计划漂移 | `T1-11` 指定的 `src/client/settings-sources.tsx` **不存在**，实际是 `src/client/source.tsx` + `settings-kit.tsx` | `grep` 仅命中 `TASK-PLAN.zh.md:197` |
 
 ### 1.1 复跑陷阱（重要，写进交接）

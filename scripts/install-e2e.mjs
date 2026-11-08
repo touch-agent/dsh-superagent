@@ -64,10 +64,25 @@ async function waitFor(probe, timeoutMs, what, host) {
   while (Date.now() < deadline) {
     const value = await probe()
     if (value !== undefined) return value
-    if (host?.exitCode !== null) throw new Error(`${what}: dsh exited with ${host.exitCode}\n${host.output}`)
+    if (host !== undefined && (host.exitCode !== null || host.signalCode !== null))
+      throw new Error(`${what}: dsh exited with ${host.exitCode ?? host.signalCode}\n${host.output}`)
     await new Promise(resolve => setTimeout(resolve, 250))
   }
   throw new Error(`${what}: timed out after ${timeoutMs} ms\n${host?.output ?? ''}`)
+}
+
+/** Await `promise` with a deadline, clearing the timer so a completed run exits at once. */
+async function withTimeout(promise, ms, message) {
+  let timer
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms) }),
+    ])
+  }
+  finally {
+    clearTimeout(timer)
+  }
 }
 
 /** Ask the panel's management API for the state page its Overview renders. */
@@ -86,11 +101,24 @@ async function panelState(base) {
 /** Fetch the Web UI: the token URL sets a session cookie and redirects, so follow it by hand. */
 async function panelPage(tokenUrl) {
   const first = await fetch(tokenUrl, { redirect: 'manual' })
-  if (first.status === 200) return { status: first.status, html: await first.text() }
+  if (first.status === 200) return { status: first.status, html: await first.text(), cookie: '' }
   const cookies = first.headers.getSetCookie?.() ?? [first.headers.get('set-cookie') ?? '']
   const cookie = cookies.map(value => value.split(';')[0]).filter(Boolean).join('; ')
   const page = await fetch(new URL('/', tokenUrl), { headers: cookie === '' ? {} : { cookie }, redirect: 'manual' })
-  return { status: page.status, html: await page.text() }
+  return { status: page.status, html: await page.text(), cookie }
+}
+
+/** Fetch one page asset with the panel's session cookie. */
+async function panelAsset(tokenUrl, src, cookie) {
+  try {
+    const response = await fetch(new URL(src, tokenUrl), {
+      headers: cookie === '' ? {} : { cookie }, signal: AbortSignal.timeout(5_000),
+    })
+    return { status: response.status, type: response.headers.get('content-type') ?? '', body: await response.text() }
+  }
+  catch {
+    return undefined
+  }
 }
 
 const failed = () => results.filter(result => !result.ok)
@@ -150,29 +178,29 @@ try {
   const tokenUrl = await waitFor(() => /(http:\/\/127\.0\.0\.1:\d+\/\?token=[\w-]+)/.exec(child.output)?.[1], 90_000,
     'the host prints its Web URL', child)
   const base = new URL(tokenUrl).origin
-  check('the host prints its Web URL', true, base)
+  console.log(`note  the host prints its Web URL — ${base}`)
 
   const panel = await waitFor(() => panelState(base), 90_000, 'the panel management API answers', child)
   check('the panel management API answers', panel.status === 200, `${base}/orchestrator/api/state`)
   check('the panel is configured with the temporary stateDir', panel.body.setup?.machine?.stateDir === stateDir,
     String(panel.body.setup?.machine?.stateDir ?? 'missing'))
-  check('the runtime mounted (health reports it)', panel.body.health?.runtime !== undefined,
+  check('the runtime mounted and waits for setup', panel.body.health?.runtime?.state === 'paused',
     String(panel.body.health?.runtime?.state ?? 'missing'))
   check('setup reports only the expected missing repository', panel.body.setup?.problem?.code === 'repositoryUnset',
     String(panel.body.setup?.problem?.code ?? 'none'))
 
   const page = await panelPage(tokenUrl)
   check('the Web UI page serves', page.status === 200 && page.html.includes('id="root"'), `HTTP ${page.status}`)
-  check('the Web UI loads the dsh-superagent client', page.html.includes('dsh-superagent/client.js'))
+  const clientSrc = /"id":"dsh-superagent","url":"([^"]+)"/.exec(page.html)?.[1]
+  const client = clientSrc === undefined ? undefined : await panelAsset(tokenUrl, clientSrc, page.cookie)
+  check('the served page references the dsh-superagent client', clientSrc !== undefined, clientSrc ?? 'missing')
+  check('the dsh-superagent client is served', client?.status === 200 && /javascript/.test(client.type) && client.body.length > 0,
+    client === undefined ? 'not fetched' : `HTTP ${client.status} ${client.type} ${client.body.length} bytes`)
 
   // 5. Stop the host gracefully; an uninstall is only meaningful against a stopped process.
   child.kill('SIGINT')
-  const stopped = await Promise.race([
-    exited,
-    new Promise(resolve => setTimeout(() => resolve(undefined), 30_000)),
-  ])
-  if (stopped === undefined) throw new Error(`dsh did not stop within 30 s\n${child.output}`)
-  check('the host stops on SIGINT', true, `${stopped.code ?? stopped.signal}`)
+  const stopped = await withTimeout(exited, 30_000, `dsh did not stop within 30 s\n${child.output}`)
+  check('the host stops on SIGINT', stopped.code === 130, `${stopped.code ?? stopped.signal}`)
 
   const database = join(stateDir, 'orchestrator.sqlite')
   const databaseBytes = existsSync(database) ? statSync(database).size : 0
@@ -189,9 +217,11 @@ try {
   const after = run(['--profile', profile, '--dump-config'])
   const leftover = after.stdout.split('\n').filter(line => /^\s*- id: dsh-superagent(?:-[a-z-]+)?$/.test(line))
   check('the composed profile has no dsh-superagent row', leftover.length === 0, leftover.join(', '))
+  check('the composed profile still lists the host rows', after.stdout.includes('- id: webserver\n'), 'webserver')
   // The user's machine configuration still names the entry, because a reinstall should get its stateDir back. The host
-  // warns that the entry is absent but composes anyway; the E2E records the warning instead of calling it a failure.
-  if (after.stderr.includes('not found')) console.log(`note  uninstall keeps the profile patch (${after.stderr.trim().split('\n')[0]})`)
+  // warns that the entry is absent but composes anyway; the E2E asserts that retained warning.
+  check('the retained profile patch is reported as missing', /entry "dsh-superagent" not found/.test(after.stderr),
+    after.stderr.trim().split('\n')[0] ?? 'no warning')
   check('the profile still composes after uninstall', after.status === 0)
 
   check('the state directory survives uninstall', existsSync(stateDir), stateDir)
@@ -209,7 +239,7 @@ finally {
   if (child !== undefined && child.exitCode === null) {
     child.kill('SIGKILL')
     // Do not leave the host behind when a failed step skips the graceful stop above.
-    await Promise.race([new Promise(resolve => child.once('exit', resolve)), new Promise(resolve => setTimeout(resolve, 5_000))])
+    await withTimeout(new Promise(resolve => child.once('exit', resolve)), 5_000, 'dsh did not die').catch(() => {})
   }
   if (!keep) rmSync(temporary, { recursive: true, force: true })
   else console.log(`kept the temporary home: ${temporary}`)

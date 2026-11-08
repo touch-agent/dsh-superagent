@@ -133,7 +133,7 @@ dsh-superagent           meta：bundle patch + 2 个 preset + locale
 | 缺 `stateDir` | 插件拒绝启动并说明原因 | `packages/dsh/src/index.ts` 的 machineOf 校验（已有） |
 | 升级跨 schema | `SCHEMA_VERSION` 只增；旧库迁移或拒启 | `migration.ts`（已有，当前 11） |
 | 升级跨宿主版本 | peer 依赖 + compat matrix；启动时校验必需服务是否都在 | 新增 X-10 |
-| 卸载 | 插件行消失；stateDir 保留；重装恢复 | `scripts/install-e2e.mjs`（X-08，见 `docs/006-deployment.md` 的 Automated install/uninstall check） |
+| 卸载 | 插件行消失；stateDir 保留（重装恢复未实测） | `scripts/install-e2e.mjs`（X-08，见 `docs/006-deployment.md` 的 Automated install/uninstall check） |
 | 装两个实例 | 不允许：一个 stateDir 一个实例（单实例约束，方案 §11 已登记） | 由 stateDir 锁保证（`lockSync` 已有） |
 
 **bundle patch 的隐含风险**：`insert` 行依赖宿主 loader 里的定位锚点。DSH alpha 每次升级都可能改锚点，改了就「装上了但没生效」——这是最坏的一种失败，因为没有报错。防线只有一条：`dsh --profile <tmp> --dump-config` 断言 6 行都在（X-11）。

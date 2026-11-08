@@ -73,7 +73,7 @@ Both presets run with `danger-full-access` as the operator's OS user and read me
 Run this block once, on a machine that has no `superagent` profile yet:
 
 ```sh
-npm install -g @deepseek-ai/dsh@0.2.1-rc.3
+npm install -g @deepseek-ai/dsh@0.2.1-rc.5
 git clone <this repository> dsh-superagent && cd dsh-superagent
 pnpm install && pnpm build
 dsh superagent --from-default-profile web --dump-config > /dev/null
@@ -91,12 +91,12 @@ Run the profile-creation command only for a new installation. If the profile alr
 `pnpm test:install-e2e` runs the install above against a throwaway `DSH_HOME`: it builds the packages, initializes a Web profile, writes the machine configuration from the next section, installs this checkout with `dsh plugin add "link:$PWD"`, starts `dsh --profile install-e2e --no-open`, and removes the plugin again. It asserts:
 
 - the bundle becomes a profile dependency and a registered patch layer, and `dsh --dump-config` composes all six rows;
-- the panel's `GET /orchestrator/api/state` answers, reports the temporary `stateDir`, and the Overview page loads `dsh-superagent/client.js`;
-- after `dsh plugin remove`, the dependency and the patch rows are gone while `stateDir/orchestrator.sqlite` remains, so a reinstall can still find its data.
+- the panel's `GET /orchestrator/api/state` answers, reports the temporary `stateDir`, and the served page references `dsh-superagent/client.js`, which is itself served;
+- after `dsh plugin remove`, the dependency and the patch rows are gone while `stateDir/orchestrator.sqlite` remains, so its data remains for a later reinstall.
 
 The `install-e2e` CI workflow runs this check on pull requests and `main`; locally, put `dsh` on `PATH` (or set `DSH_BIN`) and run `pnpm test:install-e2e`. `KEEP=1` leaves the temporary home for inspection.
 
-The check has deliberate limits. It installs the built checkout with `link:` because both packages are private and unpublished, so a registry or packed-tarball install is not covered until there is a release; the cross-host matrix is X-10. With no GitHub account configured, setup deliberately stops at `repositoryUnset`, and the check asserts that state instead of exercising Sources, Sessions or delivery. Uninstalling leaves the user's `cordis.patch.yml` naming the removed entry, so `dsh --dump-config` warns `entry "dsh-superagent" not found` and still exits 0; that is intentional, so a reinstall gets its `stateDir` back.
+The check has deliberate limits. It installs the built checkout with `link:` because both packages are private and unpublished, so a registry or packed-tarball install is not covered until there is a release; the cross-host matrix is X-10. With no GitHub account configured, setup deliberately stops at `repositoryUnset`, and the check asserts that state instead of exercising Sources, Sessions or delivery. It stops at uninstall and does not reinstall, so it proves the data survives rather than exercising the recovery path. Uninstalling leaves the user's `cordis.patch.yml` naming the removed entry, so `dsh --dump-config` warns `entry "dsh-superagent" not found` and still exits 0; the check asserts that warning, and the configuration is intentionally kept so a reinstall gets its `stateDir` back.
 
 ## Machine configuration
 
