@@ -16,6 +16,7 @@ export const USER_ERRORS = {
   deliverableMissing: ['missing', 'This review has no deliverable; submit one with a preview first'],
   deliverablePreviewMissing: ['refused', 'A review needs a preview of its deliverable; without one, a person cannot judge what changed'],
   deliverablePreviewStale: ['refused', 'The preview is for revision {preview}; the deliverable is at revision {revision}'],
+  reviewNotReady: ['refused', 'Only a Ticket awaiting review can be approved'],
   evalFinished: ['refused', 'Eval {eval} has finished or a later eval replaced it; decide the trigger\'s current eval'],
   notAdmissible: ['refused', 'Trigger is not admissible: {reason}'],
   notExplicit: ['refused', 'An accept through orchestrator_route is for explicit requests from allowed senders; assess proactive candidates with orchestrator_eval and orchestrator_eval_decide'],

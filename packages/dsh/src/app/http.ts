@@ -18,7 +18,7 @@ import type { Health } from '../sources/host.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import type { Sessions } from './sessions.ts'
 import { metrics } from './metrics.ts'
-import { decideApproval } from './approvals.ts'
+import { decideApproval, PANEL_ACTOR } from './approvals.ts'
 import type { Outbox } from './outbox.ts'
 import type { Store } from './store.ts'
 import type { TextCache } from './cache.ts'
@@ -209,6 +209,7 @@ function routes(runtime: HttpHost): Routes {
     'GET tickets/:id': ({ params }) => ticketPage(runtime, params.id),
     'POST tickets/:id/retry': ({ params }) => { const id = ticket(params.id); runtime.engine.retryTicket(id); return { retried: true } },
     'POST tickets/:id/stop': ({ params }) => { const id = ticket(params.id); runtime.engine.stopTicket(id); return { stopped: true } },
+    'POST tickets/:id/approve': ({ params }) => { const id = ticket(params.id); runtime.engine.reviewTicket(id, PANEL_ACTOR); return { approved: true } },
     'POST outbox/:id/recall': ({ params }) => ({ status: runtime.outbox.recall(decoded(params.id)) }),
     'POST approvals/:id/approve': async ({ params, body }) => {
       const { level } = ApprovalDecision.parse(await body())

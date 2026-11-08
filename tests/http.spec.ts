@@ -59,6 +59,24 @@ it('serves the Tickets board projection', async () => {
   expect(answer.body).toMatchObject({ milestones: [], totals: { milestones: 0, tasks: 0, tickets: 0, open: 0 } })
 })
 
+it('approves a review-stage Ticket through the engine as the panel actor', async () => {
+  const reviews: [string, unknown][] = []
+  const call = serve({
+    store: { tickets: { get: (id: string) => ['t1', 't2', 't3'].includes(id) ? { id } : undefined } },
+    engine: { reviewTicket: (id: string, by: unknown) => {
+      if (id === 't2') throw new UserError('reviewNotReady')
+      if (id === 't3') throw new UserError('deliverablePreviewMissing')
+      reviews.push([id, by])
+      return { id }
+    } },
+  })
+  expect(await call('POST', 'tickets/t1/approve')).toEqual({ status: 200, body: { approved: true } })
+  expect(reviews).toEqual([['t1', { source: 'panel', id: 'local' }]])
+  expect(await call('POST', 'tickets/t2/approve')).toMatchObject({ status: 400, body: { code: 'reviewNotReady' } })
+  expect(await call('POST', 'tickets/t3/approve')).toMatchObject({ status: 400, body: { code: 'deliverablePreviewMissing' } })
+  expect(await call('POST', 'tickets/missing/approve')).toEqual({ status: 404, body: { error: 'Ticket not found' } })
+})
+
 it('answers each kind of failure with its own status', async () => {
   const saves: unknown[] = []
   const call = serve({

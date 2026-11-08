@@ -1,5 +1,6 @@
 /** Domain model of a proactive agent: the concepts and their invariants, independent of any source, policy, or executor. */
 import type { ActionLevel } from './action.ts'
+import type { Review } from './deliverable.ts'
 import type { Reason } from './reasons.ts'
 
 /** Actor identity in the source's own vocabulary; Policy decides which actors may originate work on that Source. */
@@ -239,7 +240,8 @@ export interface Assignment {
   startedAt?: string
   endedAt?: string
   endedReason?: string
-  report?: { state: ReportState; summary: string; at: string }
+  /** The worker's latest report, with the reviewable deliverable it carried and a person's acceptance of that revision. */
+  report?: { state: ReportState; summary: string; at: string; review?: Review; accepted?: { by: ActorRef; at: string } }
   /** When Inputs last reached the worker; one at or after `report.at` means the worker has been busy with Inputs since that report. */
   deliveredAt?: string
   /**
