@@ -40,8 +40,8 @@ const PR_URL = /^https:\/\/github\.com\/touch-agent\/dsh-superagent\/pull\/(\d+)
 const PR_URL_PARTS = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const PR_STATE_VALUES = new Set(['OPEN', 'MERGED', 'CLOSED', 'NOT_FOUND'])
-/** Only a missing PR and an unmerged PR can be waived; malformed rows are never waived. */
-const EXEMPTABLE = new Set(['in-progress-without-pr', 'completed-pr-not-merged'])
+/** The only waiver: an in-progress row that has no PR yet. Unmerged PRs and malformed rows are never waived. */
+const EXEMPTABLE = new Set(['in-progress-without-pr'])
 const HEADER = /^\|\s*任务\s*\|\s*状态\s*\|\s*PR\s*\|\s*验收证据\s*\|\s*最后更新\s*\|$/m
 
 /** Read a path under `root`, naming the missing file rather than an ENOENT stack. */
@@ -218,7 +218,7 @@ function validate({ plan, tracking, exemptions = [], prStates, planPath = PLAN, 
       continue
     }
     if (status === '已完成' && state !== 'MERGED')
-      waive(row, 'completed-pr-not-merged', `status is 已完成 but PR #${number} is ${state}`, 'keep the row 进行中 until it merges, or point it at the merged PR')
+      problems.push(`${trackingPath}:${row.line}: ${row.task}: status is 已完成 but PR #${number} is ${state}; keep the row 进行中 until it merges, or point it at the merged PR`)
   }
 
   for (const exemption of exemptions) {

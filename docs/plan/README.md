@@ -25,7 +25,7 @@
 
 ### 状态语义
 
-`未开始` 不填 PR 和验收证据（都写 `—`）。`进行中` 必须有 PR；确实还没有 PR 时，必须在 `TRACKING-EXEMPTIONS.json` 里给出带原因、规则为 `in-progress-without-pr` 的豁免。`已完成` 必须有验收证据；PR 已填写时，CI 查询到的 PR 必须是 merged。`已暂停` / `已取消` 仍要求合法日期和合法 PR 链接，但不要求 merged。
+`未开始` 不填 PR 和验收证据（都写 `—`）。`进行中` 必须有 PR；确实还没有 PR 时，必须在 `TRACKING-EXEMPTIONS.json` 里给出带原因、规则为 `in-progress-without-pr` 的豁免。`已完成` 必须有验收证据；PR 已填写时，CI 查询到的 PR 必须是 merged——这一条不能豁免。`已暂停` / `已取消` 仍要求合法日期和合法 PR 链接，但不要求 merged。
 
 PR 只接受 `https://github.com/touch-agent/dsh-superagent/pull/<n>`；其他形式（包括 issue 链接、短链、fork 链接）都算漂移。
 
@@ -52,7 +52,7 @@ GH_TOKEN=$(gh auth token) node scripts/check-tracking.mjs --check-prs
 
 ### 显式豁免
 
-`TRACKING-EXEMPTIONS.json` 是唯一的豁免清单；没有文件等同于没有豁免。只有两类问题可豁免：`in-progress-without-pr`（进行中但还没有 PR）与 `completed-pr-not-merged`（已完成的 PR 尚未 merged）。格式、缺行、坏日期、坏链接等结构问题不可豁免。
+`TRACKING-EXEMPTIONS.json` 是唯一的豁免清单；没有文件等同于没有豁免。只有 `in-progress-without-pr`（进行中但还没有 PR）可豁免。`已完成` 的 PR 未 merged、格式、缺行、坏日期、坏链接等都不能豁免。
 
 ```json
 {
@@ -62,7 +62,7 @@ GH_TOKEN=$(gh auth token) node scripts/check-tracking.mjs --check-prs
 }
 ```
 
-每条豁免必须写任务、规则和非空原因；任务必须在计划里，规则必须是上面两种之一。没有被触发的豁免会被判为 stale 并报错，避免清单长期积累。豁免只是过渡，条件满足后应删除。
+每条豁免必须写任务、规则和非空原因；任务必须在计划里，规则必须是 `in-progress-without-pr`。没有被触发的豁免会被判为 stale 并报错，避免清单长期积累。豁免只是过渡，条件满足后应删除。
 
 `tests/docs.spec.ts` 继续固定表格形状（每个 TASK-PLAN 任务恰好一行、字段与格式）；`tests/tracking.spec.ts` 覆盖新检查的拒绝与豁免路径。
 

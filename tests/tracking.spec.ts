@@ -208,15 +208,15 @@ describe('tracking check', () => {
     expect(result.stderr).toContain('PR #5 does not exist')
   })
 
-  it('waives a completed row whose PR is open only with an exemption', () => {
+  it('does not waive a completed row whose PR is open', () => {
     const root = fixture({
       prStates: { [PR5]: 'OPEN', [PR6]: 'OPEN' },
       exemptions: { exemptions: [{ task: 'T0-01', rule: 'completed-pr-not-merged', reason: 'the PR is waiting for its last check' }] },
     })
     const result = run(root, ['--pr-states', join(root, 'pr-states.json')])
-    expect(result.status).toBe(0)
-    expect(result.stdout).toContain('exempted by')
-    expect(result.stdout).toContain('waiting for its last check')
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('allowed: in-progress-without-pr')
+    expect(result.stderr).toContain('status is 已完成 but PR #5 is OPEN')
   })
 
   it('rejects a stale exemption', () => {
@@ -232,7 +232,7 @@ describe('tracking check', () => {
       exemptions: { exemptions: [{ task: 'T1-01', rule: 'bad-date', reason: 'x' }] },
     }))
     expect(unknownRule.status).toBe(1)
-    expect(unknownRule.stderr).toContain('allowed: in-progress-without-pr, completed-pr-not-merged')
+    expect(unknownRule.stderr).toContain('allowed: in-progress-without-pr')
 
     const unknownTask = run(fixture({
       exemptions: { exemptions: [{ task: 'T9-99', rule: 'in-progress-without-pr', reason: 'x' }] },
@@ -268,8 +268,10 @@ describe('tracking check', () => {
       '6': { state: 'open', merged_at: null },
     }
     const requests: string[] = []
+    const authorizations: string[] = []
     const server = createServer((request, response) => {
       requests.push(request.url ?? '')
+      authorizations.push(request.headers.authorization ?? '')
       const number = /\/pulls\/(\d+)$/.exec(request.url ?? '')?.[1]
       const pull = number === undefined ? undefined : states[number]
       if (pull === undefined) {
@@ -296,15 +298,28 @@ describe('tracking check', () => {
         '/repos/touch-agent/dsh-superagent/pulls/5',
         '/repos/touch-agent/dsh-superagent/pulls/6',
       ]))
+      expect(authorizations.length).toBeGreaterThan(0)
+      expect(authorizations.every(value => value === 'Bearer test-token')).toBe(true)
 
       states['5'] = { state: 'open', merged_at: null }
       const failed = await runAsync(fixture(), ['--check-prs'], { GH_TOKEN: 'test-token', GITHUB_API_URL: api })
       expect(failed.status).toBe(1)
       expect(failed.stderr).toContain('status is 已完成 but PR #5 is OPEN')
+
+      delete states['5']
+      const missing = await runAsync(fixture(), ['--check-prs'], { GH_TOKEN: 'test-token', GITHUB_API_URL: api })
+      expect(missing.status).toBe(1)
+      expect(missing.stderr).toContain('PR #5 does not exist')
     }
     finally {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
     }
+  })
+
+  it('fails closed when the GitHub API cannot be reached', () => {
+    const result = run(fixture(), ['--check-prs'], { GH_TOKEN: 'test-token', GITHUB_API_URL: 'http://127.0.0.1:1' })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('could not query PR')
   })
 
   it('refuses to query GitHub without a token', () => {
