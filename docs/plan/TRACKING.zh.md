@@ -2,6 +2,7 @@
 
 > 唯一状态源。格式与「合并即更新」约定见 [README.md](README.md)。
 > 初始建表 2026-11-08：历史任务按当日仓库、PR 与计划文档中能复核的证据回填；没有完成证据的任务记为 `未开始`，发现不符时先修表。`最后更新` 是这一行最后一次改动日期。
+> 2026-11-08 重评估：新增 T3-09…11、T5-01…06、X-13（均未开始）；X-12 随 PR #31 合并改为已完成；T3-05 的验收口径改为 Phase 0 剩余项。
 
 ## 任务跟踪表
 
@@ -44,16 +45,25 @@
 | T3-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/22 | `tests/preview-doc.spec.ts`；doc redline | 2026-11-08 |
 | T3-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/23 | `tests/preview-sheet.spec.ts`；sheet 公式与值分列 | 2026-11-08 |
 | T3-04 | 未开始 | — | — | 2026-11-08 |
-| T3-05 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/29 | `tests/lightweight.spec.ts`；kernel 轻量工单与 inline 契约已合并，端到端 `InlineExecutor` 与 <10s 验收未做 | 2026-11-08 |
+| T3-05 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/29 | `tests/lightweight.spec.ts`；kernel 轻量工单与 inline 契约（PR #29）；Phase 0 的生产 `InlineExecutor`、Eval `form` 与 <10s 验收未做 | 2026-11-08 |
 | T3-06 | 未开始 | — | — | 2026-11-08 |
 | T3-07 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/24 | `tests/panel-approval.spec.tsx`；review 必须有 preview | 2026-11-08 |
 | T3-08 | 未开始 | — | — | 2026-11-08 |
+| T3-09 | 未开始 | — | — | 2026-11-08 |
+| T3-10 | 未开始 | — | — | 2026-11-08 |
+| T3-11 | 未开始 | — | — | 2026-11-08 |
 | T4-01 | 未开始 | — | — | 2026-11-08 |
 | T4-02 | 未开始 | — | — | 2026-11-08 |
 | T4-03 | 未开始 | — | — | 2026-11-08 |
 | T4-04 | 未开始 | — | — | 2026-11-08 |
 | T4-05 | 未开始 | — | — | 2026-11-08 |
 | T4-06 | 未开始 | — | — | 2026-11-08 |
+| T5-01 | 未开始 | — | — | 2026-11-08 |
+| T5-02 | 未开始 | — | — | 2026-11-08 |
+| T5-03 | 未开始 | — | — | 2026-11-08 |
+| T5-04 | 未开始 | — | — | 2026-11-08 |
+| T5-05 | 未开始 | — | — | 2026-11-08 |
+| T5-06 | 未开始 | — | — | 2026-11-08 |
 | X-01 | 未开始 | — | — | 2026-11-08 |
 | X-02 | 未开始 | — | — | 2026-11-08 |
 | X-03 | 未开始 | — | — | 2026-11-08 |
@@ -65,7 +75,8 @@
 | X-09 | 未开始 | — | — | 2026-11-08 |
 | X-10 | 未开始 | — | — | 2026-11-08 |
 | X-11 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/19 | `tests/dump-config.spec.ts`；六行齐全 | 2026-11-08 |
-| X-12 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/31 | `tests/docs.spec.ts` 新增文档结构与跟踪表校验 | 2026-11-08 |
+| X-12 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/31 | PR #31 合并（`19b8c3d`）；`tests/docs.spec.ts` 文档结构与跟踪表校验、计划文档迁入 `docs/plan/` | 2026-11-08 |
+| X-13 | 未开始 | — | — | 2026-11-08 |
 | S-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity.spec.ts`；`activity` 表与三级分级 | 2026-11-08 |
 | S-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity-feed.spec.ts`；`endCoveredBy` 单一通知预算 | 2026-11-08 |
 | S-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/runtime.spec.ts` 的 `<stateDir>/system` 目录断言 | 2026-11-08 |
