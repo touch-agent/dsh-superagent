@@ -248,7 +248,7 @@ Each model request binds the Session to the current prompt revision. The revisio
 | --- | --- |
 | `packages/dsh/src/app/runtime.ts` | The composition root: builds the parts with the interfaces they use, registers the routes and the Source host, and starts and stops dsh-superagent |
 | `packages/dsh/src/app/notices.ts` | Domain events and worker reports into notices and relays for the main Session, under the one-notification-per-outcome budget |
-| `packages/dsh/src/app/activity.ts` | Domain events into graded activity records for the system view, their presentation into tasks, origins, states and durations, and the rule that says when an end was already told |
+| `packages/dsh/src/app/activity.ts` | Domain events into graded activity records for the system view, their presentation into tasks, origins, states and durations (reviews join the Ticket they review through the shared ownership derivation), and the rule that says when an end was already told |
 | `packages/dsh/src/app/tools/main.ts`, `packages/dsh/src/app/tools/executor.ts` | Tool arguments of the main Session and the Executor Sessions into calls of the core classes, and their results into cards |
 | `packages/dsh/src/app/http.ts`, `packages/dsh/src/app/views/`, `packages/dsh/src/app/api.ts` | HTTP requests into calls, and Store reads into the panel's views; `api.ts` types every route for the panel |
 | `packages/dsh/src/app/resources.ts`, `packages/dsh/src/app/links.ts`, `packages/dsh/src/app/cards.ts` | Resource names into reads, source messages into links, records into compact cards for models |
@@ -331,7 +331,9 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/passes.ts` | Passes, the pass scheduler |
 | `packages/dsh/src/app/outbox.ts` | The Outbox: the Engine's `Outbox` port, the receipts, the undo window and the `reply` effects that send them |
 | `packages/dsh/src/app/notices.ts` | The main Session's notices and relays: `eventNotice`, `reportRelay`, `resultRelay` and `followupRelay` |
-| `packages/dsh/src/app/activity.ts` | `ActivityLog`: every domain event graded `quiet`, `feed` or `notice` and kept in the Store's `activity` table; `endCoveredBy` is the single-notification budget; `presentActivity` adds the subject, task, origin, state and time since start when the feed is read, deriving them for rows stored earlier |
+| `packages/dsh/src/app/activity.ts` | `ActivityLog`: every domain event graded `quiet`, `feed` or `notice` and kept in the Store's `activity` table; `endCoveredBy` is the single-notification budget; `presentActivity` adds the subject, task, origin, state and time since start when the feed is read, using the shared ownership derivation for reviews |
+| `packages/dsh/src/app/ownership.ts` | The ownership derivation the Events tab and the Tasks board share: a Ticket's plan (`M`/`T` ids from its title or Mandate scope), the pull request a review Ticket reviews, the parent Ticket it therefore belongs to, and the reviews of a Ticket; read-only and derived at read time |
+| `packages/dsh/src/app/tasks.ts` | The Tickets board: milestones, plan tasks, Tickets, reviews and pull requests as one tree, with rolled-up state, progress and elapsed times, and the per-milestone graph lanes of parallel branches, merge points and open work |
 | `packages/dsh/src/app/store.ts` | The Store, and `Receipt`, a message of the outbox |
 | `packages/dsh/src/app/store-read.ts` | `storeReads`: the Store's read queries for the views, the tools and the Sources' polls, which never write |
 | `packages/dsh/src/app/trace.ts` | `SqliteTraceSink`: the Engine's `TraceSink`, keeping each stage in the Store's `span` table and reading a trace back for the panel |
@@ -414,6 +416,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/client/api.ts` | Calls and polls of the management API, typed by `packages/dsh/src/app/api.ts`, and the Decision filters of the Eval status |
 | `packages/dsh/src/client/route.ts` | The tabs, the settings groups, the typed routes that `parseRoute` reads, and the route memory with the settings group opened last |
 | `packages/dsh/src/client/overview.tsx` | The overview |
+| `packages/dsh/src/client/tasks.tsx` | The Tasks tab: the milestone/task/Ticket/review/pull-request tree with its roll-up, and the optional graph of branch lanes |
 | `packages/dsh/src/client/source.tsx`, `trigger.tsx`, `eval.tsx`, `execution.tsx` | One file per stage: its status, and its settings where it has some |
 | `packages/dsh/src/client/thread.tsx`, `ticket.tsx` | The record pages: a Thread with its timeline, and a Ticket with its authorization, Inputs and Assignments |
 | `packages/dsh/src/client/settings.tsx` | The Settings tab: the group navigation and the group on screen |
@@ -473,7 +476,8 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/runtime.spec.ts` | The whole application on a simulated DeepSeek Harness host, through tools and HTTP |
 | `tests/tools.spec.ts` | The Sessions' tools: what `orchestrator_read` reads for each role, and the shapes and checks of the other main Session tools, including the one notice a ready report and its ending cost |
 | `tests/runtime-concurrency.spec.ts` | Work that overlaps: Triggers during a pass, Tickets that change during deliveries and launches |
-| `tests/http.spec.ts` | The same-origin and loopback checks, the status of each kind of failure, the body limit, path parameters and queries, and the panel's approval decisions at the requested or a lower level |
+| `tests/http.spec.ts` | The same-origin and loopback checks, the status of each kind of failure, the body limit, path parameters and queries, the panel's approval decisions at the requested or a lower level, and the Tasks board route |
+| `tests/tasks.spec.ts` | The shared ownership derivation (plan ids, review parent by pull request or sole task sibling, ambiguity refused), the Tickets board's tree, progress and roll-ups, and graph lane reuse |
 | `tests/settings.spec.ts` | Settings saves that race a model or account check, a Policy sync that a save outran, and the refusals of the pause, a sync and a block |
 | `tests/views.spec.ts` | What the management views derive from the Store, such as the Thread a dropped message belongs to, the settings card and health entries a Source that supplies only a manifest produces, and the approvals queue leaving a due request out |
 | `tests/timeline.spec.ts` | A Thread's pages and a Trigger's neighbours by time and then id, with every received Trigger's time in one form |

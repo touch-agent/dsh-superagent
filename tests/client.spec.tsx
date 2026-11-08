@@ -49,8 +49,22 @@ const openMaster = async (container: HTMLElement) => {
 }
 const feedItem = { seq: 1, at: '2026-01-01T00:00:00Z', event: 'ticket.ended' as const, level: 'notice' as const,
   summary: 'Ticket t1 ended', ticket: 't1' }
+const board = { generatedAt: '2026-09-23T12:00:00Z', totals: { milestones: 1, tasks: 1, tickets: 1, open: 1 }, milestones: [
+  { kind: 'milestone', id: 'M2', title: 'M2', status: 'review', progress: { done: 0, total: 2 }, durationMs: 86_400_000,
+    startedAt: '2026-09-22T00:00:00Z', children: [
+      { kind: 'task', id: 'T2-03', title: '修复登录', subtitle: 'T2-03', status: 'review', progress: { done: 0, total: 2 },
+        durationMs: 86_400_000, startedAt: '2026-09-22T00:00:00Z', plan: { milestone: 'M2', task: 'T2-03' }, children: [
+          { kind: 'ticket', id: 't1', title: '修复登录（T2-03）', status: 'working', progress: { done: 0, total: 1 },
+            durationMs: 86_400_000, startedAt: '2026-09-22T00:00:00Z', href: { page: 'execution', id: 't1' }, children: [
+              { kind: 'pull', id: 'github:42', title: '#42 Fix login', subtitle: 'github', status: 'idle',
+                href: { url: 'https://github.com/acme/widgets/pull/42' }, facts: { number: { value: '#42' } }, children: [] },
+              { kind: 'review', id: 'r1', title: 'review PR #42：修复登录', status: 'review', durationMs: 7_200_000,
+                startedAt: '2026-09-22T02:00:00Z', href: { page: 'execution', id: 'r1' }, children: [] }] }] }],
+    graph: { start: '2026-09-22T00:00:00Z', end: '2026-09-23T12:00:00Z', lanes: 1, branches: [
+      { id: 't1', title: '修复登录（T2-03）', task: 'T2-03', start: '2026-09-22T00:00:00Z', status: 'working', lane: 0 }] } }] }
 const serve = (activity: ActivityRecord[] = [feedItem]) => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
   const path = new URL(url, 'http://127.0.0.1').pathname.replace('/orchestrator/api/', '')
+  if (path === 'tasks') return Response.json(board)
   if (path === 'overview') return Response.json({ approvals: [], problems: [], person: [], executor: { running: 0, queued: 0, maxWorkers: 3, idle: 0 }, flow: { triggers: 0, filtered: 0, judged: 0, accepted: 0, evaluating: 0 }, metrics: { window: { since: '', hours: 24 }, ttfa: { samples: 0, medianSeconds: null, p90Seconds: null }, duplicates: { sends: 0, repeated: 0 }, recovery: { interrupted: 0, recovered: 0, medianSeconds: null }, throughput: { decisions: 0, perHour: 0 }, approval: { samples: 0, medianSeconds: null, p90Seconds: null } }, policyVersion: 'v' })
   if (path === 'tickets') return Response.json({ items: [], total: 0, offset: 0, limit: 20 })
   if (path === 'activity') {
@@ -326,4 +340,51 @@ it('keeps the management panel and registers only declared seats on a host witho
   }
   apply(ctx as never)
   expect(entries.map(entry => entry.options.name)).toEqual(['main', 'sidebar.panellist', 'plugins.row.config'])
+})
+
+/** Open the Tickets tab on the management page and let its poll resolve. */
+async function openTasks(container: HTMLElement) {
+  const tab = [...container.querySelectorAll<HTMLElement>('[role=tab]')].find(item => item.textContent === zh['tab.tasks'])
+  expect(tab).toBeDefined()
+  await act(async () => { tab!.click() })
+  for (let i = 0; i < 5; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+}
+
+it('shows the task tree with milestones, tasks, Tickets, reviews and pull requests, and folds a node', async () => {
+  serve()
+  const { main } = fixture([])
+  const view = await render(main, { t })
+  await openTasks(view.container)
+  const rows = [...view.container.querySelectorAll('.dt-task-row')]
+  expect(rows.length).toBe(5)
+  expect(rows[0]!.textContent).toContain('M2')
+  expect(rows[0]!.textContent).toContain('0/2')
+  expect(view.container.textContent).toContain('修复登录')
+  expect(view.container.textContent).toContain('review PR #42：修复登录')
+  expect(view.container.textContent).toContain('#42 Fix login')
+  // The milestone row folds its whole subtree; the toggle reports its state for assistive technology.
+  const toggle = view.container.querySelector<HTMLButtonElement>('.dt-task-toggle')!
+  expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  await act(async () => { toggle.click() })
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(view.container.textContent).not.toContain('修复登录（T2-03）')
+  await act(async () => { view.container.querySelector<HTMLButtonElement>('.dt-task-toggle')!.click() })
+  expect(view.container.querySelectorAll('.dt-task-row').length).toBe(5)
+  view.dispose()
+})
+
+it('draws the graph view with a lane per Ticket and its status colour', async () => {
+  serve()
+  const { main } = fixture([])
+  const view = await render(main, { t })
+  await openTasks(view.container)
+  const graphTab = [...view.container.querySelectorAll<HTMLElement>('[role=tab]')].find(item => item.textContent === zh['tasksView.graph'])
+  expect(graphTab).toBeDefined()
+  await act(async () => { graphTab!.click() })
+  const branch = view.container.querySelector('.dt-graph-branch')
+  expect(branch).not.toBeNull()
+  expect(branch!.getAttribute('data-status')).toBe('working')
+  expect(view.container.querySelectorAll('.dt-graph-legend li')).toHaveLength(1)
+  expect(view.container.textContent).toContain(zh.tasksGraphTrunk)
+  view.dispose()
 })

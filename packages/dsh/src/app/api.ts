@@ -12,6 +12,7 @@ import type { DecisionListView, SearchView, ThreadDetailView, ThreadListView } f
 import type { TicketListView } from './views/tickets.ts'
 import type { TriggerTraceView } from './views/trace.ts'
 import type { ActivityFeed, ActivityLevel } from './activity.ts'
+import type { TaskBoardView } from './tasks.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
@@ -28,6 +29,7 @@ export interface Api {
   'GET overview': { response: OverviewView }
   'GET metrics': { response: MetricsView }
   'GET activity': { query?: { after?: number; limit?: number; level?: ActivityLevel }; response: ActivityFeed }
+  'GET tasks': { response: TaskBoardView }
   'GET search': { query: { q: string }; response: SearchView }
   'GET sources': { response: SourceStatusView[] }
   'GET settings': { response: SettingsView }

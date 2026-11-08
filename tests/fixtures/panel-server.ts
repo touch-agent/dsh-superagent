@@ -10,6 +10,7 @@ import { SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInPart, buil
   environmentSection, policySection, promptParts } from '@superagent/dsh/app/prompts.ts'
 import type { ApprovalRow, DroppedReply, HistoryView, Problem, PromptsView, SetupView, SourceStatusRow, SourceView, StateView,
   ThreadPageView, ThreadRow, TicketPageView, TicketRow, TicketStage, TriggerRow } from '@superagent/dsh/client/api.ts'
+import type { TaskBoardView } from '@superagent/dsh/app/tasks.ts'
 import { SETUP_FIELDS } from '@superagent/dsh/deployment.ts'
 import { EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSchema } from '@superagent/dsh/policy.ts'
 import { SetupError, type SetupCode } from '@superagent/dsh/setup.ts'
@@ -117,6 +118,8 @@ export interface PanelServer {
   form?: ConfigForm<Record<string, unknown>> | undefined
   opened: string[]
   dropped: DroppedReply[]
+  /** The Tickets board the tab polls; a test may replace it to exercise a shape. */
+  tasks: TaskBoardView
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
   /** Source cards a test adds as if their plugin had loaded, such as the manifest-only fixture. */
   extraSources: SourceView[]
@@ -252,6 +255,30 @@ function threadPage(key: string, { before, around }: { before?: string; around?:
   return { ...base, earlier: 'cursor-1', timeline: [trigger('e3', '2026-09-23T00:00:00Z', { disposition: { fanout: ['t1'] } }),
     trigger('e4', '2026-09-23T00:01:00Z', { disposition: { filtered: { code: 'not_a_member' } } })] }
 }
+/** A small Tickets board with one milestone, one task, a reviewed Ticket, a pull request and a second unplanned Ticket. */
+export function taskBoardView(): TaskBoardView {
+  const pull = { kind: 'pull' as const, id: 'github:42', title: '#42 Fix login', subtitle: 'github', status: 'working' as const,
+    href: { url: 'https://github.com/acme/widgets/pull/42' },
+    facts: { number: { value: '#42' }, ci: { label: { zh: 'CI 失败', en: 'CI failed' }, value: '1', problem: true as const } }, children: [] }
+  const review = { kind: 'review' as const, id: 'r1', title: 'review PR #42：修复回归', status: 'review' as const, durationMs: 7_200_000,
+    startedAt: '2026-09-22T02:00:00Z', href: { page: 'execution' as const, id: 'r1' }, children: [] }
+  const ticket = { kind: 'ticket' as const, id: 't1', title: '修复回归（T2-03）', status: 'working' as const, progress: { done: 0, total: 1 },
+    durationMs: 86_400_000, startedAt: '2026-09-22T00:00:00Z', href: { page: 'execution' as const, id: 't1' }, children: [pull, review] }
+  const task = { kind: 'task' as const, id: 'T2-03', title: '修复回归', subtitle: 'T2-03', status: 'working' as const,
+    progress: { done: 0, total: 2 }, durationMs: 86_400_000, startedAt: '2026-09-22T00:00:00Z',
+    plan: { milestone: 'M2', task: 'T2-03' }, children: [ticket] }
+  const second = { kind: 'ticket' as const, id: 't9', title: '整理迁移说明', status: 'blocked' as const, durationMs: 3_600_000,
+    startedAt: '2026-09-23T00:00:00Z', href: { page: 'execution' as const, id: 't9' }, children: [] }
+  return { generatedAt: '2026-09-23T12:00:00Z', totals: { milestones: 2, tasks: 2, tickets: 2, open: 2 }, milestones: [
+    { kind: 'milestone', id: 'M2', title: 'M2', status: 'working', progress: { done: 0, total: 2 }, durationMs: 86_400_000,
+      startedAt: '2026-09-22T00:00:00Z', children: [task], graph: { start: '2026-09-22T00:00:00Z', end: '2026-09-23T12:00:00Z', lanes: 1,
+        branches: [{ id: 't1', title: '修复回归（T2-03）', task: 'T2-03', start: '2026-09-22T00:00:00Z', status: 'working', lane: 0 }] } },
+    { kind: 'milestone', id: 'unplanned', title: 'unplanned', status: 'blocked', progress: { done: 0, total: 1 },
+      durationMs: 3_600_000, startedAt: '2026-09-23T00:00:00Z', children: [second],
+      graph: { start: '2026-09-23T00:00:00Z', end: '2026-09-23T12:00:00Z', lanes: 1,
+        branches: [{ id: 't9', title: '整理迁移说明', task: '整理迁移说明', start: '2026-09-23T00:00:00Z', status: 'blocked', lane: 0 }] } }] }
+}
+
 function initial(): PanelServer {
   const settings = SettingsSchema.parse({
     policy: { sources: { feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }], syncChat: 'oc_team' },
@@ -279,7 +306,7 @@ function initial(): PanelServer {
       skillPrefix: SKILL_PREFIX, revision: 0, current: { ...defaults, config: defaultPrompts() },
       defaults: defaultPrompts(), parts: Object.entries(builtInParts()).map(([key, part]) => ({ key, ...part, base: builtInBase(part.text) })),
       defaultChanged: [], revisions: [{ ...defaults, changed: [] }], sessions: [], notificationPending: false, next_offset: null },
-    tickets: { open: [ticketSummary()], ended: [ended] }, ticketDetails: { t1: ticketDetail() },
+    tickets: { open: [ticketSummary()], ended: [ended] }, ticketDetails: { t1: ticketDetail() }, tasks: taskBoardView(),
     threads: [threadSummary()], threadPages: threadPage,
     person: [ticketSummary({ attention: { id: 'q1', question: '需要确认按钮颜色' }, note: { text: '需要确认按钮颜色', error: false }, reply },
       { stage: 'person', action: 'answer' }),
@@ -318,6 +345,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET overview': { answer: overviewView },
   'GET metrics': { answer: () => overviewView().metrics },
   'GET activity': { query: ['after', 'limit', 'level'], answer: () => ({ items: [], latest: 0, next: 0 }) },
+  'GET tasks': { answer: () => server.tasks },
   'GET search': { query: ['q'], answer: async ({ query }) => {
     const q = query.q ?? ''
     await server.searching?.(q)
