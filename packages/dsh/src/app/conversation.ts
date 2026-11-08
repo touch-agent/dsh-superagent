@@ -181,7 +181,7 @@ function singleItem(input: DispatchInput, text: string, fresh: readonly PlannedI
   if (!title || !scope) return { refused: 'A new dispatch needs a title and a scope; only an attach to an existing ticket omits them.' }
   // A combined fallback is one ticket: keep the lightweight form only when the whole item is one lookup.
   const forms = [...fresh, ...(input.items ?? [])]
-  const form = input.form === 'lightweight' ? 'lightweight' : forms.length === 1 ? forms[0]!.form : undefined
+  const form = forms.length > 1 ? undefined : input.form === 'lightweight' ? 'lightweight' : forms[0]?.form
   return { title: cut(title, 200), scope: cut(scope, SCOPE_CHARS), name: worktreeName(name),
     ...acknowledgement ? { acknowledgement } : {}, ...form ? { form } : {} }
 }
