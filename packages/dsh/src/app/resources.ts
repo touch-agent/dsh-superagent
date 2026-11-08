@@ -1,6 +1,6 @@
 /** Serves paginated context resources to orchestrator_read so large bodies stay out of model prompts until requested. */
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import { UserError, key, latestReport, reached, runningAssignment, threadKey, type Ticket, type Trigger } from '@superagent/kernel'
+import { UserError, acknowledgementAction, key, latestReport, reached, runningAssignment, threadKey, type Ticket, type Trigger } from '@superagent/kernel'
 import { batchOf, inputMessage, triggerMessage, workerSessionId } from '../executor/dsh.ts'
 import { readGithub } from '../sources/github-read.ts'
 import { feishuReferences, feishuRead } from '../sources/feishu-read.ts'
@@ -224,7 +224,8 @@ const ROUTES: readonly Route[] = [
     const repliedTo = shown(parent ? host.store.triggers.get(feishuTriggerId(parent)) : undefined)
     const neighbours = host.store.read.neighbours(threadKey(found.threads[0]!), found.at, found.id)
     const around = { before: shown(neighbours.before), after: shown(neighbours.after) }
-    return { ...card, ...await host.sourceLink(found, signal), acknowledgement: host.store.replyStatus(key('ack', found.id)) ?? 'not_requested',
+    return { ...card, ...await host.sourceLink(found, signal),
+      acknowledgement: found.channel ? host.store.replyStatus(acknowledgementAction(found.channel, found.id).idempotencyKey) ?? 'not_requested' : 'not_requested',
       ...(ref ? { context: feishuReferences(ref) } : {}),
       ...(offset === 0 ? {
         ...repliedTo ? { replied_to: triggerLine(repliedTo) } : {},

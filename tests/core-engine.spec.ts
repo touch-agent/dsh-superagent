@@ -1,20 +1,25 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Engine, MemoryRepositories, UserError, followupOwners, key, runningAssignment, ticketOutcome, ticketStage,
+import { Engine, MemoryRepositories, UserError, followupOwners, key, outboundAction, runningAssignment, ticketOutcome, ticketStage,
   waitsForPerson } from '@superagent/kernel'
-import type { Assessor, Assignment, Candidate, EngineOptions, Executor, OutboundMessage, Outcome, Policy, Ticket, Trigger } from '@superagent/kernel'
+import type { Action, Assessor, Assignment, Candidate, EngineOptions, Executor, OutboundMessage, Outcome, Policy, Ticket, Trigger } from '@superagent/kernel'
 
 const member = { source: 'chat', id: 'alice' }
 const guest = { source: 'chat', id: 'guest' }
 function trigger(id: string, overrides: Partial<Trigger> = {}): Trigger {
   return { id, source: 'chat', threads: [{ source: 'chat', id: 't1' }], actor: member, human: true, at: `2026-09-23T00:00:${id.padStart(2, '0')}Z`, text: `message ${id}`, channel: { source: 'chat', thread: 't1', address: { message: id } }, meta: {}, ...overrides }
 }
+/** The id of an acknowledgement of `trigger`, as its send Action derives it. */
+const ackId = (trigger: Trigger) => outboundAction({ kind: 'acknowledgement', source: trigger.channel!.source, objectId: trigger.id,
+  revision: 'accepted' }).idempotencyKey
+/** The id of an attention reply to the question `id`, sent into this fixture's chat. */
+const attentionReplyId = (id: string) => outboundAction({ kind: 'reply', source: 'chat', objectId: id, revision: 'asked' }).idempotencyKey
 interface Hooks {
   emit?: (event: { type: string; data: Record<string, unknown> }) => void
   prepareTicket?: EngineOptions['prepareTicket']
 }
 function harness(policyOverrides: Partial<Policy> = {}, { emit, prepareTicket }: Hooks = {}) {
   const repo = new MemoryRepositories()
-  const outbox: OutboundMessage[] = []
+  const outbox: (OutboundMessage & { action: Action })[] = []
   const withdrawn: string[] = []
   const requests: Candidate[] = []
   const assessor: Assessor = { request: vi.fn(candidate => { requests.push(candidate) }), release: vi.fn() }
@@ -37,7 +42,8 @@ function harness(policyOverrides: Partial<Policy> = {}, { emit, prepareTicket }:
   let clock = 0
   const scope: EngineOptions['scope'] = { scope: t => t.meta.blocked ? { listened: false, reason: 'chat not allowed' } : { listened: true, observed: false } }
   const queued: EngineOptions['outbox'] = {
-    send: message => { if (!outbox.some(item => item.id === message.id)) outbox.push(message) },
+    send: message => { const id = message.action.idempotencyKey
+      if (!outbox.some(item => item.id === id)) outbox.push({ ...message, id }) },
     status: id => outbox.some(item => item.id === id) ? 'pending' : undefined,
     withdraw: id => { withdrawn.push(id) },
     recall: id => { withdrawn.push(id); return 'recalled' },
@@ -125,7 +131,8 @@ describe('eval', () => {
     expect(ticket).not.toHaveProperty('ended')
     expect(ticket.assignments).toEqual([expect.objectContaining({ state: 'running', startedAt: expect.any(String) })])
     expect(h.repo.threads.get('chat:t1')?.subscriptions).toEqual([ticket.id])
-    expect(h.outbox).toEqual([{ id: key('ack', '1'), channel: trigger('1').channel, text: 'ok', kind: 'acknowledgement', ticketId: ticket.id }])
+    expect(h.outbox).toEqual([expect.objectContaining({ id: ackId(trigger('1')), channel: trigger('1').channel, text: 'ok', ticketId: ticket.id,
+      action: expect.objectContaining({ kind: 'acknowledgement', source: 'chat', objectId: '1', revision: 'accepted', level: 'send' }) })])
     expect(h.executor.start).toHaveBeenCalledOnce()
   })
   it('refuses to decide an eval that a later eval replaced, and decides the later one', async () => {
@@ -638,7 +645,8 @@ describe('follow-up owners', () => {
     const ticketId = accepted(h).ticketId!
     h.engine.report(ticketId, { state: 'progress', summary: 'working' })
     h.tick(1); h.engine.receive(trigger('2')); h.settle()
-    h.outbox.push({ id: key('ack', '2'), channel: trigger('2').channel!, text: 'On it', kind: 'acknowledgement', ticketId })
+    h.outbox.push({ id: ackId(trigger('2')), channel: trigger('2').channel!, text: 'On it', ticketId,
+      action: outboundAction({ kind: 'acknowledgement', source: 'chat', objectId: '2', revision: 'accepted' }) })
     h.engine.report(ticketId, { state: 'dropped', summary: 'nothing to do' })
     expect([h.repo.threads.get('chat:t1')!.pending, h.repo.triggers.disposition('2')!.fanout]).toEqual([[], [ticketId]])
   })
@@ -812,10 +820,10 @@ describe('worker reports', () => {
     expect(replaced.attention).toMatchObject({ question: 'Which size?' })
     expect(replaced.attention).not.toHaveProperty('triggerId')
     // The replaced question is withdrawn from the outbox if its message has not gone out yet.
-    expect(h.withdrawn).toEqual([key('attention-reply', asked.attention!.id)])
+    expect(h.withdrawn).toEqual([attentionReplyId(asked.attention!.id)])
     const cleared = h.engine.report(ticketId, { state: 'progress', summary: 'answered', question: null })
     expect(cleared).not.toHaveProperty('attention')
-    expect(h.withdrawn).toEqual([key('attention-reply', asked.attention!.id), key('attention-reply', replaced.attention!.id)])
+    expect(h.withdrawn).toEqual([attentionReplyId(asked.attention!.id), attentionReplyId(replaced.attention!.id)])
   })
   it('ends the ticket on a final report: dropped drops it, ready completes it unless it follows a Source\'s Thread that is open', () => {
     const outcome = (state: 'ready' | 'dropped' | 'failed', follows: boolean, closed = false) => {
@@ -980,7 +988,7 @@ describe('direct decisions', () => {
     const second = h.decide(h.requests.at(-1)!, { kind: 'accept', title: 'Other', scope: 'small', reason: 'routed', acknowledgement: 'On it' })
     expect(second.ticketId).not.toBe(first.ticketId)
     expect(h.repo.tickets.get(second.ticketId!)!.origin).toEqual({ triggerId: '2', triggerIds: ['2'] })
-    expect(h.outbox.find(message => message.id === key('ack', '2'))).toMatchObject({ text: 'On it', kind: 'acknowledgement' })
+    expect(h.outbox.find(message => message.id === ackId(trigger('2')))).toMatchObject({ text: 'On it', action: expect.objectContaining({ kind: 'acknowledgement' }) })
     // The replayed request still answers with the ticket it started.
     expect(h.engine.decide('1', { kind: 'accept', title: 'Again', scope: 'small', reason: 'again' })).toEqual(first)
   })
@@ -1037,10 +1045,10 @@ describe('replies', () => {
     const h = harness()
     const ticketId = accepted(h).ticketId!
     // The acknowledgement of the accept stays; a later request for one reuses it.
-    expect(h.engine.reply({ purpose: 'acknowledgement', ticketId, triggerId: '1', text: 'On it' })).toEqual({ id: key('ack', '1'), status: 'pending', reused: true })
+    expect(h.engine.reply({ purpose: 'acknowledgement', ticketId, triggerId: '1', text: 'On it' })).toEqual({ id: ackId(trigger('1')), status: 'pending', reused: true })
     expect(h.outbox.map(message => message.text)).toEqual(['ok'])
     h.engine.receive(trigger('2', { actor: guest }))
-    expect(h.engine.reply({ purpose: 'acknowledgement', ticketId, triggerId: '2', text: 'Looking' })).toEqual({ id: key('ack', '2'), status: 'pending', reused: false })
+    expect(h.engine.reply({ purpose: 'acknowledgement', ticketId, triggerId: '2', text: 'Looking' })).toEqual({ id: ackId(trigger('2')), status: 'pending', reused: false })
     h.engine.receive(trigger('3', { human: false }))
     expect(() => h.engine.reply({ purpose: 'acknowledgement', ticketId, triggerId: '3', text: 'x' })).toThrow(new UserError('ackNotPerson'))
     h.engine.receive(trigger('6', { threads: [{ source: 'chat', id: 'elsewhere' }] }))
@@ -1056,7 +1064,7 @@ describe('replies', () => {
     expect(() => h.engine.reply({ purpose: 'answer', triggerId: '2', text: 'Yes' })).toThrow(new UserError('noAnswer'))
     h.engine.report(ticketId, { state: 'progress', summary: 'Yes', answers: '2' })
     expect(h.engine.reply({ purpose: 'answer', triggerId: '2', text: 'Yes' })).toMatchObject({ status: 'pending', reused: false })
-    expect(h.outbox.at(-1)).toMatchObject({ channel: asked.channel, text: 'Yes', kind: 'reply' })
+    expect(h.outbox.at(-1)).toMatchObject({ channel: asked.channel, text: 'Yes', action: expect.objectContaining({ kind: 'reply' }) })
     expect(h.repo.tickets.get(ticketId)!.answers).toEqual([])
     expect(() => h.engine.reply({ purpose: 'result', ticketId, text: 'Done' })).toThrow(new UserError('notReady'))
     h.engine.report(ticketId, { state: 'progress', summary: 'asking', question: 'Which color?', askedBy: '2' })
@@ -1066,7 +1074,7 @@ describe('replies', () => {
     expect(() => h.engine.reply({ purpose: 'attention', ticketId: quiet, text: 'Anything to send.' })).toThrow(new UserError('notAttention'))
     expect(() => h.engine.reply({ purpose: 'attention', ticketId: quiet, question: '', text: 'Anything to send.' })).toThrow(new UserError('notAttention'))
     const attention = h.repo.tickets.get(ticketId)!.attention!
-    expect(h.engine.reply({ purpose: 'attention', ticketId, question: 'Which color?', text: 'Which color?' }).id).toBe(key('attention-reply', attention.id))
+    expect(h.engine.reply({ purpose: 'attention', ticketId, question: 'Which color?', text: 'Which color?' }).id).toBe(attentionReplyId(attention.id))
     // A question goes where the message that raised it was written.
     expect(h.outbox.at(-1)!.channel).toEqual(asked.channel)
     h.engine.report(ticketId, { state: 'ready', summary: 'Done' })
@@ -1263,7 +1271,7 @@ describe('Evals across Policy versions, revoked Mandates and mixed batches', () 
     expect(h.requests.at(-1)!.triggers.map(item => item.id)).toEqual(['1', '2'])
     const decision = h.decide(h.requests.at(-1)!, { kind: 'accept', title: 'Fix', scope: 'small', reason: 'r', acknowledgement: 'ok' })
     expect(h.repo.tickets.get(decision.ticketId!)!.origin).toEqual({ triggerId: '1', triggerIds: ['1', '2'] })
-    expect(h.outbox).toEqual([expect.objectContaining({ id: key('ack', '1'), channel: trigger('1').channel })])
+    expect(h.outbox).toEqual([expect.objectContaining({ id: ackId(trigger('1')), channel: trigger('1').channel })])
   })
 })
 describe('gaps', () => {

@@ -23,7 +23,7 @@ import { githubLink } from '@superagent/dsh/sources/github-channel.ts'
 import { githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
 import { conversationDefinition, conversationTrigger } from '@superagent/dsh/sources/conversation.ts'
 import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
-import { createAction, createApproval, followupOwners, type ChannelRef } from '@superagent/kernel'
+import { createAction, createApproval, followupOwners, outboundAction, type ChannelRef } from '@superagent/kernel'
 import { fakeDefinition, fakeManifest } from './fixtures/fake-source.ts'
 
 let directory: string
@@ -34,10 +34,13 @@ beforeEach(() => {
 })
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }) })
 const links = (channel: ChannelRef) => (channel.source === 'feishu' ? feishuLink : githubLink)(channel.address, {})
+const ids = new Map<string, string>()
 const drop = (id: string, channel: ChannelRef, ticketId?: string) => {
-  const message = { id, channel, text: id, kind: 'reply' as const, ...ticketId ? { ticketId } : {} }
+  const action = outboundAction({ kind: 'reply', source: channel.source, objectId: id, revision: 'rev-1' })
+  const message = { action, channel, text: id, ...ticketId ? { ticketId } : {} }
+  ids.set(id, action.idempotencyKey)
   store.receipts.add(message)
-  store.receipts.settle(message, 'channelGone')
+  store.receipts.settle({ ...message, id: action.idempotencyKey }, 'channelGone')
 }
 
 it('names the Thread of each dropped message: the one of the Trigger its Channel answers, or the Channel\'s own', () => {
@@ -51,7 +54,7 @@ it('names the Thread of each dropped message: the one of the Trigger its Channel
   // A message whose Trigger and Thread the store no longer has links nowhere.
   drop('c', feishuChannel('oc_2', 'om_gone'))
   expect(Object.fromEntries(droppedReplies({ store, links }).map(item => [item.id, item.thread])))
-    .toEqual({ a: 'feishu:oc_1:om_root', b: 'github:42', c: undefined })
+    .toEqual({ [ids.get('a')!]: 'feishu:oc_1:om_root', [ids.get('b')!]: 'github:42', [ids.get('c')!]: undefined })
 })
 
 function views() {
