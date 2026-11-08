@@ -38,7 +38,7 @@ Shutdown cancels turns, waits for passes, effects and agents, restores the proce
 | --- | --- | --- |
 | Setup | `packages/dsh/src/app/setup.ts` | Resolves the repository and the accounts by probing their CLIs the way worker shells run them, writes and applies the workers' environment and command shims, and keeps the setup problems; Settings checks a changed account through it, and restarts through it, which runs setup again |
 | Passes | `packages/dsh/src/app/passes.ts` | One pass at a time, every two seconds and whenever a command asks: the due effects, then `Engine.evaluateDue`; a Source's Trigger reaches the Engine through it |
-| Outbox | `packages/dsh/src/app/outbox.ts` | The Engine's `Outbox` port, and the only writer of the receipts: `send` keeps a message's receipt and queues its `reply` effect in one transaction, and the effect's handler sends it through `SourceRegistry.send`; a message waits while its Source is off, and is dropped when the conversation is gone or not listened to |
+| Outbox | `packages/dsh/src/app/outbox.ts` | The Engine's `Outbox` port, and the only writer of the receipts: `send` keeps a message's receipt and queues its `reply` effect for the end of the Policy's undo window in one transaction, and the effect's handler sends it through `SourceRegistry.send`; `recall` cancels a pending message inside that window and keeps its receipt as `recalled`; a message waits while its Source is off, and is dropped when the conversation is gone or not listened to |
 | Notices | `packages/dsh/src/app/notices.ts` | Converts domain events and worker activity into main-Session messages. `eventNotice` handles domain notices, and suppresses a Ticket's end when its latest Assignment's report already gave the outcome or a person ended it, so one outcome costs one notification; `reportRelay` forwards questions immediately, keeps ordinary progress on its Ticket, and relays other reports; `followupRelay` names the Tickets that own a human follow-up. Relays arriving during a turn are delivered together at its next step through the DeepSeek Harness inbox |
 
 ### Engine
@@ -158,16 +158,16 @@ Its interfaces are grouped by purpose:
 - **Read queries:** `read` serves views, tools and Source polls through methods such as `threadTriggers`, `triggerStats`, `search` and `droppedReplies`. These methods never write.
 - **Source metadata:** `threads.describe` and `threads.patchMeta` update Source-owned Thread metadata.
 - **Settings:** `settings`, `saveSettings`, `blockRevision` and `settingsHistory`. Settings and prompts use numbered `Versions` (`packages/dsh/src/app/versions.ts`).
-- **Outbox receipts:** `replyStatus` and `receipts`, written only by Outbox. Receipt operations are `get`, `waiting`, `behind`, `add`, `settle` and `withdraw`. `behind` checks whether an earlier message for the same Ticket and conversation is waiting with fewer than three failures. A withdrawn message settles with `channelGone` or `channelIgnored`. Read queries expose failed and dropped replies through `failingReplies`, `droppedReplies` and `droppedSince`.
+- **Outbox receipts:** `replyStatus` and `receipts`, written only by Outbox. Receipt operations are `get`, `waiting`, `behind`, `add`, `settle`, `recall` and `withdraw`. A pending receipt records the end of its undo window (`dueAt`) and the window it used (`windowMs`); `recall` changes it to `recalled` only before `dueAt`, while `withdraw` cancels any still-pending receipt, such as one whose retries keep failing after the window. Both cancel the message's `reply` effect. A send already in flight when the receipt is withdrawn settles it to what actually happened, so a receipt can move from `recalled` to `sent` or `dropped` in that race. Receipts without a window, such as those migrated from earlier versions, cannot be recalled. `behind` checks whether an earlier message for the same Ticket and conversation is waiting with fewer than three failures. A message whose conversation is gone or not listened to settles with `channelGone` or `channelIgnored`. Read queries expose failed and dropped replies through `failingReplies`, `droppedReplies` and `droppedSince`.
 - **Typed key-value records:** `get`, `set`, `delete` and `keys`, using entries from `KV`.
 
 `afterCommit` runs an action only after the transaction commits, never after rollback. Runtime reads records in their stored shape; the migration converts older supported records at startup. Schema 12 added the `span` table, schema 13 the `activity` table and schema 14 the `approval` table without rewriting records: a database at schema 11 or 10 opens at 14 with its records untouched.
 
 ### Effects
 
-`Effects` (`packages/dsh/src/app/effects.ts`) is the durable side-effect queue. A command calls `enqueue(kind, key, payload)` inside its transaction; execution begins only after commit.
+`Effects` (`packages/dsh/src/app/effects.ts`) is the durable side-effect queue. A command calls `enqueue(kind, key, payload, due?)` inside its transaction; execution begins only after commit. `due` schedules the row for later and defaults to now; Outbox uses it for the end of a message's undo window.
 
-Each kind/key pair has one row. Enqueuing the same waiting key replaces its payload and makes it due immediately without changing queue order. `handle(kind, run, options)` registers one handler per kind. It processes due rows oldest first, up to the concurrency limit.
+Each kind/key pair has one row. Enqueuing the same waiting key replaces its payload and its due time without changing queue order. `handle(kind, run, options)` registers one handler per kind. It processes due rows oldest first, up to the concurrency limit.
 
 Failures retry with exponential backoff. Throwing `Later` defers work without counting a failure, for example when no worker slot is available. `start` begins processing after setup, `drain` stops it during shutdown while preserving pending rows, and `pending`/`idle` expose queue state.
 
@@ -178,7 +178,7 @@ Failures retry with exponential backoff. Throwing `Later` defers work without co
 | `delivery` | DshExecutor | Hands a Ticket's waiting Inputs to its running Assignment, in order | 4, none while paused | 2 s doubling to 60 s; one that waits for a worker slot tries again after 2 s |
 | `relay` | Sessions | Steers a worker's report or question, or a person's follow-up, into the main Session's turn | 1, in queue order | 2 s doubling to 60 s |
 | `notice` | Sessions | Injects a notice into the main Session without waking it | 1, in queue order | 2 s doubling to 60 s |
-| `reply` | Outbox | Sends a message for a Channel through its Source, after the earlier messages of its Ticket to its conversation that have not failed three times; withdrawing the message cancels it | 1, none while paused | 5 s doubling to 300 s; one whose Source is off, or behind an earlier message, tries again after 5 s |
+| `reply` | Outbox | Sends a message for a Channel through its Source at the end of its undo window, after the earlier messages of its Ticket to its conversation that have not failed three times; recalling the message inside the window cancels it | 1, none while paused; the undo window holds the row without consuming a slot | 5 s doubling to 300 s; one whose Source is off, or behind an earlier message, tries again after 5 s |
 
 Each kind has a health entry under its name. It reports an error once one of its effects failed three times in a row, except `delivery`, whose failures show on their Ticket instead. Relays keep their order, and so do notices; a failed one holds back the later ones of its kind.
 
@@ -329,7 +329,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/assembly.ts` | The builder `Runtime` runs, in dependency order: the Engine, the host services, the Executor and the Assessor, each wired with the interfaces it uses, returned as one read-only graph |
 | `packages/dsh/src/app/setup.ts` | Setup, and `setupChanged`, whether a save changes a field setup reads |
 | `packages/dsh/src/app/passes.ts` | Passes, the pass scheduler |
-| `packages/dsh/src/app/outbox.ts` | The Outbox: the Engine's `Outbox` port, the receipts and the `reply` effects that send them |
+| `packages/dsh/src/app/outbox.ts` | The Outbox: the Engine's `Outbox` port, the receipts, the undo window and the `reply` effects that send them |
 | `packages/dsh/src/app/notices.ts` | The main Session's notices and relays: `eventNotice`, `reportRelay`, `resultRelay` and `followupRelay` |
 | `packages/dsh/src/app/activity.ts` | `ActivityLog`: every domain event graded `quiet`, `feed` or `notice` and kept in the Store's `activity` table; `endCoveredBy` is the single-notification budget |
 | `packages/dsh/src/app/store.ts` | The Store, and `Receipt`, a message of the outbox |
@@ -463,7 +463,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/packaging.spec.ts` | The split between the bundle and the runtime: the bundle keeps the entry names its patch rows resolve, installs the runtime as a dependency instead of carrying its code, and re-exports the runtime plugins unchanged |
 | `tests/effects.spec.ts` | The effect queue: coalescing, limits, retries with backoff, health and shutdown |
 | `tests/passes.spec.ts` | Passes: one at a time, the ones asked for during a pass run as one after it, and the runtime health a failed pass reports |
-| `tests/outbox.spec.ts` | The Outbox on a running Runtime: messages wait while processing is paused or their Source is not installed |
+| `tests/outbox.spec.ts` | The Outbox on a running Runtime: messages wait while processing is paused or their Source is not installed; a message waits out its undo window, can be recalled inside it without sending, is sent at the window's end, and refuses a late recall with its reason |
 | `tests/cache.spec.ts` | `TextCache` |
 | `tests/queue.spec.ts` | The Runtime's work through the effect queue, and what earlier versions stored |
 | `tests/followups.spec.ts` | A person's follow-up on a Ticket's Thread: its notice to the main Session, the tools that act on it, what a burst costs; a worker's hand-back and context follow, and the main Session's note |
@@ -517,7 +517,7 @@ One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.
 | `effect` | The effect queue: per kind and key, the payload, its order, failed attempts with the last error, and when it is due | Effects; the schema 11 migration queues what earlier versions kept for the main Session |
 | `span` | Each stage a Trigger passed, by its trace's id, with the kind of stage, its `at` and the bounded facts recorded for it; a stage recorded twice keeps its first row, because its id is derived from the trace, the stage and an optional ref that tells repeated happenings apart | The Engine, through `SqliteTraceSink` |
 | `activity` | Every domain event as one JSON row, by a monotonic `seq` that is the system view's cursor: its `quiet`, `feed` or `notice` level, a one-line summary, its Ticket and Thread, and why a notice-worthy event was suppressed. The newest 5,000 rows are kept | The Engine's emit hook, through `ActivityLog` |
-| `outbox` | The receipt of each message for a Channel, by id, with the Ticket it is for and its `status`, `pending`, `sent` or `dropped`, kept so an id is never queued twice; for a dropped message, when and why, as the generated column `dropped`, its time, and a reason code. A message that waits has a `reply` effect, which holds its attempts | The Outbox |
+| `outbox` | The receipt of each message for a Channel, by id, with the Ticket it is for and its `status`, `pending`, `sent`, `recalled` or `dropped`, kept so an id is never queued twice; a pending receipt records `dueAt`, the end of its undo window, and `windowMs`; `recalled` records when it was withdrawn instead of sent; for a dropped message, when and why, as the generated column `dropped`, its time, and a reason code. A message that waits has a `reply` effect, which holds its attempts | The Outbox |
 | `kv` | Every other record, by key | The part that names it |
 
 A generated column is computed from its row's JSON and is empty outside its set, and each has an index over its set, so a pass reads only active work. A database that predates a column gets it when the Store opens it.

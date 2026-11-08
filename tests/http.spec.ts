@@ -6,7 +6,7 @@ import { SettingsConflict } from '@superagent/dsh/app/settings.ts'
 import type { HttpHost } from '@superagent/dsh/app/http.ts'
 import { SettingsSchema } from '@superagent/dsh/policy.ts'
 import { SetupError } from '@superagent/dsh/setup.ts'
-import { createAction, createApproval, type Approval } from '@superagent/kernel'
+import { createAction, createApproval, UserError, type Approval } from '@superagent/kernel'
 
 type Handler = (req: unknown, res: unknown) => Promise<void>
 type Headers = Record<string, string | undefined>
@@ -72,6 +72,20 @@ it('answers each kind of failure with its own status', async () => {
   expect(await call('POST', 'tickets/t9/retry')).toEqual({ status: 404, body: { error: 'Ticket not found' } })
   expect(await call('GET', 'nothing/here')).toEqual({ status: 404, body: { error: 'Unknown operation' } })
   expect(await call('POST', 'executor/pause', 'not json')).toEqual({ status: 400, body: { error: 'The request body is not JSON' } })
+})
+
+it('recalls a pending message through the API and maps its refusals', async () => {
+  const recalled: string[] = []
+  const call = serve({ outbox: { recall: (id: string) => {
+    if (id === 'missing') throw new UserError('unknownReply')
+    if (id === 'late') throw new UserError('undoClosed', { at: '2026-11-08T05:00:00.000Z' })
+    recalled.push(id); return 'recalled'
+  } } })
+  expect(await call('POST', 'outbox/a%2Fb/recall')).toEqual({ status: 200, body: { status: 'recalled' } })
+  expect(recalled).toEqual(['a/b'])
+  expect(await call('POST', 'outbox/missing/recall')).toMatchObject({ status: 404, body: { code: 'unknownReply' } })
+  expect(await call('POST', 'outbox/late/recall')).toMatchObject({ status: 400, body: { code: 'undoClosed',
+    values: { at: '2026-11-08T05:00:00.000Z' } } })
 })
 
 it('decodes path parameters and parses each route\'s query', async () => {

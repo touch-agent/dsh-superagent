@@ -145,7 +145,8 @@ function effectQueue(store: Store) {
 }
 /**
  * Convert outbox rows into status receipts (`pending`, `sent`, or `dropped`) and enqueue pending messages as `reply`
- * effects in row order, moving their prior `attempts` and `error` onto the effect.
+ * effects in row order, moving their prior `attempts` and `error` onto the effect. Migrated receipts have no undo window,
+ * so a pending one is due at once and cannot be recalled.
  */
 function outboxReceipts(store: Store): void {
   const columns = store.db.prepare("SELECT name FROM pragma_table_xinfo('outbox')").all().map(row => String(row.name))

@@ -94,7 +94,7 @@ describe('conversation dispatch through the Engine', () => {
     const engine = new Engine({ repo, scope: sources, policy: () => settingsPolicy(settings, sources),
       assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
       prepareTicket: (ticket, outcome) => ({ ...ticket, execution: ticketExecution(ticket, outcome, settings, '/state') }),
-      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn() } })
+      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn(), recall: vi.fn(() => 'recalled' as const) } })
     const dispatch = (input: { title: string; scope: string }) => dispatchConversation(agent(user('Fix the flaky test')), {
       engine, disposition: id => repo.triggers.disposition(id), ticket: id => repo.tickets.get(id) }, input)
     const first = dispatch({ title: 'Fix the flaky test', scope: 'Make the test stable.' })
@@ -116,7 +116,7 @@ describe('conversation dispatch through the Engine', () => {
     sources.registerDefinition(conversationDefinition)
     const engine = new Engine({ repo, scope: sources, policy: () => settingsPolicy(settings, sources),
       assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
-      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn() } })
+      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn(), recall: vi.fn(() => 'recalled' as const) } })
     const result = dispatchConversation(agent(user('Fix the flaky test')), { engine, disposition: id => repo.triggers.disposition(id),
       ticket: id => repo.tickets.get(id) }, { title: 'Fix', scope: 'Fix it.' })
     expect(result).toEqual({ refused: expect.stringContaining('off') })
@@ -132,7 +132,7 @@ describe('conversation attach through the Engine', () => {
     sources.registerDefinition(conversationDefinition)
     const engine = new Engine({ repo, scope: sources, policy: () => settingsPolicy(settings, sources),
       assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
-      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn() } })
+      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn(), recall: vi.fn(() => 'recalled' as const) } })
     const first = dispatchConversation(agent(user('Fix the flaky test')), { engine, disposition: id => repo.triggers.disposition(id),
       ticket: id => repo.tickets.get(id) }, { title: 'Fix', scope: 'Fix it.' })
     if ('refused' in first || !first.ticket) throw new Error('the first dispatch did not create a ticket')
@@ -154,7 +154,7 @@ describe('the ticket bind tool', () => {
     const engine = new Engine({ repo, scope: sources, policy: () => settingsPolicy(settings, sources),
       assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
       prepareTicket: (ticket, outcome) => ({ ...ticket, execution: ticketExecution(ticket, outcome, settings, '/state') }),
-      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn() } })
+      outbox: { send: vi.fn(), status: () => undefined, withdraw: vi.fn(), recall: vi.fn(() => 'recalled' as const) } })
     const first = dispatchConversation(agent(user('Fix the flaky test')), { engine, disposition: id => repo.triggers.disposition(id),
       ticket: id => repo.tickets.get(id) }, { title: 'Fix', scope: 'Fix it.' })
     if ('refused' in first || !first.ticket) throw new Error('the dispatch did not create a ticket')

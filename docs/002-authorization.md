@@ -151,6 +151,8 @@ If revalidation fails, the Ticket stays ended and takes none of its waiting mess
 
 A Mandate also records the highest action level it permits (`maxActionLevel`) and, when the Policy sets a lifetime, when it expires. The Policy's maximum is `draft` by default: work that only produces internal objects needs no further enablement, while `commit`, `send` and `spend` require the Policy to raise the ceiling explicitly. A Mandate accepted before this field existed has no recorded ceiling; it follows the Policy's current maximum until new work is accepted.
 
+The Policy also sets `undoWindowSeconds` for outbound messages: each message stays pending and recallable for that long before it is sent (`0`–`300`; default `30`, and an IM tenant usually sets `0`). The window is fixed on the receipt when the message is queued, so changing the Policy affects later messages, not one already waiting. This is a delivery setting rather than an authorization rule: it is not part of the Policy version, so changing it does not discard running Evals, send a policy-changed Input or withdraw a Mandate.
+
 A running Ticket revalidates its Mandate at each action point, with the action's level and the moment:
 
 - an expired Mandate is refused with `mandateExpired`;

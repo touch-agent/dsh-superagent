@@ -222,13 +222,14 @@ describe('revalidate and version', () => {
     expect(setup({ ...base, policy: { ...base.policy, rules: base.policy.rules.map(rule => ({ ...rule, enabled: rule.id !== 'copy' })) } }).policy.revalidate(inferred, NOW).ok).toBe(false)
     expect(setup(nobody).policy.revalidate({ ...mandate, basis: { via: 'followup' } }, NOW).ok).toBe(true)
   })
-  it('changes the Policy version for rules, accept mode, action limits and the Sources\' parts, not for pause, concurrency, models or Source configuration', () => {
+  it('changes the Policy version for rules, accept mode, action limits and the Sources\' parts, not for pause, concurrency, models, the outbound undo window or Source configuration', () => {
     const version = setup().version
     expect(setup({ ...base, paused: true, executor: { ...base.executor, maxWorkers: 9 }, eval: { ...base.eval, timeoutSeconds: 300 }, sources: { ...base.sources, github: { enabled: true, config: { pollSeconds: 600 } } } }).version).toBe(version)
     expect(setup({ ...base, sources: { feishu: feishuSource({ chats: [], directMessages: false }) } }).version).toBe(version)
     expect(setup({ ...base, eval: { ...base.eval, mode: 'off' } }).version).not.toBe(version)
     expect(setup({ ...base, policy: { ...base.policy, maxActionLevel: 'send' } }).version).not.toBe(version)
     expect(setup({ ...base, policy: { ...base.policy, mandateMinutes: 30 } }).version).not.toBe(version)
+    expect(setup({ ...base, policy: { ...base.policy, undoWindowSeconds: 0 } }).version).toBe(version)
     expect(setup({ ...base, policy: { ...base.policy, sources: { ...base.policy.sources, github: { allowed: [], admission: {} } } } }).version).not.toBe(version)
   })
 })
@@ -276,6 +277,11 @@ describe('action-time revalidation', () => {
   })
 })
 describe('settings migration', () => {
+  it('defaults the outbound undo window to 30 seconds and accepts only whole seconds from 0 to 300', () => {
+    expect(SettingsSchema.parse({}).policy.undoWindowSeconds).toBe(30)
+    for (const window of [0, 300]) expect(SettingsSchema.parse({ policy: { undoWindowSeconds: window } }).policy.undoWindowSeconds).toBe(window)
+    for (const window of [-1, 301, 1.5]) expect(() => SettingsSchema.parse({ policy: { undoWindowSeconds: window } })).toThrow()
+  })
   it('moves each member\'s identity into each Source\'s part of the Policy and drops the fields prompts and the execution environment replaced', () => {
     const saved = SettingsSchema.parse(migrateSettings({
       policy: { members: [{ name: 'Alice', feishuId: MEMBER, github: 'alice' }, { name: 'Bob', feishuId: 'ou_bob', github: '' }, { name: 'Carol', feishuId: '', github: 'carol' }], memberChat: CHAT, autoMergeLineLimit: 300,
@@ -287,6 +293,7 @@ describe('settings migration', () => {
       rules: [{ id: 'visual', name: 'V', enabled: true, instruction: 'x' }],
       maxActionLevel: 'draft',
       mandateMinutes: 0,
+      undoWindowSeconds: 30,
       sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }, { id: 'ou_bob', name: 'Bob' }], syncChat: CHAT, admission: {} }, github: { allowed: [{ id: 'alice' }, { id: 'carol' }], admission: {} } },
     })
     expect(saved).toMatchObject({ paused: false, executor: { model: null, maxWorkers: 2, directory: '', prepare: '', blockedCommands: [] } })
@@ -300,7 +307,7 @@ describe('settings migration', () => {
     expect(migrated).toEqual({
       paused: true,
       sources: { feishu: feishuSource({ chats: [{ chatId: CHAT, listen: 'mentions' }, { chatId: OBSERVED, listen: 'all' }], directMessages: false }), github: { enabled: true, config: { pollSeconds: 120 } } },
-      policy: { rules: [], maxActionLevel: 'draft', mandateMinutes: 0, sources: { feishu: { allowed: [{ id: MEMBER, name: 'A' }], admission: {} }, github: { allowed: [{ id: 'a' }], admission: {} } } },
+      policy: { rules: [], maxActionLevel: 'draft', mandateMinutes: 0, undoWindowSeconds: 30, sources: { feishu: { allowed: [{ id: MEMBER, name: 'A' }], admission: {} }, github: { allowed: [{ id: 'a' }], admission: {} } } },
       eval: { mode: 'auto', timeoutSeconds: 90, model: { provider: 'p', model: 'm' } },
       executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [] },
     })
