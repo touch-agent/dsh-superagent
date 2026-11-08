@@ -1,6 +1,7 @@
 /** Grades domain events for the system view and the single-notification budget, and presents each one for the Events tab. */
 import { latestAssignment, threadKey, ticketStage, type Decision, type DomainEvent, type Localized, type Thread, type Ticket,
   type TicketOutcome, type Trigger } from '@superagent/kernel'
+import { ownershipIndex, type OwnershipIndex } from './ownership.ts'
 import { preview } from './views/text.ts'
 
 /**
@@ -101,11 +102,13 @@ export interface ActivityLookup {
   trigger: (id: string) => Trigger | undefined
   decision: (id: string) => Decision | undefined
   firstTrigger: (key: string) => Trigger | undefined
+  /** One request's Ticket placement, shared with the Tickets board; omitted by partial test doubles. */
+  ownership?: OwnershipIndex
 }
 
 /** The Store reads behind an `ActivityLookup`; optional chaining keeps a partial test double from failing a read. */
 export interface ActivityStoreReads {
-  tickets: { get: (id: string) => Ticket | undefined; byTrigger?: (id: string) => Ticket | undefined }
+  tickets: { get: (id: string) => Ticket | undefined; list?: () => Ticket[]; byTrigger?: (id: string) => Ticket | undefined }
   threads: { get: (key: string) => Thread | undefined }
   triggers: { get: (id: string) => Trigger | undefined }
   decisions: { get: (id: string) => Decision | undefined }
@@ -115,7 +118,8 @@ export interface ActivityStoreReads {
 export function activityLookup(store: ActivityStoreReads): ActivityLookup {
   return { ticket: id => store.tickets?.get(id), ticketForTrigger: id => store.tickets?.byTrigger?.(id),
     thread: key => store.threads?.get(key), trigger: id => store.triggers?.get(id),
-    decision: id => store.decisions?.get(id), firstTrigger: key => store.read?.firstTrigger(key) }
+    decision: id => store.decisions?.get(id), firstTrigger: key => store.read?.firstTrigger(key),
+    ...store?.tickets?.list ? { ownership: ownershipIndex(store.tickets.list()) } : {} }
 }
 
 /**
@@ -373,9 +377,11 @@ export function presentActivity(record: ActivityRecord, lookup: ActivityLookup):
   const thread = home ? lookup.thread(home) : undefined
   const subject = inferredSubject(record, ticket, thread, lookup)
 
-  const parent = ticket ? parentOf(ticket, lookup) : undefined
-  const task: ActivityTask | undefined = ticket
-    ? { id: ticket.id, title: ticket.title, status: activityStatusOf(ticket), ...parent ? { parent } : {} }
+  // A review Ticket's events belong to the Ticket whose pull request it reviews, so both views tell one task story.
+  const owner = ticket ? lookup.ownership?.owner(ticket) ?? ticket : undefined
+  const parent = owner ? parentOf(owner, lookup) : undefined
+  const task: ActivityTask | undefined = owner
+    ? { id: owner.id, title: owner.title, status: activityStatusOf(owner), ...parent ? { parent } : {} }
     : thread ? { id: thread.key, title: threadTitle(thread, lookup), status: statusOf(record.event, decision, undefined) } : undefined
 
   const ended = endedFacts(record, ticket)
@@ -389,7 +395,7 @@ export function presentActivity(record: ActivityRecord, lookup: ActivityLookup):
     ...record.event.startsWith('trigger.') && trigger
       ? { trigger: { source: trigger.source, ...triggerPreview ? { preview: triggerPreview } : {} } } : {},
   }
-  const started = ticket ? Date.parse(ticket.createdAt) : Number.NaN
+  const started = owner ? Date.parse(owner.createdAt) : Number.NaN
   const at = Date.parse(record.at)
   const sinceStartMs = Number.isFinite(started) && Number.isFinite(at) && at - started >= 60_000 ? at - started : undefined
   return { ...record, ...subject ? { subject } : {}, ...task ? { task } : {}, ...home && !record.thread ? { thread: home } : {},

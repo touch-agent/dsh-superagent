@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import type { Assignment, Decision, DomainEvent, Thread, Ticket, Trigger } from '@superagent/kernel'
 import { Store } from '@superagent/dsh/app/store.ts'
-import { ActivityLog, activityFeed, activityStatusOf, endCoveredBy, gradeEvent, presentActivity, type ActivityLookup } from '@superagent/dsh/app/activity.ts'
+import { ActivityLog, activityFeed, activityLookup, activityStatusOf, endCoveredBy, gradeEvent, presentActivity, type ActivityLookup } from '@superagent/dsh/app/activity.ts'
 import { eventNotice } from '@superagent/dsh/app/notices.ts'
 
 let directory: string
@@ -243,4 +243,19 @@ it('completes a feed page only when the reader provides the domain lookup', () =
     level: 'feed' as const, summary: 'Trigger x received' }], after: () => [] }
   expect(activityFeed(read, 0).items[0]?.task).toBeUndefined()
   expect(activityFeed(read, 0, 50, undefined, lookup).items[0]?.task).toMatchObject({ id: 't1' })
+})
+
+it('groups a review Ticket under the Ticket it reviews through the Store-backed lookup', () => {
+  const impl = { ...ticket(undefined), id: 'impl', title: '修复登录（T2-03）', createdAt: '2026-01-01T00:00:00Z' }
+  const review = { ...ticket(undefined), id: 'review', title: 'review PR #8：修复登录', createdAt: '2026-01-01T01:00:00Z',
+    mandate: { ...ticket(undefined).mandate, scope: '对 PR #8（T2-03）做独立 review' } }
+  const record = { seq: 20, at: '2026-01-01T02:00:00Z', event: 'ticket.ended' as const, level: 'notice' as const,
+    summary: 'Ticket review ended', ticket: 'review' }
+  const wired = activityLookup({
+    tickets: { get: id => id === 'review' ? review : id === 'impl' ? impl : undefined, list: () => [impl, review] },
+    threads: { get: () => undefined }, triggers: { get: () => undefined }, decisions: { get: () => undefined },
+    read: { firstTrigger: () => undefined } })
+  const presented = presentActivity(record, wired)
+  expect(presented.task).toMatchObject({ id: 'impl', title: '修复登录（T2-03）' })
+  expect(presented.sinceStartMs).toBe(2 * 3_600_000)
 })

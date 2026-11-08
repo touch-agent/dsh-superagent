@@ -416,3 +416,60 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-events-subject:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
 .dt-events-status-icon { display: inline-flex; margin-right: 3px; vertical-align: -1px; }
 .dt-stat b { font-size: 14px; font-weight: 500; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+/* Tickets board: one tree row per node, with the optional git-like milestone graph. */
+.dt-task-intro { max-width: 760px; }
+.dt-task-views { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; }
+.dt-task-views .dt-segmented { max-width: 220px; }
+.dt-task-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 8px; }
+.dt-task-root { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 12px; background: var(--dsw-alias-bg-layer-2); overflow: hidden; }
+.dt-task-list { margin: 0; padding: 0; list-style: none; }
+.dt-task-node + .dt-task-node { border-top: 0.5px solid var(--dsw-alias-border-l2); }
+.dt-task-node[data-kind='ticket'] > .dt-task-row, .dt-task-node[data-kind='review'] > .dt-task-row { background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 55%, transparent); }
+.dt-task-node[data-kind='task'] > .dt-task-row { background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover) 45%, transparent); }
+.dt-task-row { display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 4px 12px 4px 6px; font-size: 13px; line-height: 20px; }
+.dt-task-node[data-status='failed'] > .dt-task-row { box-shadow: inset 2px 0 0 var(--dsw-alias-state-error-primary); }
+.dt-task-node[data-status='blocked'] > .dt-task-row, .dt-task-node[data-status='review'] > .dt-task-row { box-shadow: inset 2px 0 0 var(--dsw-alias-state-warn-primary); }
+.dt-task-toggle { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dsw-alias-label-caption); cursor: pointer; }
+.dt-task-toggle:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dt-task-toggle:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dt-task-title { min-width: 0; max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-primary); }
+.dt-task-title.dt-task-open { padding: 0; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.dt-task-title.dt-task-open:hover { color: var(--dsw-alias-brand-primary); }
+.dt-task-title.dt-task-open:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 4px; }
+.dt-task-link { display: inline-flex; align-items: center; gap: 3px; color: var(--dsw-alias-link); text-decoration: none; }
+.dt-task-link:hover { text-decoration: underline; }
+.dt-task-subtitle { flex: none; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
+.dt-task-progress { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.dt-task-progress-bar { display: block; width: 54px; height: 4px; overflow: hidden; border-radius: 2px; background: var(--dsw-alias-interactive-bg-hover); }
+.dt-task-progress-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--dsw-alias-state-success-primary); }
+.dt-task-progress-text { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
+.dt-task-duration { flex: none; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
+.dt-task-graph { margin: 0 0 18px; }
+.dt-task-graph svg { display: block; width: 100%; height: auto; padding: 10px 0 2px; }
+.dt-graph-trunk { stroke: var(--dsw-alias-label-tertiary); stroke-width: 2.5; opacity: 0.7; }
+.dt-graph-line { fill: none; stroke: currentColor; stroke-width: 1.6; opacity: 0.75; }
+.dt-graph-branch[data-status='done'] { color: var(--dsw-alias-state-success-primary); }
+.dt-graph-branch[data-status='working'] { color: var(--dsw-alias-brand-primary); }
+.dt-graph-branch[data-status='queued'], .dt-graph-branch[data-status='idle'] { color: var(--dsw-alias-label-tertiary); }
+.dt-graph-branch[data-status='review'], .dt-graph-branch[data-status='answer'], .dt-graph-branch[data-status='delivery'] { color: var(--dsw-alias-state-warn-primary); }
+.dt-graph-branch[data-status='blocked'] { color: var(--dsw-alias-state-error-primary); }
+.dt-graph-branch[data-status='failed'] { color: var(--dsw-alias-state-error-primary); }
+.dt-graph-branch[data-status='blocked'] .dt-graph-line { stroke-width: 2.4; opacity: 1; stroke-dasharray: 5 3; }
+.dt-graph-branch[data-status='failed'] .dt-graph-line { stroke-width: 2.4; opacity: 1; }
+.dt-graph-fork, .dt-graph-node, .dt-graph-merge, .dt-graph-open { fill: currentColor; }
+.dt-graph-merge { stroke: var(--dsw-alias-bg-layer-1); stroke-width: 1.5; }
+.dt-graph-open { fill: var(--dsw-alias-bg-layer-2); stroke: currentColor; stroke-width: 1.5; }
+.dt-graph-caption { display: flex; justify-content: space-between; padding: 0 4px; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
+.dt-graph-legend { display: flex; flex-direction: column; gap: 2px; margin: 8px 0 0; padding: 0; list-style: none; }
+.dt-graph-legend li { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 6px; border-radius: 6px; font-size: 12px; line-height: 18px; }
+.dt-graph-legend li:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dt-graph-link { max-width: 46ch; padding: 0; border: 0; background: none; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-graph-link:hover { color: var(--dsw-alias-brand-primary); }
+.dt-graph-link:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 4px; }
+.dt-graph-key { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); }
+.dt-graph-key-line { display: inline-block; width: 22px; height: 2px; background: var(--dsw-alias-border-l1); }
+.dt-graph-key-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); }
+@media (max-width: 720px) {
+  .dt-task-title { max-width: 28ch; }
+  .dt-task-row { flex-wrap: wrap; }
+}
