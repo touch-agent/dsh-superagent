@@ -100,7 +100,7 @@ export class Outbox implements OutboxPort {
     if (receipt.attemptedAt) {
       let answer: ProbeAnswer | undefined
       try { answer = await sources.probe(receipt, commands) }
-      catch (error) { throw new Error(`The ${receipt.channel.source} delivery check failed, so the message is not resent: ${String(error)}`) }
+      catch (error) { throw new Error(`The ${receipt.channel.source} delivery check failed, so the message is not resent: ${String(error)}`, { cause: error }) }
       if (answer === 'sent') { store.receipts.settle(receipt, 'sent'); return }
       if (answer === 'unknown') throw new Error(`The ${receipt.channel.source} Source cannot tell whether the message was sent; it is kept pending and not resent`)
       // `gone` (or a Source without a probe) means it is not there, so sending it again is safe; a recall during the

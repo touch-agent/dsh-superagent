@@ -24,11 +24,14 @@ async function inspect(host: Pick<SourceContext, 'commands'>, document: string):
  * Reads the card's replies and whether this message's mark is among them; `truncated` means the page cap may hide it.
  * @throws when the card cannot be read; callers decide whether that is gone or retryable.
  */
-async function existingMark(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<{ found: boolean; truncated: boolean }> {
+async function existingMark(host: Pick<SourceContext, 'commands'>, message: OutboundMessage):
+  Promise<{ found: boolean; truncated: boolean; skipped: number }> {
   const { document, commentId } = message.channel.address
   if (!document || !commentId) throw new Error('The reply names no Feishu document comment')
-  const posted = await readReplies(host.commands, document, commentId)
-  return { found: posted.replies.some(reply => docMarkerIds(docReplyText(reply)).includes(message.id)), truncated: posted.truncated }
+  const tally = { skipped: 0 }
+  const posted = await readReplies(host.commands, document, commentId, tally)
+  return { found: posted.replies.some(reply => docMarkerIds(docReplyText(reply)).includes(message.id)),
+    truncated: posted.truncated, skipped: tally.skipped }
 }
 /**
  * Posts one reply on a comment card.
@@ -67,7 +70,8 @@ export async function sendFeishuDoc(host: Pick<SourceContext, 'commands'>, messa
 export async function probeFeishuDoc(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<ProbeAnswer> {
   try {
     const existing = await existingMark(host, message)
-    return existing.found ? 'sent' : existing.truncated ? 'unknown' : 'gone'
+    // An unreadable reply or a page cap could hide the mark, so neither lets a retry treat the reply as absent.
+    return existing.found ? 'sent' : existing.truncated || existing.skipped > 0 ? 'unknown' : 'gone'
   } catch (error) {
     // A deleted or solved comment cannot take the reply; any other read failure leaves the answer unknown.
     return gone(error) ? 'gone' : 'unknown'

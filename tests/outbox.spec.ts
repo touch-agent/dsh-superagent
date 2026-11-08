@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { outboundAction, UserError, type ChannelRef, type OutboundKind, type OutboundMessage } from '@superagent/kernel'
 import { Commands } from '@superagent/dsh/infra/commands.ts'
 import type { SourceKind } from '@superagent/dsh/sources/kind.ts'
+import { deliveryMark } from '@superagent/dsh/sources/feishu-mark.ts'
 import { feishu, startRuntime, type Host } from './fixtures/host.ts'
 
 let h: Host
@@ -217,16 +218,28 @@ it('keeps a message pending without resending it while a probe is unknown, then 
   expect([h.runtime.outbox.status(id), sends.length, probes.length]).toEqual(['sent', 2, 2])
 })
 
-it('probes a pending receipt left by a stopped process before sending it, so a restart delivers once', async () => {
-  const sends: string[] = []
-  h.runtime.sources.register(checkKind(async () => 'sent', async id => { sends.push(id); return 'sent' }))
+it('probes a pending receipt after a real restart, so a message whose send was attempted is delivered once', async () => {
+  const lark = vi.mocked(Commands.prototype.lark)
   setWindow(0)
-  const action = send('notice', { source: 'check', thread: 'check:1', address: {} }, 'restarted', { text: 'Restarted' })
+  const action = send('notice', feishu('9', 'x').channel!, 'restarted', { text: 'Restarted' })
   const id = action.idempotencyKey
-  // The process recorded the attempt but stopped before its outcome; on restart the probe answers what happened.
+  // The process recorded the attempt and stopped before the reply's outcome was known; its effect stays on disk.
   h.runtime.store.receipts.attempt(id, new Date().toISOString())
+  await h.runtime.stop()
+  h = await startRuntime(undefined, h.directory)
+  let replies = 0
+  lark.mockClear().mockImplementation(async (args: string[]) => {
+    if (args[1] === '+threads-messages-list') {
+      return { messages: [{ content: JSON.stringify({ text: `${deliveryMark(id)}Restarted` }), msg_type: 'text' }], has_more: false }
+    }
+    replies += 1
+    return {}
+  })
+  // The restarted Outbox replays the durable effect and asks the topic before writing anything. A replay that ran
+  // before this test's topic stub was in place answered `unknown`; its retry still probes first.
   await h.runtime.pump(); await h.runtime.sendReplies()
-  expect([h.runtime.outbox.status(id), sends]).toEqual(['sent', []])
+  if (h.runtime.outbox.status(id) !== 'sent') await at(5000)
+  expect([h.runtime.outbox.status(id), replies]).toEqual(['sent', 0])
 })
 
 it('does not resend when the probe itself cannot be read', async () => {

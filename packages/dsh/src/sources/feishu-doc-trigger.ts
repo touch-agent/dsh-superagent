@@ -129,37 +129,7 @@ export const docRepliesTo = (trigger: Trigger): string | undefined => {
 }
 
 /*
- * Feishu's comment reply API has no idempotency key, so a retried reply could be posted twice. A successful send therefore
- * starts its text with an invisible mark that names the outbound message; before posting, the Channel reads the card's
- * replies and answers `sent` when that mark is already there. The mark uses zero-width characters only, so a reader sees
- * the message itself.
+ * The comment reply API has no idempotency key, so a sent reply carries an invisible delivery mark naming its outbound
+ * message; `feishu-mark.ts` encodes and reads it, and the document Source keeps the `doc*` names for its own readers.
  */
-const MARK = '\u200d'
-const ZERO = '\u200b'
-const ONE = '\u200c'
-/** Encodes an outbound message ID as zero-width characters readers do not see. */
-export function docMarker(id: string): string {
-  const bits = [...id].map(char => char.charCodeAt(0).toString(2).padStart(16, '0')).join('')
-  return MARK + bits.replaceAll('0', ZERO).replaceAll('1', ONE) + MARK
-}
-/** The message IDs an already-posted reply text carries, in the order they appear. */
-export function docMarkerIds(text: string): string[] {
-  const ids: string[] = []
-  let index = text.indexOf(MARK)
-  while (index >= 0) {
-    const end = text.indexOf(MARK, index + 1)
-    if (end < 0) break
-    const bits = [...text.slice(index + 1, end)].map(char => char === ONE ? '1' : char === ZERO ? '0' : undefined)
-    if (bits.length % 16 === 0 && bits.every(bit => bit !== undefined)) {
-      const chars = (bits.join('').match(/.{16}/g) ?? []).map(part => String.fromCharCode(parseInt(part, 2)))
-      ids.push(chars.join(''))
-      index = end + 1
-    } else index += 1
-  }
-  return ids
-}
-/** Removes every delivery mark from text, so models read what a person wrote. */
-export function stripDocMarkers(text: string): string {
-  const ids = docMarkerIds(text)
-  return ids.reduce((result, id) => result.replace(docMarker(id), ''), text).trim()
-}
+export { deliveryMark as docMarker, deliveryMarkIds as docMarkerIds, stripDeliveryMarks as stripDocMarkers } from './feishu-mark.ts'

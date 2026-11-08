@@ -95,13 +95,16 @@ export function githubConformance(): ConformanceSubject<GithubConfig> {
       // The review reply is found under the review thread root it answers, not the conversation.
       { name: 'a review reply already posted', key: 'reply-501', answer: 'sent' },
       { name: 'a comment not posted', key: 'reply-9', answer: 'gone' },
+      // The review root was deleted after the attempt, so a reply posted under it is no longer readable: not absent.
+      { name: 'a review root deleted after the attempt', key: 'reply-502', answer: 'unknown' },
       { name: 'a conversation it cannot read', key: 'reply-3', answer: 'unknown' },
     ],
     probe: key => {
       const pages = key === 'reply-1' ? () => [posted] : key === 'reply-501' ? () => [reviewPosted]
         : key === 'reply-3' ? () => { throw new CliError('Server error', 500) } : () => []
-      const api = key === 'reply-501' ? () => ({ id: 99, user: { login: 'carol' }, body: '' }) : () => ({})
-      const message = key === 'reply-501' ? reviewMessage : outbound(key)
+      const api = key === 'reply-501' ? () => ({ id: 99, user: { login: 'carol' }, body: '' })
+        : key === 'reply-502' ? () => { throw new CliError('Not Found', 404) } : () => ({})
+      const message = key === 'reply-501' || key === 'reply-502' ? { ...reviewMessage, id: key } : outbound(key)
       return githubDefinition.adapter.channel!.probe!({ commands: host(pages, api).commands }, message)
     },
   }

@@ -6,6 +6,7 @@ import { checkedImText } from '../infra/text.ts'
 import type { SourceContext } from './host.ts'
 import type { ChannelLink, ChannelLinks, ProbeAnswer } from './kind.ts'
 import { feishuTriggerId } from './feishu-trigger.ts'
+import { deliveryMark, deliveryMarkIds } from './feishu-mark.ts'
 
 /** Feishu or Lark AppLink that opens a chat; used when the message's own link was not delivered with the event. */
 export const feishuChatLink = (brand: 'feishu' | 'lark', chatId: string): string =>
@@ -21,7 +22,10 @@ export async function sendFeishu(host: Pick<SourceContext, 'commands'>, message:
   const messageId = message.channel.address.messageId
   if (!messageId) throw new Error('Missing Feishu reply target')
   const text = checkedImText(message.text)
-  const reply = ['im', '+messages-reply', '--message-id', messageId, '--markdown', text, '--reply-in-thread', '--idempotency-key', message.id]
+  // The reply API returns no readable idempotency key, so the message carries an invisible mark naming it; a retry reads
+  // that mark back instead of trusting its text. Feishu also deduplicates the reply by `--idempotency-key`.
+  const reply = ['im', '+messages-reply', '--message-id', messageId, '--markdown', `${text}${deliveryMark(message.id)}`,
+    '--reply-in-thread', '--idempotency-key', message.id]
   try { await host.commands.lark(reply) }
   catch (error) {
     if (gone(error)) return 'gone'
@@ -29,11 +33,9 @@ export async function sendFeishu(host: Pick<SourceContext, 'commands'>, message:
   }
   return 'sent'
 }
-const ThreadMessageSchema = z.object({
-  content: z.string().optional(), msg_type: z.string(), deleted: z.boolean().optional(),
-  sender: z.object({ id: z.string(), sender_type: z.string() }),
-})
-const ThreadPageSchema = z.object({ messages: z.array(z.unknown()), has_more: z.boolean().default(false) })
+const ThreadMessageSchema = z.object({ content: z.string().optional(), deleted: z.boolean().optional() })
+// A page without `has_more` cannot be known to be complete, so it fails this schema and the probe answers `unknown`.
+const ThreadPageSchema = z.object({ messages: z.array(z.unknown()), has_more: z.boolean() })
 /** Readable text of a rendered message: the `text` fields of a JSON body, or the body itself when it is not JSON. */
 function readable(content: string | undefined): string {
   if (!content) return ''
@@ -52,23 +54,19 @@ function readable(content: string | undefined): string {
   } catch { return content }
 }
 /**
- * Looks for the reply in the topic's message list. Feishu deduplicates a reply by the outbound id but does not return
- * that key, so the bot's own message with the same text is the evidence a retry can read; a page that may hide older
- * replies cannot rule it out, and a text that renders differently falls back to a resend the idempotency key absorbs.
+ * Looks for this message's delivery mark in the topic's message list. lark-cli resolves a message ID to its thread, so
+ * the target message itself names the thread a reply-in-thread wrote to. A page that may hide older replies cannot rule
+ * the message out; an unreadable page is `unknown`, never a resend.
  */
 export async function probeFeishu(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<ProbeAnswer> {
   const messageId = message.channel.address.messageId
   if (!messageId) return 'unknown'
   try {
-    const text = checkedImText(message.text).trim()
     const result = ThreadPageSchema.parse(await host.commands.lark(['im', '+threads-messages-list', '--thread', messageId,
       '--order', 'desc', '--page-size', '50', '--no-reactions']))
-    const botId = host.commands.deployment.feishu?.botId
     const messages = validItems(ThreadMessageSchema, result.messages)
-    // Only this bot's own message counts; another app's identical text would otherwise settle an unsent message as sent.
-    const mine = (item: (typeof messages)[number]) => !item.deleted && (botId ? item.sender.id === botId : item.sender.sender_type !== 'user')
-      && readable(item.content).trim() === text
-    if (messages.some(mine)) return 'sent'
+    // The mark names this outbound message, so another app's or an earlier reply's text cannot stand in for it.
+    if (messages.some(item => !item.deleted && deliveryMarkIds(readable(item.content)).includes(message.id))) return 'sent'
     return result.has_more ? 'unknown' : 'gone'
   } catch (error) {
     return gone(error) ? 'gone' : 'unknown'

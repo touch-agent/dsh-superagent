@@ -4,6 +4,7 @@ import { CliError } from '@superagent/dsh/infra/commands.ts'
 import { feishuAdapter, feishuDefinition, type FeishuConfig } from '@superagent/dsh/sources/feishu.ts'
 import { feishuTrigger, historyEvent } from '@superagent/dsh/sources/feishu-trigger.ts'
 import { cursorAt } from '@superagent/dsh/sources/poll.ts'
+import { deliveryMark } from '@superagent/dsh/sources/feishu-mark.ts'
 import { testDeployment } from '../fixtures/deployment.ts'
 import type { ConformanceSubject, SendHost } from './suite.ts'
 
@@ -85,23 +86,31 @@ export function feishuConformance(): ConformanceSubject<FeishuConfig> {
     ],
     // Chat history is read from the round's start; `cursorAt` steps it back for late writes.
     cursor: { from: LATEST, next: () => cursorAt(LATEST) },
-    // A retry looks for the bot's reply with the same text in the topic; an unreadable topic has no answer to trust.
+    // A retry looks for this message's invisible delivery mark in the topic; an unreadable topic has no answer to trust.
     probes: [
       { name: 'a reply already in the topic', key: 'reply-2', answer: 'sent' },
       // A rich-text reply carries its text in a JSON body, which the probe reads as written.
       { name: 'a reply whose content is a JSON body', key: 'reply-6', answer: 'sent' },
       { name: 'a reply not in the topic', key: 'reply-9', answer: 'gone' },
-      // Another app's identical text is not this bot's reply, so it cannot settle the message as sent.
-      { name: 'the same text from another app', key: 'reply-5', answer: 'gone' },
+      // Text alone is not evidence: another message's mark, or the same text without one, cannot settle this message.
+      { name: 'the same text under another message mark', key: 'reply-5', answer: 'gone' },
+      { name: 'the same text from an older unmarked reply', key: 'reply-7', answer: 'gone' },
+      // A page that may hide older replies cannot rule the message out, and neither can a page without `has_more`.
+      { name: 'a topic with older replies not read', key: 'reply-8', answer: 'unknown' },
+      { name: 'a topic page without has_more', key: 'reply-10', answer: 'unknown' },
       { name: 'a topic it cannot read', key: 'reply-4', answer: 'unknown' },
     ],
     probe: key => {
       const page = key === 'reply-2'
-        ? () => ({ messages: [{ content: reply.text, msg_type: 'text', sender: { id: BOT, sender_type: 'bot' } }], has_more: false })
+        ? () => ({ messages: [{ content: `${deliveryMark('reply-2')}${reply.text}`, msg_type: 'text' }], has_more: false })
         : key === 'reply-6'
-          ? () => ({ messages: [{ content: JSON.stringify({ text: reply.text }), msg_type: 'post', sender: { id: BOT, sender_type: 'bot' } }], has_more: false })
+          ? () => ({ messages: [{ content: JSON.stringify({ text: `${deliveryMark('reply-6')}${reply.text}` }), msg_type: 'post' }], has_more: false })
           : key === 'reply-5'
-          ? () => ({ messages: [{ content: reply.text, msg_type: 'text', sender: { id: 'ou_other_bot', sender_type: 'bot' } }], has_more: false })
+          ? () => ({ messages: [{ content: `${deliveryMark('reply-5-other')}${reply.text}`, msg_type: 'text' }], has_more: false })
+          : key === 'reply-7'
+          ? () => ({ messages: [{ content: reply.text, msg_type: 'text' }], has_more: false })
+          : key === 'reply-8' ? () => ({ messages: [], has_more: true })
+          : key === 'reply-10' ? () => ({ messages: [] })
           : key === 'reply-4' ? () => { throw new CliError('Rate limited', 99991400) } : () => ({ messages: [], has_more: false })
       return feishuDefinition.adapter.channel!.probe!({ commands: host(page).commands }, { ...reply, id: key })
     },

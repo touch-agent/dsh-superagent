@@ -16,7 +16,11 @@ const gone = (error: unknown): boolean => error instanceof CliError
 const missing = (error: unknown): boolean => error instanceof CliError && (error.code === 404 || error.code === 410)
 
 /** Where one reply belongs: the conversation's comment path, the review-thread root it answers, and the marker that names it. */
-interface CommentTarget { path: string; rootId?: number; marker: string; mine: (comment: z.infer<typeof CommentSchema>) => boolean }
+interface CommentTarget {
+  path: string; rootId?: number; marker: string; mine: (comment: z.infer<typeof CommentSchema>) => boolean
+  /** The review root this reply answered was deleted, so a reply posted there is no longer readable in this conversation. */
+  rootMissing?: boolean
+}
 /** Resolves the reply target of `message`, including the review-thread root an inline reply answers. */
 async function commentTarget(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<CommentTarget> {
   const { commands } = host
@@ -26,15 +30,17 @@ async function commentTarget(host: Pick<SourceContext, 'commands'>, message: Out
   // Retained trigger URLs also route replies queued before thread-aware delivery.
   const address = githubAddress(message.channel.address.url ?? '', repository)
   let rootId: number | undefined
+  let rootMissing = false
   if (address?.pr && address.discussion && address.number === number) {
     // Fall back to a top-level PR comment if the target inline review comment was deleted.
     const source = await commands.api(CommentSchema, `pulls/comments/${address.discussion}`)
       .catch((error: unknown) => { if (missing(error)) return undefined; throw error })
+    rootMissing = source === undefined
     rootId = source ? source.in_reply_to_id ?? source.id : undefined
   }
   const path = rootId === undefined ? `issues/${number}/comments` : `pulls/${number}/comments`
   const marker = `<!-- dsh-superagent:${message.id} -->`
-  return { path, ...rootId === undefined ? {} : { rootId }, marker,
+  return { path, ...rootId === undefined ? {} : { rootId }, ...rootMissing ? { rootMissing } : {}, marker,
     mine: comment => sameName(comment.user?.login ?? '', github.login)
       && (rootId === undefined || comment.in_reply_to_id === rootId) && (comment.body ?? '').includes(marker) }
 }
@@ -56,7 +62,9 @@ export async function sendGithub(host: Pick<SourceContext, 'commands'>, message:
 export async function probeGithub(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<ProbeAnswer> {
   try {
     const target = await commentTarget(host, message)
-    return (await host.commands.pages(CommentSchema, target.path)).some(target.mine) ? 'sent' : 'gone'
+    if ((await host.commands.pages(CommentSchema, target.path)).some(target.mine)) return 'sent'
+    // The review thread's root is gone, so a reply posted under it is not in the readable conversation: do not call it absent.
+    return target.rootMissing ? 'unknown' : 'gone'
   } catch (error) {
     // A deleted or locked conversation is gone either way; anything else leaves the answer unknown.
     return gone(error) ? 'gone' : 'unknown'
