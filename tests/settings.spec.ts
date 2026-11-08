@@ -57,6 +57,17 @@ it('refuses a Policy sync that a Policy save outran, reports it on sync:feishu, 
   expect(store.settings().policy).toMatchObject({ rules, sources: { feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }] } } })
 })
 
+it('refuses an approval rule for a Source kind that is not installed, instead of silently falling back to the tenant rule', async () => {
+  h = await startRuntime()
+  const { settings, store } = h.runtime
+  const policy = store.settings().policy
+  const approval = { tenant: { domains: ['corp.example'], always: true },
+    sources: { feishuu: { domains: ['corp.example'], always: true } } }
+  await expect(settings.save('policy', { ...policy, approval }, store.blockRevision('policy'), 'panel'))
+    .rejects.toMatchObject({ code: 'sourceNotInstalled' })
+  expect(store.settings().policy.approval).toEqual({ sources: {} })
+})
+
 it('syncs a Policy part again after a failed sync, a minute later and then after a wait that doubles, until it succeeds', async () => {
   h = await startRuntime()
   const { settings } = h.runtime

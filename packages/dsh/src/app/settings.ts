@@ -33,6 +33,9 @@ const BLOCKS: Record<'policy' | 'eval' | 'executor' | 'source', Block> = {
   policy: {
     parse: (value, sources) => {
       const policy = PolicyConfigSchema.parse(value)
+      // A typo in an approval Source id would otherwise silently fall back to the tenant rule, which may be wider.
+      const unknown = Object.keys(policy.approval.sources).find(id => !sources.kind(id))
+      if (unknown) throw new UserError('sourceNotInstalled', { source: unknown })
       return { ...policy, sources: sources.validatePolicy(policy.sources) }
     },
     merge: (settings, value) => ({ ...settings, policy: value as SettingsValue['policy'] }),

@@ -165,6 +165,30 @@ A Policy that lowers its maximum therefore stops the next higher-level action of
 - **Stop in the panel is a command.** It acts on the Ticket directly and is recorded as a manual stop.
 - **Waiting conditions belong to Sources.** A condition such as "no assignee for N hours" would be a Source that waits and checks again itself; Eval never waits.
 
+## Approval and auto-approval
+
+An Approval records one person's or the Policy's consent to one Action and revision, and its request can name a `target` such as a mail recipient. The Policy's `approval` block may let itself decide requests instead of a person:
+
+- a **tenant rule** applies to every Source without a rule of its own, and a **source rule** replaces it for that Source;
+- the rule lists **internal domains**. A target domain matches one of them or any of its subdomains, and comparison ignores case. A target must name one address or URL: a multi-recipient or display-name target, or a `mailto:` URL carrying a query that could add a Cc or Bcc, names no single domain and never matches;
+- the rule may add a **working-hours window**: the days of the week (`0` for Sunday through `6` for Saturday), a local `start` and `end` as `HH:MM`, and an IANA `timeZone`. The start is inclusive and the end exclusive, and a window cannot cross midnight;
+- a rule with domains must name either its window or `always: true`; an omission is rejected rather than silently approving at any time. `always: true` is the explicit internal-domain exemption, with no window;
+- a **`spend` Action is never automatic**, whatever the rule says.
+
+A match records an ordinary Approval in `approved` state, with `decidedAt` at the request, the decision actor `policy/auto-approval`, and a `reason` naming the domain and window that matched. The window is checked at the request time; a later execution moment does not re-check it. Nothing is skipped: the record stays readable by Ticket, never enters the pending queue, and is left out of the human approval-latency sample. A request that does not match stays `requested` for a person. Asking for the same Ticket and Action again returns the first record only when the target is the same; a different target, or an expired request, is refused, so one destination's grant never authorizes another.
+
+Nothing in this runtime requests Approvals yet: `packages/dsh/src/app/approvals.ts` exposes `requestApproval` for the action/outbox producer that will call it. Until that producer lands, the policy is a tested command and the pending queue stays empty.
+
+Auto-approval settings are not part of the Policy version, like the undo window: changing them affects later requests and does not discard running Evals, notify Tickets or withdraw Mandates. They are saved with the rest of the Policy through the documented settings route. `PUT settings/policy` replaces the whole block, so read the block first with `GET settings/policy`, add the `approval` key to the value, and save the whole value back; the fragment below is not a request body by itself:
+
+```json
+{ "approval": {
+  "tenant": { "domains": ["corp.example"],
+    "hours": { "days": [1, 2, 3, 4, 5], "start": "09:00", "end": "18:00", "timeZone": "Asia/Shanghai" } },
+  "sources": { "feishu": { "domains": ["corp.example"], "always": true } }
+} }
+```
+
 ## When Eval does not finish
 
 The time limit starts when the candidate reaches the main Session. Time spent waiting for delivery does not count, and an undelivered candidate never expires.

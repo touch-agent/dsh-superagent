@@ -124,6 +124,16 @@ it('counts a request past its expiry even before the expired state is recorded',
   store.close()
 })
 
+it('leaves an automatic approval out of the human wait', () => {
+  const store = new Store(path())
+  const auto = approve(approval('auto', -3600, -3000), { by: { source: 'policy', id: 'auto-approval' }, at: at(-3600), reason: 'whitelisted' })
+  store.approvals.save(auto)
+  expect(metrics(store, NOW).approval).toEqual({ samples: 0, medianSeconds: null, p90Seconds: null })
+  store.approvals.save(approve(approval('person', -3600, -3000), { by: panel, at: at(-3540) }))
+  expect(metrics(store, NOW).approval).toEqual({ samples: 1, medianSeconds: 60, p90Seconds: 60 })
+  store.close()
+})
+
 it('measures the wait from an Approval to its decision, leaving withdrawals and older decisions out', () => {
   const store = new Store(path())
   const decided = (record: Approval, offset: number): Approval => approve(record, { by: panel, at: at(offset) })
