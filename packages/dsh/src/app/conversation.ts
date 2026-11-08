@@ -6,7 +6,7 @@
  */
 import { createHash } from 'node:crypto'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { UserError, key, reasonText, type AssessmentOutcome, type Decision, type ReceiveResult, type Ticket, type Trigger,
+import { UserError, reasonText, threadKey, type AssessmentOutcome, type Decision, type ReceiveResult, type Ticket, type Trigger,
   type TriggerDisposition } from '@superagent/kernel'
 import type { DispatchMode } from '../policy.ts'
 import { conversationTrigger } from '../sources/conversation.ts'
@@ -37,6 +37,8 @@ export interface DispatchHost {
     attach(ticketId: string, triggerId: string, note?: string): Ticket }
   disposition(triggerId: string): TriggerDisposition | undefined
   ticket(id: string): Ticket | undefined
+  /** The Thread a message's Triggers share, read before receiving a split so a reachable ticket is never mutated by a refused dispatch. */
+  thread?(key: string): { subscriptions: readonly string[] } | undefined
   config?(): DispatchConfigView
 }
 /** What happened to one item: its Trigger, the Ticket it started or joined, or why it did not. */
@@ -86,8 +88,10 @@ function titleFrom(text: string): string {
   return label || 'Task'
 }
 const receipt = (title: string, source: string): string => CJK.test(source) ? `已拆成任务：${title}。` : `Split into a task: ${title}.`
-const intentKey = (item: PlannedItem): string => createHash('sha256').update(`${item.title}\n${item.scope}`).digest('hex').slice(0, 12)
-const sameIntent = (item: PlannedItem): string => `${item.title}\n${item.scope}`.toLowerCase().replace(/\s+/gu, ' ').trim()
+/** The identity of an item: its target ticket, title and scope, so the same request to two tickets is not merged. */
+const intentText = (item: PlannedItem): string => `${item.title}\n${item.scope}${item.ticketId ? `\n${item.ticketId}` : ''}`
+const intentKey = (item: PlannedItem): string => createHash('sha256').update(intentText(item)).digest('hex').slice(0, 12)
+const sameIntent = (item: PlannedItem): string => intentText(item).toLowerCase().replace(/\s+/gu, ' ').trim()
 
 /**
  * The latest message in the main Session must be the person's, not a notice or relay the plugin delivered; otherwise the
@@ -149,16 +153,18 @@ function withReceipt(item: PlannedItem, source: string): PlannedItem {
 }
 
 /** The one item a message becomes when dispatch does not split it, combining any items the main Session supplied. */
-function singleItem(input: DispatchInput, text: string, parsed: readonly PlannedItem[] = []): PlannedItem | { refused: string } {
-  const supplied = input.items?.length ? input.items.map(item => clean(item.scope) || clean(item.title)) : parsed.map(item => item.scope)
-  const scopes = supplied.filter(Boolean)
+function singleItem(input: DispatchInput, text: string, fresh: readonly PlannedItem[] = []): PlannedItem | { refused: string } {
+  // A combined fallback keeps every planned item it is given, not whatever the main Session supplied beside it.
+  const supplied = fresh.length ? fresh.map(item => item.scope) : (input.items ?? []).map(item => clean(item.scope) || clean(item.title))
+  const scopes = [...new Set(supplied.filter(Boolean))]
   const combined = scopes.join('\n')
-  const title = clean(input.title) || clean(parsed[0]?.title) || clean(input.items?.[0]?.title)
+  const title = clean(input.title) || clean(fresh[0]?.title) || clean(input.items?.[0]?.title)
     || titleFrom(clean(input.scope) || scopes[0] || text)
   // Without a named scope, keep the message or every item, not only its title, so a fallback never drops a request.
   const scope = clean(input.scope) || combined || cut(text.trim(), SCOPE_CHARS) || title
-  const name = clean(input.name) || clean(input.items?.[0]?.name) || worktreeName(title)
-  const acknowledgement = clean(input.acknowledgement) || clean(input.items?.[0]?.acknowledgement)
+  const name = clean(input.name) || clean(fresh[0]?.name) || clean(input.items?.[0]?.name) || worktreeName(title)
+  const acknowledgement = clean(input.acknowledgement)
+    || (fresh.length > 1 ? receipt(title, text) : clean(fresh[0]?.acknowledgement) || clean(input.items?.[0]?.acknowledgement))
   if (!title || !scope) return { refused: 'A new dispatch needs a title and a scope; only an attach to an existing ticket omits them.' }
   return { title: cut(title, 200), scope: cut(scope, SCOPE_CHARS), name: worktreeName(name),
     ...acknowledgement ? { acknowledgement } : {} }
@@ -177,12 +183,25 @@ function planDispatch(input: DispatchInput, text: string, config: DispatchConfig
   let items: PlannedItem[] | undefined
   if (config.mode === 'auto' && input.items?.length) items = input.items.flatMap(item => plannedItem(item, text) ?? [])
   else if (config.mode !== 'single') items = explicitItems(text)?.flatMap(item => plannedItem({ title: titleFrom(item), scope: item }, text) ?? [])
-  if (!items || items.length < 2) return fallback()
+  // One item that names a ticket is an attach, not new work; a whole-message attach normally takes the other path.
+  if (items?.length === 1 && items[0]!.ticketId) return { items, split: false }
+  if (!items || items.length < 2) return fallback(items)
   const seen = new Set<string>()
   const unique = items.filter(item => { const id = sameIntent(item); if (seen.has(id)) return false; seen.add(id); return true })
     .map(item => withReceipt(item, text))
-  // An ambiguous or too wide a split is the conservative case: one Ticket holding every item the Session read.
-  if (unique.length < 2 || unique.length > config.maxTickets) return fallback(unique)
+  if (!unique.length) return fallback()
+  const attaches = unique.filter(item => item.ticketId !== undefined)
+  const fresh = unique.filter(item => item.ticketId === undefined)
+  // Attaches start no ticket, so only the new items count against the bound. A split with only attaches still needs one
+  // Trigger per target, because each Trigger attaches to a different ticket.
+  if (!fresh.length) return { items: attaches, split: attaches.length > 1 }
+  if (fresh.length === 1 && !attaches.length) return fallback(fresh)
+  if (fresh.length > config.maxTickets) {
+    // Too many new items: one Ticket holds all of them, while every attach keeps its own target and is not lost.
+    const combined = singleItem(input, text, fresh)
+    if ('refused' in combined) return combined
+    return { items: [combined, ...attaches], split: attaches.length > 0 }
+  }
   return { items: unique, split: true }
 }
 
@@ -216,16 +235,26 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
   const results: DispatchItemResult[] = []
   const tickets: Ticket[] = []
   const triggerIds: string[] = []
-  // Receive every item before deciding any of them: once the first ticket exists it subscribes to the shared thread, and a
-  // later item received then would reach that ticket as a follow-up instead of becoming a ticket of its own.
-  const receivedItems = plan.items.map((item, index) => {
-    // A split intent gets its own stable Trigger id from the source message and the item, so re-dispatching the same
-    // plan is idempotent and every ticket keeps a link to the message it came from.
+  // A split intent gets its own stable Trigger id from the source message and the item, so re-dispatching the same plan is
+  // idempotent and every ticket keeps a link to the message it came from.
+  const prepared = plan.items.map((item, index) => {
     const trigger = conversationTrigger({ messageId: message.id, text: plan.split ? item.scope : message.text, at: message.at,
       sessionId: agent.id, ...plan.split ? { intent: { key: intentKey(item), index, count: plan.items.length } } : {} })
     triggerIds.push(trigger.id)
-    return { item, trigger, received: host.engine.receive(trigger) }
+    return { item, trigger }
   })
+  if (prepared.every(entry => host.disposition(entry.trigger.id)?.decisionId)) {
+    return { triggerId: triggerIds[0]!, duplicate: true, ...plan.split ? { items: prepared.map(entry => ({ triggerId: entry.trigger.id,
+      title: entry.item.title, duplicate: true })) } : {} }
+  }
+  // A changed plan for a message that already reached a ticket must be refused before receiving anything: receiving would
+  // add its Triggers to that ticket as inputs and the decision would then fail, leaving the conversation changed.
+  if (host.thread?.(threadKey(prepared[0]!.trigger.threads[0]!))?.subscriptions.length) {
+    return { refused: 'This message already reached a ticket; attach the new request to that ticket or send it in a new message.' }
+  }
+  // Receive every item before deciding any of them: once the first ticket exists it subscribes to the shared thread, and a
+  // later item received then would reach that ticket as a follow-up instead of becoming a ticket of its own.
+  const receivedItems = prepared.map(entry => ({ ...entry, received: host.engine.receive(entry.trigger) }))
   for (const { item, trigger, received } of receivedItems) {
     const head = { triggerId: trigger.id, title: item.title }
     if (received === 'filtered') { results.push({ ...head, refused: 'The conversation Source is off, so the request was not received.' }); continue }

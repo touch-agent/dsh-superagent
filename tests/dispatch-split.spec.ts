@@ -13,9 +13,9 @@ const user = (text: string, id = 'msg_1'): SessionEvent => ({ type: 'user/messag
   data: { id, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } } }) as unknown as SessionEvent
 const agent = (text: string, id = 'msg_1'): ConversationAgent => ({ id: 'orchestrator-1', session: { snapshotEvents: () => [user(text, id)] } })
 
-function harness(mode: 'single' | 'explicit' | 'auto' = 'single', maxTickets = 5) {
+function harness(mode: 'single' | 'explicit' | 'auto' = 'single', maxTickets = 5, extra: Record<string, unknown> = {}) {
   const repo = new MemoryRepositories()
-  const settings = SettingsSchema.parse({ dispatch: { mode, maxTickets } })
+  const settings = SettingsSchema.parse({ dispatch: { mode, maxTickets }, ...extra })
   const sources = new SourceRegistry(() => settings)
   sources.registerDefinition(conversationDefinition)
   const sent: unknown[] = []
@@ -25,8 +25,8 @@ function harness(mode: 'single' | 'explicit' | 'auto' = 'single', maxTickets = 5
     outbox: { send: message => { sent.push(message) }, status: () => undefined, withdraw: vi.fn(), recall: vi.fn(() => 'recalled' as const) } })
   const dispatch = (input: DispatchInput, text = 'Fix the flaky test', id = 'msg_1') => dispatchConversation(agent(text, id),
     { engine, disposition: triggerId => repo.triggers.disposition(triggerId), ticket: ticketId => repo.tickets.get(ticketId),
-      config: () => settings.dispatch }, input)
-  return { repo, engine, dispatch, sent }
+      thread: key => repo.threads.get(key), config: () => settings.dispatch }, input)
+  return { repo, engine, dispatch, sent, settings }
 }
 
 const openTickets = (repo: MemoryRepositories): Ticket[] => repo.tickets.open()
@@ -145,5 +145,83 @@ describe('auto dispatch mode', () => {
     expect(second.duplicate).toBe(true)
     expect(second.items?.map(item => item.triggerId)).toEqual(ids)
     expect(openTickets(h.repo)).toHaveLength(2)
+  })
+})
+describe('dispatch fallbacks that must not lose work', () => {
+  it('keeps a mixed attach and new plan when it is wider than maxTickets', () => {
+    const h = harness('auto', 2)
+    const first = h.dispatch({ title: 'Existing', scope: 'Existing work.' }, 'Existing work', 'msg_1')
+    if ('refused' in first) throw new Error(first.refused)
+    const existing = first.ticket!
+    const result = h.dispatch({ items: [{ title: 'A', scope: 'Do A.' }, { title: 'B', scope: 'Do B.' },
+      { title: 'C', scope: 'Do C.' }, { ticketId: existing.id, scope: 'Status update.' }] }, 'A, B, C and status', 'msg_2')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.items).toHaveLength(2)
+    expect(result.items?.filter(item => item.attached)).toHaveLength(1)
+    expect(openTickets(h.repo)).toHaveLength(2)
+    const combined = openTickets(h.repo).find(ticket => ticket.id !== existing.id)!
+    expect(combined.title).toBe('A')
+    expect(combined.mandate.scope).toBe('Do A.\nDo B.\nDo C.')
+    expect(h.repo.tickets.get(existing.id)!.inputs.some(input => input.kind === 'trigger')).toBe(true)
+  })
+
+  it('still starts one new ticket and attaches the other at maxTickets 1', () => {
+    const h = harness('auto', 1)
+    const first = h.dispatch({ title: 'Existing', scope: 'Existing work.' }, 'Existing work', 'msg_1')
+    if ('refused' in first) throw new Error(first.refused)
+    const result = h.dispatch({ items: [{ title: 'New', scope: 'New work.' },
+      { ticketId: first.ticket!.id, scope: 'Status update.' }] }, 'New work and status', 'msg_2')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.items).toHaveLength(2)
+    expect(openTickets(h.repo)).toHaveLength(2)
+  })
+
+  it('falls back to the explicit parser in auto mode when the main Session supplied no items', () => {
+    const h = harness('auto')
+    const result = h.dispatch({}, '拆成以下任务：\n1、修复登录\n2、更新文档')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.items).toHaveLength(2)
+    expect(openTickets(h.repo)).toHaveLength(2)
+  })
+
+  it('refuses every item of a split while the conversation Source is off', () => {
+    const h = harness('explicit', 5, { sources: { conversation: { enabled: false, config: {} } } })
+    const result = h.dispatch({}, '1、A\n2、B')
+    expect(result).toEqual({ refused: expect.stringContaining('off') })
+    expect(h.repo.tickets.open()).toHaveLength(0)
+  })
+
+  it('reports one refused attach among accepted split items without losing the others', () => {
+    const h = harness('auto')
+    const result = h.dispatch({ items: [{ title: 'A', scope: 'Do A.' }, { ticketId: 'missing', scope: 'Status update.' },
+      { title: 'C', scope: 'Do C.' }] }, 'A, status and C', 'msg_1')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.items).toHaveLength(3)
+    expect(result.items?.filter(item => item.refused)).toHaveLength(1)
+    expect(openTickets(h.repo)).toHaveLength(2)
+  })
+})
+
+describe('a message that already reached a ticket', () => {
+  it('refuses a changed mode for the same message before receiving it', () => {
+    const h = harness('auto')
+    const first = h.dispatch({ items: [{ title: 'A', scope: 'Do A.' }, { title: 'B', scope: 'Do B.' }] }, 'A and B', 'msg_1')
+    if ('refused' in first) throw new Error(first.refused)
+    ;(h.settings.dispatch as { mode: string }).mode = 'single'
+    const second = h.dispatch({ title: 'C', scope: 'Do C.' }, 'C', 'msg_1')
+    expect(second).toEqual({ refused: expect.stringContaining('already reached a ticket') })
+    expect(openTickets(h.repo)).toHaveLength(2)
+  })
+
+  it('refuses a changed plan before receiving it, leaving the existing tickets untouched', () => {
+    const h = harness('auto')
+    const first = h.dispatch({ items: [{ title: 'A', scope: 'Do A.' }, { title: 'B', scope: 'Do B.' }] }, 'A and B', 'msg_1')
+    if ('refused' in first) throw new Error(first.refused)
+    const ticket = first.ticket!
+    const before = h.repo.tickets.get(ticket.id)!.inputs.length
+    const second = h.dispatch({ items: [{ title: 'C', scope: 'Do C.' }, { title: 'D', scope: 'Do D.' }] }, 'C and D', 'msg_1')
+    expect(second).toEqual({ refused: expect.stringContaining('already reached a ticket') })
+    expect(openTickets(h.repo)).toHaveLength(2)
+    expect(h.repo.tickets.get(ticket.id)!.inputs).toHaveLength(before)
   })
 })
