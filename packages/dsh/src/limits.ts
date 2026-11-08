@@ -12,4 +12,6 @@ export const LIMITS = {
   mandateMinutes: { min: 0, max: 525_600 },
   /** Seconds an outbound message waits before it is sent; 0 disables the undo window. */
   undoWindowSeconds: { min: 0, max: 300 },
+  /** How many tickets one message may become when dispatch splits it. */
+  dispatchTickets: { min: 1, max: 10 },
 } as const

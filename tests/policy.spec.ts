@@ -224,7 +224,8 @@ describe('revalidate and version', () => {
   })
   it('changes the Policy version for rules, accept mode, action limits and the Sources\' parts, not for pause, concurrency, models, the outbound undo window or Source configuration', () => {
     const version = setup().version
-    expect(setup({ ...base, paused: true, executor: { ...base.executor, maxWorkers: 9 }, eval: { ...base.eval, timeoutSeconds: 300 }, sources: { ...base.sources, github: { enabled: true, config: { pollSeconds: 600 } } } }).version).toBe(version)
+    expect(setup({ ...base, paused: true, executor: { ...base.executor, maxWorkers: 9 }, eval: { ...base.eval, timeoutSeconds: 300 },
+      dispatch: { ...base.dispatch, mode: 'auto' }, sources: { ...base.sources, github: { enabled: true, config: { pollSeconds: 600 } } } }).version).toBe(version)
     expect(setup({ ...base, sources: { feishu: feishuSource({ chats: [], directMessages: false }) } }).version).toBe(version)
     expect(setup({ ...base, eval: { ...base.eval, mode: 'off' } }).version).not.toBe(version)
     expect(setup({ ...base, policy: { ...base.policy, maxActionLevel: 'send' } }).version).not.toBe(version)
@@ -277,6 +278,14 @@ describe('action-time revalidation', () => {
   })
 })
 describe('settings migration', () => {
+  it('defaults dispatch to one ticket and accepts only known modes and bounded ticket counts', () => {
+    expect(SettingsSchema.parse({}).dispatch).toEqual({ mode: 'single', maxTickets: 5 })
+    for (const mode of ['single', 'explicit', 'auto'] as const) expect(SettingsSchema.parse({ dispatch: { mode } }).dispatch.mode).toBe(mode)
+    expect(() => SettingsSchema.parse({ dispatch: { mode: 'split' } })).toThrow()
+    expect(() => SettingsSchema.parse({ dispatch: { maxTickets: 0 } })).toThrow()
+    expect(() => SettingsSchema.parse({ dispatch: { maxTickets: 11 } })).toThrow()
+    expect(() => SettingsSchema.parse({ dispatch: { mode: 'auto', extra: true } })).toThrow()
+  })
   it('defaults the outbound undo window to 30 seconds and accepts only whole seconds from 0 to 300', () => {
     expect(SettingsSchema.parse({}).policy.undoWindowSeconds).toBe(30)
     for (const window of [0, 300]) expect(SettingsSchema.parse({ policy: { undoWindowSeconds: window } }).policy.undoWindowSeconds).toBe(window)
@@ -310,6 +319,7 @@ describe('settings migration', () => {
       sources: { feishu: feishuSource({ chats: [{ chatId: CHAT, listen: 'mentions' }, { chatId: OBSERVED, listen: 'all' }], directMessages: false }), github: { enabled: true, config: { pollSeconds: 120 } } },
       policy: { rules: [], maxActionLevel: 'draft', mandateMinutes: 0, undoWindowSeconds: 30, approval: { sources: {} }, sources: { feishu: { allowed: [{ id: MEMBER, name: 'A' }], admission: {} }, github: { allowed: [{ id: 'a' }], admission: {} } } },
       eval: { mode: 'auto', timeoutSeconds: 90, model: { provider: 'p', model: 'm' } },
+      dispatch: { mode: 'single', maxTickets: 5 },
       executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [] },
     })
     expect(migrateSettings(migrated)).toEqual(migrated)

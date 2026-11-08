@@ -20,6 +20,8 @@ export const conversationManifest: SourceManifest = {
 const ConfigSchema = z.object({}).strict()
 export type ConversationConfig = z.infer<typeof ConfigSchema>
 
+/** One item a split message became, as `dispatchConversation` names it: a stable key, its position and the item count. */
+export interface ConversationIntent { key: string; index: number; count: number }
 /** One message a person dispatched; `root` names the task thread, which is the request itself on a new task. */
 export interface ConversationRequest {
   messageId: string
@@ -30,18 +32,24 @@ export interface ConversationRequest {
   root?: string
   /** The message this one answers within its thread, when known. */
   parentId?: string
+  /** The item of a split message this Trigger carries; absent when the message produced one Trigger. */
+  intent?: ConversationIntent
 }
 
 /**
- * Converts a dispatched conversation message into a Trigger. The trigger id is the message id, so dispatching
- * the same message twice produces the same Trigger; the thread id is the task root.
+ * Converts a dispatched conversation message into a Trigger. On an unsplit message the trigger id is the message id, so
+ * dispatching the same message twice produces the same Trigger; a split item adds its own stable key, while `meta`
+ * keeps the source message id for every item. The thread id is the task root.
  */
 export function conversationTrigger(request: ConversationRequest): Trigger {
   const root = request.root ?? request.messageId
-  return { id: key(SOURCE, request.messageId), source: SOURCE, threads: [{ source: SOURCE, id: root }],
-    actor: { source: SOURCE, id: LOCAL_USER }, human: true, addressed: 'direct', at: isoTime(request.at), text: request.text,
+  const intent = request.intent
+  return { id: intent ? key(SOURCE, request.messageId, 'intent', intent.key) : key(SOURCE, request.messageId), source: SOURCE,
+    threads: [{ source: SOURCE, id: root }], actor: { source: SOURCE, id: LOCAL_USER }, human: true, addressed: 'direct', at: isoTime(request.at),
+    text: request.text,
     channel: { source: SOURCE, thread: `${SOURCE}:${root}`, address: { session: request.sessionId, root, messageId: request.messageId } },
-    meta: { sessionId: request.sessionId, messageId: request.messageId, root, ...(request.parentId ? { parentId: request.parentId } : {}) } }
+    meta: { sessionId: request.sessionId, messageId: request.messageId, sourceMessageId: request.messageId, root,
+      ...(intent ? { intent: { key: intent.key, index: intent.index, count: intent.count } } : {}), ...(request.parentId ? { parentId: request.parentId } : {}) } }
 }
 
 export const conversationAdapter: SourceAdapter<ConversationConfig> = {

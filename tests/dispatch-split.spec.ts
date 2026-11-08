@@ -1,0 +1,149 @@
+import { describe, expect, it, vi } from 'vitest'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { Engine, MemoryRepositories, type Ticket } from '@superagent/kernel'
+import { dispatchConversation, explicitItems, type ConversationAgent, type DispatchInput } from '@superagent/dsh/app/conversation.ts'
+import { SettingsSchema, settingsPolicy } from '@superagent/dsh/policy.ts'
+import { conversationSource } from '@superagent/dsh/app/cards.ts'
+import { conversationDefinition } from '@superagent/dsh/sources/conversation.ts'
+import { ticketExecution } from '@superagent/dsh/executor/dsh.ts'
+import { SourceRegistry } from '@superagent/dsh/sources/registry.ts'
+
+const at = Date.parse('2026-11-08T10:00:00.000Z')
+const user = (text: string, id = 'msg_1'): SessionEvent => ({ type: 'user/message', seq: 1, time: at,
+  data: { id, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } } }) as unknown as SessionEvent
+const agent = (text: string, id = 'msg_1'): ConversationAgent => ({ id: 'orchestrator-1', session: { snapshotEvents: () => [user(text, id)] } })
+
+function harness(mode: 'single' | 'explicit' | 'auto' = 'single', maxTickets = 5) {
+  const repo = new MemoryRepositories()
+  const settings = SettingsSchema.parse({ dispatch: { mode, maxTickets } })
+  const sources = new SourceRegistry(() => settings)
+  sources.registerDefinition(conversationDefinition)
+  const sent: unknown[] = []
+  const engine = new Engine({ repo, scope: sources, policy: () => settingsPolicy(settings, sources),
+    assessor: { request: vi.fn() }, executor: { start: vi.fn(), deliver: vi.fn(), stop: vi.fn() },
+    prepareTicket: (ticket, outcome) => ({ ...ticket, execution: ticketExecution(ticket, outcome, settings, '/state') }),
+    outbox: { send: message => { sent.push(message) }, status: () => undefined, withdraw: vi.fn(), recall: vi.fn(() => 'recalled' as const) } })
+  const dispatch = (input: DispatchInput, text = 'Fix the flaky test', id = 'msg_1') => dispatchConversation(agent(text, id),
+    { engine, disposition: triggerId => repo.triggers.disposition(triggerId), ticket: ticketId => repo.tickets.get(ticketId),
+      config: () => settings.dispatch }, input)
+  return { repo, engine, dispatch, sent }
+}
+
+const openTickets = (repo: MemoryRepositories): Ticket[] => repo.tickets.open()
+
+describe('explicit dispatch parsing', () => {
+  it('reads numbered and bulleted lines, a confirmation line, and a launching phrase with an inline list', () => {
+    expect(explicitItems('拆成以下任务：\n1、修复登录\n2、更新文档\n3、补充测试')).toEqual(['修复登录', '更新文档', '补充测试'])
+    expect(explicitItems('确认拆单：\n- 修复登录\n- 更新文档')).toEqual(['修复登录', '更新文档'])
+    expect(explicitItems('确认：修复登录、更新文档')).toEqual(['修复登录', '更新文档'])
+    expect(explicitItems('开 A、B、C')).toEqual(['A', 'B', 'C'])
+  })
+
+  it('keeps prose, one item, and an over-wide inline list as no split', () => {
+    expect(explicitItems('Fix the login button, please.')).toBeUndefined()
+    expect(explicitItems('1、只修登录按钮')).toBeUndefined()
+    expect(explicitItems(`开 ${'长'.repeat(250)}、B`)).toBeUndefined()
+    expect(explicitItems('开个会，讨论 A、B')).toBeUndefined()
+  })
+})
+
+describe('single dispatch mode', () => {
+  it('keeps one ticket even when the main Session supplies several items', () => {
+    const h = harness('single')
+    const result = h.dispatch({ title: 'One change', scope: 'Do A and B.',
+      items: [{ title: 'A', scope: 'Do A.' }, { title: 'B', scope: 'Do B.' }] })
+    expect(result).toMatchObject({ duplicate: false, ticket: { title: 'One change' } })
+    if ('refused' in result) throw new Error(result.refused)
+    expect(openTickets(h.repo)).toHaveLength(1)
+    expect(result.items).toBeUndefined()
+    expect(result.ticket?.origin.triggerId).toBe(result.triggerId)
+  })
+})
+
+describe('explicit dispatch mode', () => {
+  it('starts one ticket per explicit item and makes every item addressable by the source message', () => {
+    const h = harness('explicit')
+    const text = '拆成以下任务：\n1、修复登录按钮\n2、更新使用文档\n3、补充回归测试'
+    const result = h.dispatch({}, text)
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.items).toHaveLength(3)
+    const tickets = openTickets(h.repo)
+    expect(tickets).toHaveLength(3)
+    expect(tickets.map(item => item.title).sort()).toEqual(['修复登录按钮', '更新使用文档', '补充回归测试'].sort())
+    for (const [index, item] of (result.items ?? []).entries()) {
+      const trigger = h.repo.triggers.get(item.triggerId)!
+      expect(trigger.meta).toMatchObject({ messageId: 'msg_1', sourceMessageId: 'msg_1', intent: { index, count: 3 } })
+      expect(conversationSource(trigger)).toEqual({ source_message_id: 'msg_1', intent: { index, count: 3 } })
+      expect(item.triggerId).not.toBe('conversation:msg_1')
+      expect(tickets.some(ticket => ticket.origin.triggerId === item.triggerId)).toBe(true)
+    }
+    // Every accepted ticket answers the source message.
+    expect(h.sent).toHaveLength(3)
+  })
+
+  it('splits an inline confirmation list, and keeps an ambiguous message as one ticket', () => {
+    const h = harness('explicit')
+    const split = h.dispatch({}, '开 A、B、C')
+    if ('refused' in split) throw new Error(split.refused)
+    expect(split.items).toHaveLength(3)
+    expect(openTickets(h.repo)).toHaveLength(3)
+    const one = h.dispatch({}, 'Fix the login button, please.', 'msg_2')
+    if ('refused' in one) throw new Error(one.refused)
+    expect(one.items).toBeUndefined()
+    expect(openTickets(h.repo)).toHaveLength(4)
+  })
+
+  it('keeps one ticket holding every item when the list is wider than maxTickets', () => {
+    const h = harness('explicit', 2)
+    const result = h.dispatch({}, '拆成以下任务：\n1、A 改动\n2、B 改动\n3、C 改动')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.items).toBeUndefined()
+    const [ticket] = openTickets(h.repo)
+    expect(openTickets(h.repo)).toHaveLength(1)
+    expect(ticket?.mandate.scope).toContain('A 改动')
+    expect(ticket?.mandate.scope).toContain('C 改动')
+  })
+})
+
+describe('auto dispatch mode', () => {
+  it('takes the main Session\'s items, merges identical intents, and falls back to one ticket for a single item', () => {
+    const h = harness('auto')
+    const result = h.dispatch({ items: [{ title: 'Fix login', scope: 'Repair the login button.' }, { title: 'Fix login', scope: 'Repair the login button.' }] })
+    if ('refused' in result) throw new Error(result.refused)
+    expect(openTickets(h.repo)).toHaveLength(1)
+    expect(result.items).toBeUndefined()
+    const split = h.dispatch({ items: [{ title: 'Fix login', scope: 'Repair the login button.' },
+      { title: 'Update docs', scope: 'Update the usage guide.' }] }, 'Fix login and update docs', 'msg_2')
+    if ('refused' in split) throw new Error(split.refused)
+    expect(openTickets(h.repo)).toHaveLength(3)
+    expect(split.items).toHaveLength(2)
+  })
+
+  it('attaches an item that names an existing ticket while starting a ticket for the other item', () => {
+    const h = harness('auto')
+    const first = h.dispatch({ title: 'Existing', scope: 'Existing work.' }, 'Existing work', 'msg_1')
+    if ('refused' in first) throw new Error(first.refused)
+    const existing = first.ticket!
+    const result = h.dispatch({ items: [{ title: 'New work', scope: 'Start the new thing.' },
+      { ticketId: existing.id, scope: 'Also report status there.', note: 'Status request' }] }, 'New work; status', 'msg_2')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.items).toHaveLength(2)
+    expect(openTickets(h.repo)).toHaveLength(2)
+    expect(h.repo.tickets.get(existing.id)!.inputs.some(input => input.kind === 'trigger' && input.note === 'Status request')).toBe(true)
+    expect(result.items?.some(item => item.attached)).toBe(true)
+  })
+
+  it('re-dispatching the same message and plan creates no second set of tickets', () => {
+    const h = harness('auto')
+    const input: DispatchInput = { items: [{ title: 'Fix login', scope: 'Repair the login button.' },
+      { title: 'Update docs', scope: 'Update the usage guide.' }] }
+    const first = h.dispatch(input, 'Fix login and update docs')
+    if ('refused' in first) throw new Error(first.refused)
+    const ids = first.items!.map(item => item.triggerId)
+    const second = h.dispatch(input, 'Fix login and update docs')
+    if ('refused' in second) throw new Error(second.refused)
+    expect(second.duplicate).toBe(true)
+    expect(second.items?.map(item => item.triggerId)).toEqual(ids)
+    expect(openTickets(h.repo)).toHaveLength(2)
+  })
+})

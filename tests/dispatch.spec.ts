@@ -191,4 +191,19 @@ describe('the dispatch tool', () => {
     expect(dispatch).toHaveBeenCalledWith({}, { title: undefined, scope: undefined, acknowledgement: undefined,
       ticketId: 'ticket-1', note: 'status' })
   })
+
+  it('maps the wire items into the dispatch request and reports every item result', async () => {
+    const dispatch = vi.fn((_agent: unknown, _input: unknown) => ({ triggerId: 'tr_1', duplicate: false,
+      items: [{ triggerId: 'tr_a', title: 'A', ticketId: 'ticket-1' }, { triggerId: 'tr_b', title: 'B', attached: true, ticketId: 'ticket-2' }] }))
+    const host = { dispatch, requestPass: vi.fn(), quietly: <T>(run: () => T) => run(), resources: {}, sessions: {}, settings: {},
+      store: {}, context: {}, prompts: {}, assessor: {}, engine: {} } as unknown as MainToolsHost
+    const call = mainTools(host, {} as Agent).find(item => item.name === 'orchestrator_dispatch')!
+    const args = call.schema.parse({ items: [{ title: 'A', scope: 'Do A.', worktree_name: 'do-a' },
+      { ticket_id: 'ticket-2', scope: 'Add to ticket two.', note: 'follow-up' }] })
+    expect(await call.execute(args as never, new AbortController().signal)).toMatchObject({ trigger_id: 'tr_1', decision: 'accept',
+      items: [{ triggerId: 'tr_a', ticketId: 'ticket-1' }, { triggerId: 'tr_b', attached: true }] })
+    expect(dispatch.mock.calls[0]![1]).toMatchObject({ items: [{ title: 'A', scope: 'Do A.', name: 'do-a' },
+      { ticketId: 'ticket-2', scope: 'Add to ticket two.', note: 'follow-up' }] })
+    expect(() => call.schema.parse({ items: [{}] })).toThrow()
+  })
 })
