@@ -61,7 +61,7 @@
 | 表面 | 状态页任务 tab | 右栏任务 tab + 状态页完整页 | 新右栏 tab + 共享投影 |
 | 视图 | 树、时间线图 | 列表、树、看板、时间线图 | 新看板；图重新定位 |
 | 信息 | 状态/进度/耗时 | 加来源、执行者、会话、交付物、最近事件 | 投影扩展 |
-| 执行者 | tracked：通用 worker Session；lightweight：inline，无 worker（kernel 契约，生产未接通） | 每个 tracked 节点有自己的 worker；lightweight 明示无 worker/无审批 | 先展示 `worker-<ticketId>` / `subtask-<subtaskId>` / “轻量”，不伪造名字 |
+| 执行者 | tracked：通用 worker Session；lightweight：inline，无 worker（kernel 契约，生产未接通） | 每个 tracked 节点有自己的 worker；lightweight 明示无 worker/无审批 | 先展示 `worker-<ticketId>` / `subtask-<subtaskId>-<attempt>` / “轻量”，不伪造名字 |
 | 拆分 | 只有 subagent 会话 | 父 worker 动态委派子任务、审交付、合并、解冲突 | 新 `delegate_task` 工具 + Subtask 持久化 + 子 worker 生命周期 |
 | 规划 | 只有工单标题/范围里的计划编号；worker 的执行计划不落库 | 已受理任务与执行单元可见；未受理的计划不伪造 | 结构化 plan 是另一个模型，不在本设计里硬造 |
 | 身份 | 标题里的计划编号 | 稳定类别 id + 工单 id | 新 id 与别名 |
@@ -227,8 +227,8 @@
 
 规则：
 
-- 每个 **tracked** `Ticket`/`Subtask` 节点最多一个自己的 worker；worker 的身份是 `worker-<ticketId>` 或 `subtask-<subtaskId>`。lightweight Ticket 没有 worker（3.5）。
-- **不能把子任务 session 编成 `worker-<ticketId>-<subtaskId>`**：现有 `ticketOfSession` 只切 `worker-` 前缀，会把 `-sub` 当成 ticketId。子任务用独立前缀 `subtask-<subtaskId>` + `session → (ticketId, subtaskId)` 注册表；`ticketOfSession`、`Sessions.decorate`/`ticketOf`、预设选择、工具注册与 `workOnly` 都要按注册表解析，且写保护同时检查父 Ticket 存活与子任务未结束。
+- 每个 **tracked** `Ticket`/`Subtask` 节点最多一个自己的 worker；worker 的身份是 `worker-<ticketId>` 或 `subtask-<subtaskId>-<attempt>`。lightweight Ticket 没有 worker（3.5）。
+- **不能把子任务 session 编成 `worker-<ticketId>-<subtaskId>`**：现有 `ticketOfSession` 只切 `worker-` 前缀，会把 `-sub` 当成 ticketId。子任务用独立前缀 `subtask-<subtaskId>-<attempt>` + `session → (ticketId, subtaskId, attempt)` 注册表；`ticketOfSession`、`Sessions.decorate`/`ticketOf`、预设选择、工具注册与 `workOnly` 都要按注册表解析，且写保护同时检查父 Ticket 存活与子任务未结束。
 - **Executor 的事件处理也要按 `(ticketId, subtaskId)` 解析**：`DshExecutor.install` 的 `ticketOf`、`agent/status`、`agent/inbox/claimed`、`session/event`、`agent/error` 处理器都 keyed by `ticketOfSession(agent.id)`；子 session 若解析成父 Ticket，会把子 turn 的 `workerIdle`/`failed` 写到父 Assignment 上。要加 per-subtask lifecycle（子 idle/error 只推进子状态），并让 `Sessions.limitSubagent` 解析最近的 worker/subtask、套用该节点的 `workOnly`/受限执行配置，不能把子 subagent 绑到父 Ticket 绕过限制。
 - 子任务只能由父节点的 worker 通过 `delegate_task` 请求 Engine 创建；Engine 校验深度、宽度与父 Mandate/maxActionLevel；`scope` 只是执行提示。
 - 子任务默认继承父 Ticket 的类别，**不单独跑分类器、不计入类别任务数**；类别是 Ticket 的组织方式。
@@ -258,7 +258,7 @@
 | 拆分类型 | 谁创建 | 有自己 worker | 授权 | UI |
 | --- | --- | --- | --- | --- |
 | 执行内步骤 | 父 worker 直接开 subagent Session | 子 Session，不是独立 worker | 继承父节点 | 节点详情，不是任务层级 |
-| 子任务 Subtask | 父 worker 调 `delegate_task`，**Engine 写入** | **是**，`subtask-<subtaskId>` | 继承同一个 Mandate 与 maxActionLevel；`scope` 只是提示，不能扩权 | L3+ 任务节点 |
+| 子任务 Subtask | 父 worker 调 `delegate_task`，**Engine 写入** | **是**，`subtask-<subtaskId>-<attempt>` | 继承同一个 Mandate 与 maxActionLevel；`scope` 只是提示，不能扩权 | L3+ 任务节点 |
 | 子 Ticket | 内部 delegation Eval（后续阶段） | 是 | 独立 Mandate、来源、结束条件；记录 `parentTicketId` | L3+ 任务节点，kind = ticket |
 
 规则：
@@ -319,7 +319,7 @@
   │ delegate_task(title, goal, scope?)
   ▼
 Engine：校验父任务存活、父 Mandate/maxActionLevel 原样继承、深度/宽度/配额
-  │ 创建 Subtask + 子 worker（subtask-<subtaskId>）
+  │ 创建 Subtask + 子 worker（subtask-<subtaskId>-<attempt>）
   ▼
 子 worker：只对子目标负责，向父 worker 报告
   │ progress / ready / blocked / failed（带交付物）
@@ -334,11 +334,13 @@ Engine：校验父任务存活、父 Mandate/maxActionLevel 原样继承、深�
 | --- | --- | --- |
 | `delegate_task` | 父 worker | Engine 创建 Subtask 与子 worker，写入父子关系 |
 | 子任务报告 | 子 worker | 进入父 worker 的输入；不直接产生人的注意力请求 |
-| `accept_subtask` | 父 worker | 子任务完成：state=`done`、`endedAt=now`，写 `resolution.kind='accepted'` + `acceptedReportAt=report.at`，并终止子 worker；之后迟到报告被拒绝（`subtaskClosed`）。交付物可被父合并；不等于父任务完成 |
-| `return_subtask` | 父 worker | 子任务带修改意见重开；清除整个 `resolution`、旧 `merge`/`endedAt` 失效，state 回 `working`，启动新的子 worker 会话（旧 worker 已终止，不复活旧会话）；不写 'returned'，否则会误判为已处置 |
-| `cancel_subtask` | 父 worker | 停止子树：state=`cancelled`、`endedAt=now`，写 `resolution.kind='cancelled'`；父任务记录原因 |
+| `accept_subtask` | 父 worker | 子任务完成：state=`done`、`endedAt=now`，写 `resolution.kind='accepted'` + `acceptedReportAt=report.at` + `acceptedAttempt=report.attempt`，并终止当前子 worker；之后迟到报告被拒绝（`subtaskClosed`）。交付物可被父合并；不等于父任务完成 |
+| `return_subtask` | 父 worker | 子任务带修改意见重开；`attempt += 1`，清除整个 `resolution`、旧 `merge`/`endedAt` 失效，state 回 `working`，按新 attempt 启动新的子 worker 会话（旧 worker 与旧 attempt 报告全部拒绝）；不写 'returned'，否则会误判为已处置 |
+| `cancel_subtask` | 父 worker | 停止子树：state=`cancelled`、`endedAt=now`，写 `resolution.kind='cancelled'`，终止当前子 worker，之后迟到报告被拒绝（`subtaskClosed`）；父任务记录原因 |
 | `ready` | 父 worker | 仅在无未结束子任务且 6.6 聚合可批准时允许；进入人工验收 |
 | `human_action` | 父 worker | 子任务问题被父汇总后，最多一个问题问人 |
+
+**attempt fencing**：`Subtask.report`/`TicketInput.subtask-report` 必须带当前 `attempt`；Engine 只接受 `report.attempt === subtask.attempt` 的报告，旧 attempt 的 session 已终止，迟到报告被拒绝（`subtaskClosed`/`staleSubtaskReport`），不能推进父状态或 reviewRevision。`return_subtask` 递增 attempt 并换新 session；`accept_subtask`/`cancel_subtask` 终止当前 session。
 
 责任边界：
 
@@ -349,7 +351,7 @@ Engine：校验父任务存活、父 Mandate/maxActionLevel 原样继承、深�
 
 结束路径与守卫（必须做在 `Tickets.end`/`unfinished`，不能只在 worker report 里判断）：
 
-- **未结束子任务（unresolved）** = 状态属于 `queued`/`working`/`waiting`/`review`/`blocked`/`failed`/`orphaned`，且没有**当前有效**的终态 `Subtask.resolution`。有效规则：`cancelled`/`failed` 始终有效；`accepted` 只在 `acceptedReportAt === report.at` 时有效（接受前若已有更新报告，旧接受无效；接受后子任务已结束，迟到报告被拒绝，不会改变已经接受的 revision）。`done`/`dropped`/`cancelled` 已结束；`failed`/`orphaned` 必须由父写有效 `resolution` 才算处置。`return_subtask` 会**清除** resolution 并把 state 回 `working`，因此不会把重新打开的子任务误算成已处置。`SubtaskSummary.unresolved` 必须用同一有效规则，不能只看字段是否存在。
+- **未结束子任务（unresolved）** = 状态属于 `queued`/`working`/`waiting`/`review`/`blocked`/`failed`/`orphaned`，且没有**当前有效**的终态 `Subtask.resolution`。有效规则：`cancelled`/`failed` 始终有效；`accepted` 只在 `acceptedReportAt === report.at` 且 `acceptedAttempt === attempt` 时有效（接受前若已有更新报告，旧接受无效；接受后子任务已结束，迟到报告被拒绝，不会改变已经接受的 revision）。`done`/`dropped`/`cancelled` 已结束；`failed`/`orphaned` 必须由父写有效 `resolution` 才算处置。`return_subtask` 会**清除** resolution 并把 state 回 `working`，因此不会把重新打开的子任务误算成已处置。`SubtaskSummary.unresolved` 必须用同一有效规则，不能只看字段是否存在。
 - **所有结束路径共用一道门**：`Assignments.report` 的 `ready`/`dropped`、`Tickets.threadClosed`/`followsDone` 的 PR/线程合并、人停止父 Ticket，最终都经过 `Tickets.end`；父 `failed` 不是结束路径，见下。`Tickets.end` 检查 `unfinished(ticket)` 是否包含未结束子任务。不能只挡 `ready`。
 - **`ready`**：有未结束子任务时 **拒绝该 report**（`UserError` 代码 `unfinishedSubtasks`），不把 `ready` 写进 `Assignment.report`；父收到“还有 N 个子任务未结束”的清单，继续处理。`Assignments.review`/`reviewTicket` 也必须再查一次未结束子任务，不能只靠 `Tickets.end` 或报告阶段。父必须对每个失败/孤儿子任务写 `resolution`（accepted/cancelled/failed）后才能再次报 `ready`；`return_subtask` 是重开，不是终态处置。
 - **`dropped` / 人停止**：终态；Engine 取消所有子任务（写 `resolution.kind = cancelled`，原因记录），再结束父 Ticket；人停止的 outcome 是 `stopped`，不是 `failed`。
@@ -528,13 +530,14 @@ interface Subtask {
   goal: string
   scope?: string                   // 执行提示，不是授权；继承父 Mandate
   state: 'queued' | 'working' | 'waiting' | 'review' | 'blocked' | 'failed' | 'done' | 'dropped' | 'cancelled' | 'orphaned'
-  workerSessionId: string          // subtask-<subtaskId>
+  attempt: number                  // 1-based；return_subtask 递增，旧 attempt 的 worker/report 全部作废
+  workerSessionId: string          // subtask-<subtaskId>-<attempt>；每个 attempt 一个独立 session
   depth: number                    // 1 = Ticket 的直接子任务
   createdBy: { kind: 'worker'; sessionId: string }   // 只有父 worker 能请求；没有 human 创建路径
   createdAt: string
   startedAt?: string
   endedAt?: string
-  report?: { state: ReportState; summary: string; at: string; review?: Review }
+  report?: { attempt: number; state: ReportState; summary: string; at: string; review?: Review }
   // 父对子任务的唯一决策记录；是 canonical，不再另存 report.accepted。
   // accepted 只表示父 worker 接受工作交付，不等于人的 Review.confirmations 确认。
   // accepted 记录 report.at 并终止子 worker；接受后迟到报告被拒绝；接受前的新报告会使旧 accepted 失效。
@@ -543,8 +546,9 @@ interface Subtask {
     kind: 'accepted' | 'cancelled' | 'failed'
     by: ActorRef
     at: string
-    /** accepted 时必填，绑定被接受的那次报告；接受前的新报告/退回后失效。 */
+    /** accepted 时必填，绑定被接受的那次报告与 attempt；接受前的新报告/退回后失效。 */
     acceptedReportAt?: string
+    acceptedAttempt?: number
     reason?: string
   }
   workspace?: { kind: 'worktree' | 'branch' | 'directory'; ref: string }
@@ -554,7 +558,7 @@ interface Subtask {
 // 最终审查的聚合投影；不是新的存储，也不改变单条 Review 契约。
 type ReviewSource =
   | { kind: 'ticket'; assignmentId: string }
-  | { kind: 'subtask'; subtaskId: string }
+  | { kind: 'subtask'; subtaskId: string; attempt: number }
 
 interface ReviewConfirmationView {
   /** 稳定标识：ticket:<assignmentId>:<index> 或 subtask:<subtaskId>:<index> */
@@ -622,9 +626,9 @@ interface PendingEnd {
 
 **子任务存储（第 2 期，schema 15）**：
 
-- 新表 `subtask`：`id`、`ticket_id`、`parent_subtask_id`、`title`、`goal`、`scope`、`state`、`worker_session_id`、`depth`、`created_by`、`created_at`、`started_at`、`ended_at`、`report_json`、`resolution_json`、`workspace_json`、`merge_json`。
+- 新表 `subtask`：`id`、`ticket_id`、`parent_subtask_id`、`title`、`goal`、`scope`、`state`、`attempt`、`worker_session_id`、`depth`、`created_by`、`created_at`、`started_at`、`ended_at`、`report_json`、`resolution_json`、`workspace_json`、`merge_json`。
 - 索引：`(ticket_id, state)`、`(ticket_id, depth)`、`parent_subtask_id`；父完成门查“该 ticket 是否有未结束子任务”。
-- 迁移是加法：旧 Ticket 没有子任务，视图显示空；不把历史 subagent Session 追溯成子任务。
+- 迁移是加法：旧 Ticket 没有子任务，视图显示空；`attempt` 列 `not null default 1`，旧 `report_json` 缺 attempt 时读作 1；不把历史 subagent Session 追溯成子任务。
 - 类别覆盖层仍走 KV；子任务不写 KV，避免把执行数据塞进展示文档。
 
 **兼容**：没有 `task-catalogue.v1` 时，任务页按现有计划树渲染；首次归纳/人工编辑时创建文档。类别 KV 不需要迁移；子任务表由 Store 自动迁移到 schema 15（旧库迁移后 `subtask` 为空），这是前向迁移，不是“无需迁移”。
@@ -729,7 +733,8 @@ interface SubtaskView {
   state: Subtask['state']              // 精确状态；UI 显示
   status: ActivityStatus               // 仅展示/分组；attention 必须从 state 计算，不能读 status
   terminal?: 'dropped' | 'cancelled'   // 终态原因；与 status=done 搭配，禁止用 idle
-  workerSessionId: string              // subtask-<subtaskId>
+  attempt: number                      // 当前 attempt；旧 attempt 的 report/session 已作废
+  workerSessionId: string              // subtask-<subtaskId>-<attempt>
   depth: number
   startedAt?: string
   endedAt?: string
@@ -842,7 +847,7 @@ interface ExecutionUnitView {
 ```ts
 // 加在 TicketInput 的 closed union 里；不是 Trigger，不经过 Eval
 | { id: string; kind: 'subtask-report'; subtaskId: string; state: ReportState
-    summary: string; at: string; review?: Review }
+    attempt: number; summary: string; at: string; review?: Review }
 | { id: string; kind: 'end-gate'; pending: PendingEnd }
 ```
 
@@ -854,10 +859,10 @@ interface ExecutionUnitView {
 
 `Assignment.report.review` 仍然只描述**一次** Assignment 的交付；任务树需要的是 **Ticket 级聚合**。增加 kernel 级只读聚合 `ReviewAggregate`（app 的 `TaskReviewView` 是它的序列化；不是新存储，不改变现有 `Review` 契约）：
 
-1. **收集**：父 Ticket 最新 Assignment report 的 `review` + 每个 `Subtask.resolution.kind='accepted'` 且 `acceptedReportAt === report.at` 的 `Subtask.report.review`。`return_subtask`（清空 resolution）/`cancelled`/`failed` 不进入聚合；接受前的新报告使旧 accepted 失效，接受后的迟到报告被拒绝。
-2. **交付去重**：按 `DeliverableSummary.key = artifact.kind:artifact.ref:artifact.revision` 合并；同一 revision 的父子交付只保留一行，`sources` 记录 `{kind:'ticket',assignmentId}` 与 `{kind:'subtask',subtaskId}`。这样“父合并后最终交付只出现一次”有可执行键，不靠 UI 去重。
-3. **确认聚合**：每个来源的 `Review.confirmations` 保留为 `ReviewConfirmationView`，`ref` 用稳定下标（`ticket:<assignmentId>:<i>` / `subtask:<subtaskId>:<i>`），并带 `source`/`criterion`；人能看到每条确认来自哪个子交付。投影不把 `HumanCriterion` 改写成父 worker 的声明。
-4. **评审指纹**：`reviewRevision = sha256` over 排序后的 `(sourceKind, sourceId, report.at, artifact.key, criteria, confirmations)`。任何子报告、父报告或验收条件变化都会换 revision。
+1. **收集**：父 Ticket 最新 Assignment report 的 `review` + 每个 `Subtask.resolution.kind='accepted'` 且 `acceptedReportAt === report.at` 且 `acceptedAttempt === attempt` 的 `Subtask.report.review`。`return_subtask`（清空 resolution）/`cancelled`/`failed` 不进入聚合；接受前的新报告使旧 accepted 失效，接受后的迟到报告被拒绝。
+2. **交付去重**：按 `DeliverableSummary.key = artifact.kind:artifact.ref:artifact.revision` 合并；同一 revision 的父子交付只保留一行，`sources` 记录 `{kind:'ticket',assignmentId}` 与 `{kind:'subtask',subtaskId,attempt}`。这样“父合并后最终交付只出现一次”有可执行键，不靠 UI 去重。
+3. **确认聚合**：每个来源的 `Review.confirmations` 保留为 `ReviewConfirmationView`，`ref` 用稳定下标（`ticket:<assignmentId>:<i>` / `subtask:<subtaskId>:<attempt>:<i>`），并带 `source`/`criterion`；人能看到每条确认来自哪个子交付。投影不把 `HumanCriterion` 改写成父 worker 的声明。
+4. **评审指纹**：`reviewRevision = sha256` over 排序后的 `(sourceKind, sourceId, sourceAttempt, report.at, artifact.key, criteria, confirmations)`。任何子报告、父报告或验收条件变化都会换 revision。
 5. **最终批准**：`POST tickets/:id/approve` 必须带 `{reviewRevision}`；`Assignments.review` 重新计算 `ReviewAggregate`：
    - `reviewRevision` 不匹配 → `409 reviewStale`，不写批准；
    - 仍有未结束子任务 → `unfinishedSubtasks`；
@@ -976,7 +981,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 
 - 来源会话：任务从哪段对话/线程来（对话 Source 的主会话或 Thread），回答“当初是谁在哪说的”；
 - 父 worker：`worker-<ticketId>`，回答“谁对最终目标负责”；
-- 当前节点 worker：Ticket 节点就是父 worker；子任务是 `subtask-<subtaskId>`，回答“这个子任务谁在做”；
+- 当前节点 worker：Ticket 节点就是父 worker；子任务是 `subtask-<subtaskId>-<attempt>`，回答“这个子任务谁在做”；
 - 子会话：节点 worker 开的 subagent，回答“节点里拆出去的哪一步是谁在做”。
 - lightweight：没有以上四类 worker/session；只显示 inline run 的 step/action ledger，不伪造会话。
 
@@ -1033,7 +1038,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 | 投影 | `app/tasks.ts` 增加 `categories`/`unclassified`/`TaskView.subtasks`/`TaskView.form`/`inline`/`kind`/`reviewedTicketId`/`review`；保留 `milestones` | 一个投影，所有视图共用；review 关系来自 `ownership.ts`，不能由客户端猜；lightweight 不能套 tracked 的 Assignment 假设 |
 | 子任务模型 | 新 `Subtask`（kernel 类型）+ `subtask` 表（schema 15）+ 迁移 | 执行数据，不是覆盖层 |
 | 委派 | 新 `delegate_task` 工具 + Engine 校验（父存活、同 Mandate/maxActionLevel、深度/宽度/配额）+ 子 worker Session | worker 只能请求，Engine 写；文本 scope 不参与授权 |
-| 子 worker 生命周期 | Executor 为每个子任务起独立 worker（`subtask-<subtaskId>`），持久化、重启恢复、停止级联；受限执行配置（网络/remote/gh/命令/cwd/无 subagent） | 不是 subagent；不能复用临时子会话；仅靠工具列表挡不住外部动作 |
+| 子 worker 生命周期 | Executor 为每个子任务 attempt 起独立 worker（`subtask-<subtaskId>-<attempt>`），持久化、重启恢复、停止级联；受限执行配置（网络/remote/gh/命令/cwd/无 subagent） | 不是 subagent；不能复用临时子会话；仅靠工具列表挡不住外部动作 |
 | 父审阅 | 子任务报告进入父 worker 输入；`accept/return/cancel_subtask`；结束门（不只 ready）；`TaskReviewView` 聚合子确认，`reviewRevision` 绑定最终批准；`Subtask.merge` 合并/冲突记录 | 父接受不等于人确认；子确认不能漏；合并可审计 |
 | 报告唤醒 | `TicketInput` 增加 `subtask-report` 变体；Engine 启动/恢复父 Assignment，每个子任务最多一条待处理报告 | 不经过 Eval；父空闲也能收到子报告 |
 | 结束门 | `Tickets.end`/`unfinished` 纳入子任务；`Assignments.report` 的 ready/dropped、`threadClosed`/`followsDone`、人停止全走同一门；PR/线程关闭未完成时写 `Ticket.endPending` + `end-gate` 输入；父 failed 非终态、取消子任务；失败/孤儿需 `Subtask.resolution` | 不能只挡 ready，不能静默结束，也不能留下无主 pending；不要新增 failed outcome |
@@ -1043,7 +1048,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 | 右栏 | `client/index.tsx` 注册类型（`sidebarRightTabs.register`）+ body/title 两个槽；新 `TasksTab` | 与 `EventsTab` 并列，共享 selection；子任务只展开一层 |
 | 面板 | `client/tasks.tsx` 重构为列表/树/看板/图；新增 Ticket/子任务详情 | 现有树/图代码可复用 |
 | 事件联动 | `system.tsx` 的 `ActivityGroup` 与任务选择共享；`EventsTab` 增加 `task` 筛选 | 子任务事件聚合到父 Ticket，避免刷屏 |
-| 会话 | 父/子 worker Session 分别显示；子任务用 `subtask-<subtaskId>` 与 `(ticketId, subtaskId)` 注册表，扩展 `ticketOfSession`、`Sessions.decorate`/`ticketOf`/`workOnly`/`limitSubagent`/预设/工具注册、`DshExecutor.install` 的 status/inbox/session/error 处理器与 per-subtask lifecycle；subagent 仍是执行细节 | 不伪造执行者；不能复用 `worker-` 前缀；子事件不能写到父 Assignment |
+| 会话 | 父/子 worker Session 分别显示；子任务用 `subtask-<subtaskId>-<attempt>` 与 `(ticketId, subtaskId, attempt)` 注册表，扩展 `ticketOfSession`、`Sessions.decorate`/`ticketOf`/`workOnly`/`limitSubagent`/预设/工具注册、`DshExecutor.install` 的 status/inbox/session/error 处理器与 per-subtask lifecycle；subagent 仍是执行细节 | 不伪造执行者；不能复用 `worker-` 前缀；子事件不能写到父 Assignment |
 | 交付 | tracked：每个节点由自己的 `report.review` 投影；`TaskReviewView` 按 artifact key 去重父子交付、聚合 `confirmations`；子任务交付先给父 worker 审阅，Ticket 最终交付再按 `reviewRevision` 给人。lightweight：只有 inline summary/action ledger，没有 Review/确认 | 不建第二份交付库；不把 inline summary 冒充交付；父子同一 revision 不重复 |
 | 迁移 | 类别 KV + schema 15 子任务表；旧 Ticket 无子任务；不追溯 subagent | 回滚见第 10 节 |
 | 测试 | 归属规则、投影、写冲突、父子门禁、委派配额、停止级联、重启恢复、右栏 UI、事件联动、空态/错误态；tracked + lightweight 共存、lightweight 无 worker/交付/子任务；review 聚合/revision、terminal 映射、pendingEnd、建议冲突 | 见第 9 期验收 |
@@ -1137,7 +1142,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 
 - 子 worker 没有 `delegate_ticket`、`send_message`、commit/send/spend/merge/审批请求工具；尝试创建 Ticket 或直接找人必须失败并记录。
 - 子 worker 的 `bash` 受限：`git push`、`gh pr create`、`curl` 外网、写父受保护路径、`subagent` 都失败；子 worker 的 subagent 不能借 `limitSubagent` 重新拿到父/子执行工具。
-- `subtask-<subtaskId>` 能通过注册表解析到 `(ticketId, subtaskId)`，不会把 `-sub` 当 ticketId；`decorate`/`ticketOf`/`workOnly`/`limitSubagent`/预设/工具注册都命中子任务，写保护同时检查父 Ticket 与子任务状态。
+- `subtask-<subtaskId>-<attempt>` 能通过注册表解析到 `(ticketId, subtaskId, attempt)`，不会把 `-sub` 当 ticketId；`decorate`/`ticketOf`/`workOnly`/`limitSubagent`/预设/工具注册都命中子任务，写保护同时检查父 Ticket 与子任务状态。
 - 子 session 的 `agent/status`/`agent/error` 只推进子任务，不调用父 Assignment 的 `workerIdle`/`failed`；子 worker 的 subagent 绑定最近的子任务并继承受限执行配置。
 - `delegate_task` 在深度 6、单节点 9 个、单 Ticket 33 个活跃子任务时拒绝；错误可读，不静默截断。
 - 子 worker 不能提高 `maxActionLevel`；父 Mandate 原样继承，文本 `scope` 不能当授权。
@@ -1158,8 +1163,10 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 - 建议接受：支持任务中任一已有 `manual` placement 时返回 `409 manualPlacementConflict`，不覆盖、不部分写入。
 - 类别继承：review Ticket 的 `inherited` placement 是读时解析，被审 Ticket 移动后自动跟随；不产生需要级联的持久化 placement。
 - form 选择：未注入 `inline`、需要 review/workspace/子任务/外部写时，accept 不得选 lightweight；review Ticket 永远 tracked。
-- `accept_subtask` 后 state=`done`/`endedAt` 被设置；`cancel_subtask` 后 state=`cancelled`/`endedAt` 被设置，不能停留在 `review`。
-- `return_subtask` 后旧 `Subtask.merge` 与 `resolution` 失效；重新接受写新 revision 的合并记录，不能复用旧合并。
+- `accept_subtask` 后 state=`done`/`endedAt` 被设置，旧 attempt 的迟到报告被拒绝；`cancel_subtask` 后 state=`cancelled`/`endedAt` 被设置并终止子 worker，迟到报告同样被拒绝；都不能停留在 `review`。
+- `return_subtask` 后 `attempt` 递增，旧 attempt 的 report 被拒绝、旧 `Subtask.merge` 与 `resolution` 失效；新 attempt 的 worker 报告才被接受，重新接受写新 revision 的合并记录，不能复用旧合并。
+- attempt fencing：`subtask-<id>-1` 的 report 在 return 后到 `subtask-<id>-2` 时被拒绝（`staleSubtaskReport`），只有 `attempt=2` 的 report 推进状态；旧 session 不能通过复用 ID 绕过。
+- `cancel_subtask` 后旧 session 的迟到 report 被拒绝（`subtaskClosed`），不会把 `cancelled` 改回 `review`。
 - 类别/归属：子任务不进入分类器、不计入类别任务数、不产生类别建议；父类别改变时子任务跟随。
 
 ## 10. 迁移与兼容
@@ -1227,7 +1234,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 | 14 | “规划中”是否包括尚未受理的 pre-Ticket 计划项？ | 本期任务视图只展示已受理 Ticket 与执行中的 Subtask；pre-Ticket 计划保留旧计划树/“按计划查看”，要进新视图需另建 plan 模型，不伪造 Task |
 | 15 | 审查 Ticket 是顶层任务还是被审任务的关系行？ | 计入类别任务数；`kind='review'` + `reviewedTicketId`，UI 缩进；被审任务不在当前类别时单独成行 |
 | 16 | 人能否停止/重派/重试单个子任务？ | 第 2 期只给父 worker `cancel_subtask`；单子任务人工操作需要新的权限/恢复契约，先不做 |
-| 17 | “执行者”是否要角色/姓名/指派？ | 当前只显示 `worker-<id>`/`subtask-<id>`；角色/指派是独立产品模型，不在本期伪造 |
+| 17 | “执行者”是否要角色/姓名/指派？ | 当前只显示 `worker-<id>`/`subtask-<id>-<attempt>`；角色/指派是独立产品模型，不在本期伪造 |
 | 18 | 旧计划树与新类别树如何同页共存？ | 第 1 期保留 `milestones` 作为回退/“按计划查看”；默认按类别，不把计划编号当 L1；两套视图共用同一 Ticket 读模型，不双写 |
 
 ## 12. 参考与证据
