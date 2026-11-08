@@ -86,6 +86,18 @@ The fourth command creates `~/.dsh/profiles/superagent` from the DeepSeek Harnes
 
 Run the profile-creation command only for a new installation. If the profile already exists, that command replaces it and deletes its `cordis.patch.yml`, including machine configuration. Do not use it for upgrades.
 
+### Automated install/uninstall check
+
+`pnpm test:install-e2e` runs the install above against a throwaway `DSH_HOME`: it builds the packages, initializes a Web profile, writes the machine configuration from the next section, installs this checkout with `dsh plugin add "link:$PWD"`, starts `dsh --profile install-e2e --no-open`, and removes the plugin again. It asserts:
+
+- the bundle becomes a profile dependency and a registered patch layer, and `dsh --dump-config` composes all six rows;
+- the panel's `GET /orchestrator/api/state` answers, reports the temporary `stateDir`, and the Overview page loads `dsh-superagent/client.js`;
+- after `dsh plugin remove`, the dependency and the patch rows are gone while `stateDir/orchestrator.sqlite` remains, so a reinstall finds its data.
+
+The `install-e2e` CI workflow runs this check on pull requests and `main`; locally, put `dsh` on `PATH` (or set `DSH_BIN`) and run `pnpm test:install-e2e`. `KEEP=1` leaves the temporary home for inspection.
+
+The check has deliberate limits. It installs the built checkout with `link:` because both packages are private and unpublished, so a registry or packed-tarball install is not covered until there is a release; the cross-host matrix is X-10. With no GitHub account configured, setup deliberately stops at `repositoryUnset`, and the check asserts that state instead of exercising Sources, Sessions or delivery. Uninstalling leaves the user's `cordis.patch.yml` naming the removed entry, so `dsh --dump-config` warns `entry "dsh-superagent" not found` and still exits 0; that is intentional, so a reinstall gets its `stateDir` back.
+
 ## Machine configuration
 
 Copy [examples/profile.cordis.patch.yml](../examples/profile.cordis.patch.yml) to `~/.dsh/profiles/superagent/cordis.patch.yml`, replacing that file, and replace every `<placeholder>`. For Feishu, also enable the `dsh-superagent-feishu` entry there, and for document comments the `dsh-superagent-feishu-doc` one. The `webserver` entry sets the panel's port.

@@ -1,0 +1,25 @@
+name: install-e2e
+
+# X-08: prove the bundle can be installed, opened and removed as one DSH plugin. The run boots a real host in a throwaway
+# DSH_HOME, so it stays out of `check`, builds the packages first, and needs the `dsh` CLI itself.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  install-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The host the temporary profile boots. Keep it the version `engines.dsh` and the devDependencies name; the profile
+      # installation refuses a plugin whose range the host does not satisfy.
+      - run: npm install --global @deepseek-ai/dsh@0.2.1-rc.5
+      - run: pnpm test:install-e2e

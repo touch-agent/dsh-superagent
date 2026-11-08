@@ -133,7 +133,7 @@ dsh-superagent           meta：bundle patch + 2 个 preset + locale
 | 缺 `stateDir` | 插件拒绝启动并说明原因 | `packages/dsh/src/index.ts` 的 machineOf 校验（已有） |
 | 升级跨 schema | `SCHEMA_VERSION` 只增；旧库迁移或拒启 | `migration.ts`（已有，当前 11） |
 | 升级跨宿主版本 | peer 依赖 + compat matrix；启动时校验必需服务是否都在 | 新增 X-10 |
-| 卸载 | 插件行消失；stateDir 保留；重装恢复 | 新增 X-08 |
+| 卸载 | 插件行消失；stateDir 保留；重装恢复 | `scripts/install-e2e.mjs`（X-08，见 `docs/006-deployment.md` 的 Automated install/uninstall check） |
 | 装两个实例 | 不允许：一个 stateDir 一个实例（单实例约束，方案 §11 已登记） | 由 stateDir 锁保证（`lockSync` 已有） |
 
 **bundle patch 的隐含风险**：`insert` 行依赖宿主 loader 里的定位锚点。DSH alpha 每次升级都可能改锚点，改了就「装上了但没生效」——这是最坏的一种失败，因为没有报错。防线只有一条：`dsh --profile <tmp> --dump-config` 断言 6 行都在（X-11）。
@@ -181,4 +181,4 @@ COREPACK_HOME=$PWD/.corepack pnpm install     # store 也留在工作区内
 2. `sidebar.panellist.actions` 的契约（能注册什么、作用域）——未验证。
 3. `@deepseek-ai/dsh-client-ui-deliverables` 能否被第三方插件复用——未验证；若不能，T3-02…04 的工作量不变。
 4. `bundle.patch` 的 `insert` 锚点在两个相邻 alpha 版本间是否稳定——需要 X-11 的实测数据。
-5. `dsh plugin add` 是否会在 profile 的 patch 层里自动登记该 bundle——大概率是（patch 来自包 manifest），但需要在临时 `DSH_HOME` 里跑一次确认（X-08 会覆盖）。
+5. `dsh plugin add` 是否会在 profile 的 patch 层里自动登记该 bundle——**已验证（X-08，2026-11-08）**：临时 `DSH_HOME` 中 `dsh plugin add "link:$PWD"` 会把包写进依赖与 `dsh.profile.bundles`，`dsh --dump-config` 合成 6 行；证据与限制见 `docs/006-deployment.md` 的 Automated install/uninstall check。

@@ -20,7 +20,7 @@ M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上�
 | T0-05 changesets + 体积门 + 两段 CI | 完成 | `894c1a5` | `pnpm changeset status` 两包各一 minor；`release` dry-run 18s |
 | T0-06 runbook + 演练 + trace 读取面 | 完成 | `492e668`、`a3809b1` | 三次查找 36–50 ms；`docs/runbooks/why-not-sent.md` |
 
-**M1 前置已动**：X-07（包切分）于 2026-11-07 落地——`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`（`@superagent/dsh`），根包成为 meta（patch + locale + 三个 re-export 入口）；patch 行名与子路径不变（D7）。X-11 与 X-08 仍未做。
+**M1 前置已动**：X-07（包切分）于 2026-11-07 落地——`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`（`@superagent/dsh`），根包成为 meta（patch + locale + 三个 re-export 入口）；patch 行名与子路径不变（D7）。X-08 于 2026-11-08 落地（见 §10）；X-11 仍未做。
 
 基线随之变化：65 个 spec / 1232 个测试（13.2s），领域子集 496 个 / 549 ms，`src` + `packages` 代码量见 `git show --stat`；CI 三个工作流（`check` / `changesets` / `release`）均已实跑通过。
 
@@ -504,6 +504,14 @@ graph LR
 5. 若动 schema：迁移有向前一个 major 的路径，旧库拒启文案不变；
 6. 若动面板：空态、错误态、无权限态三种状态都渲染过；
 7. 若动 `packages/kernel`：契约测试先行，且 `pnpm check` 在干净 clone 上可复现。
+
+---
+
+## 10. X-08 安装/卸载 E2E（2026-11-08 落地）
+
+- **入口**：`pnpm test:install-e2e`（先 build，再跑 `scripts/install-e2e.mjs`）；CI 独立 job `install-e2e`（`.github/workflows/install-e2e.yml`，跑 PR 与 main），不进 `pnpm check`，保持领域测试的秒级反馈。
+- **流程**：临时 `DSH_HOME` 建 Web profile → 写 machine 配置 → `dsh plugin add "link:$PWD"` → 断言依赖与 `dsh.profile.bundles` 自动登记、`--dump-config` 6 行齐全 → 起 `dsh` → `/orchestrator/api/state` 200、`stateDir` 生效、Overview 页面加载 `dsh-superagent/client.js` → SIGINT 停止 → `dsh plugin remove` → 断言依赖/行消失、`stateDir/orchestrator.sqlite` 仍在。
+- **限制**：两个包仍 private，测的是文档里的 `link:` 安装（构建后的 checkout），registry/tarball 路径等发布后补；未配 GitHub 账号，setup 只到 `repositoryUnset`，不覆盖 Source/Session/投递；宿主版本矩阵归 X-10；卸载后用户 patch 仍引用已移除 entry，`--dump-config` 告警但退出 0（故意保留，便于重装恢复）。
 
 ---
 
