@@ -85,7 +85,7 @@ The Tasks tab then folds Tickets into milestones and plan tasks by the ids their
 
 ### Attention is the budget
 
-Everything above serves one rule: take as little human attention as possible and give as much value as possible. The panel opens with what needs a person, not with a dashboard; a healthy state takes no space; one outcome costs one notification; the agent confirms a request once, stays quiet while it works, and writes again only when a result is ready, a decision is needed, or it cannot finish. The same rule applies to this README: the rest is in `docs/`, in order. The design principles that follow from it — internalized organization, independent evolution and replaceable boundaries — are in [DESIGN-PRINCIPLES.zh.md](DESIGN-PRINCIPLES.zh.md).
+Everything above serves one rule: take as little human attention as possible and give as much value as possible. The panel opens with what needs a person, not with a dashboard; a healthy state takes no space; one outcome costs one notification; the agent confirms a request once, stays quiet while it works, and writes again only when a result is ready, a decision is needed, or it cannot finish. The same rule applies to this README: the rest is in `docs/`, in order. The design principles that follow from it — internalized organization, independent evolution, composable context and replaceable boundaries — are in [DESIGN-PRINCIPLES.zh.md](DESIGN-PRINCIPLES.zh.md).
 
 ## Repository layout
 
