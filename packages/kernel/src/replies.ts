@@ -70,12 +70,15 @@ export class Replies extends EnginePart {
     const id = action.idempotencyKey
     // A receipt queued before T2-05 kept the trigger's id; an acknowledgement already sent then still counts.
     const legacy = key('ack', trigger.id)
-    const existing = this.options.outbox.status(id) ?? this.options.outbox.status(legacy)
+    const current = this.options.outbox.status(id)
+    const previous = this.options.outbox.status(legacy)
+    const existing = current ?? previous
     if (!existing && !trigger.human) throw new UserError('ackNotPerson')
     // Preserve the automatic or first queued acknowledgement.
     if (!existing) this.options.outbox.send(message)
     this.takeUp(ticket.id, trigger.id)
-    return { id, status: this.options.outbox.status(id) ?? this.options.outbox.status(legacy) ?? 'pending',
+    // Name the receipt that actually exists: a message queued by an older version keeps its old id.
+    return { id: current === undefined && previous !== undefined ? legacy : id, status: current ?? previous ?? 'pending',
       reused: existing !== undefined }
   }
   private answer(request: Exclude<ReplyRequest, { purpose: 'acknowledgement' }>): Reply {
@@ -102,7 +105,9 @@ export class Replies extends EnginePart {
     const id = message?.action.idempotencyKey
     // A receipt queued before T2-05 kept the old id, derived from the object and the text.
     const legacy = attention ? key('attention-reply', attention.id) : key('reply', trigger?.id ?? ticket?.id ?? '', request.text)
-    const existing = id === undefined ? undefined : this.options.outbox.status(id) ?? this.options.outbox.status(legacy)
+    const current = id === undefined ? undefined : this.options.outbox.status(id)
+    const previous = this.options.outbox.status(legacy)
+    const existing = current ?? previous
     const ready = !ticket || !trigger || ticket.answers?.includes(trigger.id)
     if (request.purpose === 'answer' && !ready && !existing) throw new UserError('noAnswer')
     if (!message) throw new UserError('noChannel')
@@ -112,9 +117,9 @@ export class Replies extends EnginePart {
       ticket.answers = ticket.answers.filter(item => item !== trigger.id)
       this.repo.tickets.save(ticket)
     }
-    return { id: message.action.idempotencyKey,
-      status: this.options.outbox.status(message.action.idempotencyKey) ?? this.options.outbox.status(legacy) ?? 'pending',
-      reused: existing !== undefined }
+    // Name the receipt that actually exists: a message queued by an older version keeps its old id.
+    return { id: current === undefined && previous !== undefined ? legacy : message.action.idempotencyKey,
+      status: current ?? previous ?? 'pending', reused: existing !== undefined }
   }
   /** Build one outbound message: its send Action carries the key, and the message carries the content. */
   private message(channel: ChannelRef, text: string, kind: OutboundKind, objectId: string, revision: string,

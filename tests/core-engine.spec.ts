@@ -666,7 +666,7 @@ describe('follow-up owners', () => {
     h.engine.receive(trigger('2', { actor: guest }))
     h.outbox.push({ id: key('ack', '2'), channel: trigger('2').channel!, text: 'On it', ticketId })
     expect(h.engine.reply({ purpose: 'acknowledgement', ticketId, triggerId: '2', text: 'Looking' }))
-      .toEqual({ id: ackId(trigger('2')), status: 'pending', reused: true })
+      .toEqual({ id: key('ack', '2'), status: 'pending', reused: true })
     expect(h.outbox.filter(message => message.action).map(message => message.text)).toEqual(['ok'])
   })
   it('does not queue an answer again when only the old trigger-and-text receipt exists', () => {
