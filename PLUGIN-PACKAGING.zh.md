@@ -1,7 +1,7 @@
 # PLUGIN-PACKAGING — 以「一个独立插件」的形态装进 DSH
 
 > 基线：`touch-agent/dsh-superagent` @ `0d9298c` · 宿主 DSH `^0.2.1-alpha.2`
-> 配套：`PLATFORM-EVOLUTION.zh.md`（为什么）、`TASK-PLAN.zh.md`（做什么）、本文（怎么装进去）
+> 配套：`docs/012-platform-evolution.zh.md`（为什么）、`docs/plan/TASK-PLAN.zh.md`（做什么）、本文（怎么装进去）
 > 状态：设计稿。标「待验证」的条目是读了宿主 CLI 与 asar 字符串后仍未实证的部分
 
 ---
@@ -161,7 +161,7 @@ COREPACK_HOME=$PWD/.corepack pnpm install     # store 也留在工作区内
 
 ---
 
-## 7. 任务增补（挂到 TASK-PLAN §8 横向任务）
+## 7. 任务增补（挂到 `docs/plan/TASK-PLAN.zh.md` §8 横向任务）
 
 | ID | 任务 | 人日 | 与里程碑的关系 |
 | --- | --- | --- | --- |

@@ -1,15 +1,15 @@
 # TASK-PLAN — 从原型到可托付底座：任务分解与排期
 
 > 基线：`touch-agent/dsh-superagent`（private）· `main` 4 个提交，HEAD `0d9298c` · CI `check` 全绿
-> 依据：`PLATFORM-EVOLUTION.zh.md`（下称「方案」）· 本文只做**任务分解**，不重复方案里的取舍论证
-> 日期：2026-11-07 · 状态：草案，待拍板 D1–D5 后冻结第一版
+> 依据：`../012-platform-evolution.zh.md`（下称「方案」）· 本文只做**任务分解**，不重复方案里的取舍论证
+> 日期：2026-11-07 · 状态：执行中；任务状态、PR 与验收证据见 [TRACKING.zh.md](TRACKING.zh.md)
 
 
 ---
 
 ## 0.0 进度（2026-11-07 晚）
 
-M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上跑过。
+M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上跑过；当前状态见 [TRACKING.zh.md](TRACKING.zh.md)。
 
 | 任务 | 状态 | 落地 | 验收证据 |
 | --- | --- | --- | --- |
@@ -18,7 +18,7 @@ M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上�
 | T0-03 四指标 + `GET metrics` | 完成 | `1377989` | `tests/metrics.spec.ts`；空样本给 `null` 不给 0 |
 | T0-04 面板只读健康区 | 完成 | `1377989` | Overview 页「运行健康」四个数字 + 中断/恢复提示 |
 | T0-05 changesets + 体积门 + 两段 CI | 完成 | `894c1a5` | `pnpm changeset status` 两包各一 minor；`release` dry-run 18s |
-| T0-06 runbook + 演练 + trace 读取面 | 完成 | `492e668`、`a3809b1` | 三次查找 36–50 ms；`docs/runbooks/why-not-sent.md` |
+| T0-06 runbook + 演练 + trace 读取面 | 完成 | `492e668`、`a3809b1` | 三次查找 36–50 ms；`../runbooks/why-not-sent.md` |
 
 **M1 前置已动**：X-07（包切分）于 2026-11-07 落地——`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`（`@superagent/dsh`），根包成为 meta（patch + locale + 三个 re-export 入口）；patch 行名与子路径不变（D7）。X-08 于 2026-11-08 落地（见 §13）；X-11 仍未做。
 
@@ -50,6 +50,8 @@ M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上�
 ## 1. 这份计划怎么用
 
 ### 1.1 任务编号与字段
+
+任务定义写在本文；任务的状态、PR、验收证据与最后更新只记在 [TRACKING.zh.md](TRACKING.zh.md)。本文里带日期的「进度」段落是历史快照，不随状态变化追改。
 
 `T<里程碑>-<序号>`，每个任务给六件事，缺一不成立：
 
@@ -144,7 +146,7 @@ graph LR
 ### T0-06 M0 退出标准验证 · Lead · 1 人日
 
 - **目标**：把「30 秒定位卡点」变成一次演练，而不是一句口号。
-- **交付**：`docs/runbooks/why-not-sent.md`（从 trace 读的三步法）+ 一份演练记录。
+- **交付**：`../runbooks/why-not-sent.md`（从 trace 读的三步法）+ 一份演练记录。
 - **验收**：随机抽 3 个历史工单，按 runbook 在 30 秒内说出卡点；`pnpm check` 绿；领域测试 < 2s。
 - **依赖**：T0-01…05。
 
@@ -288,8 +290,8 @@ graph LR
 ### T2-10 撤回演练 · Platform · 2 人日
 
 - **交付**：演练脚本：对支持撤回的源（邮件草稿、日历邀请）发→撤→验；不支持撤回的源给出「不可撤回」提示。
-- **验收**：演练记录进 `docs/runbooks/`；撤回失败有明确 reason。
-- **状态**：实现完成（2026-11-08，PR #17 待审查合并）。`SourceChannel` 增加可选 `withdraw`，返回 `withdrawn` / `gone` / `refused`（带原因）；`SourceRegistry.withdraw` 转发，未声明 adapter 的源返回 unsupported，不伪装成功。GitHub 按投递标记找到评论、用其 id 删除，删除后用 `probe` 复核；飞书明确拒绝，因为 `lark-cli im messages delete` 是 high-risk-write，需人工 `--yes` 确认。`tests/withdraw-drill.spec.ts`（`pnpm drill:withdraw`）对 mail-draft / calendar-invite / already-gone fixture、GitHub、飞书与无撤回源验证发→撤→验、`gone` 与 refusal 原因；GitHub 读取返回 404 时按拒绝处理而不是谎报 `gone`；`docs/runbooks/withdraw.md`、`withdraw.drill.md` 记录演练与限制。
+- **验收**：演练记录进 `../runbooks/`；撤回失败有明确 reason。
+- **状态**：实现完成（2026-11-08，PR #17 待审查合并）。`SourceChannel` 增加可选 `withdraw`，返回 `withdrawn` / `gone` / `refused`（带原因）；`SourceRegistry.withdraw` 转发，未声明 adapter 的源返回 unsupported，不伪装成功。GitHub 按投递标记找到评论、用其 id 删除，删除后用 `probe` 复核；飞书明确拒绝，因为 `lark-cli im messages delete` 是 high-risk-write，需人工 `--yes` 确认。`tests/withdraw-drill.spec.ts`（`pnpm drill:withdraw`）对 mail-draft / calendar-invite / already-gone fixture、GitHub、飞书与无撤回源验证发→撤→验、`gone` 与 refusal 原因；GitHub 读取返回 404 时按拒绝处理而不是谎报 `gone`；`../runbooks/withdraw.md`、`withdraw.drill.md` 记录演练与限制。
 
 ---
 
@@ -371,11 +373,12 @@ graph LR
 | X-04 | `api.ts` → JSON Schema 单一真相 | 3 | 现在路由、类型、面板三处手写，是 25 条路由的主要维护成本 |
 | X-05 | 文档-代码一致性检查扩展 | 1 | `docs.spec.ts` 已强制「每个 spec 都在表里」，再扩到「每个 manifest 字段都有文档」 |
 | X-06 | 性能基线守住 | 1 | 领域测试 < 2s 是方案 §10.1 的第 1 条契约，加一个 CI 计时断言 |
-| X-07 | 包切分：`@superagent/dsh` + meta 包 | 3 | 详见 `PLUGIN-PACKAGING.zh.md` §3；必须在 M1 前完成，否则 source-kit 会落错包 |
+| X-07 | 包切分：`@superagent/dsh` + meta 包 | 3 | 详见 `../../PLUGIN-PACKAGING.zh.md` §3；必须在 M1 前完成，否则 source-kit 会落错包 |
 | X-08 | 安装/卸载 E2E：临时 `DSH_HOME` → `dsh plugin add` → 起进程 → 面板可用 → 卸载后 stateDir 仍在 | 5 | 这是「能被组织安装」的唯一证据；M1 结束前 |
-| X-09 | 入口首页三区（待我处理 / 正在跑 / 最近历史）+ 侧边栏角标 | 5 | 详见 `PLUGIN-PACKAGING.zh.md` §4；M3 前 |
+| X-09 | 入口首页三区（待我处理 / 正在跑 / 最近历史）+ 侧边栏角标 | 5 | 详见 `../../PLUGIN-PACKAGING.zh.md` §4；M3 前 |
 | X-10 | 宿主兼容矩阵：CI 跑两个 alpha 版本，断言必需服务齐备 | 3 | 对应 R7；每个里程碑跑一次 |
 | X-11 | `dump-config` 断言：patch 6 行齐全 | 2 | 防「装了没生效」的静默失败；随 X-07 一起做 |
+| X-12 | 文档结构与计划跟踪：011/012 入 `docs/`、计划文档入 `docs/plan/`、跟踪表校验 | 1 | 文档与计划分散在仓库根，引用与状态易漂移；由 `tests/docs.spec.ts` 固定结构和格式 |
 
 **X-07 与 X-11 是 M1 的前置**（5 人日）：M1 要写 `SourceManifest` 与新源，这些代码落在哪个包取决于切分结果；切晚了等于搬两次。X-08 是 M1 的退出证据——没有它，M1 交付的「三个源」只在本机跑过。
 
@@ -427,7 +430,7 @@ graph LR
 
 ## 10.1 M1.5 会话派活（T1-13…T1-17）
 
-决策见 D11 与 [docs/009](docs/009-conversation-tasks.md)。目标是让“和主 agent 说话”成为合法的工作入口，同时不破坏“Only Eval creates a Ticket”。
+决策见 D11 与 [docs/009](../009-conversation-tasks.md)。目标是让“和主 agent 说话”成为合法的工作入口，同时不破坏“Only Eval creates a Ticket”。
 
 | 任务 | 内容 | 人日 | 依赖 |
 | --- | --- | --- | --- |
@@ -508,7 +511,8 @@ graph LR
 4. `docs/` 里对应段落同步（`docs.spec.ts` 会抓漏）；
 5. 若动 schema：迁移有向前一个 major 的路径，旧库拒启文案不变；
 6. 若动面板：空态、错误态、无权限态三种状态都渲染过；
-7. 若动 `packages/kernel`：契约测试先行，且 `pnpm check` 在干净 clone 上可复现。
+7. 若动 `packages/kernel`：契约测试先行，且 `pnpm check` 在干净 clone 上可复现；
+8. 合并时更新 [TRACKING.zh.md](TRACKING.zh.md) 对应行：状态、PR、验收证据、最后更新。
 
 ---
 
@@ -529,5 +533,5 @@ graph LR
 | T2-01…10 | §6.2 Action、§6.3 Ledger |
 | T3-01…08 | §6.4 Acceptance、§6.5 Deliverable、§6.6 Runtime |
 | T4-01…06 | §6.7 Tenant 与保留 |
-| X-07…X-11 | `PLUGIN-PACKAGING.zh.md` §3（切包）、§4（入口）、§5（安装边界） |
+| X-07…X-11 | `../../PLUGIN-PACKAGING.zh.md` §3（切包）、§4（入口）、§5（安装边界） |
 | X-01…06 | §10.1、§10.5 |

@@ -37,7 +37,7 @@ deleted no real comment. The table below is the drill's own output.
 - **The Feishu path cannot be automatic.** `lark-cli im messages delete --help` marks the recall `high-risk-write` and
   requires explicit confirmation. An automatic `withdraw` for Feishu would either bypass that rule or fail, so the
   Channel returns `refused` and the runbook tells a person the exact command.
-- **The two examples in TASK-PLAN have no production Source.** There is no mail-draft or calendar-invite Source in the
+- **The two examples in `docs/plan/TASK-PLAN.zh.md` have no production Source.** There is no mail-draft or calendar-invite Source in the
   repository yet. The drill keeps those rows as fixtures so the contract is exercised now, and the table says so
   instead of pretending the Sources exist.
 - **A delete that returns success is not proof.** The GitHub row is only accepted after `probe` reads the comment as
