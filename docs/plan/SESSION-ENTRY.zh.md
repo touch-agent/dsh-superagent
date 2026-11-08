@@ -2,7 +2,7 @@
 
 > 基线：`touch-agent/dsh-superagent` @ `26cd395`（`main`）· 运行宿主 DSH `0.2.1-rc.5`
 > 输入：工单「主会话是『一个进程一个体系』」①主会话/普通会话入口 ②主会话页内系统视图 + 右侧事件侧栏 ③工作目录分级
-> 配套：`PLATFORM-EVOLUTION.zh.md`（为什么）、`TASK-PLAN.zh.md` §10.2（做什么）、本文（宿主能力核验与设计）
+> 配套：`../012-platform-evolution.zh.md`（为什么）、`TASK-PLAN.zh.md` §10.2（做什么）、本文（宿主能力核验与设计）
 > 状态：设计已核验；S-01…S-03 已随前置 PR #2 落地，S-04…S-08 已在本 PR 完成
 
 ---
@@ -185,7 +185,7 @@ domain event ──► ActivityLog（全部入库）
 | S-05 | 页内「状态」页：`conversation.view`、仅主会话、直接复用管理页 | 3 | **本 PR 完成** |
 | S-06 | 右侧「事件」栏：tab + 未读标题 + 轮询 + 自动打开一次 | 3 | **本 PR 完成** |
 | S-07 | SSE 推送：exact 路由、`Last-Event-ID` 补拉、心跳、同源校验 | 1.5 | **本 PR 完成** |
-| S-08 | 端到端与宿主版本矩阵：slot 存在性守卫、截图/演示、操作手册 | 2 | **本 PR 完成**（截图见 `docs/images/session-entry/`） |
+| S-08 | 端到端与宿主版本矩阵：slot 存在性守卫、截图/演示、操作手册 | 2 | **本 PR 完成**（截图见 `../images/session-entry/`） |
 
 **合计 14.5 人日**。S-01…S-03 与宿主界面解耦，先落地；S-04…S-08 依赖宿主 slot，按 DSH 版本做守卫。
 
@@ -245,4 +245,4 @@ SSE 是 `GET /orchestrator/api/activity/stream` 的 exact 路由：`Last-Event-I
 - `packages/dsh/src/app/execution-environment.ts`、`runtime.ts`：`systemRoot`、主会话 cwd、默认工单根。
 - `packages/dsh/src/client/{index.tsx,system.tsx,activity-feed.ts,master.ts,panel.ts}`：主会话入口、复用管理页的状态视图、事件栏、SSE/轮询客户端。
 - `tests/activity.spec.ts`、`tests/http.spec.ts`、`tests/activity-feed.spec.ts`、`tests/client.spec.tsx` 与报告/目录/迁移相关断言。
-- 本文与 `TASK-PLAN.zh.md` §10.2、`docs/003`、`docs/005`、`docs/006`、`docs/007`。
+- 本文与 `TASK-PLAN.zh.md` §10.2、`../003-execution.md`、`../005-panel.md`、`../006-deployment.md`、`../007-architecture.md`。

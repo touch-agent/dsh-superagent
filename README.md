@@ -85,7 +85,7 @@ The Tasks tab then folds Tickets into milestones and plan tasks by the ids their
 
 ### Attention is the budget
 
-Everything above serves one rule: take as little human attention as possible and give as much value as possible. The panel opens with what needs a person, not with a dashboard; a healthy state takes no space; one outcome costs one notification; the agent confirms a request once, stays quiet while it works, and writes again only when a result is ready, a decision is needed, or it cannot finish. The same rule applies to this README: the rest is in `docs/`, in order. The design principles that follow from it — internalized organization, independent evolution, composable context and replaceable boundaries — are in [DESIGN-PRINCIPLES.zh.md](DESIGN-PRINCIPLES.zh.md).
+Everything above serves one rule: take as little human attention as possible and give as much value as possible. The panel opens with what needs a person, not with a dashboard; a healthy state takes no space; one outcome costs one notification; the agent confirms a request once, stays quiet while it works, and writes again only when a result is ready, a decision is needed, or it cannot finish. The same rule applies to this README: the rest is in `docs/`, in order. The design principles that follow from it — internalized organization, independent evolution, composable context and replaceable boundaries — are in [011 Design principles](docs/011-design-principles.zh.md).
 
 ## Repository layout
 
@@ -100,7 +100,8 @@ Everything above serves one rule: take as little human attention as possible and
 | `examples/profile.cordis.patch.yml` | The machine configuration an operator copies into a profile. |
 | `scripts/` | `dsh-superagent` service script, the bundle-size gate, the install-e2e check. |
 | `tests/` | Unit, integration, conformance, chaos, panel and packaging tests; the repository's executable contracts. |
-| `docs/` | The numbered design and operations documents. |
+| `docs/` | The numbered design and operations documents (000–012), the documentation map, runbooks and images. |
+| `docs/plan/` | The milestone plan, its dated kickoff and session-entry notes, and the single task tracking table. |
 | `SETUP.md` | The guided setup an agent follows with an operator. |
 
 ## Install
@@ -161,7 +162,7 @@ From a GitHub account on the allowed list, comment `@<agent-login> <request>` on
 
 ## Status and limitations
 
-The milestones are tracked in [TASK-PLAN.zh.md](TASK-PLAN.zh.md), with per-task status and evidence. In summary:
+The milestone definitions are in [TASK-PLAN.zh.md](docs/plan/TASK-PLAN.zh.md), and the live per-task status, PR and evidence are in [TRACKING.zh.md](docs/plan/TRACKING.zh.md). In summary:
 
 | Milestone | State | Landed / remaining |
 | --- | --- | --- |
@@ -186,7 +187,7 @@ What is not wired yet, and matters when you evaluate the project:
 
 ## Documentation
 
-Read the numbered documents in order; each builds only on the ones before it.
+Read 000–010 in order; each builds only on the ones before it. 011 and 012 are a cross-referencing pair: the product and organization principles, and the platform evolution they sit above.
 
 - [000 Philosophy](docs/000-philosophy.md): the attention rule, and what the agent may and may not do.
 - [001 Domain model](docs/001-domain.md): Sources, Triggers, Threads, Evals, Mandates, Tickets, Assignments, Deliverables and Subscriptions.
@@ -199,8 +200,10 @@ Read the numbered documents in order; each builds only on the ones before it.
 - [008 Cookbook](docs/008-cookbook.md): the full recipe for adding a Source.
 - [009 Conversation tasks](docs/009-conversation-tasks.md): assigning work by talking to the agent, and multi-source tasks.
 - [010 Adding a Source in 30 minutes](docs/010-adding-a-source.md): the fast path from an empty checkout to a registered, panel-visible Source.
+- [011 Design principles](docs/011-design-principles.zh.md): attention as the budget, internalized organization, independent evolution, composable context and replaceable boundaries (Chinese).
+- [012 Platform evolution](docs/012-platform-evolution.zh.md): why the project has this shape, from a single-repository agent to a trustable action base (Chinese).
 
-The larger design and planning notes are in Chinese: [DESIGN-PRINCIPLES.zh.md](DESIGN-PRINCIPLES.zh.md) states the product and organization principles above the numbered set, [PLATFORM-EVOLUTION.zh.md](PLATFORM-EVOLUTION.zh.md) explains why the project has this shape, and [TASK-PLAN.zh.md](TASK-PLAN.zh.md) records the milestones, tasks and evidence. They are working documents and can be ahead of, or behind, the numbered set.
+The design and evolution layer and the plan set are Chinese working documents, and can be ahead of, or behind, the numbered set. [docs/README.md](docs/README.md) maps the whole documentation set; [docs/plan/README.md](docs/plan/README.md) explains the plan documents and the tracking convention.
 
 Design proposals (unnumbered, not implemented):
 

@@ -1,0 +1,76 @@
+# TRACKING — 任务状态、PR 与验收证据
+
+> 唯一状态源。格式与「合并即更新」约定见 [README.md](README.md)。
+> 初始建表 2026-11-08：历史任务按当日仓库、PR 与计划文档中能复核的证据回填；没有完成证据的任务记为 `未开始`，发现不符时先修表。`最后更新` 是这一行最后一次改动日期。
+
+## 任务跟踪表
+
+| 任务 | 状态 | PR | 验收证据 | 最后更新 |
+| --- | --- | --- | --- | --- |
+| T0-01 | 已完成 | — | `fcbae91`；schema 11→12，62 文件 / 1212 测试 | 2026-11-08 |
+| T0-02 | 已完成 | — | `7f11e0d`、`ab8f6c5`；一条 trigger 的 trace 十段齐全 | 2026-11-08 |
+| T0-03 | 已完成 | — | `1377989`；`tests/metrics.spec.ts` 四指标 | 2026-11-08 |
+| T0-04 | 已完成 | — | `1377989`；Overview「运行健康」与中断/恢复提示 | 2026-11-08 |
+| T0-05 | 已完成 | — | `894c1a5`；changesets 与包体积门 | 2026-11-08 |
+| T0-06 | 已完成 | — | `492e668`、`a3809b1`；`../runbooks/why-not-sent.md` 与三次查找演练 | 2026-11-08 |
+| T1-01 | 已完成 | — | `packages/kernel/src/manifest.ts`；`tests/manifest.spec.ts` | 2026-11-08 |
+| T1-02 | 已完成 | — | `packages/dsh/src/sources/manifest-form.ts`；`tests/manifest-form.spec.ts` | 2026-11-08 |
+| T1-03 | 已完成 | — | `packages/dsh/src/sources/registry.ts`；`tests/registry.spec.ts` | 2026-11-08 |
+| T1-04 | 已完成 | — | GitHub manifest 与 adapter；`tests/conformance/github.spec.ts` | 2026-11-08 |
+| T1-05 | 已完成 | — | Feishu manifest 与 adapter；`tests/conformance/feishu.spec.ts` | 2026-11-08 |
+| T1-06 | 已完成 | — | `tests/conformance/suite.ts`、`suite.spec.ts`（PR #1 关闭后由 main 上的提交承接） | 2026-11-08 |
+| T1-07 | 未开始 | — | — | 2026-11-08 |
+| T1-08 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/3 | `tests/conformance/feishu-doc.spec.ts`；飞书文档 Source | 2026-11-08 |
+| T1-09 | 未开始 | — | — | 2026-11-08 |
+| T1-10 | 未开始 | — | — | 2026-11-08 |
+| T1-11 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/9 | `tests/panel-source.spec.tsx`；设置页由 manifest 驱动 | 2026-11-08 |
+| T1-12 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/25 | `../010-adding-a-source.md`；`tests/docs.spec.ts` | 2026-11-08 |
+| T1-13 | 已完成 | — | `tests/conversation.spec.ts`；`../009-conversation-tasks.md` 的 T1-13 进度 | 2026-11-08 |
+| T1-14 | 已完成 | — | `tests/dispatch.spec.ts`、`tests/dispatch-split.spec.ts` | 2026-11-08 |
+| T1-15 | 已完成 | — | `tests/conversation.spec.ts`；任务线程回执 | 2026-11-08 |
+| T1-16 | 已完成 | — | `tests/panel-source.spec.tsx`；`../009-conversation-tasks.md` 的会话来源区块 | 2026-11-08 |
+| T1-17 | 已完成 | — | `tests/dispatch.spec.ts`；PR Channel 自动绑定 | 2026-11-08 |
+| T2-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/5 | `tests/action.spec.ts`；五级 Action | 2026-11-08 |
+| T2-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/7 | `tests/approval.spec.ts`；Approval 状态机 | 2026-11-08 |
+| T2-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/8 | `tests/approval-policy.spec.ts`；`maxActionLevel` 记入 Mandate | 2026-11-08 |
+| T2-04 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/12 | `tests/outbox.spec.ts`；撤销窗口与 `recalled` | 2026-11-08 |
+| T2-05 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/13 | `tests/outbox.spec.ts`；发送幂等键 | 2026-11-08 |
+| T2-06 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/14 | `tests/sources.spec.ts`；probe 先于重试 | 2026-11-08 |
+| T2-07 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/10 | `tests/panel-approval.spec.tsx`；待批准队列 | 2026-11-08 |
+| T2-08 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/16 | `tests/approval-policy.spec.ts`；白名单与工作时段自动批 | 2026-11-08 |
+| T2-09 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/17 | `tests/chaos.spec.ts`；100 轮断电注入 | 2026-11-08 |
+| T2-10 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/17 | `pnpm drill:withdraw`；撤退演练 | 2026-11-08 |
+| T3-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/21 | `tests/deliverable.spec.ts`；Deliverable 与 review 门 | 2026-11-08 |
+| T3-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/22 | `tests/preview-doc.spec.ts`；doc redline | 2026-11-08 |
+| T3-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/23 | `tests/preview-sheet.spec.ts`；sheet 公式与值分列 | 2026-11-08 |
+| T3-04 | 未开始 | — | — | 2026-11-08 |
+| T3-05 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/29 | `tests/lightweight.spec.ts`；kernel 轻量工单与 inline 契约已合并，端到端 `InlineExecutor` 与 <10s 验收未做 | 2026-11-08 |
+| T3-06 | 未开始 | — | — | 2026-11-08 |
+| T3-07 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/24 | `tests/panel-approval.spec.tsx`；review 必须有 preview | 2026-11-08 |
+| T3-08 | 未开始 | — | — | 2026-11-08 |
+| T4-01 | 未开始 | — | — | 2026-11-08 |
+| T4-02 | 未开始 | — | — | 2026-11-08 |
+| T4-03 | 未开始 | — | — | 2026-11-08 |
+| T4-04 | 未开始 | — | — | 2026-11-08 |
+| T4-05 | 未开始 | — | — | 2026-11-08 |
+| T4-06 | 未开始 | — | — | 2026-11-08 |
+| X-01 | 未开始 | — | — | 2026-11-08 |
+| X-02 | 未开始 | — | — | 2026-11-08 |
+| X-03 | 未开始 | — | — | 2026-11-08 |
+| X-04 | 未开始 | — | — | 2026-11-08 |
+| X-05 | 未开始 | — | — | 2026-11-08 |
+| X-06 | 未开始 | — | — | 2026-11-08 |
+| X-07 | 已完成 | — | `packages/dsh` 与根 meta 切包；`PLUGIN-PACKAGING.zh.md` §3 | 2026-11-08 |
+| X-08 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/20 | `pnpm test:install-e2e`；临时 `DSH_HOME` 安装/卸载 | 2026-11-08 |
+| X-09 | 未开始 | — | — | 2026-11-08 |
+| X-10 | 未开始 | — | — | 2026-11-08 |
+| X-11 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/19 | `tests/dump-config.spec.ts`；六行齐全 | 2026-11-08 |
+| X-12 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/31 | `tests/docs.spec.ts` 新增文档结构与跟踪表校验 | 2026-11-08 |
+| S-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity.spec.ts`；`activity` 表与三级分级 | 2026-11-08 |
+| S-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity-feed.spec.ts`；`endCoveredBy` 单一通知预算 | 2026-11-08 |
+| S-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/runtime.spec.ts` 的 `<stateDir>/system` 目录断言 | 2026-11-08 |
+| S-04 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | 主会话入口与 `masterId`；`../005-panel.md` | 2026-11-08 |
+| S-05 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | 状态页复用完整管理页；PR #6 修正 | 2026-11-08 |
+| S-06 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | 右侧事件栏；`tests/activity-feed.spec.ts` | 2026-11-08 |
+| S-07 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | SSE 游标、心跳与同源校验；`tests/activity-feed.spec.ts` | 2026-11-08 |
+| S-08 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | 端到端与宿主守卫；`docs/images/session-entry/` | 2026-11-08 |

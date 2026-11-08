@@ -1,15 +1,15 @@
 # TASK-PLAN — 从原型到可托付底座：任务分解与排期
 
 > 基线：`touch-agent/dsh-superagent`（private）· `main` 4 个提交，HEAD `0d9298c` · CI `check` 全绿
-> 依据：`PLATFORM-EVOLUTION.zh.md`（下称「方案」）· 本文只做**任务分解**，不重复方案里的取舍论证
-> 日期：2026-11-07 · 状态：草案，待拍板 D1–D5 后冻结第一版
+> 依据：`../012-platform-evolution.zh.md`（下称「方案」）· 本文只做**任务分解**，不重复方案里的取舍论证
+> 日期：2026-11-07 · 状态：执行中；任务状态、PR 与验收证据见 [TRACKING.zh.md](TRACKING.zh.md)
 
 
 ---
 
 ## 0.0 进度（2026-11-07 晚）
 
-M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上跑过。
+M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上跑过；当前状态见 [TRACKING.zh.md](TRACKING.zh.md)。
 
 | 任务 | 状态 | 落地 | 验收证据 |
 | --- | --- | --- | --- |
@@ -18,9 +18,9 @@ M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上�
 | T0-03 四指标 + `GET metrics` | 完成 | `1377989` | `tests/metrics.spec.ts`；空样本给 `null` 不给 0 |
 | T0-04 面板只读健康区 | 完成 | `1377989` | Overview 页「运行健康」四个数字 + 中断/恢复提示 |
 | T0-05 changesets + 体积门 + 两段 CI | 完成 | `894c1a5` | `pnpm changeset status` 两包各一 minor；`release` dry-run 18s |
-| T0-06 runbook + 演练 + trace 读取面 | 完成 | `492e668`、`a3809b1` | 三次查找 36–50 ms；`docs/runbooks/why-not-sent.md` |
+| T0-06 runbook + 演练 + trace 读取面 | 完成 | `492e668`、`a3809b1` | 三次查找 36–50 ms；`../runbooks/why-not-sent.md` |
 
-**M1 前置已动**：X-07（包切分）于 2026-11-07 落地——`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`（`@superagent/dsh`），根包成为 meta（patch + locale + 三个 re-export 入口）；patch 行名与子路径不变（D7）。X-08 于 2026-11-08 落地（见 §13）；X-11 仍未做。
+**M1 前置已动**：X-07（包切分）于 2026-11-07 落地——`src/`、`skills/`、`prompts/` 迁入 `packages/dsh`（`@superagent/dsh`），根包成为 meta（patch + locale + 三个 re-export 入口）；patch 行名与子路径不变（D7）。X-08 于 2026-11-08 落地（见 §13）；X-11 也已落地，状态见 [TRACKING.zh.md](TRACKING.zh.md)。
 
 基线随之变化：65 个 spec / 1232 个测试（13.2s），领域子集 496 个 / 549 ms，`src` + `packages` 代码量见 `git show --stat`；CI 三个工作流（`check` / `changesets` / `release`）均已实跑通过。
 
@@ -50,6 +50,8 @@ M0 已收官。下表按任务编号记完成情况，验收命令都在 CI 上�
 ## 1. 这份计划怎么用
 
 ### 1.1 任务编号与字段
+
+任务定义写在本文；任务的状态、PR、验收证据与最后更新只记在 [TRACKING.zh.md](TRACKING.zh.md)。本文里带日期的「进度」段落是历史快照，不随状态变化追改。
 
 `T<里程碑>-<序号>`，每个任务给六件事，缺一不成立：
 
@@ -131,7 +133,7 @@ graph LR
 
 - **目标**：方案 §9 的九个数字里先上四个，加上「按工单看 span」的入口。
 - **交付**：`packages/dsh/src/app/views/overview.ts` 增一块；`packages/dsh/src/client/` 增一个 `Trace` 视图（列表 + 时间轴），走 `api.ts` 的类型契约。
-- **验收**：面板显示真实数字；无数据时整块不显示（docs/005「默认安静」）；`tests/panel.spec.ts` 覆盖空态与有数据态。
+- **验收**：面板显示真实数字；无数据时整块不显示（`../005-panel.md`「默认安静」）；`tests/panel.spec.ts` 覆盖空态与有数据态。
 - **依赖**：T0-03。**回退**：视图独立，隐藏即回退。
 
 ### T0-05 changesets 与两段 CI · Platform · 1 人日
@@ -144,7 +146,7 @@ graph LR
 ### T0-06 M0 退出标准验证 · Lead · 1 人日
 
 - **目标**：把「30 秒定位卡点」变成一次演练，而不是一句口号。
-- **交付**：`docs/runbooks/why-not-sent.md`（从 trace 读的三步法）+ 一份演练记录。
+- **交付**：`../runbooks/why-not-sent.md`（从 trace 读的三步法）+ 一份演练记录。
 - **验收**：随机抽 3 个历史工单，按 runbook 在 30 秒内说出卡点；`pnpm check` 绿；领域测试 < 2s。
 - **依赖**：T0-01…05。
 
@@ -185,18 +187,18 @@ graph LR
 - **交付**：`tests/conformance/`：一组可被任何 adapter 复用 `describe` 的用例：幂等键生成、游标回退 5 秒、health claim 命名、`probe` 语义、scope 裁决、出站 `sent/gone` 两态。
 - **验收**：GitHub 与 Feishu 都跑通；故意写错幂等键的假 adapter 必须失败。
 - **依赖**：T1-04、T1-05。
-- **状态**：实现完成（2026-11-07，PR #1 待合并）。`tests/conformance/suite.ts` 由任何 Source 的 fixture 驱动；GitHub 与 Feishu 各有一个 spec，`tests/conformance/suite.spec.ts` 证明写错幂等键、漏掉 5 秒游标回退、丢掉出站幂等键的假 adapter 必红。probe 用例已接入三个 fixture。
+- **状态**：实现完成（2026-11-07，PR #1 关闭后由 main 承接；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`tests/conformance/suite.ts` 由任何 Source 的 fixture 驱动；GitHub 与 Feishu 各有一个 spec，`tests/conformance/suite.spec.ts` 证明写错幂等键、漏掉 5 秒游标回退、丢掉出站幂等键的假 adapter 必红。probe 用例已接入三个 fixture。
 
 ### T1-07 / T1-08 / T1-09 三个新源：Gmail、飞书文档、日历 · Connector · 5 / 5 / 6 人日
 
 - **交付**：每个 = manifest + adapter + 环境变量注册 + conformance 通过。
 - **验收**：新增一个源的总改动 ≤ 2 人日可复现（用 T1-09 的日历作为计时样本）；面板无手写表单。
 - **依赖**：T1-06。
-- **状态**：T1-08 实现完成（2026-11-07，PR 待合并）。`feishu-doc` = manifest `feishuDocManifest` + adapter `feishuDocAdapter` + 两个环境变量 + `tests/conformance/feishu-doc.spec.ts`；新插件 `./feishu-doc-watch` 在 `cordis.patch.yml` 里默认关闭，沿用飞书来源配置的机器人。未改 app 与内核。T1-07、T1-09 未开始。
+- **状态**：T1-08 实现完成（2026-11-07；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`feishu-doc` = manifest `feishuDocManifest` + adapter `feishuDocAdapter` + 两个环境变量 + `tests/conformance/feishu-doc.spec.ts`；新插件 `./feishu-doc-watch` 在 `cordis.patch.yml` 里默认关闭，沿用飞书来源配置的机器人。未改 app 与内核。T1-07、T1-09 未开始。
 
 ### T1-10 `kind.ts` 退役与等价证明 · Connector · 2 人日
 
-- **交付**：删 `packages/dsh/src/sources/kind.ts`（或缩成 manifest 的 re-export）；`docs/007` 与 `docs/001` 同步。
+- **交付**：删 `packages/dsh/src/sources/kind.ts`（或缩成 manifest 的 re-export）；`../007-architecture.md` 与 `../001-domain.md` 同步。
 - **验收**：全量绿 + conformance 覆盖新旧两版；diff 里没有行为改动。
 - **依赖**：T1-07…09。
 
@@ -205,13 +207,13 @@ graph LR
 - **交付**：`packages/dsh/src/client/source.tsx`（字段渲染在 `settings-kit.tsx`）改为渲染生成器产物；权限提示、健康条目、限流说明都从 manifest 读。
 - **验收**：加一个假源（测试 fixture）只改 manifest，面板自动出现正确的字段与标签。
 - **依赖**：T1-02。
-- **状态**：实现完成（2026-11-08，PR 待合并）。`SourceRegistry.form()` 把 manifest 经 `manifestForm` 交给设置视图与健康视图；`source.tsx` 从它渲染字段、登录方式提示、健康项和轮询默认；`tests/fixtures/fake-source.ts` 只声明 manifest，设置页与状态页即出现该来源。`kind()` 仍供运行时读取，扁平 kind 走等价回退。
+- **状态**：实现完成（2026-11-08；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`SourceRegistry.form()` 把 manifest 经 `manifestForm` 交给设置视图与健康视图；`source.tsx` 从它渲染字段、登录方式提示、健康项和轮询默认；`tests/fixtures/fake-source.ts` 只声明 manifest，设置页与状态页即出现该来源。`kind()` 仍供运行时读取，扁平 kind 走等价回退。
 
 ### T1-12 文档：新增源 30 分钟指南 · Platform · 1 人日
 
-- **交付**：`docs/009-adding-a-source.md`；`docs.spec.ts` 的文档表同步。
+- **交付**：`../010-adding-a-source.md`；`docs.spec.ts` 的文档表同步。
 - **验收**：按指南从零写一个假源（noop），全程无 `packages/dsh/src/app` 改动。
-- **状态**：实现完成（2026-11-08，PR #25 待合并）。`docs/009` 已被会话任务文档占用，指南落在 `docs/010-adding-a-source.md`；README 文档表补齐 009/010，`tests/docs.spec.ts` 新增“README 按序列全每个编号文档”的检查，007 的 Sources 一节改为描述 `SourceDefinition` 注册路径。按指南在干净 worktree 里从零加了临时 noop 源（manifest + adapter + 插件入口 + 运行时/包入口、导出、patch 行、tsconfig/vitest 子路径、007 表与两个精确行测试）：`pnpm typecheck`、89 个文件 / 1504 个测试、`pnpm build`、体积门通过，`packages/dsh/src/app` 无改动；该练习补出了 `tests/dump-config.spec.ts` 也要同步这一条，已写进指南。
+- **状态**：实现完成（2026-11-08，PR #25；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。009 这个编号已被会话任务文档占用，指南落在 `../010-adding-a-source.md`；README 文档表补齐 009/010，`tests/docs.spec.ts` 新增“README 按序列全每个编号文档”的检查，`../007-architecture.md` 的 Sources 一节改为描述 `SourceDefinition` 注册路径。按指南在干净 worktree 里从零加了临时 noop 源（manifest + adapter + 插件入口 + 运行时/包入口、导出、patch 行、tsconfig/vitest 子路径、007 表与两个精确行测试）：`pnpm typecheck`、89 个文件 / 1504 个测试、`pnpm build`、体积门通过，`packages/dsh/src/app` 无改动；该练习补出了 `tests/dump-config.spec.ts` 也要同步这一条，已写进指南。
 
 ---
 
@@ -224,28 +226,28 @@ graph LR
 - **交付**：`packages/kernel/src/action.ts`：`read / draft / commit / send / spend`；`Action` 对象带 `source / objectId / revision / actor / level / idempotencyKey`。
 - **验收**：`tests/action.spec.ts`：五级的幂等键互不相同；`spend` 必须带金额或时间成本字段（日历占他人时间也映射到 spend）。
 - **依赖**：无（可与 M0 并行）。
-- **状态**：实现完成（2026-11-07，PR #5 待合并）。`packages/kernel/src/action.ts` 导出五级、`Action`（kind / source / objectId / revision / actor / level / idempotencyKey）、`actionKey` 与 `createAction`；`ActionCost` 分 money/time 两种，日历占他人时间用 time 表达；`tests/action.spec.ts` 覆盖五级键互异、键随身份各部分变化与成本拒绝。
+- **状态**：实现完成（2026-11-07，PR #5；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`packages/kernel/src/action.ts` 导出五级、`Action`（kind / source / objectId / revision / actor / level / idempotencyKey）、`actionKey` 与 `createAction`；`ActionCost` 分 money/time 两种，日历占他人时间用 time 表达；`tests/action.spec.ts` 覆盖五级键互异、键随身份各部分变化与成本拒绝。
 
 ### T2-02 `Approval` 对象与状态机 · Kernel · 3 人日
 
 - **交付**：`approval` 表 + 迁移；状态 `requested → approved / denied / expired / revoked`；与 Ticket 一对多。
 - **验收**：`tests/approval.spec.ts`：状态不可跳变；过期后 approve 被拒；同一 action 重复 approve 幂等。
 - **依赖**：T2-01。
-- **状态**：实现完成（2026-11-07，PR #7 待合并）。`packages/kernel/src/approval.ts` 导出 `Approval`、五态与 `createApproval` / `approve` / `deny` / `expire` / `revoke`；id 由 Ticket 与 Action 幂等键派生，同一工单的同一 action 只有一条审批，重复批准幂等；`approval` 表随 schema 14 增量迁移，Store 与 MemoryRepositories 提供按 Ticket 和待批准查询；`tests/approval.spec.ts` 覆盖状态跳变、过期后批准被拒、重复批准幂等与迁移。
+- **状态**：实现完成（2026-11-07，PR #7；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`packages/kernel/src/approval.ts` 导出 `Approval`、五态与 `createApproval` / `approve` / `deny` / `expire` / `revoke`；id 由 Ticket 与 Action 幂等键派生，同一工单的同一 action 只有一条审批，重复批准幂等；`approval` 表随 schema 14 增量迁移，Store 与 MemoryRepositories 提供按 Ticket 和待批准查询；`tests/approval.spec.ts` 覆盖状态跳变、过期后批准被拒、重复批准幂等与迁移。
 
 ### T2-03 `maxActionLevel` 进 Authority 与 revalidate · Kernel · 2 人日
 
 - **交付**：`policy.ts` 的 mandate 增加 `maxActionLevel`；`revalidate` 时同时校验等级（当前只校验规则与 strength）。
 - **验收**：政策把等级从 send 降到 draft 后，在跑的工单下一动作被拒并记 reason；`tests/policy.spec.ts` 覆盖。
 - **依赖**：T2-01、T2-02。
-- **状态**：实现完成（2026-11-08，PR #8 待合并）。Mandate 增加 `maxActionLevel` 与可选 `expiresAt`；Policy 增加 `maxActionLevel`（默认 `draft`）与 `mandateMinutes`；`revalidate(mandate, at, action?)` 每次都校验授权过期，动作时点再按 Mandate 记录上限与当前 Policy 上限中更严者校验等级，返回 `mandateExpired` / `actionLevelExceeded` / `revoked` 原因；记录了上限的 Mandate 不会因 Policy 放宽而变宽（旧 Mandate 无记录时跟随当前 Policy）。`tests/policy.spec.ts` 覆盖 send 降到 draft 后的下一动作拒绝，`tests/action.spec.ts` 覆盖等级比较。
+- **状态**：实现完成（2026-11-08，PR #8；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。Mandate 增加 `maxActionLevel` 与可选 `expiresAt`；Policy 增加 `maxActionLevel`（默认 `draft`）与 `mandateMinutes`；`revalidate(mandate, at, action?)` 每次都校验授权过期，动作时点再按 Mandate 记录上限与当前 Policy 上限中更严者校验等级，返回 `mandateExpired` / `actionLevelExceeded` / `revoked` 原因；记录了上限的 Mandate 不会因 Policy 放宽而变宽（旧 Mandate 无记录时跟随当前 Policy）。`tests/policy.spec.ts` 覆盖 send 降到 draft 后的下一动作拒绝，`tests/action.spec.ts` 覆盖等级比较。
 
 ### T2-04 outbox `pending-send` + 撤销窗口 + `recalled` 态 · Runtime · 3 人日
 
 - **交付**：`packages/dsh/src/core/outbox.ts`（或 ticket part）引入 `pending` 状态与窗口计时；`effect` 增 `recalled` 终态；`delivery` 的 `limit` 与窗口关系写清。
 - **验收**：`tests/outbox.spec.ts`：窗口内 recall → 外发 0 次；窗口后 recall → 拒绝并说明原因。
 - **依赖**：T2-01。
-- **状态**：实现完成（2026-11-08，PR #12 待合并）。`packages/dsh/src/app/outbox.ts` 的 `send` 把收据与 `reply` effect 一起写入，effect 的 `due` 设为窗口结束；`receipts.recall` 只在 `dueAt` 前把待发送收据置为 `recalled` 并取消 effect，`withdraw` 退化为 best-effort；窗口由 Policy 的 `undoWindowSeconds` 控制（0–300 秒，默认 30，IM 租户可设 0），收据记录 `dueAt/windowMs`。管理 API 的 `POST outbox/:id/recall` 暴露撤回（`unknownReply` 404，`replySettled`/`undoClosed` 400）。`tests/outbox.spec.ts` 覆盖窗口内 recall 外发 0 次、到期发送、窗口后 recall 拒绝并给出 `undoClosed` 原因、重复 ID 不重发与冻结窗口；`tests/runtime.spec.ts` 覆盖默认窗口下 ack 返回 `pending`，`tests/http.spec.ts` 覆盖撤回路由。
+- **状态**：实现完成（2026-11-08，PR #12；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`packages/dsh/src/app/outbox.ts` 的 `send` 把收据与 `reply` effect 一起写入，effect 的 `due` 设为窗口结束；`receipts.recall` 只在 `dueAt` 前把待发送收据置为 `recalled` 并取消 effect，`withdraw` 退化为 best-effort；窗口由 Policy 的 `undoWindowSeconds` 控制（0–300 秒，默认 30，IM 租户可设 0），收据记录 `dueAt/windowMs`。管理 API 的 `POST outbox/:id/recall` 暴露撤回（`unknownReply` 404，`replySettled`/`undoClosed` 400）。`tests/outbox.spec.ts` 覆盖窗口内 recall 外发 0 次、到期发送、窗口后 recall 拒绝并给出 `undoClosed` 原因、重复 ID 不重发与冻结窗口；`tests/runtime.spec.ts` 覆盖默认窗口下 ack 返回 `pending`，`tests/http.spec.ts` 覆盖撤回路由。
 
 ### T2-05 幂等键改造 · Kernel + Runtime · 2 人日
 
@@ -253,18 +255,18 @@ graph LR
 - **验收**：同一 action 两种 revision 产生两条 effect；同一 revision 重复触发只有一条。断电注入测试见 T2-09。
 - **依赖**：T2-01。
 
-- **状态**：实现完成（2026-11-08，PR #13 待审查合并）。`packages/kernel/src/action.ts` 新增 `outboundAction`、`acknowledgementAction`、`OUTBOUND_KINDS` 与 `OUTBOX_ACTOR`：外发消息成为 `send` Action，key 由 `(source, objectId, kind, revision, actor)` 派生；`OutboundSend` 交给 Outbox，收据 id 与 `reply` effect key 同源，`effects.enqueue` 的 UPSERT 因此按同一 key 合并。ack、answer/result、attention、PR 终态通知分别构造 Action；撤回 attention 用同一派生 key；旧收据保留原 `kind` 可读。`tests/outbox.spec.ts` 覆盖同一 action 两个 revision 产生两条 effect、同一 revision 重复只有一条；`tests/action.spec.ts` 覆盖外发 Action 的 key 随各字段变化。Approval id 仍由 `ticketId` 与 action key 派生（`key('approval', ticketId, actionKey)`），与收据使用同一 action key。
+- **状态**：实现完成（2026-11-08，PR #13；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`packages/kernel/src/action.ts` 新增 `outboundAction`、`acknowledgementAction`、`OUTBOUND_KINDS` 与 `OUTBOX_ACTOR`：外发消息成为 `send` Action，key 由 `(source, objectId, kind, revision, actor)` 派生；`OutboundSend` 交给 Outbox，收据 id 与 `reply` effect key 同源，`effects.enqueue` 的 UPSERT 因此按同一 key 合并。ack、answer/result、attention、PR 终态通知分别构造 Action；撤回 attention 用同一派生 key；旧收据保留原 `kind` 可读。`tests/outbox.spec.ts` 覆盖同一 action 两个 revision 产生两条 effect、同一 revision 重复只有一条；`tests/action.spec.ts` 覆盖外发 Action 的 key 随各字段变化。Approval id 仍由 `ticketId` 与 action key 派生（`key('approval', ticketId, actionKey)`），与收据使用同一 action key。
 
 ### T2-06 Source `probe` 语义 · Connector · 3 人日
 
 - **交付**：manifest 增 `probe(idempotencyKey)`：源能回答「这条消息发出去了吗」；支持 probe 的源在撤回/重试时用它校验。
 - **验收**：conformance 增 probe 用例；假源返回 unknown 时必须走「保守不重发」分支。
 - **依赖**：T1-06。
-- **状态**：实现完成（2026-11-08，PR #14 待审查合并）。`SourceChannel.probe` 由 `SourceRegistry.probe` 转发；GitHub、飞书、飞书文档各自实现（读回发送时写入的不可见标记，读失败为 `unknown`）；Outbox 在首次尝试后记录 `attemptedAt`，重试先 probe，`sent` 直接落定、`unknown` 保持 pending 不重发、`gone` 才重发；conformance 三个 fixture 与 `tests/outbox.spec.ts` 覆盖。
+- **状态**：实现完成（2026-11-08，PR #14；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`SourceChannel.probe` 由 `SourceRegistry.probe` 转发；GitHub、飞书、飞书文档各自实现（读回发送时写入的不可见标记，读失败为 `unknown`）；Outbox 在首次尝试后记录 `attemptedAt`，重试先 probe，`sent` 直接落定、`unknown` 保持 pending 不重发、`gone` 才重发；conformance 三个 fixture 与 `tests/outbox.spec.ts` 覆盖。
 
 ### T2-07 面板「待我批准」视图 · Runtime · 3 人日
 
-- **状态**：实现完成（2026-11-08，PR #10 待合并）；Overview 顶部队列，批准可降为更低等级并记在 `grantedLevel`，24 小时审批延迟进「运行健康」。
+- **状态**：实现完成（2026-11-08，PR #10；状态见 [TRACKING.zh.md](TRACKING.zh.md)）；Overview 顶部队列，批准可降为更低等级并记在 `grantedLevel`，24 小时审批延迟进「运行健康」。
 - **交付**：新 tab 或 Overview 顶部队列：动作、对象、后果、一键批准/拒绝/改等级。
 - **验收**：审批延迟（requestedAt → decidedAt）进 T0-03 的指标；空态安静。
 - **依赖**：T2-02。
@@ -283,13 +285,13 @@ graph LR
 - **交付**：`tests/chaos.spec.ts`：在 enqueue → sent 的每个可中断点注入 abort/重启，100 轮；断言重复发送 0。
 - **验收**：100 轮 0 重复；失败时能打印幂等键与 trace。
 - **依赖**：T2-05。
-- **状态**：实现完成（2026-11-08，PR #17 待审查合并）。`tests/chaos.spec.ts` 覆盖四个持久化可中断点：收据与 effect 已入队但未派发、已记录 `attemptedAt` 但未写远端、已写远端但未落收据、收据已 `sent` 但 effect 未删；每点 25 轮，共 100 轮。每轮在重启前断言确实处于该点的状态（pending/sent、`attemptedAt`、远端写入数、effect 行），重启后重放同一 send Action，断言远端总写入恰为 1 且就是该 id、outbox 收据恰为 1 条、收据为 `sent`、`reply` effect 已清；失败时输出幂等键、全部远端写入、收据、effect 行与 Channel 调用序列。`after-write` 轮次依赖 T2-06 的 probe：重启后先读回 `sent`，因此不重发。
+- **状态**：实现完成（2026-11-08，PR #17；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`tests/chaos.spec.ts` 覆盖四个持久化可中断点：收据与 effect 已入队但未派发、已记录 `attemptedAt` 但未写远端、已写远端但未落收据、收据已 `sent` 但 effect 未删；每点 25 轮，共 100 轮。每轮在重启前断言确实处于该点的状态（pending/sent、`attemptedAt`、远端写入数、effect 行），重启后重放同一 send Action，断言远端总写入恰为 1 且就是该 id、outbox 收据恰为 1 条、收据为 `sent`、`reply` effect 已清；失败时输出幂等键、全部远端写入、收据、effect 行与 Channel 调用序列。`after-write` 轮次依赖 T2-06 的 probe：重启后先读回 `sent`，因此不重发。
 
 ### T2-10 撤回演练 · Platform · 2 人日
 
 - **交付**：演练脚本：对支持撤回的源（邮件草稿、日历邀请）发→撤→验；不支持撤回的源给出「不可撤回」提示。
-- **验收**：演练记录进 `docs/runbooks/`；撤回失败有明确 reason。
-- **状态**：实现完成（2026-11-08，PR #17 待审查合并）。`SourceChannel` 增加可选 `withdraw`，返回 `withdrawn` / `gone` / `refused`（带原因）；`SourceRegistry.withdraw` 转发，未声明 adapter 的源返回 unsupported，不伪装成功。GitHub 按投递标记找到评论、用其 id 删除，删除后用 `probe` 复核；飞书明确拒绝，因为 `lark-cli im messages delete` 是 high-risk-write，需人工 `--yes` 确认。`tests/withdraw-drill.spec.ts`（`pnpm drill:withdraw`）对 mail-draft / calendar-invite / already-gone fixture、GitHub、飞书与无撤回源验证发→撤→验、`gone` 与 refusal 原因；GitHub 读取返回 404 时按拒绝处理而不是谎报 `gone`；`docs/runbooks/withdraw.md`、`withdraw.drill.md` 记录演练与限制。
+- **验收**：演练记录进 `../runbooks/`；撤回失败有明确 reason。
+- **状态**：实现完成（2026-11-08，PR #17；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`SourceChannel` 增加可选 `withdraw`，返回 `withdrawn` / `gone` / `refused`（带原因）；`SourceRegistry.withdraw` 转发，未声明 adapter 的源返回 unsupported，不伪装成功。GitHub 按投递标记找到评论、用其 id 删除，删除后用 `probe` 复核；飞书明确拒绝，因为 `lark-cli im messages delete` 是 high-risk-write，需人工 `--yes` 确认。`tests/withdraw-drill.spec.ts`（`pnpm drill:withdraw`）对 mail-draft / calendar-invite / already-gone fixture、GitHub、飞书与无撤回源验证发→撤→验、`gone` 与 refusal 原因；GitHub 读取返回 404 时按拒绝处理而不是谎报 `gone`；`../runbooks/withdraw.md`、`withdraw.drill.md` 记录演练与限制。
 
 ---
 
@@ -337,7 +339,7 @@ graph LR
 
 - **交付**：`views/tickets.ts` 在 stage=person/review 时强制渲染 preview；缺 preview 显示「无法审核」而不是「批准」按钮。
 - **验收**：`tests/panel-execution.spec.tsx` 断言无 preview 时 approve 按钮不存在。
-- **状态**：实现完成（2026-11-08，PR #24 待审查合并）。`orchestrator_report` 接受可选 `deliverable`，`Assignments.report` 用 `enterReview` 归一化并随 Report 保存；`ticketDetail` 在 `person/review` 投影交付物、修订、预览与验收标准，`TicketPage` 只在有 preview 时显示批准并调用 `POST tickets/:id/approve`，缺 preview 显示「无法审核」；`Engine.reviewTicket` 记录批准人，不结束工单。`tests/core-engine.spec.ts`、`tests/views.spec.ts`、`tests/http.spec.ts`、`tests/panel-execution.spec.tsx` 覆盖有/无 preview 两条路径。预览器注册表仍未实现，本任务只渲染 worker 提供的 `previewRef`，不调用 T3-02 的结构化预览。
+- **状态**：实现完成（2026-11-08，PR #24；状态见 [TRACKING.zh.md](TRACKING.zh.md)）。`orchestrator_report` 接受可选 `deliverable`，`Assignments.report` 用 `enterReview` 归一化并随 Report 保存；`ticketDetail` 在 `person/review` 投影交付物、修订、预览与验收标准，`TicketPage` 只在有 preview 时显示批准并调用 `POST tickets/:id/approve`，缺 preview 显示「无法审核」；`Engine.reviewTicket` 记录批准人，不结束工单。`tests/core-engine.spec.ts`、`tests/views.spec.ts`、`tests/http.spec.ts`、`tests/panel-execution.spec.tsx` 覆盖有/无 preview 两条路径。预览器注册表仍未实现，本任务只渲染 worker 提供的 `previewRef`，不调用 T3-02 的结构化预览。
 
 ### T3-08 工单时间线（审计视图）· Runtime · 3 人日
 
@@ -371,11 +373,12 @@ graph LR
 | X-04 | `api.ts` → JSON Schema 单一真相 | 3 | 现在路由、类型、面板三处手写，是 25 条路由的主要维护成本 |
 | X-05 | 文档-代码一致性检查扩展 | 1 | `docs.spec.ts` 已强制「每个 spec 都在表里」，再扩到「每个 manifest 字段都有文档」 |
 | X-06 | 性能基线守住 | 1 | 领域测试 < 2s 是方案 §10.1 的第 1 条契约，加一个 CI 计时断言 |
-| X-07 | 包切分：`@superagent/dsh` + meta 包 | 3 | 详见 `PLUGIN-PACKAGING.zh.md` §3；必须在 M1 前完成，否则 source-kit 会落错包 |
+| X-07 | 包切分：`@superagent/dsh` + meta 包 | 3 | 详见 `../../PLUGIN-PACKAGING.zh.md` §3；必须在 M1 前完成，否则 source-kit 会落错包 |
 | X-08 | 安装/卸载 E2E：临时 `DSH_HOME` → `dsh plugin add` → 起进程 → 面板可用 → 卸载后 stateDir 仍在 | 5 | 这是「能被组织安装」的唯一证据；M1 结束前 |
-| X-09 | 入口首页三区（待我处理 / 正在跑 / 最近历史）+ 侧边栏角标 | 5 | 详见 `PLUGIN-PACKAGING.zh.md` §4；M3 前 |
+| X-09 | 入口首页三区（待我处理 / 正在跑 / 最近历史）+ 侧边栏角标 | 5 | 详见 `../../PLUGIN-PACKAGING.zh.md` §4；M3 前 |
 | X-10 | 宿主兼容矩阵：CI 跑两个 alpha 版本，断言必需服务齐备 | 3 | 对应 R7；每个里程碑跑一次 |
 | X-11 | `dump-config` 断言：patch 6 行齐全 | 2 | 防「装了没生效」的静默失败；随 X-07 一起做 |
+| X-12 | 文档结构与计划跟踪：011/012 入 `docs/`、计划文档入 `docs/plan/`、跟踪表校验 | 1 | 文档与计划分散在仓库根，引用与状态易漂移；由 `tests/docs.spec.ts` 固定结构和格式 |
 
 **X-07 与 X-11 是 M1 的前置**（5 人日）：M1 要写 `SourceManifest` 与新源，这些代码落在哪个包取决于切分结果；切晚了等于搬两次。X-08 是 M1 的退出证据——没有它，M1 交付的「三个源」只在本机跑过。
 
@@ -400,11 +403,11 @@ graph LR
 
 | PR | 标题 | 改哪些文件 | 验收（跑什么、看什么） |
 | --- | --- | --- | --- |
-| PR-1 | kernel: trace 端口 + `span` 表 + schema 12 | `packages/kernel/src/ports.ts`（新增 `TraceSink` / `SpanContext`，只有接口）、`packages/kernel/src/trace.ts`（`SpanKind` 十个枚举 + `TraceId`）、`packages/dsh/src/app/trace.ts`（`SqliteTraceSink`，实现端口）、`packages/dsh/src/app/store.ts`（`span` 表 + `trace_id`/`kind` 索引）、`packages/dsh/src/app/migration.ts`（`SCHEMA_VERSION = 12`，11→12 迁移）、`docs/007-architecture.md`（表清单 + Modules 两行）、`tests/trace.spec.ts`、`tests/migration.spec.ts` | `tsc --noEmit`；`vitest run`（新增 ≥8 个断言：span 树可按 trace_id 取回、迁移 11→12 后可读旧 trigger、`OLDEST_SCHEMA` 仍为 10、旧库拒启文案不变）；`Makefile`/CI 无改动 |
+| PR-1 | kernel: trace 端口 + `span` 表 + schema 12 | `packages/kernel/src/ports.ts`（新增 `TraceSink` / `SpanContext`，只有接口）、`packages/kernel/src/trace.ts`（`SpanKind` 十个枚举 + `TraceId`）、`packages/dsh/src/app/trace.ts`（`SqliteTraceSink`，实现端口）、`packages/dsh/src/app/store.ts`（`span` 表 + `trace_id`/`kind` 索引）、`packages/dsh/src/app/migration.ts`（`SCHEMA_VERSION = 12`，11→12 迁移）、`../007-architecture.md`（表清单 + Modules 两行）、`tests/trace.spec.ts`、`tests/migration.spec.ts` | `tsc --noEmit`；`vitest run`（新增 ≥8 个断言：span 树可按 trace_id 取回、迁移 11→12 后可读旧 trigger、`OLDEST_SCHEMA` 仍为 10、旧库拒启文案不变）；`Makefile`/CI 无改动 |
 | PR-2 | runtime: 前五段埋点（ingest → authorize） | `packages/dsh/src/core/engine.ts`（`receive` / `evaluateDue` 用注入的 `TraceSink` 开 span，不 import 实现）、`packages/dsh/src/core/intake.ts`、`packages/dsh/src/core/evals.ts`、`packages/kernel/src/part.ts`（`queueForEval` 里带 span）、`tests/trace-stages.spec.ts`（表驱动：断言一次 receive 产生且仅产生 `ingest / dedupe / gate / admission / enqueue` 五段，名字与顺序固定） | `vitest run tests/core-engine.spec.ts tests/trace-stages.spec.ts`；`grep -rn "trace" packages/kernel/src/*.ts` 只出现类型引用、无实现 |
 | PR-3 | panel: 四指标 + 只读健康页 | `packages/dsh/src/app/metrics.ts`（TTFA / duplicate-send / restart-recovery / decision-throughput 四条 SQL 或增量派生）、`packages/dsh/src/app/http.ts`（`GET /metrics`）、`packages/dsh/src/app/views/overview.ts`（或新 `health.ts`）、`packages/dsh/src/client/panels/health.tsx`、`packages/dsh/src/client/locales.ts`、`tests/metrics.spec.ts` | `curl -s localhost:3082/api/metrics` 返回四个数字齐全；空库返回 0 而不是 `NaN`/`null`；面板在空库、有数据、查询失败三态都渲染过 |
 
-**三个 PR 的共同约束**：kernel 仍然零依赖；每个 PR 自带迁移或不动 schema；不动 `docs/007` 的表结构描述就会红（`docs.spec.ts` 强制）。
+**三个 PR 的共同约束**：kernel 仍然零依赖；每个 PR 自带迁移或不动 schema；不动 `../007-architecture.md` 的表结构描述就会红（`docs.spec.ts` 强制）。
 
 ---
 
@@ -427,7 +430,7 @@ graph LR
 
 ## 10.1 M1.5 会话派活（T1-13…T1-17）
 
-决策见 D11 与 [docs/009](docs/009-conversation-tasks.md)。目标是让“和主 agent 说话”成为合法的工作入口，同时不破坏“Only Eval creates a Ticket”。
+决策见 D11 与 [docs/009](../009-conversation-tasks.md)。目标是让“和主 agent 说话”成为合法的工作入口，同时不破坏“Only Eval creates a Ticket”。
 
 | 任务 | 内容 | 人日 | 依赖 |
 | --- | --- | --- | --- |
@@ -508,7 +511,8 @@ graph LR
 4. `docs/` 里对应段落同步（`docs.spec.ts` 会抓漏）；
 5. 若动 schema：迁移有向前一个 major 的路径，旧库拒启文案不变；
 6. 若动面板：空态、错误态、无权限态三种状态都渲染过；
-7. 若动 `packages/kernel`：契约测试先行，且 `pnpm check` 在干净 clone 上可复现。
+7. 若动 `packages/kernel`：契约测试先行，且 `pnpm check` 在干净 clone 上可复现；
+8. 合并时更新 [TRACKING.zh.md](TRACKING.zh.md) 对应行：状态、PR、验收证据、最后更新。
 
 ---
 
@@ -529,5 +533,5 @@ graph LR
 | T2-01…10 | §6.2 Action、§6.3 Ledger |
 | T3-01…08 | §6.4 Acceptance、§6.5 Deliverable、§6.6 Runtime |
 | T4-01…06 | §6.7 Tenant 与保留 |
-| X-07…X-11 | `PLUGIN-PACKAGING.zh.md` §3（切包）、§4（入口）、§5（安装边界） |
+| X-07…X-12 | `../../PLUGIN-PACKAGING.zh.md` §3（切包）、§4（入口）、§5（安装边界） |
 | X-01…06 | §10.1、§10.5 |

@@ -1,7 +1,7 @@
 # M1 启动包与交接
 
 > 基线：`main@1a268c5`（工作区干净、与 `origin/main` 同步）· 65 spec / 1233 tests 全绿（18.2s，干净环境）
-> 宿主：`dsh 0.2.1-rc.5` · 状态库 schema 12 · 依据 `TASK-PLAN.zh.md` §4/§8/§12、`PLUGIN-PACKAGING.zh.md` §3–§5
+> 宿主：`dsh 0.2.1-rc.5` · 状态库 schema 12 · 依据 `TASK-PLAN.zh.md` §4/§8/§12、`../../PLUGIN-PACKAGING.zh.md` §3–§5
 > 日期：2026-11-07 · 用途：M1 是否可启动、怎么排、谁来接、接到什么程度算完成
 
 ---
@@ -12,7 +12,7 @@
 2. **D6 已定（2026-11-07，方案 A）**：`SourceManifest` 的类型放 `packages/kernel`，zod 校验放 `@superagent/dsh`，kernel 的零依赖契约不必放宽。
 3. **真正的约束是人数，不是代码。** M1 的 39 人日里 Connector 泳道占 32 人日，且 T1-02 → T1-04/05 → T1-06 → T1-07/08/09 → T1-10 是串行链。按计划 §1.3 的 4 人配置（1 名 Connector），M1 需要约 **6.5 周**，不是 39/4≈2 周。补第 2 名 Connector 可压到 **3.2 周**。
 4. **建议节奏**：W0（约 1 周）`X-07` + `X-11` + `D6` + `T1-01` 类型；W1 起进 M1 主链；4 人 4–5 周走完 M1 并拿到退出证据（`X-08`）。只有 1–2 人时按 §1.3 顺序不变、时间 ×2.5，且三个新源砍到一个。
-5. **本轮交付的交接物**是本文 + 仓库既有 `TASK-PLAN.zh.md` / `PLUGIN-PACKAGING.zh.md` / `docs/runbooks/why-not-sent.md`；不需要另建仓库或分支。
+5. **本轮交付的交接物**是本文 + 仓库既有 `TASK-PLAN.zh.md` / `../../PLUGIN-PACKAGING.zh.md` / `../runbooks/why-not-sent.md`；不需要另建仓库或分支。
 
 ---
 
@@ -31,7 +31,7 @@
 | conformance 套件 | **不存在** | `tests/conformance/` 无此目录 |
 | `dump-config` 断言 | **不存在**，X-11 未开始 | `grep -rn "dump-config" tests src scripts` 无结果 |
 | lint | **不存在**，X-01 未开始 | 无 eslint/oxlint 配置 |
-| 宿主版本 | 本机与 `docs/006` 均为 `0.2.1-rc.5` | `dsh --version`；`docs/006-deployment.md:76` |
+| 宿主版本 | 本机与 `../006-deployment.md` 均为 `0.2.1-rc.5` | `dsh --version`；`../006-deployment.md:76` |
 | 计划漂移 | `T1-11` 指定的 `src/client/settings-sources.tsx` **不存在**，实际是 `src/client/source.tsx` + `settings-kit.tsx` | `grep` 仅命中 `TASK-PLAN.zh.md:197` |
 
 ### 1.1 复跑陷阱（重要，写进交接）
@@ -82,13 +82,13 @@ env -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_NOSYSTEM -u GIT_AUTHOR_NAME -u GIT_AUTHOR
 | 方案 | 内容 | 代价 |
 | --- | --- | --- |
 | A（推荐） | kernel 只放 **纯 TS 类型** `SourceManifest`；zod schema 放 `src/sources/manifest-schema.ts`（`@superagent/dsh`，已有 zod 4.4.3） | 偏离 T1-01 原文一句；kernel 零依赖契约原样保留 |
-| B | 给 kernel 加 `zod` 依赖，`kernel-boundary.spec.ts` 与 `docs/007` 的依赖规则同步放宽 | 放弃「kernel 零依赖」，但 manifest 校验与第三方 adapter 的契约集中在领域层 |
+| B | 给 kernel 加 `zod` 依赖，`kernel-boundary.spec.ts` 与 `../007-architecture.md` 的依赖规则同步放宽 | 放弃「kernel 零依赖」，但 manifest 校验与第三方 adapter 的契约集中在领域层 |
 
-推荐 A：manifest 的**类型**是领域契约（kernel），**校验实现**是 runtime 的事（dsh 包）。B 的唯一好处是第三方作者能直接 `import` 校验器，但那个场景要等 `source-kit` 独立拆包（`PLUGIN-PACKAGING.zh.md` §3 的「第三个 adapter 作者出现」）才需要。
+推荐 A：manifest 的**类型**是领域契约（kernel），**校验实现**是 runtime 的事（dsh 包）。B 的唯一好处是第三方作者能直接 `import` 校验器，但那个场景要等 `source-kit` 独立拆包（`../../PLUGIN-PACKAGING.zh.md` §3 的「第三个 adapter 作者出现」）才需要。
 
 ### D7 · 切包后的命名与旧安装兼容（随 X-07）
 
-`cordis.patch.yml` 现在插的行名是 `dsh-superagent` / `dsh-superagent/github-watch` / `dsh-superagent/feishu-watch`。切包后 runtime 若改叫 `@superagent/dsh`，**已装用户的 profile 里这 5 行会解析失败**（静默"装了没生效"，`PLUGIN-PACKAGING.zh.md` §5 的最坏失败）。
+`cordis.patch.yml` 现在插的行名是 `dsh-superagent` / `dsh-superagent/github-watch` / `dsh-superagent/feishu-watch`。切包后 runtime 若改叫 `@superagent/dsh`，**已装用户的 profile 里这 5 行会解析失败**（静默"装了没生效"，`../../PLUGIN-PACKAGING.zh.md` §5 的最坏失败）。
 
 建议：meta 包保留 `dsh-superagent` 名称与三个子路径 exports（转发到 `@superagent/dsh`），patch 行名**不改**；`@superagent/dsh` 只作为内部依赖。验收：`X-11` 的 dump-config 断言在**旧 profile** 与新 profile 上都能看到 5 行。
 
@@ -159,11 +159,11 @@ graph LR
 | 交接物 | 位置 | 接手人怎么用 |
 | --- | --- | --- |
 | 任务分解与验收口径 | `TASK-PLAN.zh.md` §4、§11、§12 | 每个 PR 对照六个字段（目标/交付/验收/估时/依赖/泳道） |
-| 切包与安装边界 | `PLUGIN-PACKAGING.zh.md` §3–§5 | X-07/X-08/X-11 的设计依据与最坏失败模式 |
-| 排障三步法 | `docs/runbooks/why-not-sent.md` + `.drill.md` | 接手第一周做一次 30 秒定位演练 |
-| 领域与架构 | `docs/000` → `docs/007` 顺序读 | 每篇只依赖前一篇，不要跳读 |
+| 切包与安装边界 | `../../PLUGIN-PACKAGING.zh.md` §3–§5 | X-07/X-08/X-11 的设计依据与最坏失败模式 |
+| 排障三步法 | `../runbooks/why-not-sent.md` + `.drill.md` | 接手第一周做一次 30 秒定位演练 |
+| 领域与架构 | `../000-philosophy.md` → `../007-architecture.md` 顺序读 | 每篇只依赖前一篇，不要跳读 |
 | 启动包（本文） | `M1-KICKOFF.zh.md` | 排期、决策、DoD、交接会 |
-| 决策记录 | 本文 §3 + `PLATFORM-EVOLUTION.zh.md` §D1–D5 | 未拍板的决策不得用"先这样"绕过 |
+| 决策记录 | 本文 §3 + `../012-platform-evolution.zh.md` §D1–D5 | 未拍板的决策不得用"先这样"绕过 |
 | 可执行契约 | `tests/*.spec.ts`（尤其 `layers` / `kernel-boundary` / `docs` / `bundle-patch`） | 改不动就说明越界了 |
 
 ### 5.2 角色与决策权
@@ -179,7 +179,7 @@ graph LR
 ### 5.3 首次交接会（90 分钟）
 
 1. 10′ 基线：跑 §1.1 的测试命令，看 1233 绿；
-2. 15′ 走一遍 `docs/runbooks/why-not-sent.md` 的三步法（现场随机抽一个历史工单）；
+2. 15′ 走一遍 `../runbooks/why-not-sent.md` 的三步法（现场随机抽一个历史工单）；
 3. 20′ 过本文 §2 的可启动性表，逐任务认领；
 4. 20′ 拍 D6/D7/D8，写进本文 §3（改动留在同一分支）；
 5. 15′ 定 PR 纪律与周节奏（§5.5）；
@@ -190,7 +190,7 @@ graph LR
 - [ ] `git switch main && git pull`；`git status` 干净；HEAD 为 `1a268c5` 或其后
 - [ ] 跑 §1.1 的干净环境全量测试：65 文件 / 1233 通过
 - [ ] `./node_modules/.bin/tsc --noEmit` 通过；`./node_modules/.bin/tsdown` 产物 11 个
-- [ ] 读 `docs/000` → `007`，再做一次 runbook 演练（30 秒内说出卡点）
+- [ ] 读 `../000-philosophy.md` → `../007-architecture.md`，再做一次 runbook 演练（30 秒内说出卡点）
 - [ ] 读 `TASK-PLAN.zh.md` §4 与本文 §2，认领第一张 PR（X-07 或 T1-01）
 - [ ] 确认本机 `dsh --version`（当前 `0.2.1-rc.5`）在 `engines.dsh` 范围内
 
@@ -200,7 +200,7 @@ graph LR
 - 动 `packages/kernel`：契约测试先行；`kernel-boundary.spec.ts` 必须保持绿。
 - 动 schema：迁移向前兼容 + 旧库拒启文案不变。
 - 动面板：空态 / 错误态 / 无权限态三态都渲染过。
-- 动 `src` 或 `packages` 的文件清单：`docs/007` 的 Modules 表必须同步（`docs.spec.ts` 会抓）。
+- 动 `src` 或 `packages` 的文件清单：`../007-architecture.md` 的 Modules 表必须同步（`docs.spec.ts` 会抓）。
 - 任何包变更带 changeset；CI 三个工作流（`check` / `changesets` / `release`）必须绿。
 - PR ≤ 400 行有效 diff；超过就拆。周节奏：周一排、周三中检、周五演示 + 退出证据留档。
 
@@ -224,7 +224,7 @@ graph LR
 | R7 宿主漂移 | `dsh` 升到新 rc，patch 锚点变化 | X-10 兼容矩阵先跑 `rc.5`；`X-11` 是兜底 |
 | R6 包管理 | `pnpm` 报 corepack EPERM | 用 `./node_modules/.bin/*`；CI 不受影响 |
 | 环境误判 | 全量跑出 2 个 runtime 失败 | 先按 §1.1 清环境复跑，再判断是否回归 |
-| 文档漂移 | `docs/006` 仍写 rc.3；`T1-11` 指向不存在的文件 | 随 X-07/T1-11 顺手修正，并在 PR 里说明 |
+| 文档漂移 | `../006-deployment.md` 仍写 rc.3；`T1-11` 指向不存在的文件 | 随 X-07/T1-11 顺手修正，并在 PR 里说明 |
 
 ---
 

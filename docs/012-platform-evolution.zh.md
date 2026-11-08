@@ -7,7 +7,7 @@
 | 状态 | 草案（Draft for review） |
 | 日期 | 2026-11-06 |
 | 读者 | 架构组、产品、平台工程、安全与合规 |
-| 关联 | [`ARCHITECTURE-TOUR.zh.md`](ARCHITECTURE-TOUR.zh.md)（现状讲解）、[`docs/001-domain.md`](docs/001-domain.md)、[`docs/002-authorization.md`](docs/002-authorization.md)、[`docs/003-execution.md`](docs/003-execution.md) |
+| 关联 | [`ARCHITECTURE-TOUR.zh.md`](../ARCHITECTURE-TOUR.zh.md)（现状讲解）、[`docs/001-domain.md`](001-domain.md)、[`docs/002-authorization.md`](002-authorization.md)、[`docs/003-execution.md`](003-execution.md) |
 | 一句话 | 把「一个会干活的 agent」演进为「一个组织敢把权限交给它的行动平面」：内核只保留授权、账本、引用三件事，其余全部外置为插件。 |
 
 > **进度注记（2026-11-06）**：阶段 0 第一刀已落地——领域层从 `packages/dsh/src/core/` 迁到 `packages/kernel/src/`（`@superagent/kernel`，提交 `3f7a158`），60 个测试文件 / 1200 个用例全绿，`tests/kernel-boundary.spec.ts` 已强制「kernel 只能引用自己与 `node:` 内建、且无任何依赖」。文中 `packages/dsh/src/core/...` 的旧引用按此映射阅读。
@@ -154,7 +154,7 @@
 | P6 | **用证据代替身份** | 不建全局身份，每个源声明自己的授权证据 | 跨源身份映射无底洞 |
 | P7 | **渐进演进** | 新内核与旧 Runtime 并行，feature flag 切换 | 大爆炸重写，半年不可用 |
 
-> **2026-11-08 补充**：本节 P1–P7 是**平台机制层**的原则；产品面与组织层（注意力、组织内化、自我进化、可替换边界）另见 [DESIGN-PRINCIPLES.zh.md](DESIGN-PRINCIPLES.zh.md)。两者同时成立，冲突裁决见该文 §7；本文 §1.3 的 N5（不做通用长期记忆）与该文 C.5 的边界一致。
+> **2026-11-08 补充**：本节 P1–P7 是**平台机制层**的原则；产品面与组织层（注意力、组织内化、自我进化、可替换边界）另见 [011-design-principles.zh.md](011-design-principles.zh.md)。两者同时成立，冲突裁决见该文 §7；本文 §1.3 的 N5（不做通用长期记忆）与该文 C.5 的边界一致。
 
 ---
 

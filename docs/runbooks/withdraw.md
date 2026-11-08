@@ -15,7 +15,7 @@ installed Sources and the drill's fixtures; it never assumes a Source can undo a
 | Feishu | No | Revoking a bot message is a high-risk `lark-cli` write that needs a person's confirmation, so the Channel refuses with that reason |
 | Feishu document | No | The comment Channel has no `withdraw` adapter |
 | Conversation | No | The message is already in the main Session's history; it has no `withdraw` adapter |
-| Mail draft, calendar invite | Future Sources | TASK-PLAN's examples; the drill uses fixture Channels until those Sources exist |
+| Mail draft, calendar invite | Future Sources | `docs/plan/TASK-PLAN.zh.md` examples; the drill uses fixture Channels until those Sources exist |
 
 The drill runs the fixture rows, GitHub and Feishu. The Feishu document and Conversation rows are checked by reading
 their Channels, not by the drill, because neither has a drill-safe remote.
