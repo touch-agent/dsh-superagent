@@ -32,7 +32,7 @@ Read the numbered documents in order; each builds only on the ones before it.
 
 ## Development
 
-`packages/kernel` is the domain library, `packages/dsh` is the runtime (`@superagent/dsh`), and the root package is the bundle (`dsh-superagent`) that installs it. `pnpm check` runs the typecheck, the tests and the build.
+`packages/kernel` is the domain library, `packages/dsh` is the runtime (`@superagent/dsh`), and the root package is the bundle (`dsh-superagent`) that installs it. `pnpm check` runs the typecheck, the tests and the build. The tests also need the DeepSeek Harness CLI on `PATH` (`dsh --dump-config` composes an installed profile in `tests/dump-config.spec.ts`); CI installs a version `engines.dsh` admits, and `DSH_BIN` points a local run at another copy.
 
 ## License
 
