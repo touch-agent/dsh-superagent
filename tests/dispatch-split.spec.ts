@@ -279,3 +279,17 @@ describe('explicit parsing stays conservative', () => {
     expect(ticket.mandate.scope).toContain('Do C.')
   })
 })
+
+describe('whole-message attach after a split', () => {
+  it('refuses before receiving so no sibling ticket gains an input', () => {
+    const h = harness('auto')
+    const first = h.dispatch({ items: [{ title: 'A', scope: 'Do A.' }, { title: 'B', scope: 'Do B.' }] }, 'A and B', 'msg_1')
+    if ('refused' in first) throw new Error(first.refused)
+    const ids = openTickets(h.repo).map(ticket => ticket.id)
+    const before = ids.map(id => h.repo.tickets.get(id)!.inputs.length)
+    const second = h.dispatch({ ticketId: first.ticket!.id, note: 'status' }, 'A and B', 'msg_1')
+    expect(second).toEqual({ refused: expect.stringContaining('already reached a ticket') })
+    expect(ids.map(id => h.repo.tickets.get(id)!.inputs.length)).toEqual(before)
+    expect(openTickets(h.repo)).toHaveLength(2)
+  })
+})

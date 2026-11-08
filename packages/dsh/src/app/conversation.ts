@@ -230,9 +230,15 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
   // A whole-message attach keeps the original trigger id and the message text; it neither splits nor creates work.
   if (input.ticketId) {
     const trigger = conversationTrigger({ messageId: message.id, text: message.text, at: message.at, sessionId: agent.id })
+    if (host.disposition(trigger.id)?.decisionId) return { triggerId: trigger.id, duplicate: true }
+    // A whole-message attach shares the message's Thread: if that Thread already reached a ticket, receiving it here would
+    // add an input to those siblings before the attach. Refuse before receiving, as a changed split plan does.
+    if (host.thread?.(threadKey(trigger.threads[0]!))?.subscriptions.length) {
+      return { refused: 'This message already reached a ticket; attach the new request to that ticket or send it in a new message.' }
+    }
     const received = host.engine.receive(trigger)
     if (received === 'filtered') return { refused: 'The conversation Source is off, so the request was not received.' }
-    if (host.disposition(trigger.id)?.decisionId || received === 'duplicate') return { triggerId: trigger.id, duplicate: true }
+    if (received === 'duplicate') return { triggerId: trigger.id, duplicate: true }
     try {
       const ticket = host.engine.attach(input.ticketId, trigger.id, input.note)
       return { triggerId: trigger.id, duplicate: false, attached: true, ticket }
