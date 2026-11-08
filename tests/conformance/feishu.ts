@@ -92,9 +92,10 @@ export function feishuConformance(): ConformanceSubject<FeishuConfig> {
       // A rich-text reply carries its text in a JSON body, which the probe reads as written.
       { name: 'a reply whose content is a JSON body', key: 'reply-6', answer: 'sent' },
       { name: 'a reply not in the topic', key: 'reply-9', answer: 'gone' },
-      // Text alone is not evidence: another message's mark, or the same text without one, cannot settle this message.
+      // A mark for another message, or another app's text, is not this message; our own unmarked text is ambiguous.
       { name: 'the same text under another message mark', key: 'reply-5', answer: 'gone' },
-      { name: 'the same text from an older unmarked reply', key: 'reply-7', answer: 'gone' },
+      { name: 'the same text from another app', key: 'reply-11', answer: 'gone' },
+      { name: 'the same text from our own unmarked reply', key: 'reply-7', answer: 'unknown' },
       // A page that may hide older replies cannot rule the message out, and neither can a page without `has_more`.
       { name: 'a topic with older replies not read', key: 'reply-8', answer: 'unknown' },
       { name: 'a topic page without has_more', key: 'reply-10', answer: 'unknown' },
@@ -106,9 +107,12 @@ export function feishuConformance(): ConformanceSubject<FeishuConfig> {
         : key === 'reply-6'
           ? () => ({ messages: [{ content: JSON.stringify({ text: `${deliveryMark('reply-6')}${reply.text}` }), msg_type: 'post' }], has_more: false })
           : key === 'reply-5'
-          ? () => ({ messages: [{ content: `${deliveryMark('reply-5-other')}${reply.text}`, msg_type: 'text' }], has_more: false })
+          ? () => ({ messages: [{ content: `${deliveryMark('reply-5-other')}${reply.text}`, msg_type: 'text',
+            sender: { id: BOT, sender_type: 'bot' } }], has_more: false })
           : key === 'reply-7'
-          ? () => ({ messages: [{ content: reply.text, msg_type: 'text' }], has_more: false })
+          ? () => ({ messages: [{ content: reply.text, msg_type: 'text', sender: { id: BOT, sender_type: 'bot' } }], has_more: false })
+          : key === 'reply-11'
+          ? () => ({ messages: [{ content: reply.text, msg_type: 'text', sender: { id: 'ou_other_bot', sender_type: 'bot' } }], has_more: false })
           : key === 'reply-8' ? () => ({ messages: [], has_more: true })
           : key === 'reply-10' ? () => ({ messages: [] })
           : key === 'reply-4' ? () => { throw new CliError('Rate limited', 99991400) } : () => ({ messages: [], has_more: false })

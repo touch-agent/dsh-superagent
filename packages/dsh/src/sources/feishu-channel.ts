@@ -33,7 +33,10 @@ export async function sendFeishu(host: Pick<SourceContext, 'commands'>, message:
   }
   return 'sent'
 }
-const ThreadMessageSchema = z.object({ content: z.string().optional(), deleted: z.boolean().optional() })
+const ThreadMessageSchema = z.object({ content: z.string().optional(), deleted: z.boolean().optional(),
+  sender: z.object({ id: z.string(), sender_type: z.string() }).optional() })
+/** Text without delivery marks, so a reply whose mark a client stripped can still be compared. */
+const plain = (content: string | undefined): string => readable(content).replaceAll(/[\u200b\u200c\u200d]/g, '').trim()
 // A page without `has_more` cannot be known to be complete, so it fails this schema and the probe answers `unknown`.
 const ThreadPageSchema = z.object({ messages: z.array(z.unknown()), has_more: z.boolean() })
 /** Readable text of a rendered message: the `text` fields of a JSON body, or the body itself when it is not JSON. */
@@ -65,8 +68,14 @@ export async function probeFeishu(host: Pick<SourceContext, 'commands'>, message
     const result = ThreadPageSchema.parse(await host.commands.lark(['im', '+threads-messages-list', '--thread', messageId,
       '--order', 'desc', '--page-size', '50', '--no-reactions']))
     const messages = validItems(ThreadMessageSchema, result.messages)
+    const marks = (item: (typeof messages)[number]) => deliveryMarkIds(readable(item.content))
     // The mark names this outbound message, so another app's or an earlier reply's text cannot stand in for it.
-    if (messages.some(item => !item.deleted && deliveryMarkIds(readable(item.content)).includes(message.id))) return 'sent'
+    if (messages.some(item => !item.deleted && marks(item).includes(message.id))) return 'sent'
+    // Our own unmarked reply with the same text may be this message with its mark stripped: do not call it absent.
+    const botId = host.commands.deployment.feishu?.botId
+    const text = checkedImText(message.text).trim()
+    if (messages.some(item => !item.deleted && marks(item).length === 0 && plain(item.content) === text
+      && (!botId || item.sender?.id === botId))) return 'unknown'
     return result.has_more ? 'unknown' : 'gone'
   } catch (error) {
     return gone(error) ? 'gone' : 'unknown'
