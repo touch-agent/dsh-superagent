@@ -130,9 +130,10 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const assessor = parts.assessor = new MasterAssessor({ get engine() { return parts.engine }, commands, get deployment() { return setup.deployment },
     effects, settings: () => store.settings(), paused: () => host.paused(), threadContext: trigger => sources.threadContext(trigger),
     deliver: (id, text) => sessions.prompt(masterId, id, text, 'steer'), candidateCard: candidate => candidateCard(links, candidate) })
-  const outbox = parts.outbox = new Outbox({ store, effects, sources, commands, paused: () => host.paused(),
-    undoWindowMs: () => store.settings().policy.undoWindowSeconds * 1000 })
   const policy = () => settingsPolicy(store.settings(), sources)
+  const outbox = parts.outbox = new Outbox({ store, effects, sources, commands, policy,
+    approvalPolicy: () => store.settings().policy.approval, paused: () => host.paused(),
+    undoWindowMs: () => store.settings().policy.undoWindowSeconds * 1000 })
   const trace = parts.trace = new SqliteTraceSink(store)
   // Every domain event is graded and stored in the same transaction that produced it; no other part needs the log itself.
   const activity = new ActivityLog(store)
@@ -159,7 +160,8 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const evals = board.claim('evals', { state: 'ready', detail: 'No unavailable Eval in the last hour' })
   const evaluateDue = () => { engine.evaluateDue(); evals.set(evalsHealth(store)) }
   const passes = parts.passes = new Passes({ engine: { receive: trigger => engine.receive(trigger), evaluateDue }, effects,
-    health: host.runtimeHealth, lifetime, configured: () => setup.configured(), closing: () => host.closing() })
+    reconcile: () => outbox.reconcile(), health: host.runtimeHealth, lifetime, configured: () => setup.configured(),
+    closing: () => host.closing() })
   parts.sourceDeps = { store, engine, outbox, commands, sources, get ready() { return host.ready() },
     get deployment() { return setup.deployment }, configured: () => setup.configured(),
     get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem }, receive: trigger => passes.receive(trigger),

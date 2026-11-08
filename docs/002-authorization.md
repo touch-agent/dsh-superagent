@@ -177,8 +177,6 @@ An Approval records one person's or the Policy's consent to one Action and revis
 
 A match records an ordinary Approval in `approved` state, with `decidedAt` at the request, the decision actor `policy/auto-approval`, and a `reason` naming the domain and window that matched. The window is checked at the request time; a later execution moment does not re-check it. Nothing is skipped: the record stays readable by Ticket, never enters the pending queue, and is left out of the human approval-latency sample. A request that does not match stays `requested` for a person. Asking for the same Ticket and Action again returns the first record only when the target is the same; a different target, or an expired request, is refused, so one destination's grant never authorizes another.
 
-Nothing in this runtime requests Approvals yet: `packages/dsh/src/app/approvals.ts` exposes `requestApproval` for the action/outbox producer that will call it. Until that producer lands, the policy is a tested command and the pending queue stays empty.
-
 Auto-approval settings are not part of the Policy version, like the undo window: changing them affects later requests and does not discard running Evals, notify Tickets or withdraw Mandates. They are saved with the rest of the Policy through the documented settings route. `PUT settings/policy` replaces the whole block, so read the block first with `GET settings/policy`, add the `approval` key to the value, and save the whole value back; the fragment below is not a request body by itself:
 
 ```json
@@ -188,6 +186,22 @@ Auto-approval settings are not part of the Policy version, like the undo window:
   "sources": { "feishu": { "domains": ["corp.example"], "always": true } }
 } }
 ```
+
+## The runtime's action producer
+
+`packages/dsh/src/app/action-gate.ts` is the producer: `requestActionApproval` revalidates a Ticket's Mandate at the Action's level, then asks `requestApproval` for the consent the Action needs. The Outbox calls it for every external Ticket message, and a future `commit` or `spend` path calls the same function before its effect.
+
+A message to a Feishu, GitHub or other external Channel now follows this path:
+
+1. the send Action's level is revalidated against the Ticket's Mandate; a refusal is recorded on the receipt as its drop reason (`actionLevelExceeded`, `mandateExpired` or `revoked`) and no Approval is requested;
+2. the gate requests one Approval for the Action and its exact revision, recording the target the Channel writes to (the address URL, chat id or Thread) so auto-approval can match a domain and the record names where it would reach;
+3. a Policy rule may approve the request at once; otherwise it stays `requested` for up to 24 hours and the receipt waits as `pending`, with no `reply` effect queued;
+4. the panel queue shows the request; approving it releases the receipt and queues the effect, denying it drops the receipt as `approvalDenied`, and an approval that expires drops it as `approvalExpired`;
+5. a lower grant drops it as `approvalLevelInsufficient`; recalling it while it still waits keeps its receipt `recalled`, revokes the request and sends nothing. A dropped message is not retried; a new revision is a new Action, so it asks again.
+
+The built-in conversation Source is the operator's own local UI, not an external effect, so its messages stay direct. A message with no Ticket is a system write and is not gated. The runtime has no `commit` or `spend` executor today; the gate already models those levels, keeps a `spend` manual, and is the seam those paths must call.
+
+Because the Policy's maximum is `draft` by default, an operator who upgrades must raise it to `send` before any external Channel message can leave; until then such messages are dropped with `actionLevelExceeded` and the Ticket's acknowledgement or result does not reach the person. Raising the maximum does not widen an existing Mandate that recorded a lower ceiling, so accept new work after raising it. Local conversation replies are unaffected.
 
 ## When Eval does not finish
 

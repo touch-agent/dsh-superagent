@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'v
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { Runtime } from '@superagent/dsh/app/runtime.ts'
+import { decideApproval } from '@superagent/dsh/app/approvals.ts'
 import { jobRegistry } from './fixtures/host.ts'
 import { evalsHealth } from '@superagent/dsh/app/views/overview.ts'
 import { mandateInstructions } from '@superagent/dsh/executor/dsh.ts'
@@ -221,8 +222,24 @@ beforeEach(async () => {
   // Source kinds are normally registered by plugins that are not loaded in unit tests.
   runtime.sources.register(feishuKind); runtime.sources.register(githubKind)
   // The suite runs an IM tenant, which sets the undo window to 0; tests that exercise the window set it themselves.
-  runtime.store.saveSettings({ ...runtime.store.settings(), policy: { ...runtime.store.settings().policy, undoWindowSeconds: 0, sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } } }, eval: { ...runtime.store.settings().eval, mode: 'auto' }, sources: { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT() } }, feishu: { enabled: true, config: { cli: BOT(), chats: [{ chatId: CHAT, listen: 'all' }], directMessages: true } } } })
+  runtime.store.saveSettings({ ...runtime.store.settings(), policy: { ...runtime.store.settings().policy, maxActionLevel: 'send', undoWindowSeconds: 0, sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } } }, eval: { ...runtime.store.settings().eval, mode: 'auto' }, sources: { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT() } }, feishu: { enabled: true, config: { cli: BOT(), chats: [{ chatId: CHAT, listen: 'all' }], directMessages: true } } } })
   deliveries.mockClear()
+  // These tests are not about the action gate: an external send waits for an Approval, so the suite approves every
+  // request the Outbox raised for a receipt before it waits, as an operator would from the panel.
+  const approveGateRequests = () => {
+    let decided = false
+    for (const receipt of runtime.store.receipts.waiting()) {
+      if (!receipt.approvalId) continue
+      const approval = runtime.store.approvals.get(receipt.approvalId)
+      if (approval?.state === 'requested') { decideApproval(runtime.store, approval.id, 'approved', new Date().toISOString()); decided = true }
+    }
+    if (decided) runtime.outbox.reconcile()
+  }
+  // The tools reach the Outbox directly, so the hook is `sent` rather than `sendReplies`.
+  const sent = runtime.outbox.sent.bind(runtime.outbox)
+  runtime.outbox.sent = async () => { approveGateRequests(); await sent() }
+  const idle = runtime.idle.bind(runtime)
+  runtime.idle = async () => { approveGateRequests(); await idle() }
 })
 afterEach(async () => { expect(controller.prompt).not.toHaveBeenCalled(); await runtime?.stop(); vi.restoreAllMocks(); rmSync(directory, { recursive: true, force: true }) })
 
@@ -1194,6 +1211,7 @@ describe('the order of a Ticket\'s messages to one conversation', () => {
   const sent: string[] = []
   const refused = new Set<string>()
   const ids = new Map<string, string>()
+  let ticketA = '', ticketB = ''
   const message = (id: string, ticketId: string, channel = feishuChannel(CHAT, 'om_1')) => {
     const action = outboundAction({ kind: 'reply', source: channel.source, objectId: id, revision: 'rev-1' })
     ids.set(id, action.idempotencyKey)
@@ -1205,7 +1223,8 @@ describe('the order of a Ticket\'s messages to one conversation', () => {
   }
   beforeEach(async () => {
     sent.length = 0; refused.clear(); ids.clear()
-    await acceptedTicket()
+    ticketA = (await acceptedTicket()).ticket.id
+    ticketB = (await acceptedTicket(feishu('2', '@bot 再修一个'))).ticket.id
     vi.spyOn(runtime.sources, 'send').mockImplementation(async message => {
       if (refused.has(message.text)) throw new Error('internal error (2200)')
       sent.push(message.text)
@@ -1216,13 +1235,13 @@ describe('the order of a Ticket\'s messages to one conversation', () => {
   })
   it('sends a Ticket\'s later result after its acknowledgement that failed once, and holds no other Ticket\'s message in the chat', async () => {
     refused.add('ack-a')
-    runtime.outbox.send(message('ack-a', 'a'))
+    runtime.outbox.send(message('ack-a', ticketA))
     await runtime.sendReplies()
     refused.delete('ack-a')
-    runtime.outbox.send(message('result-a', 'a'))
+    runtime.outbox.send(message('result-a', ticketA))
     // Another Ticket in the same chat, and the same Ticket in an Issue, are other orders.
-    runtime.outbox.send(message('ack-b', 'b', feishuChannel(CHAT, 'om_2')))
-    runtime.outbox.send(message('issue-a', 'a', githubChannel(7)))
+    runtime.outbox.send(message('ack-b', ticketB, feishuChannel(CHAT, 'om_2')))
+    runtime.outbox.send(message('issue-a', ticketA, githubChannel(7)))
     await runtime.sendReplies()
     expect([runtime.outbox.status(ids.get('result-a')!), sent]).toEqual(['pending', ['ack-b', 'issue-a']])
     await at(5000)
@@ -1230,9 +1249,9 @@ describe('the order of a Ticket\'s messages to one conversation', () => {
   })
   it('stops holding a Ticket\'s later messages behind one that failed three times, which the overview shows', async () => {
     refused.add('ack-a')
-    runtime.outbox.send(message('ack-a', 'a'))
+    runtime.outbox.send(message('ack-a', ticketA))
     await runtime.sendReplies()
-    runtime.outbox.send(message('result-a', 'a'))
+    runtime.outbox.send(message('result-a', ticketA))
     // Its retries come after 5 and then 10 more seconds; the third failure releases the result.
     await at(5000)
     expect(sent).toEqual([])
