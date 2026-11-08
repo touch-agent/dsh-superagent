@@ -211,6 +211,7 @@ graph LR
 
 - **交付**：`docs/009-adding-a-source.md`；`docs.spec.ts` 的文档表同步。
 - **验收**：按指南从零写一个假源（noop），全程无 `packages/dsh/src/app` 改动。
+- **状态**：实现完成（2026-11-08，PR #25 待合并）。`docs/009` 已被会话任务文档占用，指南落在 `docs/010-adding-a-source.md`；README 文档表补齐 009/010，`tests/docs.spec.ts` 新增“README 按序列全每个编号文档”的检查，007 的 Sources 一节改为描述 `SourceDefinition` 注册路径。按指南在干净 worktree 里从零加了临时 noop 源（manifest + adapter + 插件入口 + 运行时/包入口、导出、patch 行、tsconfig/vitest 子路径、007 表与两个精确行测试）：`pnpm typecheck`、89 个文件 / 1504 个测试、`pnpm build`、体积门通过，`packages/dsh/src/app` 无改动；该练习补出了 `tests/dump-config.spec.ts` 也要同步这一条，已写进指南。
 
 ---
 
