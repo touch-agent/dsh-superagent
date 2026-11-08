@@ -1,6 +1,6 @@
 /**
- * T2-10: the withdrawal drill. It sends one message through every kind of Channel and asks the Source to take it back,
- * then reads the message back with `probe` to prove it is gone. A Source without a withdraw adapter is reported as
+ * T2-10: the withdrawal drill. It sends one message through each fixture, GitHub and Feishu Channel and asks the Source
+ * to take it back, then reads the message back with `probe` to prove it is gone. A Source without a withdraw adapter is reported as
  * unable to withdraw with that reason, never as a success. `pnpm drill:withdraw` runs this file; `docs/runbooks/
  * withdraw.drill.md` records a run.
  */
