@@ -54,6 +54,8 @@ export class Replies extends EnginePart {
     if (!channel) return
     this.options.outbox.withdraw(outboundAction({ kind: 'reply', source: channel.source, objectId: attention.id,
       revision: 'asked' }).idempotencyKey)
+    // A question queued before T2-05 kept the old id; withdrawing it too keeps the replacement silent.
+    this.options.outbox.withdraw(key('attention-reply', attention.id))
   }
   private acknowledge(request: Extract<ReplyRequest, { purpose: 'acknowledgement' }>): Reply {
     const ticket = this.require(request.ticketId)
@@ -66,12 +68,15 @@ export class Replies extends EnginePart {
     const action = acknowledgementAction(trigger.channel, trigger.id)
     const message = { action, channel: trigger.channel, text: request.text, ticketId: ticket.id }
     const id = action.idempotencyKey
-    const existing = this.options.outbox.status(id)
+    // A receipt queued before T2-05 kept the trigger's id; an acknowledgement already sent then still counts.
+    const legacy = key('ack', trigger.id)
+    const existing = this.options.outbox.status(id) ?? this.options.outbox.status(legacy)
     if (!existing && !trigger.human) throw new UserError('ackNotPerson')
     // Preserve the automatic or first queued acknowledgement.
     if (!existing) this.options.outbox.send(message)
     this.takeUp(ticket.id, trigger.id)
-    return { id, status: this.options.outbox.status(id) ?? 'pending', reused: existing !== undefined }
+    return { id, status: this.options.outbox.status(id) ?? this.options.outbox.status(legacy) ?? 'pending',
+      reused: existing !== undefined }
   }
   private answer(request: Exclude<ReplyRequest, { purpose: 'acknowledgement' }>): Reply {
     const trigger = request.triggerId ? this.repo.triggers.get(request.triggerId) : undefined
@@ -95,16 +100,20 @@ export class Replies extends EnginePart {
       ? this.message(channel, request.text, 'reply', attention.id, 'asked', ticket?.id)
       : this.message(channel, request.text, 'reply', trigger?.id ?? ticket?.id ?? '', key('reply-text', request.text), ticket?.id))
     const id = message?.action.idempotencyKey
-    const existing = id === undefined ? undefined : this.options.outbox.status(id)
+    // A receipt queued before T2-05 kept the old id, derived from the object and the text.
+    const legacy = attention ? key('attention-reply', attention.id) : key('reply', trigger?.id ?? ticket?.id ?? '', request.text)
+    const existing = id === undefined ? undefined : this.options.outbox.status(id) ?? this.options.outbox.status(legacy)
     const ready = !ticket || !trigger || ticket.answers?.includes(trigger.id)
     if (request.purpose === 'answer' && !ready && !existing) throw new UserError('noAnswer')
     if (!message) throw new UserError('noChannel')
-    this.options.outbox.send(message)
+    // A legacy receipt under the old id already carries the message; queueing it under the new id would send it twice.
+    if (!existing) this.options.outbox.send(message)
     if (request.purpose === 'answer' && ticket && trigger && ticket.answers?.includes(trigger.id)) {
       ticket.answers = ticket.answers.filter(item => item !== trigger.id)
       this.repo.tickets.save(ticket)
     }
-    return { id: message.action.idempotencyKey, status: this.options.outbox.status(message.action.idempotencyKey) ?? 'pending',
+    return { id: message.action.idempotencyKey,
+      status: this.options.outbox.status(message.action.idempotencyKey) ?? this.options.outbox.status(legacy) ?? 'pending',
       reused: existing !== undefined }
   }
   /** Build one outbound message: its send Action carries the key, and the message carries the content. */

@@ -19,7 +19,7 @@ interface Hooks {
 }
 function harness(policyOverrides: Partial<Policy> = {}, { emit, prepareTicket }: Hooks = {}) {
   const repo = new MemoryRepositories()
-  const outbox: (OutboundMessage & { action: Action })[] = []
+  const outbox: OutboundMessage[] = []
   const withdrawn: string[] = []
   const requests: Candidate[] = []
   const assessor: Assessor = { request: vi.fn(candidate => { requests.push(candidate) }), release: vi.fn() }
@@ -640,7 +640,17 @@ describe('follow-up owners', () => {
     h.engine.report(ticketId, { state: 'dropped', summary: 'nothing to do' })
     expect(h.repo.threads.get('chat:x')!.pending).toEqual(['2'])
   })
-  it('counts an acknowledgement an earlier version queued without recording it on the message as taking the message up', () => {
+  it('counts an acknowledgement an earlier version queued under the trigger id without recording it on the message', () => {
+    const h = harness()
+    const ticketId = accepted(h).ticketId!
+    h.engine.report(ticketId, { state: 'progress', summary: 'working' })
+    h.tick(1); h.engine.receive(trigger('2')); h.settle()
+    // A receipt from before T2-05 has no send Action; its id is the one the old Outbox derived.
+    h.outbox.push({ id: key('ack', '2'), channel: trigger('2').channel!, text: 'On it', ticketId })
+    h.engine.report(ticketId, { state: 'dropped', summary: 'nothing to do' })
+    expect([h.repo.threads.get('chat:t1')!.pending, h.repo.triggers.disposition('2')!.fanout]).toEqual([[], [ticketId]])
+  })
+  it('counts an acknowledgement queued under its send Action without recording it on the message', () => {
     const h = harness()
     const ticketId = accepted(h).ticketId!
     h.engine.report(ticketId, { state: 'progress', summary: 'working' })
@@ -649,6 +659,25 @@ describe('follow-up owners', () => {
       action: outboundAction({ kind: 'acknowledgement', source: 'chat', objectId: '2', revision: 'accepted' }) })
     h.engine.report(ticketId, { state: 'dropped', summary: 'nothing to do' })
     expect([h.repo.threads.get('chat:t1')!.pending, h.repo.triggers.disposition('2')!.fanout]).toEqual([[], [ticketId]])
+  })
+  it('does not queue an acknowledgement again when only the old trigger-keyed receipt exists', () => {
+    const h = harness()
+    const ticketId = accepted(h).ticketId!
+    h.engine.receive(trigger('2', { actor: guest }))
+    h.outbox.push({ id: key('ack', '2'), channel: trigger('2').channel!, text: 'On it', ticketId })
+    expect(h.engine.reply({ purpose: 'acknowledgement', ticketId, triggerId: '2', text: 'Looking' }))
+      .toEqual({ id: ackId(trigger('2')), status: 'pending', reused: true })
+    expect(h.outbox.filter(message => message.action).map(message => message.text)).toEqual(['ok'])
+  })
+  it('does not queue an answer again when only the old trigger-and-text receipt exists', () => {
+    const h = harness()
+    const ticketId = accepted(h).ticketId!
+    h.engine.receive(trigger('2', { actor: guest }))
+    h.engine.report(ticketId, { state: 'progress', summary: 'Yes', answers: '2' })
+    h.outbox.push({ id: key('reply', '2', 'Yes'), channel: trigger('2').channel!, text: 'Yes', ticketId })
+    expect(h.engine.reply({ purpose: 'answer', triggerId: '2', text: 'Yes' })).toMatchObject({ status: 'pending', reused: true })
+    expect(h.outbox.filter(message => message.action).map(message => message.text)).toEqual(['ok'])
+    expect(h.repo.tickets.get(ticketId)!.answers).toEqual([])
   })
   it('counts a message that resumed a ticket as taken up by the report that ends it again, unlike one that came later', () => {
     const h = harness()
@@ -820,10 +849,11 @@ describe('worker reports', () => {
     expect(replaced.attention).toMatchObject({ question: 'Which size?' })
     expect(replaced.attention).not.toHaveProperty('triggerId')
     // The replaced question is withdrawn from the outbox if its message has not gone out yet.
-    expect(h.withdrawn).toEqual([attentionReplyId(asked.attention!.id)])
+    expect(h.withdrawn).toEqual([attentionReplyId(asked.attention!.id), key('attention-reply', asked.attention!.id)])
     const cleared = h.engine.report(ticketId, { state: 'progress', summary: 'answered', question: null })
     expect(cleared).not.toHaveProperty('attention')
-    expect(h.withdrawn).toEqual([attentionReplyId(asked.attention!.id), attentionReplyId(replaced.attention!.id)])
+    expect(h.withdrawn).toEqual([attentionReplyId(asked.attention!.id), key('attention-reply', asked.attention!.id),
+      attentionReplyId(replaced.attention!.id), key('attention-reply', replaced.attention!.id)])
   })
   it('ends the ticket on a final report: dropped drops it, ready completes it unless it follows a Source\'s Thread that is open', () => {
     const outcome = (state: 'ready' | 'dropped' | 'failed', follows: boolean, closed = false) => {

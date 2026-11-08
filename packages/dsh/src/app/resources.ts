@@ -225,7 +225,8 @@ const ROUTES: readonly Route[] = [
     const neighbours = host.store.read.neighbours(threadKey(found.threads[0]!), found.at, found.id)
     const around = { before: shown(neighbours.before), after: shown(neighbours.after) }
     return { ...card, ...await host.sourceLink(found, signal),
-      acknowledgement: found.channel ? host.store.replyStatus(acknowledgementAction(found.channel, found.id).idempotencyKey) ?? 'not_requested' : 'not_requested',
+      acknowledgement: found.channel ? host.store.replyStatus(acknowledgementAction(found.channel, found.id).idempotencyKey)
+        ?? host.store.replyStatus(key('ack', found.id)) ?? 'not_requested' : 'not_requested',
       ...(ref ? { context: feishuReferences(ref) } : {}),
       ...(offset === 0 ? {
         ...repliedTo ? { replied_to: triggerLine(repliedTo) } : {},

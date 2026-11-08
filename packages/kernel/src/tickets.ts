@@ -305,8 +305,10 @@ export class Tickets extends EnginePart {
    */
   private takenUp(ticket: Ticket, trigger: Trigger): boolean {
     const acked = this.repo.triggers.disposition(trigger.id)?.acked
-    return acked ? acked.includes(ticket.id)
-      : !!trigger.channel && this.options.outbox.status(acknowledgementAction(trigger.channel, trigger.id).idempotencyKey) !== undefined
+    if (acked) return acked.includes(ticket.id)
+    // A receipt queued before T2-05 kept the trigger's id; neither key alone covers every stored acknowledgement.
+    return !!trigger.channel && (this.options.outbox.status(acknowledgementAction(trigger.channel, trigger.id).idempotencyKey) !== undefined
+      || this.options.outbox.status(key('ack', trigger.id)) !== undefined)
   }
   /** The person's messages among a ticket's Inputs `ids` that it decides and its worker did not take up. */
   private untaken(ticket: Ticket, ids: readonly string[]): Trigger[] {
