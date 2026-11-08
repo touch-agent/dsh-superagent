@@ -42,8 +42,12 @@ export class Replies extends EnginePart {
    * and a person wrote it.
    */
   acknowledgeAccepted(ticketId: string, trigger: Trigger, text: string): void {
-    if (trigger.channel && trigger.human) this.options.outbox.send({ action: acknowledgementAction(trigger.channel, trigger.id),
-      channel: trigger.channel, text, ticketId })
+    if (!trigger.channel || !trigger.human) return
+    // A receipt queued by an older version under the trigger's id already carries the acknowledgement.
+    const action = acknowledgementAction(trigger.channel, trigger.id)
+    if (this.options.outbox.status(action.idempotencyKey) !== undefined
+      || this.options.outbox.status(key('ack', trigger.id)) !== undefined) return
+    this.options.outbox.send({ action, channel: trigger.channel, text, ticketId })
   }
   /**
    * Withdraw a ticket's question for a person from the outbox, unless it went out already. The withdrawal derives the same

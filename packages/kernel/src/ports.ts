@@ -1,5 +1,5 @@
 /** Ports the core depends on. Sources, policies, assessors, executors, and channels are project-specific. */
-import type { Action, ActionLevel, OutboundKind } from './action.ts'
+import type { Action, ActionLevel, OutboundAction, OutboundKind } from './action.ts'
 import type { Approval } from './approval.ts'
 import type { Assignment, ChannelRef, Decision, DecisionKind, Mandate, MandateBasis, Strength, Thread, Ticket, TicketEndBy, TicketOutcome, Trigger }
   from './model.ts'
@@ -87,7 +87,7 @@ export interface Executor {
  * What a caller asks the Outbox to write: the send Action that names the write, its Channel, the text, and the Ticket
  * it is for. The Action's idempotency key is the message id, so it is not supplied separately.
  */
-export interface OutboundSend { action: Action; channel: ChannelRef; text: string; ticketId?: string }
+export interface OutboundSend { action: OutboundAction; channel: ChannelRef; text: string; ticketId?: string }
 /**
  * A message as a Channel adapter receives it: its id is the send Action's idempotency key. `action` is absent on a receipt
  * queued before outbound messages carried send Actions; such a receipt keeps the `kind` it was recorded with.

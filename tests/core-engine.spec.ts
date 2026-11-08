@@ -660,6 +660,15 @@ describe('follow-up owners', () => {
     h.engine.report(ticketId, { state: 'dropped', summary: 'nothing to do' })
     expect([h.repo.threads.get('chat:t1')!.pending, h.repo.triggers.disposition('2')!.fanout]).toEqual([[], [ticketId]])
   })
+  it('does not queue the accept acknowledgement when an older receipt already carries it', () => {
+    const h = harness()
+    h.engine.receive(trigger('1')); h.pump()
+    const candidate = h.requests.at(-1)!
+    h.outbox.push({ id: key('ack', '1'), channel: trigger('1').channel!, text: 'ok' })
+    h.decide(candidate, { kind: 'accept', title: 'Fix', scope: 'small', reason: 'requested', acknowledgement: 'ok' })
+    h.settle()
+    expect(h.outbox.filter(message => message.action)).toEqual([])
+  })
   it('does not queue an acknowledgement again when only the old trigger-keyed receipt exists', () => {
     const h = harness()
     const ticketId = accepted(h).ticketId!

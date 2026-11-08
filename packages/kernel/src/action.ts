@@ -106,6 +106,9 @@ export function createAction(input: ActionIdentity & { cost?: ActionCost }): Act
   return { kind, source, objectId, revision, actor, idempotencyKey, level: input.level }
 }
 
+/** An Action whose kind names an outbound write; the Outbox and its receipts carry this narrower shape. */
+export type OutboundAction = Action & { kind: OutboundKind }
+
 /** What a caller supplies to describe an outbound write, before its `send` Action and key are derived. */
 export interface OutboundActionInput {
   /** What the message is for; it is also the Action's kind. */
@@ -124,11 +127,12 @@ export interface OutboundActionInput {
  * Build the `send` Action an outbound message carries. Its idempotency key becomes the message id and the `reply`
  * effect's key, so two revisions of one write are two effects and a replay of one revision is one.
  */
-export function outboundAction(input: OutboundActionInput): Action {
+export function outboundAction(input: OutboundActionInput): OutboundAction {
   return createAction({ kind: input.kind, source: input.source, objectId: input.objectId, revision: input.revision,
-    actor: input.actor ?? OUTBOX_ACTOR, level: 'send' })
+    actor: input.actor ?? OUTBOX_ACTOR, level: 'send' }) as OutboundAction
 }
+
 /** The send Action of an acknowledgement of `triggerId`, sent into `channel`; who accepted it does not change its key. */
-export function acknowledgementAction(channel: Pick<ChannelRef, 'source'>, triggerId: string): Action {
+export function acknowledgementAction(channel: Pick<ChannelRef, 'source'>, triggerId: string): OutboundAction {
   return outboundAction({ kind: 'acknowledgement', source: channel.source, objectId: triggerId, revision: 'accepted' })
 }

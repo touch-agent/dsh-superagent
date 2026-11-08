@@ -352,7 +352,7 @@ export class Store implements Repositories {
      */
     add: (message: OutboundSend, window?: { dueAt: string; windowMs: number }): boolean => {
       const id = message.action.idempotencyKey
-      const receipt: Receipt = { ...message, id, status: 'pending', ...window }
+      const receipt: Receipt = { ...message, id, kind: message.action.kind, status: 'pending', ...window }
       return Number(this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)').run(id, JSON.stringify(receipt)).changes) > 0
     },
     /**

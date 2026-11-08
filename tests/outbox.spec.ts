@@ -168,5 +168,7 @@ it('keys each effect by the send Action, so two revisions are two effects and a 
   const rows = h.runtime.store.db.prepare("SELECT key FROM effect WHERE kind = 'reply' ORDER BY seq").all().map(row => String(row.key))
   expect(rows).toEqual([first.idempotencyKey, second.idempotencyKey])
   expect(h.runtime.store.receipts.get(first.idempotencyKey)?.text).toBe('first')
+  // A receipt still carries the adapter-facing kind, taken from its send Action.
+  expect(h.runtime.store.receipts.get(first.idempotencyKey)?.kind).toBe('notice')
   expect([h.runtime.outbox.status(first.idempotencyKey), h.runtime.outbox.status(second.idempotencyKey)]).toEqual(['pending', 'pending'])
 })
