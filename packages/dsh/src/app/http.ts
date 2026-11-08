@@ -30,7 +30,7 @@ import { sourcesStatus, type SetupState } from './views/sources.ts'
 import { decisionList, search, threadDetail, threadList } from './views/threads.ts'
 import { executorLoad, ticketDetail, ticketList } from './views/tickets.ts'
 import { triggerTrace } from './views/trace.ts'
-import { activityFeed } from './activity.ts'
+import { activityFeed, activityLookup } from './activity.ts'
 
 export interface HttpHost {
   readonly store: Store
@@ -158,6 +158,7 @@ const ApprovalDecision = z.object({ level: z.enum(ACTION_LEVELS).optional() })
 
 function routes(runtime: HttpHost): Routes {
   const { store } = runtime
+  const activity = activityLookup(store)
   const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
   const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
@@ -167,7 +168,7 @@ function routes(runtime: HttpHost): Routes {
     'GET metrics': () => metrics(store),
     'GET activity': ({ query }) => {
       const { after, limit, level } = ActivityQuery.parse(query)
-      return activityFeed(store.activity, after, limit, level)
+      return activityFeed(store.activity, after, limit, level, activity)
     },
     'GET search': ({ query }) => search(views(runtime), query.q ?? '', runtime.sourceLinks),
     'GET sources': () => sourcesStatus(views(runtime), runtime.health, setupState(runtime)),
@@ -317,7 +318,7 @@ async function streamActivity(ctx: Context, runtime: HttpHost, req: IncomingMess
         if (closed) return
         const latest = runtime.store.activity.latest(level)
         if (cursor > latest) cursor = latest
-        const feed = activityFeed(runtime.store.activity, cursor, limit, level)
+        const feed = activityFeed(runtime.store.activity, cursor, limit, level, activityLookup(runtime.store))
         for (const item of feed.items) {
           if (!await writeChunk(res, `id: ${item.seq}\nevent: activity\ndata: ${JSON.stringify(item)}\n\n`)) return
           cursor = item.seq

@@ -248,7 +248,7 @@ Each model request binds the Session to the current prompt revision. The revisio
 | --- | --- |
 | `packages/dsh/src/app/runtime.ts` | The composition root: builds the parts with the interfaces they use, registers the routes and the Source host, and starts and stops dsh-superagent |
 | `packages/dsh/src/app/notices.ts` | Domain events and worker reports into notices and relays for the main Session, under the one-notification-per-outcome budget |
-| `packages/dsh/src/app/activity.ts` | Domain events into graded activity records for the system view, and the rule that says when an end was already told |
+| `packages/dsh/src/app/activity.ts` | Domain events into graded activity records for the system view, their presentation into tasks, origins, states and durations, and the rule that says when an end was already told |
 | `packages/dsh/src/app/tools/main.ts`, `packages/dsh/src/app/tools/executor.ts` | Tool arguments of the main Session and the Executor Sessions into calls of the core classes, and their results into cards |
 | `packages/dsh/src/app/http.ts`, `packages/dsh/src/app/views/`, `packages/dsh/src/app/api.ts` | HTTP requests into calls, and Store reads into the panel's views; `api.ts` types every route for the panel |
 | `packages/dsh/src/app/resources.ts`, `packages/dsh/src/app/links.ts`, `packages/dsh/src/app/cards.ts` | Resource names into reads, source messages into links, records into compact cards for models |
@@ -331,7 +331,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/passes.ts` | Passes, the pass scheduler |
 | `packages/dsh/src/app/outbox.ts` | The Outbox: the Engine's `Outbox` port, the receipts, the undo window and the `reply` effects that send them |
 | `packages/dsh/src/app/notices.ts` | The main Session's notices and relays: `eventNotice`, `reportRelay`, `resultRelay` and `followupRelay` |
-| `packages/dsh/src/app/activity.ts` | `ActivityLog`: every domain event graded `quiet`, `feed` or `notice` and kept in the Store's `activity` table; `endCoveredBy` is the single-notification budget |
+| `packages/dsh/src/app/activity.ts` | `ActivityLog`: every domain event graded `quiet`, `feed` or `notice` and kept in the Store's `activity` table; `endCoveredBy` is the single-notification budget; `presentActivity` adds the subject, task, origin, state and time since start when the feed is read, deriving them for rows stored earlier |
 | `packages/dsh/src/app/store.ts` | The Store, and `Receipt`, a message of the outbox |
 | `packages/dsh/src/app/store-read.ts` | `storeReads`: the Store's read queries for the views, the tools and the Sources' polls, which never write |
 | `packages/dsh/src/app/trace.ts` | `SqliteTraceSink`: the Engine's `TraceSink`, keeping each stage in the Store's `span` table and reading a trace back for the panel |
@@ -406,7 +406,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel, the main-Session entry and row badge, the Status view that reuses the management page, the Events tab and the page in DeepSeek Harness's Plugin Manager |
 | `packages/dsh/src/client/master.ts` | The shared read-only main-Session identity that the entry, row badge, Status page and Events tab follow, with one poller for all of them |
 | `packages/dsh/src/client/activity-feed.ts` | The same-origin activity reader: first page, SSE with a cursor-polling fallback, dedupe by sequence, unread notice count and the persisted last-seen cursor |
-| `packages/dsh/src/client/system.tsx` | The main-Session surfaces: the New Session entry, the row badge, the Status gate around the reused management page, the Events tab and title, and the first-notice auto-open bridge |
+| `packages/dsh/src/client/system.tsx` | The main-Session surfaces: the New Session entry, the row badge, the Status gate around the reused management page, the Events tab with its task groups, filters and title, and the first-notice auto-open bridge |
 | `packages/dsh/src/client/panel.ts` | Selects the management panel at a route requested by a Conversation surface, remembering it for a panel that mounts later |
 | `packages/dsh/src/client/styles.ts` | Installs the plugin stylesheet in the document head so surfaces outside the management panel share its tokens and classes |
 | `packages/dsh/src/client/app.tsx` | The panel: header, search, glossary, tabs and the page of the current route |
@@ -481,7 +481,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/trace-stages.spec.ts` | The stages the Engine records for one Trigger, in order: the whole journey of an accepted Trigger from intake to its first report, the stages a duplicate, an unheard Thread and a refused gate stop at, one row per happening, and that a Trigger still works when no sink is configured |
 | `tests/trace-view.spec.ts` | The panel's trace view: an unknown Trigger answers with an empty trace, the stages come back in order with their facts, and a refusal stops at the gate |
 | `tests/trace.spec.ts` | Trace and stage ids derived from their inputs, and the Store's `span` table: stages read back in recorded order, a repeated stage kept once, and a schema-11 database opened at the current schema with its Triggers and no spans |
-| `tests/activity.spec.ts` | The activity grader and its Store: levels per event, the one-notification budget for a Ticket's end, the level-aware incremental cursor, and records that survive reopen |
+| `tests/activity.spec.ts` | The activity grader and its Store: levels per event, the one-notification budget for a Ticket's end, the level-aware incremental cursor, presentation into task groups with origins and states, legacy rows enriched on read, and records that survive reopen |
 | `tests/metrics.spec.ts` | The health figures: an empty Store reports no samples rather than zeros, each Trigger is measured once to its first Decision, the 24-hour window applies, repeated sends are counted, restart recovery spans the interrupted Assignment and the next, throughput is per hour, and approval latency leaves withdrawals out |
 | `tests/store.spec.ts` | Repositories and their working sets, in SQLite as in memory, the kv area, with every key of `KV` spelled only in `packages/dsh/src/kv.ts` and the migration, settings history and queries |
 | `tests/prompts.spec.ts` | Prompt validation, assembly and versions |
@@ -516,7 +516,7 @@ One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.
 | `approval` | Approvals, by Ticket: the Action and revision they approve, their state, request and expiry times, who decided (or that it was revoked automatically), and why it was approved, denied or revoked; the generated columns `ticket`, the Ticket they belong to, and `pending`, set while they wait for a decision; the `pending()` query also leaves out those past expiry | The approval commands that record or decide one (T2-07/08) |
 | `effect` | The effect queue: per kind and key, the payload, its order, failed attempts with the last error, and when it is due | Effects; the schema 11 migration queues what earlier versions kept for the main Session |
 | `span` | Each stage a Trigger passed, by its trace's id, with the kind of stage, its `at` and the bounded facts recorded for it; a stage recorded twice keeps its first row, because its id is derived from the trace, the stage and an optional ref that tells repeated happenings apart | The Engine, through `SqliteTraceSink` |
-| `activity` | Every domain event as one JSON row, by a monotonic `seq` that is the system view's cursor: its `quiet`, `feed` or `notice` level, a one-line summary, its Ticket and Thread, and why a notice-worthy event was suppressed. The newest 5,000 rows are kept | The Engine's emit hook, through `ActivityLog` |
+| `activity` | Every domain event as one JSON row, by a monotonic `seq` that is the system view's cursor: its `quiet`, `feed` or `notice` level, a one-line summary, its Ticket and Thread, its subject and immutable facts, and why a notice-worthy event was suppressed. A row written before subjects and facts existed is completed on read from its Ticket, Thread and summary. The newest 5,000 rows are kept | The Engine's emit hook, through `ActivityLog` |
 | `outbox` | The receipt of each message for a Channel, by id, with the Ticket it is for and its `status`, `pending`, `sent`, `recalled` or `dropped`, kept so an id is never queued twice; a pending receipt records `dueAt`, the end of its undo window, and `windowMs`; `recalled` records when it was withdrawn instead of sent; for a dropped message, when and why, as the generated column `dropped`, its time, and a reason code. A message that waits has a `reply` effect, which holds its attempts | The Outbox |
 | `kv` | Every other record, by key | The part that names it |
 

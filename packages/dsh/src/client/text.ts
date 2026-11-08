@@ -61,3 +61,11 @@ export function fullTime(value: string | undefined, lang: string): string {
   const date = new Date(value ?? '')
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(timeLocale(lang))
 }
+/** A span of time in the interface language, from whole minutes; a shorter span is empty so a quick event adds no noise. */
+export function duration(ms: number | undefined, lang: string): string {
+  if (ms === undefined || !Number.isFinite(ms) || ms < 60_000) return ''
+  const minutes = Math.round(ms / 60_000)
+  const [value, unit] = minutes < 60 ? [minutes, 'minute'] as const : minutes < 1440 ? [Math.round(minutes / 60), 'hour'] as const
+    : [Math.round(minutes / 1440), 'day'] as const
+  return new Intl.NumberFormat(timeLocale(lang), { style: 'unit', unit, unitDisplay: 'short' }).format(value)
+}
