@@ -170,6 +170,16 @@ describe('the sheet previewer', () => {
     expect(preview.changes[0]).toMatchObject({ kind: 'formula', address: 'D2' })
   })
 
+  it('pairs swapped columns by content and reports only the edited cells', () => {
+    const preview = previewSheet({
+      before: { format: 'csv', content: 'a,b\n1,10\n2,20\n3,30\n4,40\n' },
+      after: { format: 'csv', content: 'b,a\n10,1\n20,2\n30,3\n41,5\n' },
+      link,
+    })
+    expect(preview.changes.map(change => ({ kind: change.kind, address: change.address })))
+      .toEqual([{ kind: 'value', address: 'A5' }, { kind: 'value', address: 'B5' }])
+  })
+
   it('aligns a column inserted in the middle instead of shifting every later column', () => {
     const preview = previewSheet({
       before: { format: 'csv', content: 'id,region,amount\n1,north,10\n2,south,20\n3,east,30\n' },
@@ -202,8 +212,20 @@ describe('the sheet previewer', () => {
       .toEqual([[['A1', 'first']], [['A3', 'third']]])
   })
 
+  it('resolves a shared string table outside the xl directory', () => {
+    const parsed = parseXlsx(bytes('shared-strings-outside.xlsx'))
+    expect(parsed[0]!.rows.map(row => row.cells.map(cell => [cell.address, cell.value])))
+      .toEqual([[['A1', 'first']], [['A3', 'third']]])
+  })
+
   it('expands a shared formula whose master comes after its follower', () => {
     const parsed = parseXlsx(bytes('shared-formula-up.xlsx'))
+    expect([parsed[0]!.rows[1]!.cells.find(cell => cell.address === 'D2')!.formula,
+      parsed[0]!.rows[2]!.cells.find(cell => cell.address === 'D3')!.formula]).toEqual(['B2*C2', 'B3*C3'])
+  })
+
+  it('expands a shared formula when its cells omit the optional address', () => {
+    const parsed = parseXlsx(bytes('shared-formula-no-r.xlsx'))
     expect([parsed[0]!.rows[1]!.cells.find(cell => cell.address === 'D2')!.formula,
       parsed[0]!.rows[2]!.cells.find(cell => cell.address === 'D3')!.formula]).toEqual(['B2*C2', 'B3*C3'])
   })
@@ -314,10 +336,10 @@ describe('the sheet previewer', () => {
       .not.toThrow()
   })
 
-  it('compares a 10,000-row 40-column table in well under two seconds', () => {
-    const header = Array.from({ length: 40 }, (_, column) => `c${column}`).join(',')
-    const row = (index: number, changed: boolean) => Array.from({ length: 40 }, (_, column) =>
-      changed ? `x${column}` : String((index * 40 + column) % 97)).join(',')
+  it('compares a 10,000-row 60-column table in well under two seconds', () => {
+    const header = Array.from({ length: 60 }, (_, column) => `c${column}`).join(',')
+    const row = (index: number, changed: boolean) => Array.from({ length: 60 }, (_, column) =>
+      changed ? `x${column}` : `v${column}-${(index * 60 + column) % 97}`).join(',')
     const beforeRows = [header]
     const afterRows = [header]
     for (let index = 0; index < 10_000; index++) {
@@ -328,7 +350,7 @@ describe('the sheet previewer', () => {
     const preview = previewSheet({ before: { format: 'csv', content: beforeRows.join('\n') },
       after: { format: 'csv', content: afterRows.join('\n') }, link })
     const elapsed = performance.now() - started
-    expect(preview.changes).toHaveLength(40)
+    expect(preview.changes).toHaveLength(60)
     expect(preview.changes.every(change => change.kind === 'value' && change.row === 5_001)).toBe(true)
     expect(preview.sheets[0]!.rows).toMatchObject({ before: 10_001, after: 10_001, added: [], removed: [] })
     expect(elapsed).toBeLessThan(2_000)

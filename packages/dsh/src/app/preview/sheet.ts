@@ -98,7 +98,7 @@ export interface SheetCellChange {
   /** The sheet the change is in; a CSV file has one, named Sheet1. */
   sheet: string
   kind: 'added' | 'removed' | 'formula' | 'value'
-  /** The position in the after sheet, so a removed cell still points at where it used to be. */
+  /** The position in the after sheet for an added or changed cell, or the before sheet for a removed one. */
   row: number
   column: number
   address: string
@@ -176,8 +176,12 @@ export interface SheetPreview {
 
 /** The cells any alignment may fill, beyond which a changed run is paired by position. */
 const MAX_PAIR_CELLS = 20_000
-/** Column pairs whose Dice score is computed; each comparison walks every row, so this stays small. */
+/** Column pairs whose full Dice score is computed; above this a bounded row sample is used. */
 const MAX_COLUMN_PAIR_WORK = 512
+/** Column pairs a changed run may score at all; beyond this it pairs by position. */
+const MAX_COLUMN_PAIRS = 20_000
+/** Row tokens per column when a wide run is scored from a sample. */
+const COLUMN_SAMPLE = 64
 /** The steps one Myers gap may take before that gap pairs by position. */
 const MAX_ALIGN_WORK = 2_000_000
 /** How alike two rows must be for an unmatched removal and insertion to be read as one changed row. */
@@ -453,14 +457,14 @@ function workbookRelationships(xml: string): Map<string, WorkbookRelationship> {
 
 /** Resolve a relationship target, which is relative to `xl/workbook.xml`, to an archive path. */
 function worksheetPath(target: string): string {
-  const pieces: string[] = []
+  if (target.startsWith('/')) return target.slice(1)
+  const pieces = ['xl']
   for (const piece of target.replace(/\\/g, '/').split('/')) {
     if (!piece || piece === '.') continue
     if (piece === '..') pieces.pop()
     else pieces.push(piece)
   }
-  const joined = pieces.join('/')
-  return joined.startsWith('xl/') ? joined : `xl/${joined}`
+  return pieces.join('/')
 }
 
 /** Read the shared strings, one entry per `<si>`, concatenating the runs of rich text; `<si/>` is an empty entry. */
@@ -483,18 +487,32 @@ interface SharedFormula {
 function sharedFormulaMasters(xml: string): Map<string, SharedFormula> {
   const masters = new Map<string, SharedFormula>()
   if (!xml.includes('t="shared"')) return masters
-  for (const cellMatch of xml.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-    const body = cellMatch[2]
-    if (!body) continue
-    const position = cellPosition(xmlAttribute(cellMatch[1] ?? '', 'r') ?? '')
-    if (!position) continue
-    const formula = /<f\b([^>]*?)(?:\/>|>([\s\S]*?)<\/f>)/.exec(body)
-    if (!formula || formula[2] === undefined) continue
-    const attributes = formula[1] ?? ''
-    if (xmlAttribute(attributes, 't') !== 'shared') continue
-    const id = xmlAttribute(attributes, 'si')
-    const text = xmlText(formula[2]).replace(/^=/, '').trim()
-    if (id && text) masters.set(id, { text, row: position.row, column: position.column })
+  let lastRow = -1
+  for (const rowMatch of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+    const declaredRow = Number(xmlAttribute(rowMatch[1] ?? '', 'r'))
+    const row = Number.isInteger(declaredRow) && declaredRow > 0 ? declaredRow - 1 : lastRow + 1
+    lastRow = row
+    const rowBody = rowMatch[2]
+    if (!rowBody) continue
+    let lastColumn = -1
+    for (const cellMatch of rowBody.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const attributes = cellMatch[1] ?? ''
+      const reference = xmlAttribute(attributes, 'r')
+      const position = reference === undefined ? undefined : cellPosition(reference)
+      if (reference !== undefined && !position) continue
+      const column = position ? position.column : lastColumn + 1
+      const cellRow = position ? position.row : row
+      lastColumn = column
+      const body = cellMatch[2]
+      if (!body) continue
+      const formula = /<f\b([^>]*?)(?:\/>|>([\s\S]*?)<\/f>)/.exec(body)
+      if (!formula || formula[2] === undefined) continue
+      const formulaAttributes = formula[1] ?? ''
+      if (xmlAttribute(formulaAttributes, 't') !== 'shared') continue
+      const id = xmlAttribute(formulaAttributes, 'si')
+      const text = xmlText(formula[2]).replace(/^=/, '').trim()
+      if (id && text) masters.set(id, { text, row: cellRow, column })
+    }
   }
   return masters
 }
@@ -854,6 +872,29 @@ function alignKeys(beforeKeys: readonly string[], afterKeys: readonly string[]):
   const anchors = uniqueAnchors(beforeKeys, afterKeys)
   return anchors.length ? alignAnchored(beforeKeys, afterKeys, anchors) : myersAlign(beforeKeys, afterKeys)
 }
+/** Every step-th row token, enough to recognize a moved column without walking every row. */
+function columnSample(item: AxisItem): readonly string[] {
+  if (item.tokens.length <= COLUMN_SAMPLE) return item.tokens
+  const step = item.tokens.length / COLUMN_SAMPLE
+  return Array.from({ length: COLUMN_SAMPLE }, (_value, index) => item.tokens[Math.floor(index * step)]!)
+}
+
+/** Dice similarity over a bounded column sample, used when a wide column run is too costly to score exactly. */
+function sampledColumnSimilarity(before: AxisItem, after: AxisItem): number {
+  if (before.key === after.key) return 1
+  const left = columnSample(before)
+  const right = columnSample(after)
+  const counts = new Map<string, number>()
+  for (const token of left) counts.set(token, (counts.get(token) ?? 0) + 1)
+  let common = 0
+  for (const token of right) {
+    const count = counts.get(token)
+    if (count) { common++; counts.set(token, count - 1) }
+  }
+  const total = left.length + right.length
+  return total ? (2 * common) / total : 0
+}
+
 /** Dice similarity over the tokens of two columns, which keeps a moved row insertion from breaking the columns. */
 function columnSimilarity(before: AxisItem, after: AxisItem): number {
   if (before.key === after.key) return 1
@@ -913,18 +954,17 @@ function pairRun(run: readonly AxisOp[], before: readonly AxisItem[], after: rea
   kind: 'row' | 'column' | 'line'): AxisOp[] {
   const deletes = run.filter((op): op is Extract<AxisOp, { kind: 'delete' }> => op.kind === 'delete').map(op => op.before)
   const inserts = run.filter((op): op is Extract<AxisOp, { kind: 'insert' }> => op.kind === 'insert').map(op => op.after)
-  // An equal number of unmatched columns with no exact anchor is read by position: scoring every column pair would
-  // rebuild a row-token map per pair, which is O(columns^2 * rows) on a wide table.
-  if (kind === 'column' && deletes.length === inserts.length) {
-    return deletes.map((removed, index) => ({ kind: 'same' as const, before: removed, after: inserts[index]! }))
-  }
   const pairs: { before: number; after: number; score: number }[] = []
-  const pairWork = kind === 'column' ? MAX_COLUMN_PAIR_WORK : MAX_PAIR_CELLS
-  if (deletes.length * inserts.length <= pairWork) {
+  const pairCount = deletes.length * inserts.length
+  const pairBudget = kind === 'column' ? MAX_COLUMN_PAIRS : MAX_PAIR_CELLS
+  if (pairCount <= pairBudget) {
     const threshold = kind === 'row' ? ROW_SIMILARITY : COLUMN_SIMILARITY
+    const sampled = kind === 'column' && pairCount > MAX_COLUMN_PAIR_WORK
     for (const removed of deletes) {
       for (const added of inserts) {
-        const score = pairSimilarity(kind, before[removed]!, after[added]!)
+        const score = sampled
+          ? sampledColumnSimilarity(before[removed]!, after[added]!)
+          : pairSimilarity(kind, before[removed]!, after[added]!)
         if (score >= threshold) pairs.push({ before: removed, after: added, score })
       }
     }

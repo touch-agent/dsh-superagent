@@ -11,6 +11,8 @@ updating the expected result with it.
 | `empty-shared-string.xlsx` | Shared strings include a self-closing empty `<si/>`, so later string indices must not shift |
 | `bad-shared-string.xlsx` | A cell names a shared-string index past the table; the workbook is a parse failure rather than silently empty |
 | `shared-formula-up.xlsx` | A shared-formula follower appears above its master, so resolution must not depend on document order |
+| `shared-formula-no-r.xlsx` | The same shared formula omits the optional cell `r` attribute; positions come from row and cell order |
+| `shared-strings-outside.xlsx` | The shared-string table is a package-level part, so its relationship target has to be resolved from `xl/` rather than assumed |
 | `entity.xlsx` | An inline string contains `&constructor;`, which must stay literal instead of resolving through `Object.prototype` |
 | `not-worksheet.xlsx` | A worksheet relationship points at `styles.xml`; the sheet must fail as `invalidWorkbook`, not become empty |
 | `truncated-sheet.xlsx` | The worksheet part is cut off before its closing tag; the sheet must fail instead of dropping its remaining cells |
