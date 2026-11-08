@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ApiError, caller, usePoll } from '@superagent/dsh/client/api.ts'
 import { apply } from '@superagent/dsh/client/index.tsx'
+import type { ActivityRecord } from '@superagent/dsh/app/activity.ts'
 import { zh } from '@superagent/dsh/client/locales.ts'
 import { PANEL_NAVIGATE } from '@superagent/dsh/client/panel.ts'
 import { SettingsSchema } from '@superagent/dsh/policy.ts'
@@ -12,7 +13,8 @@ declare global { var IS_REACT_ACT_ENVIRONMENT: boolean }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 type Entry = { options: { name: string; id?: string; key?: string; order?: number; locale?: string; label?: () => string }; component: ComponentType<Record<string, unknown>> }
-const t = ((key: keyof typeof zh) => zh[key] ?? key) as never
+const t = ((key: keyof typeof zh, values: Record<string, string | number> = {}) => (zh[key] ?? key)
+  .replace(/\{(\w+)\}/g, (_match, name: string) => String(values[name] ?? ''))) as never
 function fixture(listed: string[]) {
   const entries: Entry[] = []
   const dictionaries: Record<string, unknown> = {}
@@ -44,14 +46,16 @@ const openMaster = async (container: HTMLElement) => {
   await act(async () => { button.click() })
   for (let i = 0; i < 5; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
 }
-const serve = () => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+const feedItem = { seq: 1, at: '2026-01-01T00:00:00Z', event: 'ticket.ended' as const, level: 'notice' as const,
+  summary: 'Ticket t1 ended', ticket: 't1' }
+const serve = (activity: ActivityRecord[] = [feedItem]) => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
   const path = new URL(url, 'http://127.0.0.1').pathname.replace('/orchestrator/api/', '')
   if (path === 'overview') return Response.json({ approvals: [], problems: [], person: [], executor: { running: 0, queued: 0, maxWorkers: 3, idle: 0 }, flow: { triggers: 0, filtered: 0, judged: 0, accepted: 0, evaluating: 0 }, metrics: { window: { since: '', hours: 24 }, ttfa: { samples: 0, medianSeconds: null, p90Seconds: null }, duplicates: { sends: 0, repeated: 0 }, recovery: { interrupted: 0, recovered: 0, medianSeconds: null }, throughput: { decisions: 0, perHour: 0 }, approval: { samples: 0, medianSeconds: null, p90Seconds: null } }, policyVersion: 'v' })
   if (path === 'tickets') return Response.json({ items: [], total: 0, offset: 0, limit: 20 })
   if (path === 'activity') {
     const level = new URL(url, 'http://127.0.0.1').searchParams.get('level')
     if (level === 'notice') return Response.json({ items: [], latest: 0, next: 0 })
-    return Response.json({ items: [{ seq: 1, at: '2026-01-01T00:00:00Z', event: 'ticket.ended', level: 'notice', summary: 'Ticket t1 ended', ticket: 't1' }], latest: 1, next: 1 })
+    return Response.json({ items: activity, latest: activity[0]?.seq ?? 0, next: activity[0]?.seq ?? 0 })
   }
   if (path === 'state') return Response.json({ masterId: 'master', settings: SettingsSchema.parse({}), revisions: { policy: 0, eval: 0, executor: 0 }, sources: [], policy_version: 'v', health: {}, outgoing: [], load: { running: 0, queued: 0 },
     setup: { machine: { stateDir: '/srv/state', worktreeRoot: '/srv/state/worktrees', blockedCommands: [], promptMaxChars: 100000, admissionContextMaxPages: 10, admissionContextTimeoutMs: 15000 }, problem: null, feishuProblem: null, accounts: null } })
@@ -233,6 +237,55 @@ it('shows the unread notice count in the Events tab title and clears it when the
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
   expect(localStorage.getItem('dsh-superagent/activity-seen')).toBe('1')
   body.dispose()
+})
+it('groups events by task with readable titles, object badges, states, durations and filters', async () => {
+  const at = '2026-01-01T00:00:00Z'
+  const items: ActivityRecord[] = [
+    { seq: 4, at, event: 'ticket.ended', level: 'notice', summary: 'Ticket t1 ended (completed)', ticket: 't1', status: 'done',
+      subject: { kind: 'ticket', id: 't1' }, detail: { outcome: 'completed' }, sinceStartMs: 600_000,
+      task: { id: 't1', title: 'Fix the Events tab', status: 'done',
+        parent: { kind: 'thread', id: 'github:8', source: 'github', label: '#8 Events tab' } } },
+    { seq: 3, at, event: 'assignment.started', level: 'quiet', summary: 'Assignment a1 started on t1', ticket: 't1', status: 'working',
+      subject: { kind: 'ticket', id: 't1' }, task: { id: 't1', title: 'Fix the Events tab', status: 'done' } },
+    { seq: 2, at, event: 'decision.recorded', level: 'feed', summary: 'Decision d1 (accept)', thread: 'github:8', status: 'queued',
+      subject: { kind: 'decision', id: 'd1' }, detail: { decision: 'accept' },
+      task: { id: 't2', title: 'Review the pull request', status: 'blocked',
+        parent: { kind: 'thread', id: 'github:8', source: 'github', label: '#8' } } },
+    { seq: 1, at, event: 'policy.changed', level: 'quiet', summary: 'Policy changed from a to b', status: 'done' },
+  ]
+  serve(items)
+  const { entries } = fixture([])
+  const view = await render(entries.find(entry => entry.options.name === 'sidebar.right.pane.tab')!, { t })
+  const groupTitles = () => [...view.container.querySelectorAll('.dt-events-group-title')].map(node => node.textContent)
+  expect(groupTitles()).toEqual(['Fix the Events tab', 'Review the pull request', zh.eventsSystem])
+  expect(view.container.textContent).toContain(zh['activityStatus.done'])
+  expect(view.container.textContent).toContain(zh['activityStatus.blocked'])
+  expect(view.container.textContent).toContain(`来自 GitHub #8 Events tab`)
+  expect(view.container.textContent).toContain(`最近：已完成：Fix the Events tab`)
+  // Only the blocked task needs a person; the failure filter leaves nothing and says so.
+  const filter = (label: string): HTMLButtonElement => [...view.container.querySelectorAll<HTMLButtonElement>('.dt-events-filters button')]
+    .find(button => button.textContent === label)!
+  await act(async () => { filter(zh['activityFilter.attention']).click() })
+  expect(groupTitles()).toEqual(['Review the pull request'])
+  await act(async () => { filter(zh['activityFilter.failed']).click() })
+  expect(groupTitles()).toEqual([])
+  expect(view.container.textContent).toContain(zh.eventsFilterEmpty)
+  // Unfold the blocked task: a readable title, its state, the decision badge and the time into the task.
+  await act(async () => { filter(zh['activityFilter.all']).click() })
+  const blocked = [...view.container.querySelectorAll<HTMLButtonElement>('.dt-events-toggle')]
+    .find(button => button.textContent?.includes('Review the pull request'))!
+  await act(async () => { blocked.click() })
+  expect(view.container.textContent).toContain('判定：接单')
+  expect(view.container.textContent).toContain(zh['activityObject.decision'])
+  expect(view.container.textContent).toContain(zh['activityStatus.queued'])
+  // The object badge opens its own page, not only the row's task.
+  let navigated: unknown
+  const onNavigate = (event: Event) => { navigated = (event as CustomEvent).detail }
+  window.addEventListener(PANEL_NAVIGATE, onNavigate)
+  await act(async () => { (view.container.querySelector('.dt-events-subject') as HTMLButtonElement).click() })
+  window.removeEventListener(PANEL_NAVIGATE, onNavigate)
+  expect(navigated).toEqual({ page: 'eval' })
+  view.dispose()
 })
 it('opens the Events tab once when the first unread notice reaches the main Session', async () => {
   serve()
