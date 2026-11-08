@@ -68,7 +68,7 @@ Overview ends with four read-only figures, each derived from the Store: the time
 
 - **Sources:** one card per Source with its switch, fields and verified account facts. The card derives its fields, sign-in hint, health entries and polling default from the Source manifest, so adding a Source needs no panel code. GitHub also offers receive-all switches for new Issues, pull requests, comments and default-branch CI. Polling and read limits are under Advanced.
 
-| Before (main `9a705f9`) | After (this change) |
+| Before (main `37eaff3`) | After (this change) |
 | --- | --- |
 | ![Source card before](images/source-manifest/before-sources.png) | ![Source card after](images/source-manifest/after-sources.png) |
 
