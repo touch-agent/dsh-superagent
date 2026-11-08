@@ -57,7 +57,7 @@ const PAIR: Record<string, string> = { '011': '012' }
 const TASK_PLAN = 'docs/plan/TASK-PLAN.zh.md'
 const TRACKING = 'docs/plan/TRACKING.zh.md'
 const TASK_STATUSES = new Set(['未开始', '进行中', '已完成', '已暂停', '已取消'])
-// Format gate only: CI cannot prove the PR exists, is merged, or matches the row.
+// Format gate only; scripts/check-tracking.mjs checks status/evidence semantics and the queried PR state.
 const PR_URL = /^https:\/\/github\.com\/touch-agent\/dsh-superagent\/pull\/\d+$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 /** A real calendar date in YYYY-MM-DD form. */
