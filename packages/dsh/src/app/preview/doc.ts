@@ -120,7 +120,7 @@ export interface DocPreview {
 }
 
 /** The cells the paragraph aligner may fill; beyond this the changed middle is paired without full alignment. */
-const MAX_ALIGN_CELLS = 4_000_000
+const MAX_ALIGN_CELLS = 8_000_000
 /** The token cells the inline comparison may fill before it is left out of a changed paragraph. */
 const MAX_INLINE_CELLS = 250_000
 /** The most inline segments a changed paragraph keeps before the comparison is left out. */
@@ -259,12 +259,12 @@ function docxParagraph(paragraph: string): DocBlock | undefined {
 export function parseDocx(bytes: Uint8Array): DocBlock[] {
   if (!(bytes instanceof Uint8Array)) throw new TypeError('The .docx content must be bytes')
   const xml = textDecoder.decode(zipEntry(bytes, DOCUMENT_ENTRY))
-  if (!/<(?:\w+:)?document\b/.test(xml) || !/<(?:\w+:)?body\b/.test(xml)) {
-    throw new DocParseError('invalidDocument', 'the document has no body')
-  }
-  const body = xml.replace(/<(?:\w+:)?txbxContent\b[^>]*>[\s\S]*?<\/(?:\w+:)?txbxContent>/g, '')
+  const document = /<(?:\w+:)?document\b[^>]*>[\s\S]*<\/(?:\w+:)?document>/.test(xml)
+  const body = /<(?:\w+:)?body\b[^>]*>[\s\S]*<\/(?:\w+:)?body>/.test(xml)
+  if (!document || !body) throw new DocParseError('invalidDocument', 'the document has no body or is not closed')
+  const content = xml.replace(/<(?:\w+:)?txbxContent\b[^>]*>[\s\S]*?<\/(?:\w+:)?txbxContent>/g, '')
   const blocks: DocBlock[] = []
-  for (const match of body.matchAll(/<(?:\w+:)?p(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?p>/g)) {
+  for (const match of content.matchAll(/<(?:\w+:)?p(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?p>/g)) {
     const block = docxParagraph(match[1]!)
     if (block) blocks.push(block)
   }

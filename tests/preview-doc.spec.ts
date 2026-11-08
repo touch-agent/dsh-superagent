@@ -133,13 +133,18 @@ describe('the doc previewer', () => {
     ])
   })
 
-  it('names a missing document entry and a document without a body', () => {
+  it('keeps the paragraph around a text box, without reading the box', () => {
+    expect(parseDocx(bytes('textbox.docx'))).toEqual([{ kind: 'paragraph', text: 'Before the box after it.' }])
+  })
+
+  it('names a missing document entry, a document without a body and an unclosed document', () => {
     const failure = (name: string): unknown => {
       try { parseDocx(bytes(name)) } catch (error) { return error }
       throw new Error(`${name} was expected to fail`)
     }
     expect(failure('no-document.docx')).toMatchObject({ name: 'DocParseError', code: 'missingDocument' })
     expect(failure('no-body.docx')).toMatchObject({ name: 'DocParseError', code: 'invalidDocument' })
+    expect(failure('malformed.docx')).toMatchObject({ name: 'DocParseError', code: 'invalidDocument' })
     const preview = previewDoc({ before: { format: 'docx', content: bytes('no-document.docx') },
       after: { format: 'docx', content: bytes('notes-after.docx') }, link })
     expect(preview.degraded).toMatchObject({ code: 'missingDocument', side: 'before' })
