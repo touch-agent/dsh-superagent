@@ -121,7 +121,11 @@ function inlineItems(text: string): string[] | undefined {
  * split, so dispatch keeps one Ticket.
  */
 export function explicitItems(text: string): string[] | undefined {
+  // A question about items is a status question, not an instruction to split them.
+  if (/[?？]\s*$/u.test(text) || /(?:吗|么)[。.!！?？\s]*$/u.test(text)) return undefined
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  // An inline list asking whether or how items are doing is a status question; a multi-line task list is not.
+  if (lines.length === 1 && /[、,，]/u.test(text) && /(?:是否|状态|进展|完成情况|都完成)/u.test(text)) return undefined
   if (lines.length >= 2) {
     // One non-item line before the list is its lead-in; any other prose means the list is not the message's content.
     const numbered = lines.flatMap(line => { const match = NUMBERED.exec(line); return match?.[1] ? [match[1].trim()] : [] })
@@ -160,8 +164,8 @@ function singleItem(input: DispatchInput, text: string, fresh: readonly PlannedI
   const combined = scopes.join('\n')
   const title = clean(input.title) || clean(fresh[0]?.title) || clean(input.items?.[0]?.title)
     || titleFrom(clean(input.scope) || scopes[0] || text)
-  // Without a named scope, keep the message or every item, not only its title, so a fallback never drops a request.
-  const scope = clean(input.scope) || combined || cut(text.trim(), SCOPE_CHARS) || title
+  // A combined fallback keeps every item rather than a caller's scope for only one of them; otherwise keep the message.
+  const scope = (fresh.length > 1 ? combined : clean(input.scope) || combined) || cut(text.trim(), SCOPE_CHARS) || title
   const name = clean(input.name) || clean(fresh[0]?.name) || clean(input.items?.[0]?.name) || worktreeName(title)
   const acknowledgement = clean(input.acknowledgement)
     || (fresh.length > 1 ? receipt(title, text) : clean(fresh[0]?.acknowledgement) || clean(input.items?.[0]?.acknowledgement))
@@ -180,12 +184,19 @@ function planDispatch(input: DispatchInput, text: string, config: DispatchConfig
     const item = singleItem(input, text, parsed)
     return 'refused' in item ? item : { items: [item], split: false }
   }
+  const single = config.mode === 'single'
   let items: PlannedItem[] | undefined
-  if (config.mode === 'auto' && input.items?.length) items = input.items.flatMap(item => plannedItem(item, text) ?? [])
+  if (single) items = input.items?.flatMap(item => plannedItem(item, text) ?? [])
+  else if (config.mode === 'auto' && input.items?.length) items = input.items.flatMap(item => plannedItem(item, text) ?? [])
   else if (config.mode !== 'single') items = explicitItems(text)?.flatMap(item => plannedItem({ title: titleFrom(item), scope: item }, text) ?? [])
   // One item that names a ticket is an attach, not new work; a whole-message attach normally takes the other path.
   if (items?.length === 1 && items[0]!.ticketId) return { items, split: false }
-  if (!items || items.length < 2) return fallback(items)
+  if (!items || items.length < 2) {
+    // One Session item must not hide the rest of an explicit list: combine the list into the single ticket instead.
+    const listed = config.mode === 'auto' && items?.length ? explicitItems(text)?.flatMap(item =>
+      plannedItem({ title: titleFrom(item), scope: item }, text) ?? []) : undefined
+    return fallback(listed && listed.length > 1 ? listed : items)
+  }
   const seen = new Set<string>()
   const unique = items.filter(item => { const id = sameIntent(item); if (seen.has(id)) return false; seen.add(id); return true })
     .map(item => withReceipt(item, text))
@@ -196,7 +207,8 @@ function planDispatch(input: DispatchInput, text: string, config: DispatchConfig
   // Trigger per target, because each Trigger attaches to a different ticket.
   if (!fresh.length) return { items: attaches, split: attaches.length > 1 }
   if (fresh.length === 1 && !attaches.length) return fallback(fresh)
-  if (fresh.length > config.maxTickets) {
+  const maxTickets = single ? 1 : config.maxTickets
+  if (fresh.length > maxTickets) {
     // Too many new items: one Ticket holds all of them, while every attach keeps its own target and is not lost.
     const combined = singleItem(input, text, fresh)
     if ('refused' in combined) return combined

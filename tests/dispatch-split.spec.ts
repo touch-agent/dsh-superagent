@@ -225,3 +225,57 @@ describe('a message that already reached a ticket', () => {
     expect(h.repo.tickets.get(ticket.id)!.inputs).toHaveLength(before)
   })
 })
+
+describe('attaches stay attaches in every mode', () => {
+  it('attaches an attach-only auto plan to each named ticket without starting a new one', () => {
+    const h = harness('auto')
+    const first = h.dispatch({ title: 'One', scope: 'First.' }, 'First', 'msg_1')
+    const second = h.dispatch({ title: 'Two', scope: 'Second.' }, 'Second', 'msg_2')
+    if ('refused' in first || 'refused' in second) throw new Error('setup failed')
+    const result = h.dispatch({ items: [{ ticketId: first.ticket!.id, scope: 'Update one.' },
+      { ticketId: second.ticket!.id, scope: 'Update two.' }] }, 'Update both', 'msg_3')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.items).toHaveLength(2)
+    expect(result.items?.every(item => item.attached)).toBe(true)
+    expect(openTickets(h.repo)).toHaveLength(2)
+    expect(h.repo.tickets.get(first.ticket!.id)!.inputs.filter(input => input.kind === 'trigger').map(input => input.triggerId))
+      .toContain(result.items![0]!.triggerId)
+    expect(h.repo.tickets.get(second.ticket!.id)!.inputs.filter(input => input.kind === 'trigger').map(input => input.triggerId))
+      .toContain(result.items![1]!.triggerId)
+  })
+
+  it('attaches a single item in single mode instead of starting a ticket', () => {
+    const h = harness('single')
+    const first = h.dispatch({ title: 'One', scope: 'First.' }, 'First', 'msg_1')
+    if ('refused' in first) throw new Error(first.refused)
+    const result = h.dispatch({ items: [{ ticketId: first.ticket!.id, scope: 'Update one.' }] }, 'Update one', 'msg_2')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.attached).toBe(true)
+    expect(openTickets(h.repo)).toHaveLength(1)
+  })
+})
+
+describe('explicit parsing stays conservative', () => {
+  it('does not split a status question that mentions items', () => {
+    expect(explicitItems('确认 A、B 都完成了吗')).toBeUndefined()
+    expect(explicitItems('A、B 目前是什么状态？')).toBeUndefined()
+  })
+
+  it('keeps the whole explicit list when auto mode supplied only one item', () => {
+    const h = harness('auto')
+    const result = h.dispatch({ items: [{ title: 'A', scope: 'Do A.' }] }, '拆成以下任务：\n1、A\n2、B')
+    if ('refused' in result) throw new Error(result.refused)
+    const ticket = openTickets(h.repo)[0]!
+    expect(openTickets(h.repo)).toHaveLength(1)
+    expect(ticket.mandate.scope).toContain('B')
+  })
+
+  it('keeps every new item in an over-wide fallback even when the caller supplied a scope', () => {
+    const h = harness('auto', 2)
+    const result = h.dispatch({ title: 'Combined', scope: 'One scope only.', items: [{ title: 'A', scope: 'Do A.' },
+      { title: 'B', scope: 'Do B.' }, { title: 'C', scope: 'Do C.' }] }, 'A, B and C')
+    if ('refused' in result) throw new Error(result.refused)
+    const ticket = openTickets(h.repo)[0]!
+    expect(ticket.mandate.scope).toContain('Do C.')
+  })
+})
