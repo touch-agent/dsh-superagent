@@ -2,7 +2,7 @@
 
 > 状态：设计原则 v1.0（2026-11-08，docs-only）。
 > 适用：产品面、组织与任务设计、运行时边界。本文不改变领域契约、代码或现有 UI。
-> 关联：[docs/000](000-philosophy.md)、[docs/001](001-domain.md)、[docs/003](003-execution.md)、[docs/005](005-panel.md)、[docs/007](007-architecture.md)、[docs/009](009-conversation-tasks.md)、[012-platform-evolution.zh.md](012-platform-evolution.zh.md)、[M1-KICKOFF.zh.md](plan/M1-KICKOFF.zh.md)、[SESSION-ENTRY.zh.md](plan/SESSION-ENTRY.zh.md)、[任务视图架构设计（`docs/tasks-view-architecture.zh.md`，PR #26 分支提交 `f0af843`，写作时未合入）](https://github.com/touch-agent/dsh-superagent/pull/26)。
+> 关联：[docs/000](000-philosophy.md)、[docs/001](001-domain.md)、[docs/003](003-execution.md)、[docs/005](005-panel.md)、[docs/007](007-architecture.md)、[docs/009](009-conversation-tasks.md)、[012-platform-evolution.zh.md](012-platform-evolution.zh.md)、[M1-KICKOFF.zh.md](plan/M1-KICKOFF.zh.md)、[SESSION-ENTRY.zh.md](plan/SESSION-ENTRY.zh.md)、[任务视图架构设计（`docs/tasks-view-architecture.zh.md`，PR #26 分支提交 `18ec5d7`，写作时未合入）](https://github.com/touch-agent/dsh-superagent/pull/26)。
 > 状态口径：**已采纳**＝已有实现或可执行的文档约束；**待验证**＝方向已同意，但缺实现或证据；**暂缓**＝条件不满足前明确不做。
 >
 > 四条原则中 A 已采纳，B/C/D 待验证；没有一条原则需要暂缓——§8 的「暂缓」只针对尚未具备条件的落地项。
@@ -104,7 +104,7 @@ E0–E3 是**展示分级**，不是新的领域概念：它们不进入 Ticket�
 | --- | --- | --- |
 | C2.1 | E0 默认面不出现 Session/Assignment/worker id；E1 任务视图可显示子任务标题，但不显示内部 id；例外仅在阻塞、越权、审查需要时出现 | 默认面截图审查 + 文案检查 |
 | C2.2 | E1 用「目标/负责人/状态/交付/阻塞」稳定词汇，不用内部 id | 任务详情与审查视图走查 |
-| C2.3 | 任务默认显示 L1–L3（类别 + Ticket + 一级子任务）；L4+ 折叠；执行单元不是任务层级；右栏不自动弹出 | 对照 PR #26 §2 原则 5、§4.1（层级）与 §7.2（右栏）；UI 用例 |
+| C2.3 | 任务树默认显示 L1–L3（类别 + Ticket + 一级子任务）；右栏默认是列表，点开 Ticket 才显示一级子任务，不默认画树；L4+ 折叠；执行单元不是任务层级；右栏不自动弹出 | 对照 PR #26 §2 原则 5、§4.1（层级）、§7.2（右栏列表）与 §7.3（树）；UI 用例 |
 | C2.4 | 事件栏的首次自动打开保留为信任阶段的显式例外，并可关闭；进入稳定期后改为默认关闭（对 SESSION-ENTRY §3.4 的修订提案，需产品确认）；只有需要决定/结果才通知 | 设置项 + 事件分级用例；统计自动打开后的关闭率 |
 | C2.5 | 每个里程碑做一次「不看组织视图也能完成任务」的走查 | 记录任务、参与者、卡点；失败即产品缺口 |
 
@@ -130,10 +130,12 @@ E0–E3 是**展示分级**，不是新的领域概念：它们不进入 Ticket�
 | 提示词与技能的组织方式、措辞、示例 | 授权、账本、验收等不变量（PLATFORM §2 的 P1–P3 与 ADR-05） |
 | 非授权阈值：超时、重试、并发、置信度、批量大小 | 领域概念本身（Source/Trigger/Ticket/Mandate…） |
 | 组织模板：默认层级、委派深度/宽度、父子审阅规则 | 跨源身份映射（[docs/001](001-domain.md) 已拒绝） |
-| 任务分类与模板：类别、拆解套路、验收清单模板（只提案，不改验收门） | 直接改生产代码或数据库 schema |
+| 任务分类与模板：新类别、合并/拆分、拆解套路、验收清单模板（只提案，不改验收门）；已有类别的归属是可撤销的展示覆盖层，可按阈值自动应用并审计，可关闭 | 直接改生产代码或数据库 schema |
 | 观察指标与告警阈值 | 自动把提案应用到生产 |
 
 「不进化」不是保守，而是把**学习**与**授权**分开：学习可以快，授权必须慢且可审计。准入、动作级别、审批与验收门属于授权/验收不变量，只能经设置与人工批准变更，不能由进化循环自动改；验收清单模板可提案，但不能改活动验收条件。
+
+注意：任务视图的**类别归属不是 C.1 的进化提案**。它只写可撤销的显示覆盖层，不改变授权、验收条件或上下文装配；已有类别的自动归属可按阈值自动应用、带 `history`、可关闭，但新类别、合并、拆分与验收模板仍只提案、不自动应用（PR #26 §5.5）。
 
 ### C.3 可组合的六层上下文
 
@@ -145,7 +147,7 @@ E0–E3 是**展示分级**，不是新的领域概念：它们不进入 Ticket�
 | 用户 | 有明确的发起人或操作者身份时 | 身份、称呼/个人偏好、可发起工作的策略事实 | 由该用户发起或操作的任务 | 不跨用户；不跨 Source 映射；群组任务只装发起人/当前操作者，不合并其他成员私有上下文 | Policy 的 per-Source 名单、Trigger actor |
 | 群组 | 任务从群/频道/仓库/项目等共享空间发起，或被显式带入某个群组协作时；共享空间由 Source 的 Channel 地址（群/频道/仓库/项目等）与现有 Thread/Subscription 关系表示 | 该共享空间的约定、成员可见的上下文与历史 | 从该群组发起或共享给该群组的任务 | 可见范围以 Source 为准；上下文 Thread 供读取，不授予权限；不派生成员名单 | Source 的 Channel 地址、Thread、Subscription |
 | 任务 | Ticket 存在时 | 目标、Mandate scope、来源、验收条件、交付物 | 该 Ticket 的 Assignment、Subtask、agent | 任务及其审查者 | Ticket、Mandate、Deliverable、Inputs |
-| 子任务 | Ticket 实际拆出子任务时（PR #26 提案） | 子目标、scope、局部结果、失败原因 | 该子任务的 worker 与其 subagent | 默认只回父 worker，不直接找人 | Subtask、Assignment |
+| 子任务 | Ticket 实际拆出子任务时（PR #26 提案） | 子目标、scope、局部结果、失败原因 | 该子任务的 worker 与其 subagent | 默认只回父 worker，不直接找人 | Subtask（`workerSessionId`、`report`；没有 Assignment） |
 | agent | 有 agent 执行单元时 | 角色、工具、工作目录；模型/preset 由宿主决定，会话历史属于该 agent 自身 | 该 agent 的 subagent（工具与权限受父约束；不继承对话历史） | 该 Session/执行环境；不构成授权 | DSH Session、preset、Execution 变量 |
 
 **组合规则**：
@@ -159,6 +161,7 @@ E0–E3 是**展示分级**，不是新的领域概念：它们不进入 Ticket�
 7. **私有默认不上升，上升需显式提升。** 子任务问题先回父 worker；用户/群组私有内容不因任务完成变成组织记忆；局部经验要成为组织规则，必须走 C.1 的提案、验证与人工批准。
 8. **来源隔离。** 一个 Source 的身份、证据、原文留在该 Source；不建全局身份（[docs/001](001-domain.md)）。
 9. **最小必要。** 只装当前任务需要的维度与条目；截断时优先保留任务目标、验收条件与当前输入，最后才牺牲历史细节。
+10. **任务类别不是群组维度。** 群组只由 Source 的 Channel 地址与 Thread/Subscription 派生；PR #26 的 `TaskCategory`/`TaskPlacement` 是任务视图的展示覆盖层，不产生成员关系、不进入上下文装配、不授予权限。两者可以并存，但不能互相推导。
 
 **装配过程**：
 
@@ -178,8 +181,9 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 | --- | --- | --- | --- |
 | 主 Session | DSH 执行容器 + 路由器 | 进程内单例 | 负责评估、派发、回答；不是组织维度，也不持有授权 |
 | worker Session | DSH 执行容器 | 一个 Ticket 的多次 Assignment 共享 | 执行任务；上下文来自 Assignment 与 `orchestrator_read` 的白名单资源 |
+| subtask worker Session | DSH 执行容器 | 一个子任务的一个 attempt；`return_subtask` 递增 attempt 后换新 Session（PR #26 提案） | 执行子任务；上下文来自父 Ticket + 子任务，不继承父对话历史；记录在 `Subtask.workerSessionId`/`report` 上，不是 Assignment |
 | subagent Session | DSH 执行容器 | 一个执行步骤 | 执行细节，不是任务维度；其工具随 Ticket 结束而失效 |
-| Ticket/Mandate/Assignment | 领域（kernel） | 持久 | 目标、授权、谁在执行；与宿主解耦 |
+| Ticket/Mandate/Assignment | 领域（kernel） | 持久 | 目标、授权、谁在执行；`Subtask` 是 Ticket 下的执行子节点（PR #26 提案），不是第二 Ticket/Assignment |
 | 组织/用户/群组上下文 | 领域事实 + prompts + Source 记录 | 版本化（prompts/policy）或持久（领域事实、Source 记录） | 由宿主侧 prompt 装配层按存在的维度注入；worker 仍只读自己的 Ticket 与白名单资源 |
 | Session 对话历史 | DSH | 会话内 | 是 agent 维度私有上下文，不是组织记忆 |
 
@@ -218,11 +222,11 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 | 边界 | 可替换 | 不可替换/不可绕过 | 观测点 |
 | --- | --- | --- | --- |
 | 授权边界 | Eval、Ticket、Mandate、Action、Approval 的实现细节 | 「只有 Eval 创建 Ticket」「模型不授权」「动作闸门」 | Decision、Mandate、Action、Approval 记录 |
-| 执行边界 | Executor、Assignment、Session、subagent、组织树、目录布局 | Ticket 仍通过 Assignment 记录执行；结束条件仍由 Ticket 定义 | Assignment 状态、worker 槽位、报告、目录 |
-| 任务视图边界 | 现有 Tasks/Events 计划视图；PR #26 提案的 TaskView、类别覆盖层、看板/树/图 | 视图只读；归属不进入 Ticket；类别删除不丢任务 | `GET tasks` 投影、ownership 派生 |
+| 执行边界 | Executor、Assignment、Session、subagent、组织树、目录布局 | Ticket 仍通过 Assignment 记录执行；Subtask（PR #26 提案）的执行记录在 `Subtask.workerSessionId`/`report` 上，不另开 Assignment 或 Ticket；结束条件仍由 Ticket 定义 | Assignment 状态、worker 槽位、报告、目录 |
+| 任务视图边界 | 现有 Tasks/Events 计划视图；PR #26 提案的 TaskView、类别覆盖层、看板/树/图 | 视图只读；归属不进入 Ticket；类别删除不丢任务；类别不等于群组上下文 | `GET tasks` 投影、ownership 派生 |
 | 上下文边界 | prompt 装配、Session 历史、Source 读取实现 | Mandate/验收/授权不从上下文推导；kernel 不依赖宿主 | 上下文装配表、读资源、trace |
 | 呈现边界 | 主会话、面板、右栏、结果卡 | 默认面只给结果与例外；通知预算 | 事件分级、通知计数、可用性走查 |
-| 进化边界 | 提案、实验、策略/提示词/模板版本 | 不变量与领域概念不进化；不自动应用 | 提案记录、版本历史、回滚记录 |
+| 进化边界 | 提案、实验、策略/提示词/模板版本 | 不变量与领域概念不进化；不自动应用进化提案（已有类别的展示归属是可撤销例外，见 C.2） | 提案记录、版本历史、回滚记录 |
 
 一句话：**授权语义不可替换（实现细节可换），组织与呈现层尽量可替换；二者之间用 Ticket/Assignment/Projection 三个窄接口隔开。**
 
@@ -246,7 +250,7 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 ### D.4 简化/替换路径
 
 1. **先只读**：组织视图只读，不写 Ticket；PR #26 的类别/归属若落地，作为可一键恢复的覆盖层。
-2. **再折叠**：默认显示 L1–L3；L4+ 与执行细节按需；右栏不自动打开。
+2. **再折叠**：树视图默认显示 L1–L3，右栏默认列表；L4+ 与执行细节按需；右栏不自动打开。
 3. **再隐藏**：用 feature flag 或设置关闭某一层；保留 E2 诊断入口。
 4. **最后移除**：连续若干里程碑无使用、且替换演练等价，才移除 UI 入口与投影；Ticket/Assignment/事件记录保留，可从记录重建。
 5. **任何一步都不改授权与结束条件**；若必须改，说明这不是「简化组织」，而是领域变更，走独立设计。
@@ -269,19 +273,19 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 | --- | --- | --- | --- | --- |
 | [docs/000](000-philosophy.md) | 注意力最小、价值最大；少概念、少设置、面板只显示需要人的事 | 支持 A；B/C/D 未展开 | 有总原则，缺组织与进化的具体约束 | 保留原文，本文作为展开；不重复改写 000 |
 | [docs/001](001-domain.md) | 只有 Eval 创建 Ticket；Executor/Session 在领域外；拒绝跨源身份 | 支持 B、D | Subtask 提案会新增执行实体；需防止它变成第二授权层 | 接受「执行树」持久化，但授权仍只在 Ticket/Mandate；Subtask 继承父 Mandate，不另开 |
-| [docs/003](003-execution.md) | 一进程一体系；tracked 有 worker/Session/目录；subagent 是执行细节；目录不是安全边界 | 支持 C 的六层上下文与 D 的执行边界 | 细节面向操作者，容易被误读为产品默认面 | 保留为操作文档；产品默认面按 B 的 E0/E1 分层；不把目录当组织/权限 |
+| [docs/003](003-execution.md) | 一进程一体系；tracked 有 worker/Session/目录；subagent 是执行细节；目录不是安全边界；`reviewTicket` 只接受最新 Report，`approve` 不按 revision 令牌 | 支持 C 的六层上下文与 D 的执行边界 | 细节面向操作者，容易被误读为产品默认面；任务视图提案的 `ReviewAggregate`/`reviewRevision` 尚不存在 | 保留为操作文档；产品默认面按 B 的 E0/E1 分层；不把目录当组织/权限；6.6 的「按 revision 确认」只能作为提案，不能当作当前不变量 |
 | [docs/005](005-panel.md) | 七 tab 管理面板；聚焦、安静、诚实；Tasks 是计划树 | 支持 A；与 B 部分冲突 | 默认面板暴露 Trigger/Eval/Execution；Tasks 树把计划编号当层级 | 面板定位为 E2 信任控制台，不是产品主界面；默认面按 E0；计划树在任务视图里降为标签/回退 |
 | [docs/007](007-architecture.md) | kernel 零宿主依赖；依赖规则；worker 只读自己的 Ticket；读资源分页与上限 | 支持 C、D | 上下文规则分散在装配、prompt、读资源中，没有统一装配表 | 收敛成 C.3 的装配表；不改代码；用测试固定隔离 |
-| [docs/009](009-conversation-tasks.md) | 对话可派活但 chat 不是 Trigger；主会话只协调；Ticket 仍是任务聚合，拒绝第二套 Task 实体 | 支持 A、B | 隐式派活会让每句话变成工作；状态问答与任务边界易混 | 保持显式 dispatch；默认面只给确认与结果；A 约束「不确认不派活」的文案 |
-| [012-platform-evolution.zh.md](012-platform-evolution.zh.md) | P1–P7 机制原则；M0 观测；N5 不做通用长期记忆 | 支持 A/D；与 C 有张力 | 平台演进会引入控制面/组织能力；N5 与「六层上下文」表面冲突 | P1–P7 继续管机制；本文管产品/组织；C.5 明确六层是装配不是记忆库 |
-| 任务视图提案（`docs/tasks-view-architecture.zh.md`，PR #26） | 8 条视图原则；类别→Ticket→Subtask（默认 L1–L3）；每个 tracked 节点有 worker；子问题先回父 | 支持 B/C/D 的大部分 | 执行细节/右栏入口可能抢注意力；Subtask/类别实体需防越权；归纳无验证闭环 | 接受 L1–L3 与父子契约；执行单元放详情、L4+ 折叠、右栏不自动开；Subtask 不另开授权；类别是可删覆盖层；归纳先进提案/未归类 |
+| [docs/009](009-conversation-tasks.md) | 对话可派活但 chat 不是 Trigger；主会话只协调；Ticket 仍是任务聚合，拒绝第二套 Task 实体 | 支持 A、B | 隐式派活会让每句话变成工作；状态问答与任务边界易混；PR #26 的 `Subtask` 是新执行子节点，不是第二 Task 聚合 | 保持显式 dispatch；默认面只给确认与结果；A 约束「不确认不派活」的文案；Subtask 仍由父 Ticket 授权，类别只是展示覆盖层（PR #26 §3.3–3.4） |
+| [012-platform-evolution.zh.md](012-platform-evolution.zh.md) | P1–P7 机制原则；M0 观测；N5 不做通用长期记忆；§5.3 的 WorkItem/Authority/Acceptance 与 lightweight 仍是目标模型 | 支持 A/D；与 C 有张力 | 目标模型与当前 kernel 的 Ticket/Mandate/Assignment/Review 不同；lightweight 目前只有 kernel 契约（#29），没有生产 `InlineExecutor`/Eval form；ADR-05 的外部 Acceptance 尚未实现 | P1–P7 继续管机制；本文管产品/组织；C.5 明确六层是装配不是记忆库；§8 单独记录这些实现边界，不把目标模型写成现状 |
+| 任务视图提案（`docs/tasks-view-architecture.zh.md`，PR #26） | 8 条视图原则；类别→Ticket→Subtask；全页树默认 L1–L3、右栏默认列表；每个 tracked 节点有 worker，lightweight 叶子无 worker；子问题先回父 | 支持 B/C/D 的大部分 | 执行细节/内部 id 可能抢注意力；Subtask/类别实体需防越权；归纳无验证闭环；右栏与树的默认值不同 | 接受树默认 L1–L3 与父子契约；右栏默认列表；执行单元放详情、L4+ 折叠、右栏不自动开；E1 不显示内部 id；Subtask 不另开授权；类别是可删覆盖层；新类别/合并/拆分类别先进提案/未归类，已有类别归属可按阈值自动应用并审计（PR #26 §5.5） |
 | [M1-KICKOFF.zh.md](plan/M1-KICKOFF.zh.md) | M1 排期、决策、交接、PR ≤ 400 行 | 无直接冲突 | 不讲产品/组织原则；排期可能挤掉进化闭环 | 不要求 M1 改；C 的闭环可先离线/文档化，不等 M1；本文控制 diff 规模 |
 | [SESSION-ENTRY.zh.md](plan/SESSION-ENTRY.zh.md) | 事件分级、单一通知预算、主会话状态页（§3.3）、事件栏首次自动打开（§3.4） | 支持 A；与 B 部分冲突 | 事件栏首次自动打开是明确决策，但会把 E2 推到默认面；状态页仅主会话且复用完整面板是已定案，不是冲突 | 保留 §3.3 与通知预算；自动打开作为信任期例外并可关闭，稳定期默认关闭——这是修订提案，需产品确认；不删事件记录 |
 
 ### 6.2 关键冲突与裁决
 
 1. **面板暴露执行细节 vs A/B。** 裁决：面板是 E2，不是默认面；E0 只给结果与例外；E1 审查视图按需。保留全量记录，删除「默认推送」。
-2. **任务视图的组织/执行细节 vs B/D。** 裁决：接受 L1–L3 的树与父子审阅（与「默认关心 2–3 级」一致），但执行单元（Assignment/subagent）放详情、不入层级；L4+ 折叠；右栏不自动打开；类别覆盖层可删，删了不丢 Ticket；Subtask 不另开授权。
+2. **任务视图的组织/执行细节 vs B/D。** 裁决：接受树视图默认 L1–L3、右栏默认列表与父子审阅（与「默认关心 2–3 级」一致），但执行单元（Assignment/subagent）放详情、不入层级；L4+ 折叠；右栏不自动打开；E1 不显示 worker/Session 内部 id；类别覆盖层可删，删了不丢 Ticket；Subtask 不另开授权。
 3. **六层上下文 vs N5 不做通用记忆。** 裁决：上下文维度是**读取与装配规则**，数据仍来自 Ticket/Thread/Policy/Source；跨任务经验只以版本化提案存在，不建隐式记忆库。
 4. **自我进化 vs「模型只判断、不授权」。** 裁决：进化可以提案改 prompt/策略/模板，但不能改授权代码；策略变更仍走设置/人工批准；worker 不能给自己扩权。
 5. **可观测性优先 vs 注意力预算。** 裁决：记录优先，展示分级；trace 永远保留，默认面只给需要人的信息。
@@ -300,22 +304,28 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 两个典型裁决：
 
 - 「把组织树放到主会话右侧，帮助人信任」→ A 先问：人现在要决定什么？如果只是「想看看」，放 E1/E2，按需打开；如果组织异常导致人必须决定，给一条异常摘要 + 入口，不给整棵树。
-- 「让父 worker 自动接受子交付，减少人的审阅」→ 1 先问：验收条件是否仍由人确认？可以自动接受低风险子交付，但最终验收仍由人通过 `reviewTicket(ticketId, by)` 按 revision 确认；`Review.confirmations` 只保存需要人判定的验收项，不能替代验收动作；否则违反验收不变量。
+- 「让父 worker 自动接受子交付，减少人的审阅」→ 1 先问：验收条件是否仍由人确认？可以自动接受低风险子交付，但最终验收仍由人确认；`Review.confirmations` 只保存需要人判定的验收项，不能替代验收动作；否则违反验收不变量。**当前实现边界**：今天的 `reviewTicket(ticketId, by)` 只对带 preview 的 review-stage Report 记录接受者/时间，接受的是最新 Report，没有 `reviewRevision` 参数；PR #26 的 `ReviewAggregate`/`reviewRevision`/`409 reviewStale` 仍是提案。没有确认项的 Ticket 仍按现有 ready/PR 关闭路径结束，PLATFORM ADR-05 的外部 Acceptance 还是目标而非现状。因此「按 revision 确认」只能在 6.6 落地后作为不变量，不能写成当前已实现的行为。
 
 ## 8. 状态、落地顺序与暂缓项
 
 | 原则 | 状态 | 已有证据 | 下一步 | 暂缓 |
 | --- | --- | --- | --- | --- |
-| A 注意力 | 已采纳 | docs/000、docs/005、SESSION-ENTRY 的通知预算与事件分级 | 把 C1.1–C1.5 加进 UI/PR 检查；统计每结果通知数 | 暂不新增注意力仪表盘 |
-| B 组织内化 | 待验证 | docs/001 的 Executor 在领域外；docs/009 主会话只协调 | 定义 E0–E3；默认面清理；事件栏自动打开作为信任期例外并可关闭；任务默认 L1–L3、L4+ 折叠 | 暂不删除管理面板/事件记录 |
-| C 自我进化 + 六层上下文 | 待验证 | docs/007 的读资源/隔离；PR #26 的父子契约（提案） | 写闭环规格；做上下文装配表；离线跑一轮提案；补隔离用例 | 暂缓自动应用提案、通用记忆、新增领域实体 |
+| A 注意力 | 已采纳 | docs/000、docs/005、SESSION-ENTRY 的通知预算与事件分级；审批队列（#7/#10/#18）已进入面板 | 把 C1.1–C1.5 加进 UI/PR 检查；统计每结果通知数 | 暂不新增注意力仪表盘 |
+| B 组织内化 | 待验证 | docs/001 的 Executor 在领域外；docs/009 主会话只协调 | 定义 E0–E3；默认面清理；事件栏自动打开作为信任期例外并可关闭；任务树默认 L1–L3、右栏列表 | 暂不删除管理面板/事件记录 |
+| C 自我进化 + 六层上下文 | 待验证 | docs/007 的读资源/隔离；PR #26 的父子契约（提案） | 写闭环规格；做上下文装配表；离线跑一轮提案；补隔离用例 | 暂缓自动应用**进化**提案、通用记忆、本文自行新增领域实体 |
 | D 可替换边界 | 待验证 | kernel-boundary/layers 测试；Executor 端口；现有 Tasks/Events 计划视图是读模型；Subtask/类别仍是 PR #26 提案 | 做一次替换演练；补组织观测指标；PR #26 落地后验证类别/子任务可移除 | 暂缓移除现有任务树，等信任与使用数据 |
+
+**当前实现边界（2026-11-08，校正状态表）**：
+
+- **lightweight（#29）**：只有 kernel 契约（`TicketForm`、`ticketForm()`、`InlineExecutor` 端口与测试）；`assembly.ts` 没有注入 `inline`，没有生产 `InlineExecutor` 实现，Eval 也不写 `form`，产品今天仍只创建 tracked Ticket。PR #26 的 lightweight 行是前向兼容，不是 Phase 1 验收；Phase 0 要把运行时接通后才能验收。
+- **审批（#7/#10/#18）**：Approval 对象/状态机、出站动作生产方与面板待批队列已合入并被测试覆盖；这加强了 A/B 的现有证据，但不改变 C/D 的待验证状态，也不把 PLATFORM 的目标 Authority 模型写成现状。
+- **任务树（#26）**：`TaskCategory`、`TaskPlacement`、`Subtask`、`ReviewAggregate` 都没有 schema/代码；任务页仍是计划树读模型。本文对 #26 的「接受」是设计层接受，不是实现批准；PR #26 仍需独立落地与验收。
 
 落地顺序建议：**先 A（不改代码就能检查）→ 再 B（默认面与暴露分级）→ 再 D（替换演练，验证边界）→ 最后 C（有数据后再闭环）**。C 最后不是不重要，而是没有 A/B/D 的观测与边界，进化会变成拍脑袋。
 
 ## 9. 不做什么
 
-- 不新增顶层 `Task` 或 `Organization` 授权聚合；任务仍是 Ticket（+ 执行树）。也不新增 `Membership` 或 `Group` 领域实体：群组只是 Source 的 Channel 地址与现有 Thread/Subscription 的上下文视图。
+- 不新增顶层 `Task` 或 `Organization` 授权聚合；任务仍是 Ticket（+ 执行树）。也不新增 `Membership` 或 `Group` 领域实体：群组只是 Source 的 Channel 地址与现有 Thread/Subscription 的上下文视图。本文自身不新增领域实体；PR #26 的 `TaskCategory`（覆盖层）与 `Subtask`（执行子节点）是其独立提案，需按 #26 的迁移/回滚与本文 C/D 检查单独评审，不因本文批准而自动实施。
 - 不让 worker/进化循环自动改授权、账本、验收或生产代码。
 - 不建通用长期记忆服务；不把 Session 历史当组织记忆。
 - 不默认展示 Session、Assignment、Subtask、worker id、trace。
