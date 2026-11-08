@@ -93,18 +93,22 @@ describe('the mail previewer', () => {
 
   it('adds and removes recipients in each field, and keeps a Bcc-only addition explicit', () => {
     const preview = previewMail({
-      before: { to: ['a@example.com'], cc: ['b@example.com'], bcc: ['c@example.com'] },
-      after: { to: ['a@example.com', 'd@example.com'] },
+      before: { to: ['a@example.com'], cc: ['b@example.com', 'g@example.com'], bcc: ['c@example.com'] },
+      after: { to: ['d@example.com'], cc: ['b@example.com', 'e@example.com'], bcc: ['f@example.com'] },
       link,
     })
     expect(recipientShape(preview.recipients.changes)).toEqual([
       ['added', 'd@example.com', [], ['to:d@example.com']],
-      ['removed', 'b@example.com', ['cc:b@example.com'], []],
+      ['added', 'e@example.com', [], ['cc:e@example.com']],
+      ['added', 'f@example.com', [], ['bcc:f@example.com']],
+      ['removed', 'a@example.com', ['to:a@example.com'], []],
+      ['removed', 'g@example.com', ['cc:g@example.com'], []],
       ['removed', 'c@example.com', ['bcc:c@example.com'], []],
     ])
-    expect(preview.recipients.before).toEqual({ to: 1, cc: 1, bcc: 1, total: 3 })
-    expect(preview.recipients.after).toEqual({ to: 2, cc: 0, bcc: 0, total: 2 })
-    expect(preview.recipients.warnings).toEqual([])
+    expect(preview.recipients.before).toEqual({ to: 1, cc: 2, bcc: 1, total: 4 })
+    expect(preview.recipients.after).toEqual({ to: 1, cc: 2, bcc: 1, total: 4 })
+    expect(preview.recipients.warnings.map(warning => [warning.code, warning.addresses]))
+      .toEqual([['bccHidden', ['f@example.com']]])
   })
 
   it('parses bare and named addresses, compares case-insensitively and keeps display-name changes visible', () => {
@@ -197,14 +201,14 @@ describe('the mail previewer', () => {
         attachments: [
           { name: 'a.txt', contentType: 'text/plain', content: 'one' },
           { name: 'b.bin', size: 4, digest: 'AAAA' },
-          { name: 'c.png', content: new Uint8Array([1, 2, 3]) },
+          { name: 'c.png', content: new Uint8Array([1, 2, 3]), inline: true },
         ],
       },
       after: {
         attachments: [
           { name: 'a.txt', contentType: 'text/plain; charset=utf-8', content: 'two' },
           { name: 'b.bin', size: 5, digest: 'aaaa' },
-          { name: 'c.png', content: new Uint8Array([1, 2, 3]) },
+          { name: 'c.png', content: new Uint8Array([1, 2, 3]), inline: false },
           { name: 'd.txt', content: 'new' },
         ],
       },
@@ -214,6 +218,7 @@ describe('the mail previewer', () => {
       .toEqual([
         ['changed', 'a.txt', ['content', 'contentType']],
         ['changed', 'b.bin', ['size']],
+        ['changed', 'c.png', ['inline']],
         ['added', 'd.txt', []],
       ])
     expect(preview.attachments.changes[0]!.before!.digest).toMatch(/^[0-9a-f]{64}$/)
@@ -222,7 +227,7 @@ describe('the mail previewer', () => {
     expect(preview.attachments.changes[0]!.before!.size).toBe(3)
     expect(preview.attachments.changes[1]!.before!.digest).toBe('aaaa')
     expect(preview.attachments.changes[1]!.after!.digest).toBe('aaaa')
-    expect(preview.attachments.summary).toEqual({ before: 3, after: 4, added: 1, removed: 0, changed: 2 })
+    expect(preview.attachments.summary).toEqual({ before: 3, after: 4, added: 1, removed: 0, changed: 3 })
   })
 
   it('refuses malformed drafts and attachments as caller errors', () => {
