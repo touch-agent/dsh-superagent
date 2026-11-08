@@ -31,7 +31,8 @@ Read 000–010 in order; each builds only on the ones before it.
 ## Design and evolution
 
 These two are a cross-referencing pair, written in Chinese. Read 011 for the
-principles, then 012 for the evolution story and the cross-check.
+principles and their cross-check against the existing documents, then 012 for
+the evolution story.
 
 | # | Document | Role |
 | --- | --- | --- |
@@ -39,7 +40,7 @@ principles, then 012 for the evolution story and the cross-check.
 | 012 | [Platform evolution](012-platform-evolution.zh.md) | The problem definition, target architecture, domain model v2, mechanisms and migration path that the principles sit above. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
-evolution layer. They are cross-checked against each other, and conflicts are
+evolution layer. 011 §6 cross-checks the existing documents; conflicts are
 resolved in 011 §7.
 
 ## Plans
