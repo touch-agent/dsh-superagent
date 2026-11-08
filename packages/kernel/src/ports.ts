@@ -84,8 +84,9 @@ export interface Executor {
 }
 
 /**
- * What a caller asks the Outbox to write: the send Action that names the write, its Channel, the text, and the Ticket
- * it is for. The Action's idempotency key is the message id, so it is not supplied separately.
+ * What a caller asks the Outbox to write: the send Action that names the write, its Channel, the text and the Ticket it
+ * is for. The Approval derives where it reaches from the Channel, so a caller cannot name a different destination. The
+ * Action's idempotency key is the message id, so it is not supplied separately.
  */
 export interface OutboundSend { action: OutboundAction; channel: ChannelRef; text: string; ticketId?: string }
 /**

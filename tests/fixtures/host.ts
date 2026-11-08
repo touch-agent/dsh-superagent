@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { vi, type Mock } from 'vitest'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { Runtime } from '@superagent/dsh/app/runtime.ts'
+import { decideApproval } from '@superagent/dsh/app/approvals.ts'
 import { Store } from '@superagent/dsh/app/store.ts'
 import { SettingsSchema } from '@superagent/dsh/policy.ts'
 import { feishuKind, feishuTrigger } from '@superagent/dsh/sources/feishu.ts'
@@ -132,7 +133,7 @@ export function subagentRuntime(agents: Map<string, FakeAgent>) {
 }
 
 /** @param seed - writes to the database before the Runtime opens it, such as records an earlier version stored. */
-export async function startRuntime(seed?: (store: Store) => void, resume?: string) {
+export async function startRuntime(seed?: (store: Store) => void, resume?: string, options: { autoApprove?: boolean } = {}) {
   const directory = resume ?? mkdtempSync(join(tmpdir(), 'orchestrator-host-'))
   const AGENT = join(directory, 'agent-gh'), BOT = join(directory, 'lark-bot')
   const repository = { default_branch: 'master', permissions: { push: true } }
@@ -253,9 +254,11 @@ export async function startRuntime(seed?: (store: Store) => void, resume?: strin
   await runtime.ready
   runtime.sources.register(feishuKind); runtime.sources.register(githubKind)
   const settings = runtime.store.settings()
-  // The fixture is an IM tenant, which sets the undo window to 0; outbox tests set their own window explicitly.
+  // The fixture is an IM tenant, which sets the undo window to 0; outbox tests set their own window explicitly. It also
+  // raises the action ceiling to `send` so external acknowledgements and results can be produced at all; the harness
+  // below approves the gate's requests in place of a person unless a test asks to decide them itself.
   runtime.store.saveSettings({ ...settings, eval: { ...settings.eval, mode: 'auto' },
-    policy: { ...settings.policy, undoWindowSeconds: 0, sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } } },
+    policy: { ...settings.policy, maxActionLevel: 'send', undoWindowSeconds: 0, sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } } },
     sources: { ...sources, feishu: { enabled: true, config: { cli: BOT, chats: [{ chatId: CHAT, listen: 'all' }], directMessages: true } } } })
   deliveries.mockClear()
 
@@ -289,6 +292,23 @@ export async function startRuntime(seed?: (store: Store) => void, resume?: strin
     await http(req, { writeHead: (code: number) => { status = code }, end: (data: string) => { text = data } })
     return { status, body: JSON.parse(text) as Record<string, unknown> }
   }
+  // Tests that are not about the action gate act as an operator who opens the panel and approves every request it
+  // raised for an outbox message at once. The approval specs pass `autoApprove: false` to decide for themselves.
+  const approveGateRequests = () => {
+    if (options.autoApprove === false) return
+    let decided = false
+    for (const receipt of runtime.store.receipts.waiting()) {
+      if (!receipt.approvalId) continue
+      const approval = runtime.store.approvals.get(receipt.approvalId)
+      if (approval?.state === 'requested') { decideApproval(runtime.store, approval.id, 'approved', new Date().toISOString()); decided = true }
+    }
+    if (decided) runtime.outbox.reconcile()
+  }
+  // The tools reach the Outbox directly, so the hook is `sent` rather than `sendReplies`.
+  const sent = runtime.outbox.sent.bind(runtime.outbox)
+  runtime.outbox.sent = async () => { approveGateRequests(); await sent() }
+  const idle = runtime.idle.bind(runtime)
+  runtime.idle = async () => { approveGateRequests(); await idle() }
   async function stop() { await runtime.stop(); vi.restoreAllMocks(); rmSync(directory, { recursive: true, force: true }) }
   /** The Session's model takes its next step, which takes the messages steered in since its last. */
   const step = (sessionId: string) => { steps.get(sessionId)!() }

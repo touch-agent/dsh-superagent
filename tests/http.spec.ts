@@ -229,7 +229,7 @@ it('records an approval decision from the panel, at the requested or a lower lev
   const rows = new Map([lower, asAsked, refused, denied].map(row => [row.id, row]))
   const store = { approvals: { get: (id: string) => rows.get(id), save: (row: Approval) => { rows.set(row.id, row) } },
     atomic: <T>(work: () => T): T => work() }
-  const call = serve({ store })
+  const call = serve({ store, outbox: { reconcile: () => {} } })
   const path = (approval: Approval, action: string): string => `approvals/${approval.id}/${action}`
 
   expect(await call('POST', path(lower, 'approve'), { level: 'draft' }))

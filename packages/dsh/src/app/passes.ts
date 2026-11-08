@@ -6,6 +6,8 @@ import type { Effects } from './effects.ts'
 export interface PassesHost {
   readonly engine: Pick<Engine, 'receive' | 'evaluateDue'>
   readonly effects: Pick<Effects, 'kick' | 'idle'>
+  /** Reconcile messages held for an Approval, so a decision or an expiry needs no other trigger. */
+  reconcile(): void
   readonly health: HealthEntry
   readonly lifetime: AbortSignal
   configured(): boolean
@@ -61,6 +63,7 @@ export class Passes {
     return this.pumpAgain ??= this.pumping.then(next, next)
   }
   private async pumpOnce(): Promise<void> {
+    this.host.reconcile()
     this.host.effects.kick()
     if (this.host.closing()) return
     // While processing is paused, the Engine only records the pause on active Evals so they do not expire.

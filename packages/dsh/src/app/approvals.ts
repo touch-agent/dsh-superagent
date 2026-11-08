@@ -13,6 +13,9 @@ export const PANEL_ACTOR = { source: 'panel', id: 'local' } as const
  */
 export const AUTO_APPROVAL_ACTOR: ActorRef = { source: 'policy', id: 'auto-approval' }
 
+/** The decision actor of a request the runtime cancels because the message it held is no longer needed. */
+export const ENGINE_ACTOR: ActorRef = { source: 'engine', id: 'outbox' }
+
 /** What a caller supplies to request one Approval; the request time is the moment `requestApproval` is called. */
 export type ApprovalRequestInput = Omit<ApprovalRequest, 'requestedAt'>
 

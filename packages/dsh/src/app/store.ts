@@ -13,8 +13,16 @@ import type { ActivityLevel, ActivityRecord } from './activity.ts'
 
 /** A Trigger's position on its thread timeline, ordered by timestamp and then `id` as tie-breaker. */
 export interface TimelinePlace { at: string; id: string }
-/** Why a message was dropped: its conversation can never receive it (`channelGone`), or its Source no longer listens to it (`channelIgnored`). */
-export type DropReason = 'channelGone' | 'channelIgnored'
+/**
+ * Why a message was dropped: its conversation can never receive it (`channelGone`) or its Source no longer listens to it
+ * (`channelIgnored`), the Action's Mandate refused it at the action gate (`actionLevelExceeded`, `mandateExpired`,
+ * `revoked`), or its Approval was denied, expired, revoked, missing, or granted at a lower level than the Action needs
+ * (`approvalDenied`, `approvalExpired`, `approvalRevoked`, `approvalMissing`, `approvalLevelInsufficient`). A Ticket
+ * that no longer exists is `ticketMissing`.
+ */
+export type DropReason = 'channelGone' | 'channelIgnored' | 'actionLevelExceeded' | 'mandateExpired' | 'revoked'
+  | 'approvalDenied' | 'approvalExpired' | 'approvalRevoked' | 'approvalMissing' | 'approvalLevelInsufficient' | 'approvalTargetMismatch'
+  | 'ticketMissing'
 /**
  * Outbound message receipt tracked in the outbox from the moment it is queued (`pending`, `sent`, `recalled`, or
  * `dropped`); delivery attempt counts live on its `reply` effect. A pending message records the end of its undo window,
@@ -30,10 +38,14 @@ export interface Receipt extends OutboundMessage {
   attemptedAt?: string
   /** When a message was recalled inside its undo window instead of being sent. */
   recalled?: { at: string }
-  dropped?: { at: string; reason: DropReason }
+  /** The Approval this message waits for, from when the action gate requested it. */
+  approvalId?: string
+  /** When an Approval let the message go and its `reply` effect was queued; a released receipt is not reconciled twice. */
+  approvalReleasedAt?: string
+  dropped?: { at: string; reason: DropReason; values?: Record<string, string> }
 }
 /** A dropped outbound message receipt, with the timestamp and reason it was dropped. */
-export type Dropped = Receipt & { dropped: { at: string; reason: DropReason } }
+export type Dropped = Receipt & { dropped: { at: string; reason: DropReason; values?: Record<string, string> } }
 /** Saved settings snapshot with the policy version and ticket notifications it produced (`internal` saves have no origin). */
 export interface SettingsVersion {
   revision: number; savedAt: string; source: SettingsOrigin | 'internal'; block?: SettingsSave
@@ -350,11 +362,12 @@ export class Store implements Repositories {
      * original receipt.
      * @param window - The undo window and the moment it ends; a missing window means the message may be sent at once and
      * cannot be recalled, as for receipts migrated from versions that had no window.
+     * @param approvalId - The Approval the message waits for, when the action gate requested one before queuing it.
      * @returns Whether the message ID was newly recorded.
      */
-    add: (message: OutboundSend, window?: { dueAt: string; windowMs: number }): boolean => {
+    add: (message: OutboundSend, window?: { dueAt: string; windowMs: number }, approvalId?: string): boolean => {
       const id = message.action.idempotencyKey
-      const receipt: Receipt = { ...message, id, kind: message.action.kind, status: 'pending', ...window }
+      const receipt: Receipt = { ...message, id, kind: message.action.kind, status: 'pending', ...window, ...approvalId ? { approvalId } : {} }
       return Number(this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)').run(id, JSON.stringify(receipt)).changes) > 0
     },
     /**
@@ -370,8 +383,10 @@ export class Store implements Repositories {
      * settles from `recalled` to what actually happened, so the receipt stays truthful and its ID remains terminal; an older
      * receipt missing altogether is recreated for the same reason.
      */
-    settle: (message: OutboundMessage, outcome: 'sent' | DropReason): void => {
-      const settled = outcome === 'sent' ? { status: 'sent', recalled: null } : { status: 'dropped', recalled: null, dropped: { at: new Date().toISOString(), reason: outcome } }
+    settle: (message: OutboundMessage, outcome: 'sent' | DropReason, details: { at?: string; values?: Record<string, string> } = {}): void => {
+      const settled = outcome === 'sent' ? { status: 'sent', recalled: null }
+        : { status: 'dropped', recalled: null, dropped: { at: details.at ?? new Date().toISOString(), reason: outcome,
+          ...details.values && Object.keys(details.values).length ? { values: details.values } : {} } }
       const { id, channel, text, action, kind, ticketId } = message
       const updated = this.db.prepare("UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' IN ('pending', 'recalled')")
         .run(JSON.stringify(settled), id)
@@ -395,6 +410,15 @@ export class Store implements Repositories {
     withdraw: (id: string, at: string): boolean =>
       Number(this.db.prepare(`UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' = 'pending'`)
         .run(JSON.stringify({ status: 'recalled', recalled: { at } }), id).changes) > 0,
+    /**
+     * Records that an Approval released a pending message at `at`; the Outbox then queues its `reply` effect. A released
+     * receipt is not released again, so reconciling does not reset its effect's attempts.
+     * @returns Whether a pending receipt was released.
+     */
+    release: (id: string, at: string): boolean =>
+      Number(this.db.prepare(`UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' = 'pending'
+        AND value ->> '$.approvalId' IS NOT NULL AND value ->> '$.approvalReleasedAt' IS NULL`)
+        .run(JSON.stringify({ approvalReleasedAt: at }), id).changes) > 0,
   }
 }
 export { key, threadKey }

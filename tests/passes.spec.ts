@@ -8,7 +8,7 @@ function passes(closing = () => false) {
   const health = new HealthBoard().claim('runtime', { state: 'starting', detail: '' })
   const engine = { receive: vi.fn(() => 'stored' as const), evaluateDue: vi.fn() }
   const effects = { kick: vi.fn(), idle: vi.fn(async () => {}) }
-  const value = new Passes({ engine, effects, health, lifetime: new AbortController().signal, configured: () => true, closing })
+  const value = new Passes({ engine, effects, reconcile: () => {}, health, lifetime: new AbortController().signal, configured: () => true, closing })
   return { passes: value, engine, effects, health }
 }
 const trigger = { id: 't1', source: 'feishu', threads: [{ source: 'feishu', id: 'oc_1:om_1' }], actor: { source: 'feishu', id: 'ou_a' }, human: true,
