@@ -38,7 +38,7 @@ A new Source kind, `conversation`, whose instance is the main Session's conversa
 
 | Domain concept | Conversation mapping |
 | --- | --- |
-| Trigger | One dispatched request (message id as the stable id; an edit version if edits must count) |
+| Trigger | One dispatched request or one item a split message became (the message id is the stable id; a split item adds its own key) |
 | Thread | The task thread: the request message and the replies under it. Recommended over one Thread per conversation, so status questions and follow-ups reach exactly one task |
 | Actor | The authenticated local user |
 | Channel address | The session and the task thread; `send` delivers into the conversation |
@@ -54,14 +54,32 @@ Two flows use the Source:
 
 ### 4.2 The dispatch tool
 
-`orchestrator_dispatch` is available only to the main Session. Its input is a message reference (default: the message that triggered the current turn), a title, and optionally a Ticket id to attach to. It:
+`orchestrator_dispatch` is available only to the main Session. Its input is a message reference (default: the message that triggered the current turn), a title, optionally a Ticket id to attach to, and, for a message with several requests, `items` with one title, scope and acknowledgement each. It:
 
 1. verifies the message was written by the local user in this conversation;
-2. records the conversation Trigger once (message id dedupes a repeated call);
-3. calls `Engine.receive`, which stores the Trigger and schedules Eval;
-4. returns the Trigger id and, when Eval completed synchronously, the Ticket id.
+2. builds one Trigger per item the dispatch configuration takes from the message (or one Trigger for the whole message), receiving every Trigger before deciding any;
+3. calls `Engine.receive` for each, which stores it and schedules Eval, then records the accept (or attach) for each as a direct Eval;
+4. returns every Trigger id and Ticket card it started or joined.
 
 It does not accept work itself, does not decide scope, and cannot dispatch a message authored by the agent or a different person. A refused dispatch leaves the conversation unchanged and reports why.
+
+#### One message, several tickets
+
+The `dispatch` settings block decides how a person's message becomes work:
+
+| `mode` | What it does |
+| --- | --- |
+| `single` (default) | One new Ticket at most, as before. Several items the main Session supplied are combined into one scope; an item naming an existing ticket still attaches. |
+| `explicit` | Splits only an explicit list in the message: numbered or bulleted lines, a confirmation line, or a launching/confirming phrase with an inline list such as `开 A、B、C` or `确认：A、B`. Parsing is deterministic and conservative. |
+| `auto` | Uses the `items` the main Session read; a single item is merged with a longer explicit list, and with no items the parser runs alone, then one Ticket. |
+
+`maxTickets` (1–10, default 5) bounds the new tickets a split starts; attach items do not count against it. A message that is not an unambiguous explicit list, a message that reads as a question, an item with neither a title nor a scope, or a list of new items wider than `maxTickets` is not split: it becomes one Ticket that keeps the whole message or every item the Session read. A failed item never discards the other items; it is reported in the tool result and the tickets that did start remain.
+
+Every item is its own Trigger with the same `meta.messageId` and `meta.sourceMessageId`, an `intent` of its index and count, and the item text. The source message therefore keeps an auditable link to each Ticket it started: a started Ticket's origin is its item Trigger, and the trigger card and ticket resource expose `source_message_id` and `intent`. The Trigger id derives from the message id and the item's title, scope and attach target, so re-dispatching the same message and plan is idempotent; re-dispatching a different plan after the message already reached a ticket is refused, so the existing ticket is not changed; send a new message or attach the new request.
+
+An item with `ticket_id` attaches its Trigger to that existing Ticket instead of starting new work, so one message can both add to an existing ticket and start others. Deduplication is per intent within a plan: identical title, scope and target merge, and an item naming an existing ticket defaults to attach through `ticket_id`.
+
+The dispatch mode is not part of the Policy version and grants nothing: it only chooses how an explicit local request becomes Tickets. Dispatching more than one ticket is conservative: a disabled Source refuses every item, a message that already reached a ticket is refused before anything is received, and an unknown attach target refuses that item alone while the other items proceed.
 
 ### 4.3 Task threads and chat
 

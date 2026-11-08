@@ -95,10 +95,14 @@ it('answers each kind of failure with its own status', async () => {
   expect(await call('PUT', 'settings/executor', { value: 'invalid', revision: 0 })).toMatchObject({ status: 400, body: { issues: [{ path: 'maxWorkers' }] } })
   expect(await call('PUT', 'settings/source:github', { value: 'refused', revision: 0 })).toMatchObject({ status: 400, body: { setup: { code: 'agentCliUnset', place: 'github' } } })
   expect(await call('PUT', 'settings/executor', { value: 'broken', revision: 0 })).toEqual({ status: 500, body: { error: 'disk full' } })
+  // The dispatch block is a first-class save target, not only a read-only view.
+  expect(await call('PUT', 'settings/dispatch', { value: { mode: 'auto', maxTickets: 2 }, revision: 0 }))
+    .toMatchObject({ status: 200, body: { saved: true } })
   // Block names are validated before calling settings.save: reject unknown blocks or non-existent Sources.
   expect(await call('PUT', 'settings/pause', { value: {}, revision: 0 })).toMatchObject({ status: 400 })
   expect(await call('PUT', 'settings/source:feishu', { value: {}, revision: 0 })).toEqual({ status: 404, body: { error: 'Source not found' } })
-  expect(saves).toHaveLength(4)
+  expect(saves).toHaveLength(5)
+  expect(saves[4]).toEqual(['dispatch', { mode: 'auto', maxTickets: 2 }, 0, 'panel'])
   expect(await call('POST', 'tickets/t9/retry')).toEqual({ status: 404, body: { error: 'Ticket not found' } })
   expect(await call('GET', 'nothing/here')).toEqual({ status: 404, body: { error: 'Unknown operation' } })
   expect(await call('POST', 'executor/pause', 'not json')).toEqual({ status: 400, body: { error: 'The request body is not JSON' } })

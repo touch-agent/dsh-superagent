@@ -174,6 +174,6 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
     quietly: run => host.quietly(run),
     dispatch: (agent, input) => dispatchConversation(agent, { engine: { receive: trigger => engine.receive(trigger), decide: (id, outcome) => engine.decide(id, outcome),
       attach: (ticketId, triggerId, note) => engine.attach(ticketId, triggerId, note) }, disposition: id => store.triggers.disposition(id),
-      ticket: id => store.tickets.get(id) }, input) }
+      ticket: id => store.tickets.get(id), thread: key => store.threads.get(key), config: () => store.settings().dispatch }, input) }
   return parts
 }

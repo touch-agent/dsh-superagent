@@ -358,7 +358,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/role-models.ts` | Resolves the Eval and Executor models, and seeds a new Session with its role's model |
 | `packages/dsh/src/app/assessment.ts` | The MasterAssessor, the assessment schema and the window `orchestrator_eval` answers |
 | `packages/dsh/src/app/execution-environment.ts` | The execution environment: its variables, a Ticket's values, the directory root and the lines of the prompt section, which `packages/dsh/src/app/prompts.ts` fills into its template |
-| `packages/dsh/src/app/conversation.ts` | Reads the person's latest message from the main Session log, classifies a non-person or non-text input as refused, and dispatches it as a conversation Trigger accepted by a direct Eval or attached to an existing ticket |
+| `packages/dsh/src/app/conversation.ts` | Reads the person's latest message from the main Session log, classifies a non-person or non-text input as refused, plans one item or several under the `dispatch` setting, and dispatches each as a conversation Trigger accepted by a direct Eval or attached to an existing ticket |
 | `packages/dsh/src/app/source-context.ts` | `sourceContextOf`: each Source kind's `SourceContext` |
 | `packages/dsh/src/app/links.ts` | `sourceLink`, the page of a Trigger's message, and `candidateCard` |
 | `packages/dsh/src/app/cards.ts` | Compact cards of Triggers, Tickets, Threads and Decisions for models, the closed set of ticket card states `TICKET_STATES`, and `textPage` |
@@ -459,6 +459,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/approval-producer.spec.ts` | The runtime's action producer: an external Ticket message waits in the panel queue with its object and revision, its Approval records the target and queues no effect; approval revalidates the Mandate and releases it; denial sends nothing; a lower grant drops it but a new revision asks again; recall while waiting revokes the request, and recall after expiry records it expired; a Policy lowered while waiting refuses at release; an undecided request expires and records why; a Mandate that no longer authorizes the level refuses without a request; the Policy auto-approves an internal target while a `spend` stays for a person |
 | `tests/policy.spec.ts` | Source scope, the gate, the admission table, Mandate revalidation, the Policy version, settings migrations and assessment outcomes |
 | `tests/dispatch.spec.ts` | Conversation dispatch: the latest person message becomes a task, a repeated dispatch is not accepted twice, a disabled Source and a non-person or non-text message are refused, and older requests are not revived |
+| `tests/dispatch-split.spec.ts` | Dispatch split modes: explicit numbered, bulleted, confirmation and launching lists, auto items, per-intent dedupe and re-dispatch, mixed attach and new tickets, the maxTickets fallback that keeps every item, audit metadata, and single-mode compatibility |
 | `tests/conversation.spec.ts` | The conversation Source: a dispatched message names its task thread and channel, its trigger id is stable per message, replies resolve to the request, the adapter needs no configuration, delivery reaches the main Session, and the trusted gate admits and revalidates the local user |
 | `tests/registry.spec.ts` | `SourceRegistry`: instances, validation, Policy parts, Channels (send, probe and withdraw) and Thread context, plus registering a manifest with its adapter: the flat kind view, config defaults, scope, health claims released on unregister, manifest validation and id clashes from either entry |
 | `tests/sources.spec.ts` | The Feishu and GitHub Sources on a `SourceContext`: translation, polls and read positions, the pull request rules, health |
@@ -577,7 +578,7 @@ The main Session has 14 application tools:
 
 `orchestrator_route` accepts 1–20 decisions in order. Each accept, attach, stop or ignore runs as a separate Engine command. It also permits ignoring an inferred candidate directly from its card. `orchestrator_ticket_note` sends a fact as context, not authority.
 
-Settings saves select `policy`, `eval`, `executor`, `pause`, or `source`; the last also names its Source id. A prompt save with `preview: true` composes text without saving.
+Settings saves select `policy`, `eval`, `dispatch`, `executor`, `pause`, or `source`; the last also names its Source id. A prompt save with `preview: true` composes text without saving.
 
 The main Session also has DeepSeek Harness's `skill`, `bash`, `read`, `read_image`, `job_output`, `job_list` and `job_kill`. Avoiding code reads is a prompt rule, not a tool restriction.
 

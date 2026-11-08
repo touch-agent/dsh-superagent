@@ -150,6 +150,21 @@ export const EvalConfigSchema = z.object({
   timeoutSeconds: z.number().int().min(LIMITS.evalTimeoutSeconds.min).max(LIMITS.evalTimeoutSeconds.max).default(120),
   model: RoleModelSchema.nullable().default(null),
 }).strict()
+/**
+ * How a dispatched message becomes Tickets, as docs/009 describes. `single` keeps the original behavior, one Ticket at
+ * most; `explicit` splits only when the message lists its items explicitly (a numbered or bulleted list, or a launching
+ * or confirming phrase followed by items), by deterministic parsing; `auto` takes the main Session's own reading of the
+ * message into items, and merges an explicit list when that reading covers fewer items than the list; with no items the
+ * parser runs alone, then one Ticket. A parse that is ambiguous, or that yields more than `maxTickets` new tickets,
+ * keeps one Ticket, and attach items do not count. Dispatch limits how a person's message is accepted; it does not
+ * invalidate existing Mandates and is not part of the Policy version.
+ */
+export const DispatchConfigSchema = z.object({
+  mode: z.enum(['single', 'explicit', 'auto']).default('single'),
+  maxTickets: z.number().int().min(LIMITS.dispatchTickets.min).max(LIMITS.dispatchTickets.max).default(5),
+}).strict()
+export type DispatchConfig = z.infer<typeof DispatchConfigSchema>
+export type DispatchMode = DispatchConfig['mode']
 const CommandNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/).refine(name => name !== '.' && name !== '..', 'Not a command name')
   .refine(name => !WORKER_COMMANDS.includes(name), `${WORKER_COMMANDS.join(', ')} cannot be blocked`)
 /** Executor settings: worker model, concurrency, ticket directory root (empty defaults to `<stateDir>/system/work`), `prepare` command, and blocked commands. */
@@ -166,10 +181,11 @@ export const SettingsSchema = z.object({
   sources: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), SourceInstanceSchema).default({}),
   policy: PolicyConfigSchema.default(() => PolicyConfigSchema.parse({})),
   eval: EvalConfigSchema.default(() => EvalConfigSchema.parse({})),
+  dispatch: DispatchConfigSchema.default(() => DispatchConfigSchema.parse({})),
   executor: ExecutorConfigSchema.default(() => ExecutorConfigSchema.parse({})),
 }).strict()
 export type Settings = z.infer<typeof SettingsSchema>
-export type SettingsBlock = 'policy' | 'eval' | 'executor' | `source:${string}`
+export type SettingsBlock = 'policy' | 'eval' | 'dispatch' | 'executor' | `source:${string}`
 export type SettingsSave = SettingsBlock | 'pause'
 export type SettingsOrigin = 'panel' | 'tool' | 'sync'
 

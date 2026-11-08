@@ -272,6 +272,9 @@ it('saves a settings block by name, a Source\'s block with the Source\'s id', as
   expect(await save({ block: 'source', source: 'github', value: off, revision: github.revision })).toMatchObject({ saved: true })
   expect(h.runtime.store.settings().sources.github?.enabled).toBe(false)
   expect(await save({ block: 'pause', value: { paused: true }, revision: 0 })).toEqual({ paused: true })
+  expect(await save({ block: 'dispatch', value: { mode: 'auto', maxTickets: 3 }, revision: h.runtime.store.blockRevision('dispatch') }))
+    .toMatchObject({ saved: true })
+  expect(h.runtime.store.settings().dispatch).toEqual({ mode: 'auto', maxTickets: 3 })
 })
 
 it('previews a prompt configuration without saving it, and saves one only against the revision it edits', async () => {
