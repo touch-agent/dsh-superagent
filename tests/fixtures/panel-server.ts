@@ -8,10 +8,8 @@ import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-
 import type { Api, ApiResponse, RouteParams } from '@superagent/dsh/app/api.ts'
 import { SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInPart, builtInParts, composePrompt, composeSkill, defaultPrompts,
   environmentSection, policySection, promptParts } from '@superagent/dsh/app/prompts.ts'
-import type { DroppedReply, HistoryView, Problem, PromptsView, SetupView, SourceStatusRow, SourceView, StateView, ThreadPageView,
-  ThreadRow, TicketPageView,
-  TicketRow, TicketStage,
-  TriggerRow } from '@superagent/dsh/client/api.ts'
+import type { ApprovalRow, DroppedReply, HistoryView, Problem, PromptsView, SetupView, SourceStatusRow, SourceView, StateView,
+  ThreadPageView, ThreadRow, TicketPageView, TicketRow, TicketStage, TriggerRow } from '@superagent/dsh/client/api.ts'
 import { SETUP_FIELDS } from '@superagent/dsh/deployment.ts'
 import { EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSchema } from '@superagent/dsh/policy.ts'
 import { SetupError, type SetupCode } from '@superagent/dsh/setup.ts'
@@ -49,6 +47,12 @@ export const threadSummary = (fields: Partial<ThreadRow> = {}): ThreadRow => ({
   key: 'feishu:oc_1:om_root', source: 'feishu', title: '这个文案好奇怪', stage: 'subscribed', latest: undefined, lastAt: '2026-09-23T00:00:00Z',
   createdAt: '2026-09-22T00:00:00Z', subscriptions: 1, tickets: [{ id: 't1', title: '修复回归', state: 'open' }], evaluating: undefined,
   pending: 0, pollError: undefined, url: undefined, facts: { chat: { value: '团队群' } }, ...fields,
+})
+/** A pending Approval for the default Ticket: sending a reply, with every level up to `send` available to grant. */
+export const approvalSummary = (fields: Partial<ApprovalRow> = {}): ApprovalRow => ({
+  id: 'ap1', ticket: { id: 't1', title: '修复回归' },
+  action: { kind: 'mail.reply', source: 'feishu', objectId: 'om_reply_1', revision: 'rev-1', level: 'send' },
+  requestedAt: '2026-09-23T00:00:00Z', expiresAt: '2030-09-23T00:00:00Z', levels: ['read', 'draft', 'commit', 'send'], ...fields,
 })
 type TriggerFields = Partial<Omit<TriggerRow, 'disposition' | 'actions'>> & { disposition?: Partial<TriggerRow['disposition']> }
 /** Build a trigger row on the default thread and compute `actions.requeue` using the host's eligibility rules. */
@@ -97,6 +101,8 @@ export interface PanelServer {
   threads: ThreadRow[]
   threadPages: (key: string, query: { before?: string; around?: string }) => ThreadPageView | undefined
   person: TicketRow[]; search: Pick<ApiResponse<'GET search'>, 'items' | 'threads'>; history: HistoryView
+  /** Approvals the overview queue shows; a decision removes the row. */
+  approvals: ApprovalRow[]
   requests: { path: string; method: string; body?: unknown }[]
   /** Requests with undeclared query params or invalid body presence; asserted empty after each test. */
   misuse: string[]
@@ -188,6 +194,7 @@ const overviewView = (): ApiResponse<'GET overview'> => {
   const { problem, feishuProblem } = server.setup
   const setup = problem ?? feishuProblem
   return {
+    approvals: server.approvals,
     problems: [...setup ? [{ kind: 'setup' as const, ...setup }] : [],
       ...KINDS.some(kind => server.settings.sources[kind.kind]?.enabled !== false) ? [] : [{ kind: 'no-source' as const }],
       ...feishuProblem || server.settings.sources.feishu?.enabled === false ? [] : [{ kind: 'source-error' as const, source: { id: 'feishu',
@@ -210,7 +217,8 @@ const overviewView = (): ApiResponse<'GET overview'> => {
       ttfa: { samples: 5, medianSeconds: 4, p90Seconds: 9 },
       duplicates: { sends: 6, repeated: 0 },
       recovery: { interrupted: 1, recovered: 1, medianSeconds: 30 },
-      throughput: { decisions: 5, perHour: 0.2 } },
+      throughput: { decisions: 5, perHour: 0.2 },
+      approval: { samples: 3, medianSeconds: 20, p90Seconds: 60 } },
     policyVersion: 'abcdef1234567890',
   }
 }
@@ -262,6 +270,7 @@ function initial(): PanelServer {
   return {
     health: {}, down: false, pending: 0, opened: [], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
     extraSources: [],
+    approvals: [] as ApprovalRow[],
     setup: { machine: MACHINE, problem: null, feishuProblem: null,
       accounts: { repository: 'acme/widgets', agent: 'agent-bot', feishu: { appId: 'cli_bot', brand: 'feishu', botId: 'ou_bot',
         name: 'Widgets Bot' } } },
@@ -361,6 +370,17 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     if (!ticketOf(params.id)) return refuse(404, 'Ticket not found')
     server.tickets.open = []; server.person = server.person.filter(ticket => ticket.id !== params.id)
     return { stopped: true }
+  } },
+  'POST approvals/:id/approve': { body: true, answer: ({ params, body }) => {
+    const approval = server.approvals.find(item => item.id === params.id)
+    if (!approval) return refuse(404, 'Approval not found')
+    server.approvals = server.approvals.filter(item => item.id !== params.id)
+    return { state: 'approved', level: body.level ?? approval.action.level }
+  } },
+  'POST approvals/:id/deny': { answer: ({ params }) => {
+    if (!server.approvals.some(item => item.id === params.id)) return refuse(404, 'Approval not found')
+    server.approvals = server.approvals.filter(item => item.id !== params.id)
+    return { state: 'denied' }
   } },
   'POST executor/pause': { body: true, answer: ({ body }) => {
     server.settings = { ...server.settings, paused: body.paused }

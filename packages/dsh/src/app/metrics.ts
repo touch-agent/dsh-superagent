@@ -1,7 +1,7 @@
 /**
  * Health metrics of one Store: how long a Trigger waits for its first judgement, whether any message went to one
- * conversation twice for the same ticket, how long work stayed stalled after the host restarted, and how many
- * judgements the Evals produce per hour.
+ * conversation twice for the same ticket, how long work stayed stalled after the host restarted, how many judgements the
+ * Evals produce per hour, and how long approvals waited for a decision.
  *
  * The panel shows them read-only and `GET metrics` returns the same figures, so an operator can check the system
  * without reading the database. Every figure is derived from stored rows; a missing sample is `null`, never a zero.
@@ -38,6 +38,8 @@ export interface MetricsView {
   recovery: { interrupted: number; recovered: number; medianSeconds: number | null }
   /** Decisions recorded in the last 24 hours, and the same count per hour. */
   throughput: { decisions: number; perHour: number }
+  /** Time from an Approval being requested to its decision, over the last 24 hours; a withdrawal is not a decision. */
+  approval: { samples: number; medianSeconds: number | null; p90Seconds: number | null }
 }
 
 /**
@@ -71,11 +73,26 @@ export function metrics(store: Store, now = Date.now()): MetricsView {
     return value === null ? [] : [value]
   })
   const decisions = Number(db.prepare(`SELECT COUNT(*) AS n FROM decision WHERE json_extract(value, '$.at') >= ?`).get(since)?.n ?? 0)
+  // A person's approval, denial or an expiry is a decision; a withdrawal by the requester is not. A request past its
+  // expiry counts at that expiry even before anything records the `expired` state, so the wait is not lost.
+  const waited = db.prepare(`SELECT requested, decided FROM (
+    SELECT json_extract(value, '$.requestedAt') AS requested,
+      CASE WHEN json_extract(value, '$.state') = 'requested' THEN json_extract(value, '$.expiresAt')
+        ELSE json_extract(value, '$.decidedAt') END AS decided
+    FROM approval
+    WHERE json_extract(value, '$.state') IN ('approved', 'denied', 'expired')
+      OR (json_extract(value, '$.state') = 'requested' AND json_extract(value, '$.expiresAt') <= ?)
+  ) WHERE decided >= ?`).all(new Date(now).toISOString(), since)
+  const approvalDelays = waited.flatMap(row => {
+    const value = seconds(row.requested === null ? null : String(row.requested), row.decided === null ? null : String(row.decided))
+    return value === null ? [] : [value]
+  })
   return {
     window: { since, hours: 24 },
     ttfa: { samples: delays.length, medianSeconds: quantile(delays, 0.5), p90Seconds: quantile(delays, 0.9) },
     duplicates: { sends: Number(counts?.sends ?? 0), repeated: Number(counts?.repeated ?? 0) },
     recovery: { interrupted: Number(interrupted?.n ?? 0), recovered: gaps.length, medianSeconds: quantile(gaps, 0.5) },
     throughput: { decisions, perHour: Math.round((decisions / (DAY / HOUR)) * 10) / 10 },
+    approval: { samples: approvalDelays.length, medianSeconds: quantile(approvalDelays, 0.5), p90Seconds: quantile(approvalDelays, 0.9) },
   }
 }

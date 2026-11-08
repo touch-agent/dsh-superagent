@@ -159,7 +159,7 @@ export interface Repositories {
     save(approval: Approval): void
     /** A Ticket's Approvals, oldest first. */
     byTicket(ticketId: string): Approval[]
-    /** Approvals still waiting for a decision, oldest first. */
-    pending(): Approval[]
+    /** Approvals still waiting for a decision at `now` and not past their expiry, oldest first. */
+    pending(now?: number): Approval[]
   }
 }

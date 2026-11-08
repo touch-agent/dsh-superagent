@@ -6,6 +6,7 @@ import { SettingsConflict } from '@superagent/dsh/app/settings.ts'
 import type { HttpHost } from '@superagent/dsh/app/http.ts'
 import { SettingsSchema } from '@superagent/dsh/policy.ts'
 import { SetupError } from '@superagent/dsh/setup.ts'
+import { createAction, createApproval, type Approval } from '@superagent/kernel'
 
 type Handler = (req: unknown, res: unknown) => Promise<void>
 type Headers = Record<string, string | undefined>
@@ -187,4 +188,34 @@ it('refuses a foreign origin or a non-loopback host on the event stream', async 
   expect(crossSite.status).toBe(403)
   const otherHost = await stream(handler, '/orchestrator/api/activity/stream', { host: '192.168.1.5:3082' })
   expect(otherHost.status).toBe(403)
+})
+it('records an approval decision from the panel, at the requested or a lower level, and refuses a higher one', async () => {
+  const now = Date.now()
+  const requested = (objectId: string): Approval => createApproval({ ticketId: 't1',
+    action: createAction({ source: 'feishu', objectId, kind: 'mail.reply', revision: 'rev-1',
+      actor: { source: 'feishu', id: 'ou_bot' }, level: 'send' }),
+    requestedAt: new Date(now - 1_000).toISOString(), expiresAt: new Date(now + 60_000).toISOString() })
+  const lower = requested('om_1'), asAsked = requested('om_2'), refused = requested('om_3'), denied = requested('om_4')
+  const rows = new Map([lower, asAsked, refused, denied].map(row => [row.id, row]))
+  const store = { approvals: { get: (id: string) => rows.get(id), save: (row: Approval) => { rows.set(row.id, row) } },
+    atomic: <T>(work: () => T): T => work() }
+  const call = serve({ store })
+  const path = (approval: Approval, action: string): string => `approvals/${approval.id}/${action}`
+
+  expect(await call('POST', path(lower, 'approve'), { level: 'draft' }))
+    .toEqual({ status: 200, body: { state: 'approved', level: 'draft' } })
+  expect(rows.get(lower.id)).toMatchObject({ state: 'approved', grantedLevel: 'draft', decidedBy: { source: 'panel', id: 'local' } })
+  expect(await call('POST', path(asAsked, 'approve'), {}))
+    .toEqual({ status: 200, body: { state: 'approved', level: 'send' } })
+  expect(rows.get(asAsked.id)).not.toHaveProperty('grantedLevel')
+  expect(await call('POST', path(denied, 'deny'))).toEqual({ status: 200, body: { state: 'denied' } })
+  expect(rows.get(denied.id)).toMatchObject({ state: 'denied', decidedBy: { source: 'panel', id: 'local' } })
+  expect(await call('POST', path(refused, 'approve'), { level: 'spend' })).toMatchObject({ status: 400,
+    body: { code: 'approvalLevelExceeded', values: { level: 'spend', max: 'send' } } })
+  expect(rows.get(refused.id)).toMatchObject({ state: 'requested' })
+  expect(await call('POST', 'approvals/missing/approve', {})).toMatchObject({ status: 404 })
+  expect(await call('POST', 'approvals/missing/deny')).toMatchObject({ status: 404 })
+  // A decided Approval is no longer changed by a later request.
+  expect(await call('POST', path(lower, 'deny'))).toMatchObject({ status: 400, body: { code: 'approvalDecided' } })
+  expect(rows.get(lower.id)).toMatchObject({ state: 'approved', grantedLevel: 'draft' })
 })

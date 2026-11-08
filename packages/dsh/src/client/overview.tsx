@@ -1,12 +1,12 @@
-/** Overview page: pending Tickets requiring human action, active system problems, 24-hour flow counts, and Executor load. */
-import type { ReactNode } from 'react'
-import { usePoll, type Problem } from './api.ts'
+/** Overview page: Approvals waiting for a person, pending Tickets, active system problems, 24-hour flow counts and Executor load. */
+import { useState, type ReactNode } from 'react'
+import { usePoll, type ApprovalRow, type Problem } from './api.ts'
 import { Button, Icon } from './controls.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
 import { TicketLine } from './rows.tsx'
 import { healthText, localized, reasonLabel, valueLabel, readableMarkers } from './text.ts'
-import { CheckSetupButton, ConfirmButton, Hint, LoadState, Section, SetupMessage } from './widgets.tsx'
+import { CheckSetupButton, ConfirmButton, Hint, LabelValue, LoadState, Section, SetupMessage, When } from './widgets.tsx'
 
 function ProblemLine({ problem, onChanged }: { problem: Problem; onChanged: () => Promise<void> }) {
   const { t, call, navigate } = usePanel()
@@ -58,6 +58,43 @@ function ProblemLine({ problem, onChanged }: { problem: Problem; onChanged: () =
   }
 }
 
+function ApprovalLine({ approval, onChanged }: { approval: ApprovalRow; onChanged: () => Promise<void> }) {
+  const { t, call, navigate } = usePanel()
+  const [level, setLevel] = useState(approval.action.level)
+  const post = useAction((request: () => Promise<unknown>) => request(), { reload: onChanged })
+  // The effect follows the level the person picked: a lower grant does less than the requested Action, and a spend
+  // costs nothing unless it is granted at the level that carries the cost.
+  const spend = level === approval.action.level ? approval.action.cost : undefined
+  const consequence = `${valueLabel(t, 'levelEffect', level)}${spend === undefined ? ''
+    : ` · ${spend.kind === 'money' ? `${spend.currency} ${spend.amount}` : t('approvalCostTime', { minutes: spend.minutes })}`}`
+  return <li className="dt-row dt-link dt-approval">
+    <div className="dt-row-main">
+      <div className="dt-row-title"><button type="button" className="dt-open" onClick={() => navigate({ page: 'execution',
+        id: approval.ticket.id })}>{approval.ticket.title}</button></div>
+      <div className="dt-row-meta">
+        <LabelValue label={t('approvalAction')} value={`${approval.action.kind} · ${valueLabel(t, 'level', approval.action.level)}`} />
+        <LabelValue label={t('approvalObject')} value={`${valueLabel(t, 'source', approval.action.source)} ${approval.action.objectId} · ${approval.action.revision}`} />
+        <LabelValue label={t('approvalConsequence')} value={consequence} />
+        <LabelValue label={t('approvalExpires')} value={<When at={approval.expiresAt} />} />
+      </div>
+      <div className="dt-row-meta dt-row-buttons">
+        {approval.levels.length > 1 && <select className="dt-select dt-approval-level"
+          aria-label={`${t('approvalLevel')} · ${approval.ticket.title}`} title={t('approvalLevel')} value={level}
+          onChange={event => setLevel(event.target.value as ApprovalRow['action']['level'])}>
+          {approval.levels.map(item => <option key={item} value={item}>{valueLabel(t, 'level', item)}</option>)}
+        </select>}
+        <Button variant="primary" size="sm" icon={<Icon name="decision" size={14} />} disabled={post.busy}
+          aria-label={`${t('approve')} · ${approval.ticket.title}`}
+          onClick={() => { void post.run(() => call('POST approvals/:id/approve', { id: approval.id,
+            body: level === approval.action.level ? {} : { level } })) }}>{t('approve')}</Button>
+        <ConfirmButton variant="outline" icon="dismiss" label={t('deny')} title={t('denyConfirmTitle')}
+          message={t('denyConfirm')} ariaLabel={`${t('deny')} · ${approval.ticket.title}`}
+          onConfirm={async () => { await call('POST approvals/:id/deny', { id: approval.id }); await onChanged() }} />
+      </div>
+    </div>
+  </li>
+}
+
 export function OverviewPage() {
   const { t, call, navigate } = usePanel()
   const { setup } = usePanelData()
@@ -74,6 +111,11 @@ export function OverviewPage() {
     onClick={() => navigate(route)}>{t('details')}</button>
   return <>
     {error && <LoadState error={error} loading={false} />}
+    {/* An empty queue is quiet: no section, no explanation. */}
+    {data.approvals.length > 0 && <Section title={t('approvalsTitle')} count={data.approvals.length} hint={t('approvalsHint')}>
+      <ul className="dt-list dt-cards">{data.approvals.map(approval => <ApprovalLine key={approval.id} approval={approval}
+        onChanged={reload} />)}</ul>
+    </Section>}
     <Section title={t('pendingTickets')} count={data.person.length}>
       {data.person.length ? <ul className="dt-list dt-cards">{data.person.map(ticket => <TicketLine key={ticket.id} ticket={ticket} question
         onChanged={reload} />)}</ul>
@@ -102,6 +144,8 @@ export function OverviewPage() {
         {stat(t('metricRecoveryLabel'), data.metrics.recovery.recovered
           ? duration(data.metrics.recovery.medianSeconds) : t('empty'))}
         {stat(t('metricThroughputLabel'), data.metrics.throughput.perHour)}
+        {stat(t('metricApprovalLabel'), <span title={t('metricApprovalHint', { samples: data.metrics.approval.samples })}>
+          {duration(data.metrics.approval.medianSeconds)} / {duration(data.metrics.approval.p90Seconds)}</span>)}
       </div>
       <Hint>{t('metricHint', { interrupted: data.metrics.recovery.interrupted, recovered: data.metrics.recovery.recovered })}</Hint>
     </Section>

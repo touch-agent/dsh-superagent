@@ -13,6 +13,7 @@ import { settingsView } from '@superagent/dsh/app/views/settings.ts'
 import { threadDetail } from '@superagent/dsh/app/views/threads.ts'
 import { droppedReplies, sourcesStatus } from '@superagent/dsh/app/views/sources.ts'
 import { overview } from '@superagent/dsh/app/views/overview.ts'
+import { approvalQueue } from '@superagent/dsh/app/views/approvals.ts'
 import { markdown, plain } from '@superagent/dsh/app/views/text.ts'
 import { policyHistory } from '@superagent/dsh/app/settings-history.ts'
 import { KV } from '@superagent/dsh/kv.ts'
@@ -22,7 +23,7 @@ import { githubLink } from '@superagent/dsh/sources/github-channel.ts'
 import { githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
 import { conversationDefinition, conversationTrigger } from '@superagent/dsh/sources/conversation.ts'
 import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
-import { followupOwners, type ChannelRef } from '@superagent/kernel'
+import { createAction, createApproval, followupOwners, type ChannelRef } from '@superagent/kernel'
 import { fakeDefinition, fakeManifest } from './fixtures/fake-source.ts'
 
 let directory: string
@@ -203,6 +204,38 @@ it('does not show a follow-up that reached a ticket as waiting for an Eval, thou
 const load = { running: 0, queued: 0 }
 const problems = (host: ReturnType<typeof views>, health: Parameters<typeof overview>[1] = {}) =>
   overview(host, health, 'v1', load).problems
+
+it('queues a pending Approval with its Ticket and the levels a person may grant, leaving a due request out', () => {
+  const now = Date.now()
+  live('t1')
+  const action = (objectId: string) => createAction({ source: 'feishu', objectId, kind: 'mail.reply', revision: 'rev-1',
+    actor: { source: 'feishu', id: 'ou_bot' }, level: 'send' })
+  const pending = createApproval({ ticketId: 't1', action: action('om_1'), requestedAt: new Date(now - 1_000).toISOString(),
+    expiresAt: new Date(now + 60_000).toISOString() })
+  const due = createApproval({ ticketId: 't1', action: action('om_2'), requestedAt: new Date(now - 120_000).toISOString(),
+    expiresAt: new Date(now - 60_000).toISOString() })
+  store.approvals.save(due)
+  store.approvals.save(pending)
+  const queue = approvalQueue(store, now)
+  expect(queue.map(row => row.id)).toEqual([pending.id])
+  expect(queue[0]).toMatchObject({ ticket: { id: 't1', title: 't1' },
+    action: { kind: 'mail.reply', source: 'feishu', objectId: 'om_1', level: 'send' }, levels: ['read', 'draft', 'commit', 'send'] })
+})
+
+it('orders the approval queue by request time and falls back to the Ticket id when its Ticket is gone', () => {
+  const now = Date.now()
+  const action = (objectId: string) => createAction({ source: 'feishu', objectId, kind: 'mail.reply', revision: 'rev-1',
+    actor: { source: 'feishu', id: 'ou_bot' }, level: 'send' })
+  const later = createApproval({ ticketId: 't-missing', action: action('om_later'),
+    requestedAt: new Date(now - 1_000).toISOString(), expiresAt: new Date(now + 60_000).toISOString() })
+  const earlier = createApproval({ ticketId: 't-missing-too', action: action('om_earlier'),
+    requestedAt: new Date(now - 2_000).toISOString(), expiresAt: new Date(now + 60_000).toISOString() })
+  store.approvals.save(later)
+  store.approvals.save(earlier)
+  const queue = approvalQueue(store, now)
+  expect(queue.map(row => row.id)).toEqual([earlier.id, later.id])
+  expect(queue[0]?.ticket).toEqual({ id: 't-missing-too', title: 't-missing-too' })
+})
 
 it('lists an Eval past its deadline, and as dsh-superagent\'s own errors only parts no Source or Policy sync reports', () => {
   const host = views()

@@ -21,7 +21,7 @@ it('leads the overview with the pending Tickets, then problems, the last day and
   expect(text()).toContain('需要确认按钮颜色')
   expect(all('.dt-stat').map(stat => stat.textContent)).toEqual(['到达12', '被过滤2', '已评估5', '接单或续做1',
     `${zh.metricTtfaLabel}4 s / 9 s`, `${zh.metricDuplicatesLabel}0`, `${zh.metricRecoveryLabel}30 s`, `${zh.metricThroughputLabel}0.2`,
-    '执行中2 / 3', '排队0', '等待新触发1'])
+    `${zh.metricApprovalLabel}20 s / 1 min`, '执行中2 / 3', '排队0', '等待新触发1'])
   expect(all('.dt-chip').map(chip => chip.textContent)[0]).toBe('GitHub#42CI 失败1')
   expect(document.querySelector('.dt-chip-problem')?.textContent).toBe('CI 失败1')
   expect(document.querySelector<HTMLAnchorElement>('a.dt-chip-link')?.href).toBe('https://github.com/acme/widgets/pull/42')
@@ -133,7 +133,7 @@ it('shows the overview in English', async () => {
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual([en['stage.answer'], en['stage.failed']])
   expect(all('.dt-stat-label').map(label => label.textContent)).toEqual([en.flowReceivedLabel, en.flowFilteredLabel, en.flowJudgedLabel,
     en.flowAcceptedLabel, en.metricTtfaLabel, en.metricDuplicatesLabel, en.metricRecoveryLabel, en.metricThroughputLabel,
-    en.executingLabel, en.queuedLabel, en.idleLabel])
+    en.metricApprovalLabel, en.executingLabel, en.queuedLabel, en.idleLabel])
 })
 
 it('lists the unavailable Evals one by one, without the health entry that counts them as a failure of dsh-superagent', async () => {

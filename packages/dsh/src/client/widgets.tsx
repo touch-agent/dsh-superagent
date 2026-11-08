@@ -72,14 +72,17 @@ export function ClampText({ text }: { text: string }) {
   </>
 }
 
-export function ConfirmButton({ label, title, message, onConfirm, variant = 'ghost', icon }: {
+export function ConfirmButton({ label, title, message, onConfirm, variant = 'ghost', icon, ariaLabel }: {
   label: string; title: string; message: string; onConfirm: () => Promise<unknown>; variant?: 'ghost' | 'outline'; icon?: IconName
+  /** Names the one record this control confirms, when several rows show the same label. */
+  ariaLabel?: string
 }) {
   const { t } = usePanel()
   const [open, setOpen] = useState(false)
   const confirm = useAction(onConfirm)
   return <>
-    <Button variant={variant} size="sm" icon={icon && <Icon name={icon} size={14} />} onClick={() => setOpen(true)}>{label}</Button>
+    <Button variant={variant} size="sm" icon={icon && <Icon name={icon} size={14} />} aria-label={ariaLabel}
+      onClick={() => setOpen(true)}>{label}</Button>
     <Modal open={open} onClose={() => setOpen(false)} title={title} closeLabel={t('close')} description={message}
       footer={<>
         <Button variant="ghost" onClick={() => setOpen(false)}>{t('cancel')}</Button>

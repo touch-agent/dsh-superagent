@@ -1,8 +1,9 @@
-/** The health figures `GET metrics` returns: time to judgement, repeated sends, restart recovery and throughput. */
+/** The health figures `GET metrics` returns: time to judgement, repeated sends, restart recovery, throughput and approval latency. */
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
+import { approve, createAction, createApproval, deny, expire, revoke, type Approval } from '@superagent/kernel'
 import { metrics } from '@superagent/dsh/app/metrics.ts'
 import { Store } from '@superagent/dsh/app/store.ts'
 
@@ -38,6 +39,12 @@ function receipt(store: Store, id: string, text: string, kind = 'reply', ticketI
   store.db.prepare('INSERT INTO outbox (id, value) VALUES (?, ?)')
     .run(id, JSON.stringify({ id, channel: { source: 'feishu', thread: 'chat:t1' }, text, kind, ticketId }))
 }
+/** A requested Approval on object `id`, requested and expired at the given offsets from `NOW`. */
+function approval(id: string, requestedOffset: number, expiresOffset: number): Approval {
+  return createApproval({ ticketId: 't1', action: createAction({ source: 'feishu', objectId: id, kind: 'mail.reply', revision: 'rev-1',
+    actor: { source: 'feishu', id: 'ou_bot' }, level: 'send' }), requestedAt: at(requestedOffset), expiresAt: at(expiresOffset) })
+}
+const panel = { source: 'panel', id: 'local' }
 
 it('reports no samples rather than zeros for an empty store', () => {
   const store = new Store(path())
@@ -47,6 +54,7 @@ it('reports no samples rather than zeros for an empty store', () => {
   expect(view.duplicates).toEqual({ sends: 0, repeated: 0 })
   expect(view.recovery).toEqual({ interrupted: 0, recovered: 0, medianSeconds: null })
   expect(view.throughput).toEqual({ decisions: 0, perHour: 0 })
+  expect(view.approval).toEqual({ samples: 0, medianSeconds: null, p90Seconds: null })
   store.close()
 })
 
@@ -105,5 +113,30 @@ it('reports judgements per hour over the day', () => {
   const view = metrics(store, NOW)
   expect(view.throughput.decisions).toBe(4)
   expect(view.throughput.perHour).toBe(0.2)
+  store.close()
+})
+
+it('counts a request past its expiry even before the expired state is recorded', () => {
+  const store = new Store(path())
+  store.approvals.save(approval('due', -3600, -3540))
+  store.approvals.save(approval('waiting', -100, 1000))
+  expect(metrics(store, NOW).approval).toEqual({ samples: 1, medianSeconds: 60, p90Seconds: 60 })
+  store.close()
+})
+
+it('measures the wait from an Approval to its decision, leaving withdrawals and older decisions out', () => {
+  const store = new Store(path())
+  const decided = (record: Approval, offset: number): Approval => approve(record, { by: panel, at: at(offset) })
+  const records = [
+    decided(approval('a', -3600, -3000), -3590),
+    deny(approval('b', -3500, -3000), { by: panel, at: at(-3480) }),
+    expire(approval('c', -3400, -3340), at(-3340)),
+    // A withdrawal by the requester is not a decision, so it adds no sample.
+    revoke(approval('d', -3300, -3000), { at: at(-3290), by: panel }),
+    // A decision older than the 24-hour window does not count either.
+    decided(approval('e', -90_000, -80_000), -89_990),
+  ]
+  for (const record of records) store.approvals.save(record)
+  expect(metrics(store, NOW).approval).toEqual({ samples: 3, medianSeconds: 20, p90Seconds: 60 })
   store.close()
 })
