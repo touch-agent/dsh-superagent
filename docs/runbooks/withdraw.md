@@ -6,8 +6,8 @@ take it back. This runbook covers that second case.
 
 ## Which Sources can withdraw
 
-A Source withdraws a sent message only when its Channel declares a `withdraw` adapter. The drill reads the table below
-from the code, so it never assumes a Source can undo a write:
+A Source withdraws a sent message only when its Channel declares a `withdraw` adapter. The capability inventory below
+matches the drill, which never assumes a Source can undo a write:
 
 | Source | Can withdraw a sent message | What happens |
 | --- | --- | --- |
