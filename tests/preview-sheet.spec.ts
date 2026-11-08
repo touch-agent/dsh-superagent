@@ -125,6 +125,17 @@ describe('the sheet previewer', () => {
     expect(preview.sheets[0]!.summary.cells).toEqual({ added: 0, removed: 0, formula: 0, value: 0 })
   })
 
+  it('matches columns through a row inserted at the top and a column inserted in the middle', () => {
+    const preview = previewSheet({
+      before: { format: 'csv', content: 'a,b\n1,10\n2,20\n' },
+      after: { format: 'csv', content: 'a,x,b\n0,zero,0\n1,one,10\n2,two,20\n' },
+      link,
+    })
+    expect(preview.changes).toEqual([])
+    expect(preview.sheets[0]!.columns).toEqual({ before: 2, after: 3, added: [{ index: 1, label: 'B', cells: 4 }], removed: [] })
+    expect(preview.sheets[0]!.rows).toEqual({ before: 3, after: 4, added: [{ index: 1, cells: 3 }], removed: [] })
+  })
+
   it('aligns a column inserted in the middle instead of shifting every later column', () => {
     const preview = previewSheet({
       before: { format: 'csv', content: 'id,region,amount\n1,north,10\n2,south,20\n3,east,30\n' },
