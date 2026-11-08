@@ -463,6 +463,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/assessment.spec.ts` | What the MasterAssessor keeps per Eval, and when it lets go |
 | `tests/background.spec.ts` | Waiting for a worker's shell jobs and subagents: an end that woke it, and a host that stops |
 | `tests/bundle-patch.spec.ts` | The bundle's patch, read as DeepSeek Harness reads it, and the agent preset of Executor Sessions it defines |
+| `tests/dump-config.spec.ts` | X-11: a profile that installs the bundle composes its six patch rows through the host's `--dump-config` — the bundle, three Sources and two presets with their names, disabled flags and orders — also after a profile layer configures the bundle, and a missing row or wrong field names itself |
 | `tests/manifest.spec.ts` | The Source manifest: a complete manifest parses, a manifest with a scope is refused (admission belongs to the policy part), and a duplicate id, undeclared or duplicate auth field, sign-in kind without fields, duplicate field key or bad polling default names its path |
 | `tests/manifest-form.spec.ts` | The form model a manifest yields: fields in order, sign-in fields resolved by key, health and limits, a JSON round trip, and equality with the hand-written GitHub kind it replaces |
 | `tests/packaging.spec.ts` | The split between the bundle and the runtime: the bundle keeps the entry names its patch rows resolve, installs the runtime as a dependency instead of carrying its code, and re-exports the runtime plugins unchanged |

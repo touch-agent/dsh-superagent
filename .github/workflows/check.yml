@@ -20,6 +20,10 @@ jobs:
       # manifest and the lockfile disagree. The kernel boundary and the layer rules are tests, so `pnpm test` is what refuses a
       # host dependency inside `packages/kernel` or a Source that imports `src/app`; nothing here needs a separate job.
       - run: pnpm install --frozen-lockfile
+      # X-11 composes an installed profile through the host's own `dsh --dump-config`. The CLI is the host, not a workspace
+      # dependency, so install the version `engines.dsh` admits; a host without it must make this step fail rather than skip the test.
+      # The dump is boot-free, so the host's native build scripts are not needed.
+      - run: npm install -g --no-audit --no-fund --ignore-scripts @deepseek-ai/dsh@0.2.1-rc.5
       - run: pnpm check
 
   # Malformed changesets fail here rather than in a release, so a package change always says which package it bumps.
