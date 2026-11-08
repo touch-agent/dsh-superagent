@@ -202,6 +202,10 @@ Read the numbered documents in order; each builds only on the ones before it.
 
 The larger design and planning notes are in Chinese: [PLATFORM-EVOLUTION.zh.md](PLATFORM-EVOLUTION.zh.md) explains why the project has this shape, and [TASK-PLAN.zh.md](TASK-PLAN.zh.md) records the milestones, tasks and evidence. They are working documents and can be ahead of, or behind, the numbered set.
 
+Design proposals (unnumbered, not implemented):
+
+- [任务视图架构设计](docs/tasks-view-architecture.zh.md): the right-pane task view, event-induced categories, multi-level subtasks and per-node tracked workers, and the data model behind them
+
 ## Development
 
 `pnpm check` is the gate: typecheck, the full test suite, the build and the bundle-size budget. The pieces:
