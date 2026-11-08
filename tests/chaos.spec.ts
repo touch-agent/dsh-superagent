@@ -1,7 +1,7 @@
 /**
- * T2-09: inject an abort or a restart at every interruptible point between queuing a message and its receipt settling
- * as `sent`, one hundred rounds, and prove the remote service received exactly one copy. A failure prints the send
- * Action's idempotency key and the delivery trace that led to the second copy.
+ * T2-09: inject an abort or a restart at every durable interruptible point between queuing a message and its receipt
+ * settling as `sent`, one hundred rounds, and prove the remote service received exactly one copy. A failure prints the
+ * send Action's idempotency key, the remote journal and the delivery trace that led to the second copy.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -10,9 +10,9 @@ import type { Host } from './fixtures/host.ts'
 import { startRuntime } from './fixtures/host.ts'
 import type { SourceKind } from '@superagent/dsh/sources/kind.ts'
 
-/** A point a process can stop at between `enqueue` and `sent`; `none` is the healthy delivery used after recovery. */
-type CrashPoint = 'none' | 'before-enqueue' | 'queued' | 'before-write' | 'after-write' | 'after-settle'
-const POINTS: readonly CrashPoint[] = ['before-enqueue', 'queued', 'before-write', 'after-write', 'after-settle']
+/** A durable point a process can stop at between `enqueue` and `sent`; `none` is the healthy delivery used after recovery. */
+type CrashPoint = 'none' | 'queued' | 'before-write' | 'after-write' | 'after-settle'
+const POINTS: readonly CrashPoint[] = ['queued', 'before-write', 'after-write', 'after-settle']
 const ROUNDS = 100
 /** What a remote service kept, and every call the Channel made, so a duplicate can be explained. */
 interface Remote {
@@ -57,12 +57,17 @@ async function recover(h: Host): Promise<void> {
   vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 300_000 })
   try { await h.runtime.sendReplies() } finally { vi.useRealTimers() }
 }
-/** Everything needed to explain a duplicate: the key, the receipt, the effect row, and the Channel's calls. */
+/** How many `reply` effect rows wait for `id`; the crash points that failed one leave it for the restart to clear. */
+const replyEffects = (h: Host, id: string): number =>
+  Number(h.runtime.store.db.prepare("SELECT COUNT(*) AS n FROM effect WHERE kind = 'reply' AND key = ?").get(id)?.n ?? 0)
+/** How many receipts the round stored at all: a second key would be a second receipt, not a duplicate of `id`. */
+const receipts = (h: Host): number => Number(h.runtime.store.db.prepare('SELECT COUNT(*) AS n FROM outbox').get()?.n ?? 0)
+/** Everything needed to explain a duplicate: the key, every remote write, the receipt, the effect row, and the calls. */
 function failure(round: number, point: CrashPoint, id: string, remote: Remote, h: Host): string {
   const receipt = h.runtime.store.receipts.get(id)
   const effects = h.runtime.store.db.prepare("SELECT kind, key, attempts, error, due FROM effect WHERE kind = 'reply' AND key = ?").all(id)
-  return JSON.stringify({ round, point, id, copies: remote.writes.filter(written => written === id).length,
-    receipt, effects, events: remote.events }, null, 2)
+  return JSON.stringify({ round, point, id, writes: remote.writes, writesForId: remote.writes.filter(written => written === id).length,
+    receipts: receipts(h), receipt, effects, events: remote.events }, null, 2)
 }
 
 describe('T2-09: a crash between enqueue and sent never sends twice', () => {
@@ -76,27 +81,38 @@ describe('T2-09: a crash between enqueue and sent never sends twice', () => {
       const action = outboundAction({ kind: 'notice', source: channel.source, objectId: `chaos-${round}`, revision: 'rev-1' })
       const id = action.idempotencyKey
       try {
-        if (point !== 'before-enqueue') {
-          queue(h, action)
-          if (point === 'queued') {
-            // The receipt and its effect are durable, but dispatch has not run yet: this is the first restart point.
-            await h.runtime.stop()
-          } else {
-            if (point === 'after-settle') {
-              // Settle the receipt, then stop before the effect row is deleted: the next start replays it.
-              const receipts = h.runtime.store.receipts
-              const settle = receipts.settle
-              let aborted = false
-              receipts.settle = (message, outcome) => {
-                settle(message, outcome)
-                if (!aborted) { aborted = true; throw new Error('aborted after the receipt settled') }
-              }
-            }
-            await h.runtime.sendReplies()
-            current = 'none'
-            await h.runtime.stop()
-          }
+        queue(h, action)
+        if (point === 'queued') {
+          // The receipt and its effect are durable, but dispatch has not run yet. Assert the injected state before the
+          // restart so a drained queue cannot make this round a healthy send that proves nothing.
+          expect(h.runtime.store.receipts.get(id)?.status).toBe('pending')
+          expect(replyEffects(h, id)).toBe(1)
+          expect(remote.writes).toEqual([])
+          await h.runtime.stop()
         } else {
+          if (point === 'after-settle') {
+            // Settle the receipt, then stop before the effect row is deleted: the next start replays it.
+            const store = h.runtime.store.receipts
+            const settle = store.settle
+            let aborted = false
+            store.settle = (message, outcome) => {
+              settle(message, outcome)
+              if (!aborted) { aborted = true; throw new Error('aborted after the receipt settled') }
+            }
+          }
+          await h.runtime.sendReplies()
+          const receipt = h.runtime.store.receipts.get(id)
+          if (point === 'before-write') {
+            expect([receipt?.status, receipt?.attemptedAt !== undefined, remote.writes.length, replyEffects(h, id)])
+              .toEqual(['pending', true, 0, 1])
+          } else if (point === 'after-write') {
+            expect([receipt?.status, receipt?.attemptedAt !== undefined, remote.writes.length, replyEffects(h, id)])
+              .toEqual(['pending', true, 1, 1])
+          } else {
+            // The receipt is sent, while its effect row survived the crash and is what the restart replays.
+            expect([receipt?.status, remote.writes.length, replyEffects(h, id)]).toEqual(['sent', 1, 1])
+          }
+          current = 'none'
           await h.runtime.stop()
         }
         current = 'none'
@@ -105,12 +121,13 @@ describe('T2-09: a crash between enqueue and sent never sends twice', () => {
         h.runtime.sources.register(chaosKind(remote, () => current))
         queue(h, action)
         await recover(h)
-        const copies = remote.writes.filter(written => written === id).length
         const receipt = h.runtime.store.receipts.get(id)
-        if (copies !== 1 || receipt?.status !== 'sent' || h.runtime.effects.pending('reply', id)) {
-          throw new Error(`chaos round ${round} at ${point} delivered ${copies} copies; ${failure(round, point, id, remote, h)}`)
+        // Count every write and every receipt, not only those under this id: a second derived key is the T2-05 failure.
+        if (remote.writes.length !== 1 || remote.writes[0] !== id || receipts(h) !== 1
+          || receipt?.status !== 'sent' || replyEffects(h, id) !== 0) {
+          throw new Error(`chaos round ${round} at ${point} kept ${remote.writes.length} remote writes; ${failure(round, point, id, remote, h)}`)
         }
-        expect(copies).toBe(1)
+        expect(remote.writes).toEqual([id])
       } finally {
         await h.stop()
       }

@@ -44,6 +44,12 @@ const final = (store: Map<string, string>): SourceKind<Record<string, never>> =>
   channel: { send: async (_host, message) => { store.set(message.id, message.text); return 'sent' },
     probe: async (_host, message) => store.has(message.id) ? 'sent' : 'gone', link: () => ({ url: '', label: text }) },
 })
+/** A Source whose object is already absent when withdrawal starts: `gone` is a success, not a refusal. */
+const vanishing = (): SourceKind<Record<string, never>> => ({
+  kind: 'already-gone', title: text, description: text, health: [], schema: z.object({}).strict(), fields: [],
+  channel: { send: async () => 'sent', probe: async () => 'gone', withdraw: async () => ({ status: 'gone' }),
+    link: () => ({ url: '', label: text }) },
+})
 
 /** A message whose id names the drill row, so the GitHub marker and the fixture journals cannot collide. */
 const messageOf = (source: string, address: Record<string, string>): OutboundMessage =>
@@ -55,7 +61,7 @@ describe('withdrawal drill', () => {
     const registry = new SourceRegistry(() => settings)
     const commands = new Commands(() => testDeployment(), {}, new AbortController().signal)
     const drafts = new Map<string, string>(), invites = new Map<string, string>(), finalWrites = new Map<string, string>()
-    registry.register(revocable(drafts)); registry.register(refusing(invites)); registry.register(final(finalWrites))
+    registry.register(revocable(drafts)); registry.register(refusing(invites)); registry.register(final(finalWrites)); registry.register(vanishing())
     registry.register(githubKind); registry.register(feishuKind)
     // GitHub: the marked comment is already there (sent), and DELETE removes the same id from the list.
     const comments = [{ id: 77, body: `Withdrawal drill\n\n<!-- dsh-superagent:drill-github -->`, in_reply_to_id: null, user: { login: 'agent-bot' } }]
@@ -70,7 +76,7 @@ describe('withdrawal drill', () => {
     Object.assign(commands, { pages, api, lark })
 
     const rows: Row[] = []
-    for (const source of ['mail-draft', 'calendar-invite', 'no-recall', 'github', 'feishu']) {
+    for (const source of ['mail-draft', 'calendar-invite', 'no-recall', 'already-gone', 'github', 'feishu']) {
       const address: Record<string, string> = source === 'github' ? { number: '12' } : source === 'feishu' ? { messageId: 'om_drill' } : {}
       const sent = await registry.send(messageOf(source, address), commands)
       const withdrawal = await registry.withdraw(messageOf(source, address), commands)
@@ -83,8 +89,9 @@ describe('withdrawal drill', () => {
         continue
       }
       const probe = await registry.probe(messageOf(source, address), commands)
-      rows.push({ source, sent, withdraw: withdrawal.status, verify: probe ?? 'no probe',
-        verdict: withdrawal.status === 'withdrawn' && probe === 'gone' ? 'withdrawn' : 'failed: the channel said withdrawn but probe still reads it' })
+      const verdict = probe !== 'gone' ? `failed: the channel said ${withdrawal.status} but probe still reads it`
+        : withdrawal.status === 'withdrawn' ? 'withdrawn' : 'already gone'
+      rows.push({ source, sent, withdraw: withdrawal.status, verify: probe ?? 'no probe', verdict })
     }
     console.log(['', '| Source | Sent | Withdraw | Verify | Verdict |', '| --- | --- | --- | --- | --- |',
       ...rows.map(row => `| ${row.source} | ${row.sent} | ${row.withdraw} | ${row.verify} | ${row.verdict} |`)].join('\n'))
@@ -103,6 +110,8 @@ describe('withdrawal drill', () => {
     // A Source with no withdraw adapter is unsupported, with that reason instead of a false success.
     expect(by('no-recall')).toMatchObject({ withdraw: 'unsupported', verify: 'not attempted' })
     expect(by('no-recall').verdict).toContain('no withdraw adapter')
+    // An object that is already absent is a successful `gone`, not a failed withdrawal.
+    expect(by('already-gone')).toMatchObject({ sent: 'sent', withdraw: 'gone', verify: 'gone', verdict: 'already gone' })
   })
 
   it('reports an already absent GitHub comment as gone and a refused delete with its reason', async () => {

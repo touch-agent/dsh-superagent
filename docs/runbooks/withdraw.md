@@ -6,8 +6,8 @@ take it back. This runbook covers that second case.
 
 ## Which Sources can withdraw
 
-A Source withdraws a sent message only when its Channel declares a `withdraw` adapter. The capability inventory below
-matches the drill, which never assumes a Source can undo a write:
+A Source withdraws a sent message only when its Channel declares a `withdraw` adapter. The inventory below covers the
+installed Sources and the drill's fixtures; it never assumes a Source can undo a write:
 
 | Source | Can withdraw a sent message | What happens |
 | --- | --- | --- |
@@ -17,6 +17,9 @@ matches the drill, which never assumes a Source can undo a write:
 | Conversation | No | The message is already in the main Session's history; it has no `withdraw` adapter |
 | Mail draft, calendar invite | Future Sources | TASK-PLAN's examples; the drill uses fixture Channels until those Sources exist |
 
+The drill runs the fixture rows, GitHub and Feishu. The Feishu document and Conversation rows are checked by reading
+their Channels, not by the drill, because neither has a drill-safe remote.
+
 A Source without the adapter is reported as **unable to withdraw** with the reason. It is never a silent success.
 
 ## Run the drill
@@ -25,8 +28,8 @@ A Source without the adapter is reported as **unable to withdraw** with the reas
 pnpm drill:withdraw
 ```
 
-The drill sends one message through every kind of Channel, asks the Source to take it back, and reads it back with
-`probe` to prove it is gone. It prints a Markdown table; `docs/runbooks/withdraw.drill.md` records a run. It uses
+The drill sends one message through each installed or fixture Channel it can run without a live account, asks the
+Source to take it back, and reads it back with `probe` to prove it is gone. It prints a Markdown table; `docs/runbooks/withdraw.drill.md` records a run. It uses
 fixture Channels and mocked CLI commands, so it deletes no real comment and sends no real message.
 
 ## When a withdrawal is refused

@@ -280,13 +280,13 @@ graph LR
 - **交付**：`tests/chaos.spec.ts`：在 enqueue → sent 的每个可中断点注入 abort/重启，100 轮；断言重复发送 0。
 - **验收**：100 轮 0 重复；失败时能打印幂等键与 trace。
 - **依赖**：T2-05。
-- **状态**：实现完成（2026-11-08，PR #17 待审查合并）。`tests/chaos.spec.ts` 覆盖五个可中断点：入队提交前、收据与 effect 已入队但未派发、已记录 `attemptedAt` 但未写远端、已写远端但未落收据、收据已 `sent` 但 effect 未删；每点 20 轮，共 100 轮。每轮崩溃后重启并重放同一 send Action，断言远端仅 1 份、收据为 `sent`、`reply` effect 已清；重复时输出幂等键、收据、effect 行与 Channel 调用序列。`after-write` 轮次依赖 T2-06 的 probe：重启后先读回 `sent`，因此不重发。
+- **状态**：实现完成（2026-11-08，PR #17 待审查合并）。`tests/chaos.spec.ts` 覆盖四个持久化可中断点：收据与 effect 已入队但未派发、已记录 `attemptedAt` 但未写远端、已写远端但未落收据、收据已 `sent` 但 effect 未删；每点 25 轮，共 100 轮。每轮在重启前断言确实处于该点的状态（pending/sent、`attemptedAt`、远端写入数、effect 行），重启后重放同一 send Action，断言远端总写入恰为 1 且就是该 id、outbox 收据恰为 1 条、收据为 `sent`、`reply` effect 已清；失败时输出幂等键、全部远端写入、收据、effect 行与 Channel 调用序列。`after-write` 轮次依赖 T2-06 的 probe：重启后先读回 `sent`，因此不重发。
 
 ### T2-10 撤回演练 · Platform · 2 人日
 
 - **交付**：演练脚本：对支持撤回的源（邮件草稿、日历邀请）发→撤→验；不支持撤回的源给出「不可撤回」提示。
 - **验收**：演练记录进 `docs/runbooks/`；撤回失败有明确 reason。
-- **状态**：实现完成（2026-11-08，PR #17 待审查合并）。`SourceChannel` 增加可选 `withdraw`，返回 `withdrawn` / `gone` / `refused`（带原因）；`SourceRegistry.withdraw` 转发，未声明 adapter 的源返回 unsupported，不伪装成功。GitHub 按投递标记找到评论、用其 id 删除，删除后用 `probe` 复核；飞书明确拒绝，因为 `lark-cli im messages delete` 是 high-risk-write，需人工 `--yes` 确认。`tests/withdraw-drill.spec.ts`（`pnpm drill:withdraw`）对 mail-draft / calendar-invite fixture、GitHub、飞书与无撤回源验证发→撤→验和 refusal 原因；`docs/runbooks/withdraw.md`、`withdraw.drill.md` 记录演练与限制。
+- **状态**：实现完成（2026-11-08，PR #17 待审查合并）。`SourceChannel` 增加可选 `withdraw`，返回 `withdrawn` / `gone` / `refused`（带原因）；`SourceRegistry.withdraw` 转发，未声明 adapter 的源返回 unsupported，不伪装成功。GitHub 按投递标记找到评论、用其 id 删除，删除后用 `probe` 复核；飞书明确拒绝，因为 `lark-cli im messages delete` 是 high-risk-write，需人工 `--yes` 确认。`tests/withdraw-drill.spec.ts`（`pnpm drill:withdraw`）对 mail-draft / calendar-invite / already-gone fixture、GitHub、飞书与无撤回源验证发→撤→验、`gone` 与 refusal 原因；GitHub 读取返回 404 时按拒绝处理而不是谎报 `gone`；`docs/runbooks/withdraw.md`、`withdraw.drill.md` 记录演练与限制。
 
 ---
 
