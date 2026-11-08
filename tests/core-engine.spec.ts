@@ -29,7 +29,8 @@ function harness(policyOverrides: Partial<Policy> = {}, { emit, prepareTicket }:
   const policy: Policy = {
     get version() { return version }, get paused() { return paused }, evalTimeoutMs: 60_000,
     gate: (t, thread) => !t.human ? { admissible: false, reason: 'not human' } : t.actor.id === 'alice' ? { admissible: true, strength: 'explicit', basis: { via: 'listed' } } : thread.subscriptions.length ? { admissible: true, strength: 'inferred', basis: { via: 'followup' } } : { admissible: false, reason: 'not a member' },
-    revalidate: () => version !== 'revoked',
+    revalidate: () => version !== 'revoked' ? { ok: true } : { ok: false, reason: { code: 'revoked' } },
+    mandateLimits: () => ({ maxActionLevel: 'send' }),
     admitsInferred: rules => rules.length > 0,
     ...policyOverrides,
   }
@@ -116,8 +117,10 @@ describe('eval', () => {
     const h = harness()
     const decision = accepted(h)
     const ticket = h.repo.tickets.get(decision.ticketId!)!
-    expect(ticket).toMatchObject({ title: 'Fix', mandate: { strength: 'explicit', policyVersion: 'v1', basis: { via: 'listed' }, actor: member, scope: 'small' }, channels: [trigger('1').channel],
+    expect(ticket).toMatchObject({ title: 'Fix', mandate: { strength: 'explicit', policyVersion: 'v1', basis: { via: 'listed' }, actor: member,
+      scope: 'small', maxActionLevel: 'send' }, channels: [trigger('1').channel],
       origin: { triggerId: '1', triggerIds: ['1'] } })
+    expect(ticket.mandate).not.toHaveProperty('expiresAt')
     expect(ticket).not.toHaveProperty('ended')
     expect(ticket.assignments).toEqual([expect.objectContaining({ state: 'running', startedAt: expect.any(String) })])
     expect(h.repo.threads.get('chat:t1')?.subscriptions).toEqual([ticket.id])
@@ -308,6 +311,27 @@ describe('resume and stop', () => {
     expect(h.executor.start).toHaveBeenCalledTimes(2)
     // The message still reaches Eval as a follow-up, but no reopen Decision is needed or possible.
     expect(h.repo.decisions.byThread('chat:t1').filter(decision => decision.kind !== 'ignore')).toHaveLength(decisions)
+  })
+  it('records the accept-time action limit and expiry, and refuses to resume or attach an ended Ticket after the expiry', async () => {
+    const expiresAt = '2026-09-23T00:01:00.000Z'
+    const h = harness({
+      mandateLimits: () => ({ maxActionLevel: 'commit', expiresAt }),
+      revalidate: (_mandate, at) => Date.parse(at) < Date.parse(expiresAt) ? { ok: true }
+        : { ok: false, reason: { code: 'mandateExpired', values: { at: expiresAt } } },
+    })
+    const ticketId = accepted(h).ticketId!
+    expect(h.repo.tickets.get(ticketId)!.mandate).toMatchObject({ maxActionLevel: 'commit', expiresAt })
+    h.engine.report(ticketId, { state: 'ready', summary: 'done' })
+    h.tick(61)
+    // A person's message can no longer resume the expired Mandate: the Ticket stays ended and takes nothing new.
+    h.engine.receive(trigger('2', { actor: guest }))
+    const ticket = h.repo.tickets.get(ticketId)!
+    expect(ticket.ended).toBeDefined()
+    expect(ticket.assignments).toHaveLength(1)
+    expect(ticket.undelivered).toEqual([])
+    // Attaching another message to the ended Ticket is refused for the same expired Mandate.
+    h.engine.receive(trigger('3', { actor: guest, threads: [{ source: 'chat', id: 'elsewhere' }] }))
+    expect(() => h.engine.attach(ticketId, '3')).toThrow(new UserError('mandateRevoked'))
   })
   it('resumes an ended ticket an earlier version left with a person\'s message waiting, on the next pass', async () => {
     const h = harness()

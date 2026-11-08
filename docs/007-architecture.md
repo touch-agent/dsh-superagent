@@ -123,7 +123,7 @@ An Input that carries a Trigger records whether a person wrote it, which `waitsF
 
 A Trigger's disposition records the Tickets it reached, by fan-out or attachment, a person's requeue, each Ticket that handed it back, with the reason, and each Ticket whose Executor acknowledged or answered it.
 
-A Mandate's `basis` (`MandateBasis`) records how the gate admitted its Trigger. Revalidation reads the receiving `source`, `scope` and `row`, the listed `sender`, matched `rules`, and `via`:
+A Mandate's `basis` (`MandateBasis`) records how the gate admitted its Trigger. Revalidation reads the receiving `source`, `scope` and `row`, the listed `sender`, matched `rules`, and `via`. A Mandate also records `maxActionLevel` and, when the Policy sets a lifetime, `expiresAt`; action-time revalidation checks both alongside the basis.
 
 | `via` | Admission basis |
 | --- | --- |
@@ -140,12 +140,13 @@ Trigger and Thread `meta` belong to the Source. The core does not interpret them
 
 - `version`, `paused` and `evalTimeoutMs` describe its current state.
 - `gate(trigger, thread, tickets)` returns admission strength and basis.
-- `revalidate(mandate)` checks whether an existing Mandate still holds.
+- `revalidate(mandate, at, action?)` checks whether an existing Mandate still holds at `at`; it always enforces the Mandate's expiry and, with an action, its level, and it returns `{ ok: true }` or the `reason` a caller records.
+- `mandateLimits(at)` gives a new Mandate its maximum action level and, when the Policy sets a lifetime, its expiry.
 - `admitsInferred(rules)` permits proactive acceptance only in auto mode with enabled matching rules.
 
 `assessmentOutcome(assessment, settings, strength)` converts the model's assessment to an Engine outcome. It requires a judgement for every enabled rule, settled direction, a matching rule and evidence of intent. Outside auto mode, an inferred accept becomes a “would accept” record.
 
-`policyEffects(tickets, old, now, scope)` identifies which open Tickets a change affects and how. `Engine.policyChanged` notifies only those Tickets. `policyVersion` hashes rules, accept mode and the Sources' Policy parts, including bot lists.
+`policyEffects(tickets, old, now, at, scope)` identifies which open Tickets a change affects and how. `Engine.policyChanged` notifies only those Tickets. `policyVersion` hashes rules, accept mode, the action ceiling and Mandate lifetime, and the Sources' Policy parts, including bot lists.
 
 ### Store
 

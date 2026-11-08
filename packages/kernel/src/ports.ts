@@ -1,4 +1,5 @@
 /** Ports the core depends on. Sources, policies, assessors, executors, and channels are project-specific. */
+import type { ActionLevel } from './action.ts'
 import type { Approval } from './approval.ts'
 import type { Assignment, ChannelRef, Decision, DecisionKind, Mandate, MandateBasis, Strength, Thread, Ticket, TicketEndBy, TicketOutcome, Trigger }
   from './model.ts'
@@ -7,6 +8,11 @@ import type { Span } from './trace.ts'
 
 /** Gate admission result: either inadmissible with a reason code, or admissible with strength and MandateBasis. */
 export type GateResult = { admissible: false; reason: string } | { admissible: true; strength: Strength; basis: MandateBasis }
+
+/** The action a running Ticket is about to take, as action-time revalidation sees it. */
+export interface ActionRequest { level: ActionLevel }
+/** Whether a Mandate still authorizes work; a refusal carries the reason a caller records with the refused action. */
+export type Revalidation = { ok: true } | { ok: false; reason: Reason }
 
 /** Whether a Source receives a Trigger; `observed` when it also receives messages not addressed to the agent, and `row` the receiving scope the Policy's admission table names, such as a chat. */
 export type ScopeResult = { listened: true; observed: boolean; row?: string } | { listened: false; reason: string }
@@ -22,8 +28,13 @@ export interface Policy {
   version: string
   paused: boolean
   gate(trigger: Trigger, thread: Thread, tickets: Ticket[]): GateResult
-  /** Re-check a mandate's gate-layer basis under this policy, such as before an ended ticket resumes. */
-  revalidate(mandate: Mandate): boolean
+  /**
+   * Re-check a Mandate under this Policy at `at`, before an ended Ticket resumes and before a running Ticket takes an
+   * action. Every call checks the admission basis and expiry; `action` additionally checks the action's level.
+   */
+  revalidate(mandate: Mandate, at: string, action?: ActionRequest): Revalidation
+  /** The maximum level and the expiry a Mandate accepted at `at` receives from this Policy. */
+  mandateLimits(at: string): { maxActionLevel: ActionLevel; expiresAt?: string }
   /** Whether an inferred candidate may be accepted on the rules its assessment matched: assessments accept, and each rule is enabled. */
   admitsInferred(rules: readonly string[]): boolean
   /** How long an assessor may take before an eval is recorded as unavailable. */

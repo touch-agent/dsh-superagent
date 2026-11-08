@@ -134,7 +134,7 @@ export class Tickets extends EnginePart {
     this.leftToWorkers(trigger)
     const current = this.require(ticketId)
     if (current.ended?.by === 'human') throw new UserError('ticketStopped')
-    if (!liveTicket(current) && !this.policy().revalidate(current.mandate)) throw new UserError('mandateRevoked')
+    if (!liveTicket(current) && !this.policy().revalidate(current.mandate, this.now()).ok) throw new UserError('mandateRevoked')
     return trigger
   }
   /**
@@ -279,11 +279,11 @@ export class Tickets extends EnginePart {
     if (!ticket || liveTicket(ticket) || ticket.ended?.by === 'human' || !ticket.undelivered.length) return
     const policy = this.policy()
     if (policy.paused) return
-    if (!policy.revalidate(ticket.mandate)) { this.refuse(ticket); return }
+    const at = this.now()
+    if (!policy.revalidate(ticket.mandate, at).ok) { this.refuse(ticket); return }
     // Only a human's message resumes an ended ticket; bot/CI triggers wait alongside inputs from before the ticket ended.
     const first = ticket.undelivered.map(id => ticket.inputs.find(input => input.id === id)).find(input => input?.kind === 'trigger' && input.human)
     if (first?.kind !== 'trigger') return
-    const at = this.now()
     delete ticket.ended; ticket.updatedAt = at
     const assignment = this.newAssignment(ticket)
     // Prepend the resumed marker so it is delivered ahead of the waiting messages.
