@@ -38,6 +38,11 @@ function host(pages: (path: string) => unknown[] = () => [], api: (path: string)
 
 const reviewMessage = { id: 'reply-501', channel: { source: 'github', thread: 'github:12',
   address: { number: '12', url: 'https://github.com/acme/widgets/pull/12#discussion_r99' } }, text: 'Addressed in #14', kind: 'reply' as const }
+/** A reply on the conversation of Issue 12, and the comment the agent already posted for `reply-1`. */
+const outbound = (id: string, text = 'Fixed') => ({ id, channel: { source: 'github', thread: 'github:12',
+  address: { number: '12', url: 'https://github.com/acme/widgets/issues/12' } }, text, kind: 'reply' as const })
+const posted = { id: 900, body: `Fixed\n\n<!-- dsh-superagent:reply-1 -->`, user: { login: AGENT } }
+const reviewPosted = { id: 901, body: `Addressed in #14\n\n<!-- dsh-superagent:reply-501 -->`, in_reply_to_id: 99, user: { login: AGENT } }
 
 export function githubConformance(): ConformanceSubject<GithubConfig> {
   return {
@@ -84,5 +89,20 @@ export function githubConformance(): ConformanceSubject<GithubConfig> {
     ],
     // The newest repository item is where the next round starts; `cursorAt` steps it back for late writes.
     cursor: { from: LATEST, next: () => cursorAt(LATEST) },
+    // A retry asks whether the marked comment is already there; an unreadable conversation has no answer to trust.
+    probes: [
+      { name: 'a comment already posted', key: 'reply-1', answer: 'sent' },
+      // The review reply is found under the review thread root it answers, not the conversation.
+      { name: 'a review reply already posted', key: 'reply-501', answer: 'sent' },
+      { name: 'a comment not posted', key: 'reply-9', answer: 'gone' },
+      { name: 'a conversation it cannot read', key: 'reply-3', answer: 'unknown' },
+    ],
+    probe: key => {
+      const pages = key === 'reply-1' ? () => [posted] : key === 'reply-501' ? () => [reviewPosted]
+        : key === 'reply-3' ? () => { throw new CliError('Server error', 500) } : () => []
+      const api = key === 'reply-501' ? () => ({ id: 99, user: { login: 'carol' }, body: '' }) : () => ({})
+      const message = key === 'reply-501' ? reviewMessage : outbound(key)
+      return githubDefinition.adapter.channel!.probe!({ commands: host(pages, api).commands }, message)
+    },
   }
 }

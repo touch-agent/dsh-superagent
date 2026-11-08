@@ -1162,7 +1162,11 @@ it('credits each human reviewer once in the default delivery requirements on eve
 
 it('shows a failed reply as a problem with its attempts, an error of the reply effects after three, until it is withdrawn', async () => {
   const { trigger } = await acceptedTicket()
-  vi.spyOn(Commands.prototype, 'lark').mockRejectedValue(new Error('internal error (2200)'))
+  // Replies fail while the topic read cannot find the failed ones, so retries are allowed to send again.
+  vi.spyOn(Commands.prototype, 'lark').mockImplementation(async (args: string[]) => {
+    if (args[1] === '+threads-messages-list') return { messages: [], has_more: false }
+    throw new Error('internal error (2200)')
+  })
   const stuck = outboundAction({ kind: 'notice', source: trigger.channel!.source, objectId: 'stuck', revision: 'rev-1' })
   runtime.outbox.send({ action: stuck, channel: trigger.channel!, text: '已合并。' })
   const outgoing = () => overviewOf(runtime).problems.filter(problem => problem.kind === 'outgoing')
@@ -1204,6 +1208,8 @@ describe('the order of a Ticket\'s messages to one conversation', () => {
       sent.push(message.text)
       return 'sent'
     })
+    // The Feishu topic is readable and the failed reply is not there, so a retry may send it again.
+    vi.spyOn(runtime.sources, 'probe').mockResolvedValue('gone')
   })
   it('sends a Ticket\'s later result after its acknowledgement that failed once, and holds no other Ticket\'s message in the chat', async () => {
     refused.add('ack-a')

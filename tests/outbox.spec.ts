@@ -100,20 +100,27 @@ it('freezes the undo window when a message is queued', async () => {
   await atFrom(Date.now(), 15_000, async () => { expect(h.runtime.outbox.recall(id)).toBe('recalled') })
 })
 
-it('retries a reply that failed after its window, and sends it once the retry succeeds', async () => {
+it('retries a reply that failed after its window, once a probe shows it is not there', async () => {
   const lark = vi.mocked(Commands.prototype.lark)
-  lark.mockClear().mockRejectedValueOnce(new Error('network down'))
+  let replies = 0
+  lark.mockClear().mockImplementation(async (args: string[]) => {
+    // The retry first asks the topic whether the failed reply arrived; it did not, so sending it again is safe.
+    if (args[1] === '+threads-messages-list') return { messages: [], has_more: false }
+    replies += 1
+    if (replies === 1) throw new Error('network down')
+    return {}
+  })
   setWindow(1)
   const channel = feishu('3', 'x').channel!
   const action = send('notice', channel, 'retry')
   const id = action.idempotencyKey
   const base = Date.now()
   await atFrom(base, 2_000, async () => { await h.runtime.sendReplies() })
-  expect([h.runtime.outbox.status(id), lark.mock.calls.length, h.runtime.effects.pending('reply', id)])
+  expect([h.runtime.outbox.status(id), replies, h.runtime.effects.pending('reply', id)])
     .toEqual(['pending', 1, true])
   // The failed attempt retries after 5 seconds, as before the window existed.
   await atFrom(base, 8_000, async () => { await h.runtime.sendReplies() })
-  expect([h.runtime.outbox.status(id), lark.mock.calls.length]).toEqual(['sent', 2])
+  expect([h.runtime.outbox.status(id), replies]).toEqual(['sent', 2])
 })
 
 it('refuses to recall an unknown message, naming it as unknown', () => {
@@ -171,4 +178,64 @@ it('keys each effect by the send Action, so two revisions are two effects and a 
   // A receipt still carries the adapter-facing kind, taken from its send Action.
   expect(h.runtime.store.receipts.get(first.idempotencyKey)?.kind).toBe('notice')
   expect([h.runtime.outbox.status(first.idempotencyKey), h.runtime.outbox.status(second.idempotencyKey)]).toEqual(['pending', 'pending'])
+})
+/** A Source whose Channel answers probes and sends on demand, to test what the Outbox does after a failed attempt. */
+function checkKind(probe: (id: string) => Promise<'sent' | 'gone' | 'unknown'>, send: (id: string) => Promise<'sent' | 'gone'>): SourceKind<Record<string, never>> {
+  return { kind: 'check', title: { zh: '检查', en: 'Check' }, description: { zh: '', en: '' }, health: [],
+    schema: z.object({}).strict(), fields: [],
+    channel: { probe: async (_host, message) => probe(message.id), send: async (_host, message) => send(message.id),
+      link: () => ({ url: '', label: { zh: '检查', en: 'Check' } }) } }
+}
+
+it('probes after a failed attempt and settles a message it already sent without sending twice', async () => {
+  const sends: string[] = [], probes: string[] = []
+  h.runtime.sources.register(checkKind(async id => { probes.push(id); return 'sent' },
+    async id => { sends.push(id); throw new Error('network down') }))
+  const action = send('notice', { source: 'check', thread: 'check:1', address: {} }, 'already-sent')
+  const id = action.idempotencyKey
+  await h.runtime.sendReplies()
+  expect(sends).toEqual([id])
+  // The retry asks first: the Source has the message, so it settles `sent` and is not written again.
+  await at(5000)
+  expect([h.runtime.outbox.status(id), sends.length, probes]).toEqual(['sent', 1, [id]])
+})
+
+it('keeps a message pending without resending it while a probe is unknown, then sends it once the probe says it is gone', async () => {
+  const sends: string[] = [], probes: string[] = []
+  let answer: 'unknown' | 'gone' = 'unknown'
+  h.runtime.sources.register(checkKind(async id => { probes.push(id); return answer },
+    async id => { sends.push(id); if (sends.length === 1) throw new Error('timeout'); return 'sent' }))
+  const action = send('notice', { source: 'check', thread: 'check:1', address: {} }, 'unverifiable')
+  const id = action.idempotencyKey
+  await h.runtime.sendReplies()
+  // An unknown probe is the conservative branch: the message is never resent while delivery cannot be ruled out.
+  await at(5000)
+  expect([h.runtime.outbox.status(id), sends.length, h.runtime.effects.pending('reply', id)]).toEqual(['pending', 1, true])
+  // A later probe that proves the message is gone makes the send safe again.
+  answer = 'gone'
+  await at(20_000)
+  expect([h.runtime.outbox.status(id), sends.length, probes.length]).toEqual(['sent', 2, 2])
+})
+
+it('probes a pending receipt left by a stopped process before sending it, so a restart delivers once', async () => {
+  const sends: string[] = []
+  h.runtime.sources.register(checkKind(async () => 'sent', async id => { sends.push(id); return 'sent' }))
+  setWindow(0)
+  const action = send('notice', { source: 'check', thread: 'check:1', address: {} }, 'restarted', { text: 'Restarted' })
+  const id = action.idempotencyKey
+  // The process recorded the attempt but stopped before its outcome; on restart the probe answers what happened.
+  h.runtime.store.receipts.attempt(id, new Date().toISOString())
+  await h.runtime.pump(); await h.runtime.sendReplies()
+  expect([h.runtime.outbox.status(id), sends]).toEqual(['sent', []])
+})
+
+it('does not resend when the probe itself cannot be read', async () => {
+  const sends: string[] = []
+  h.runtime.sources.register(checkKind(async () => { throw new Error('permission denied') },
+    async id => { sends.push(id); throw new Error('network down') }))
+  const action = send('notice', { source: 'check', thread: 'check:1', address: {} }, 'unreadable')
+  const id = action.idempotencyKey
+  await h.runtime.sendReplies()
+  await at(5000)
+  expect([h.runtime.outbox.status(id), sends.length, h.runtime.effects.pending('reply', id)]).toEqual(['pending', 1, true])
 })

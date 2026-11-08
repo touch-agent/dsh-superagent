@@ -7,7 +7,7 @@ import { CliError, validItems, type Tally } from '../infra/commands.ts'
 import { ciCounts, ciFact, ciFailures, ciSummary, githubThreadContext, pullChecks } from './github-read.ts'
 import { branchCiTrigger, ciTrigger, commentTrigger, CommentSchema, githubAddress, issueTrigger, IssueSchema, pullTrigger, SOURCE }
   from './github-trigger.ts'
-import { githubLink, sendGithub } from './github-channel.ts'
+import { githubLink, probeGithub, sendGithub } from './github-channel.ts'
 import type { GithubComment, PullRef } from './github-trigger.ts'
 import { observePull, pullsOf, readPull, type Pull } from './github-pull.ts'
 import { health, sourceContext, type SourceContext } from './host.ts'
@@ -75,7 +75,7 @@ export const githubAdapter: SourceAdapter<GithubConfig> = {
     const row = scopeOf(meta)
     return { listened: true, observed: row !== undefined && config[OBSERVED[row]], ...row ? { row } : {} }
   },
-  channel: { send: sendGithub, link: githubLink },
+  channel: { send: sendGithub, probe: probeGithub, link: githubLink },
   threadContext: githubThreadContext,
   // `#12`, `12`, or the page of an Issue or PR, of any repository, names Thread 12.
   find: query => {

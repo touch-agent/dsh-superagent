@@ -18,7 +18,7 @@ export type DropReason = 'channelGone' | 'channelIgnored'
 /**
  * Outbound message receipt tracked in the outbox from the moment it is queued (`pending`, `sent`, `recalled`, or
  * `dropped`); delivery attempt counts live on its `reply` effect. A pending message records the end of its undo window,
- * before which it can still be recalled.
+ * before which it can still be recalled, and the start of an attempt whose outcome is not yet known.
  */
 export interface Receipt extends OutboundMessage {
   status: ReplyStatus
@@ -26,6 +26,8 @@ export interface Receipt extends OutboundMessage {
   dueAt?: string
   /** The undo window applied when the message was queued, in milliseconds. */
   windowMs?: number
+  /** When the last send attempt started; its outcome is unknown until the receipt settles, so a retry probes first. */
+  attemptedAt?: string
   /** When a message was recalled inside its undo window instead of being sent. */
   recalled?: { at: string }
   dropped?: { at: string; reason: DropReason }
@@ -355,6 +357,14 @@ export class Store implements Repositories {
       const receipt: Receipt = { ...message, id, kind: message.action.kind, status: 'pending', ...window }
       return Number(this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)').run(id, JSON.stringify(receipt)).changes) > 0
     },
+    /**
+     * Records that a send attempt started at `at`, before the Channel is called, so a restart or a retry can probe
+     * whether the remote service already received the message.
+     * @returns Whether a pending receipt with `id` was marked.
+     */
+    attempt: (id: string, at: string): boolean =>
+      Number(this.db.prepare(`UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' = 'pending'`)
+        .run(JSON.stringify({ attemptedAt: at }), id).changes) > 0,
     /**
      * Marks a receipt as sent or dropped (with drop reason and timestamp). A message withdrawn while its send was in flight
      * settles from `recalled` to what actually happened, so the receipt stays truthful and its ID remains terminal; an older

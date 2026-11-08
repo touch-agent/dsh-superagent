@@ -85,5 +85,25 @@ export function feishuConformance(): ConformanceSubject<FeishuConfig> {
     ],
     // Chat history is read from the round's start; `cursorAt` steps it back for late writes.
     cursor: { from: LATEST, next: () => cursorAt(LATEST) },
+    // A retry looks for the bot's reply with the same text in the topic; an unreadable topic has no answer to trust.
+    probes: [
+      { name: 'a reply already in the topic', key: 'reply-2', answer: 'sent' },
+      // A rich-text reply carries its text in a JSON body, which the probe reads as written.
+      { name: 'a reply whose content is a JSON body', key: 'reply-6', answer: 'sent' },
+      { name: 'a reply not in the topic', key: 'reply-9', answer: 'gone' },
+      // Another app's identical text is not this bot's reply, so it cannot settle the message as sent.
+      { name: 'the same text from another app', key: 'reply-5', answer: 'gone' },
+      { name: 'a topic it cannot read', key: 'reply-4', answer: 'unknown' },
+    ],
+    probe: key => {
+      const page = key === 'reply-2'
+        ? () => ({ messages: [{ content: reply.text, msg_type: 'text', sender: { id: BOT, sender_type: 'bot' } }], has_more: false })
+        : key === 'reply-6'
+          ? () => ({ messages: [{ content: JSON.stringify({ text: reply.text }), msg_type: 'post', sender: { id: BOT, sender_type: 'bot' } }], has_more: false })
+          : key === 'reply-5'
+          ? () => ({ messages: [{ content: reply.text, msg_type: 'text', sender: { id: 'ou_other_bot', sender_type: 'bot' } }], has_more: false })
+          : key === 'reply-4' ? () => { throw new CliError('Rate limited', 99991400) } : () => ({ messages: [], has_more: false })
+      return feishuDefinition.adapter.channel!.probe!({ commands: host(page).commands }, { ...reply, id: key })
+    },
   }
 }

@@ -49,7 +49,7 @@ describe('Source registry', () => {
     const sent: OutboundMessage[] = []
     const read: unknown[] = []
     sources.register({ ...probe,
-      channel: { send: async (_host, message) => { sent.push(message); return 'sent' },
+      channel: { send: async (_host, message) => { sent.push(message); return 'sent' }, probe: async () => 'sent',
         link: address => ({ url: `https://probe/${address.room}`, label: { zh: '探针', en: 'Probe' } }) },
       threadContext: { messageId: trigger => String(trigger.meta.id), read: async (_commands, trigger, part, cursor, config) => {
         read.push([trigger.id, part, cursor, config.interval])
@@ -60,9 +60,11 @@ describe('Source registry', () => {
     const message = (source: string): OutboundMessage => ({ id: 'r1', channel: { source, thread: 'probe:1', address: { room: 'r' } },
       text: 'hi', kind: 'reply' })
     expect(await sources.send(message('probe'), commands)).toBe('sent')
+    expect(await sources.probe(message('probe'), commands)).toBe('sent')
     expect(sent).toEqual([message('probe')])
-    // A kind that is not installed keeps its replies waiting; links to it have no page.
+    // A kind that is not installed keeps its replies waiting; links to it have no page, and it has no probe to ask.
     expect(await sources.send(message('retired'), commands)).toBe('waiting')
+    expect(await sources.probe(message('retired'), commands)).toBeUndefined()
     expect(sources.link(message('probe').channel, {})).toEqual({ url: 'https://probe/r', label: { zh: '探针', en: 'Probe' } })
     expect(sources.link(message('retired').channel, {})).toEqual({ url: '', label: { zh: 'retired', en: 'retired' } })
     const trigger = { id: 't1', source: 'probe', threads: [{ source: 'probe', id: '1' }], actor: { source: 'probe', id: 'u' }, human: true,
@@ -77,6 +79,7 @@ describe('Source registry', () => {
     // A kind without a channel or a context has neither.
     sources.register({ ...probe, kind: 'quiet' })
     expect(await sources.send(message('quiet'), commands)).toBe('gone')
+    expect(await sources.probe(message('quiet'), commands)).toBeUndefined()
     expect(sources.threadContext({ ...trigger, source: 'quiet' })).toBeUndefined()
   })
   it('refuses a kind that declares a health entry another kind or dsh-superagent itself reports, and gives up its entries at unregister', () => {

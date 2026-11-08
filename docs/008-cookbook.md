@@ -429,7 +429,7 @@ it('takes in what the queue holds after the cursor, once, and moves the cursor a
 - `sends`: one `sent`, one `gone` and one `throw` case, each with a fresh `Commands` stub whose `calls` keep what reached the remote service;
 - `cursor`: the newest event time (or round start) and the Source's own step, which must be five seconds earlier.
 
-The suite checks the Trigger id stays one per event, the cursor overlap, the health claims, the scope answers against the Policy rows, and that a successful send passes the outbound idempotency key. Probe cases join automatically once T2-06 adds `probe`; `tests/conformance/suite.spec.ts` proves the suite reports each broken fixture.
+The suite checks the Trigger id stays one per event, the cursor overlap, the health claims, the scope answers against the Policy rows, that a successful send passes the outbound idempotency key, and the fixture's `probes` through the adapter's real `probe`: each case's key must answer `sent`, `gone` or `unknown`; `tests/conformance/suite.spec.ts` proves the suite reports each broken fixture.
 
 ### Checklist
 
@@ -437,7 +437,7 @@ The suite checks the Trigger id stays one per event, the cursor overlap, the hea
 2. Write the manifest (`id`, `title`, `description`, `auth`, `fields`, `health`, optional `limits`) and the adapter (`schema`, `facts` if setup derives any, then the behavior below); register the pair with `registerDefinition`.
 3. Translate events into Triggers with stable ids, and drop the agent's own.
 4. Decide what the Source receives in the adapter's `scope`, from `meta` alone.
-5. Give it a Channel whose `send` posts each message once and answers `gone` only when the conversation can never receive it.
+5. Give it a Channel whose `send` posts each message once and answers `gone` only when the conversation can never receive it, and whose `probe` reads back whether an outbound message already arrived, answering `unknown` rather than guessing.
 6. Give assessments its Thread context, if it can read a Thread.
 7. Give it a part of the Policy with `allowed` and the admission rows.
 8. Register its execution environment variables.

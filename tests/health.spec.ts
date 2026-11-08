@@ -37,15 +37,20 @@ it('keeps a failing relay\'s error while replies recover, and a failing reply\'s
   }
   master.steer.mockImplementation(() => { throw new Error('master gone') })
   h.runtime.sessions.relay('r2', JSON.stringify({ kind: 'note' }))
-  lark.mockRejectedValue(new Error('internal error (2200)'))
+  // Replies fail while the topic read says the failed reply is not there, so each retry is allowed to send again.
+  const failing = async (args: string[]) => {
+    if (args[1] === '+threads-messages-list') return { messages: [], has_more: false }
+    throw new Error('internal error (2200)')
+  }
+  lark.mockImplementation(failing)
   reply('stuck')
   // Each fails three times in a row: the relay after 0, 2 and 6 seconds, the reply after 0, 5 and 15.
   await h.runtime.idle(); await at(5000); await at(15_000)
   expect(h.runtime.health).toMatchObject({ relay: { state: 'error' }, reply: { state: 'error', detail: expect.stringContaining('2200') } })
-  lark.mockResolvedValue({})
+  lark.mockImplementation(async (args: string[]) => args[1] === '+threads-messages-list' ? { messages: [], has_more: false } : {})
   await at(35_000)
   expect(h.runtime.health).toMatchObject({ relay: { state: 'error' }, reply: { state: 'ready' } })
-  lark.mockRejectedValue(new Error('internal error (2200)'))
+  lark.mockImplementation(failing)
   reply('stuck-2')
   master.steer.mockImplementation(() => {})
   await h.runtime.idle(); await at(50_000); await at(70_000)

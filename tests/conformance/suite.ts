@@ -5,7 +5,7 @@
  * its outbound cases and its health claims. The suite checks what an adapter must do regardless of the remote
  * service: derive one Trigger id per event so a re-read is a duplicate, step a time cursor back five seconds so a
  * late event is not lost, claim only the health names its manifest declares, decide scope from `meta` and configuration,
- * answer `sent` or `gone` for one outbound message, and — once T2-06 gives every adapter a probe — answer a probe with
+ * answer `sent` or `gone` for one outbound message, and answer a probe with
  * `sent`, `gone` or `unknown`.
  *
  * `checkConformance` returns violations instead of throwing, so a test can prove the suite bites: a fixture that
@@ -55,7 +55,7 @@ export interface SendCase {
   host: () => SendHost
 }
 
-/** One probe answer, once T2-06 adds probe to the adapter contract. */
+/** One probe answer the Channel must reproduce for the case's outbound message. */
 export interface ProbeCase { name: string; key: string; answer: 'sent' | 'gone' | 'unknown' }
 
 /** The Source-specific half of the suite: real read paths and real remote shapes, not mocks of the adapter. */
