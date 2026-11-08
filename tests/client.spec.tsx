@@ -7,6 +7,7 @@ import { apply } from '@superagent/dsh/client/index.tsx'
 import type { ActivityRecord } from '@superagent/dsh/app/activity.ts'
 import { zh } from '@superagent/dsh/client/locales.ts'
 import { PANEL_NAVIGATE } from '@superagent/dsh/client/panel.ts'
+import { activityTitle, matchesActivityFilter } from '@superagent/dsh/client/system.tsx'
 import { SettingsSchema } from '@superagent/dsh/policy.ts'
 
 declare global { var IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -286,6 +287,17 @@ it('groups events by task with readable titles, object badges, states, durations
   window.removeEventListener(PANEL_NAVIGATE, onNavigate)
   expect(navigated).toEqual({ page: 'eval' })
   view.dispose()
+})
+it('treats answer and delivery work as needing a person and keeps a recorded ending reason in the title', () => {
+  expect(matchesActivityFilter('answer', 'attention')).toBe(true)
+  expect(matchesActivityFilter('delivery', 'attention')).toBe(true)
+  expect(matchesActivityFilter('answer', 'failed')).toBe(false)
+  const ended = { seq: 1, at: '2026-01-01T00:00:00Z', event: 'ticket.ended' as const, level: 'feed' as const,
+    summary: 'Ticket t1 ended (manual)', ticket: 't1', detail: { outcome: 'closed' as const, reason: 'manual' },
+    task: { id: 't1', title: '固定标题', status: 'failed' as const } }
+  const title = activityTitle(t, ended)
+  expect(title).toContain('固定标题')
+  expect(title).toContain('manual')
 })
 it('opens the Events tab once when the first unread notice reaches the main Session', async () => {
   serve()

@@ -175,6 +175,9 @@ it('streams activity after a cursor with sequence ids and a ready head', async (
   expect(result.text).not.toContain('id: 1\n')
   expect(result.text).toContain('id: 2\nevent: activity\ndata: {"seq":2')
   expect(result.text).toContain('id: 3\nevent: activity')
+  // Streamed rows carry the same presentation as GET activity, not only the stored facts.
+  expect(result.text).toContain('"subject":{"kind":"trigger","id":"2"}')
+  expect(result.text).toContain('"status":"queued"')
   expect(result.text.match(/event: ready/g)).toHaveLength(2)
 })
 it('lets Last-Event-ID supersede the connection URL cursor, so a reconnect does not replay', async () => {

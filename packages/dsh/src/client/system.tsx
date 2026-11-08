@@ -15,9 +15,9 @@ import { duration, fullTime, localized, reasonLabel, valueLabel, when, type T } 
 
 const LEVEL_TONE = { quiet: 'outline', feed: 'info', notice: 'warning' } as const
 const STATUS_TONE: Record<ActivityStatus, TagTone> = { queued: 'neutral', working: 'info', idle: 'neutral', review: 'warning',
-  blocked: 'warning', failed: 'danger', done: 'success' }
+  answer: 'warning', delivery: 'warning', blocked: 'warning', failed: 'danger', done: 'success' }
 const STATUS_ICON: Record<ActivityStatus, IconName> = { queued: 'queue', working: 'running', idle: 'clock', review: 'review',
-  blocked: 'blocked', failed: 'alert', done: 'decision' }
+  answer: 'ask', delivery: 'inbox', blocked: 'blocked', failed: 'alert', done: 'decision' }
 const FILTERS = ['all', 'attention', 'running', 'failed'] as const
 const REPORT_REASONS = ['progress', 'waiting', 'ready', 'blocked', 'failed', 'dropped'] as const
 /** How the Events tab narrows task groups: everything, a person's turn or trouble, live work, or failure alone. */
@@ -56,8 +56,12 @@ export function activityTitle(t: T, record: ActivityRecord): string {
       return title ? t('activityEvent.ticketCreated', { title }) : record.summary
     case 'ticket.resumed':
       return title ? t('activityEvent.ticketResumed', { title }) : record.summary
-    case 'ticket.ended':
-      return detail?.outcome && title ? t('activityEvent.ticketEnded', { outcome: t(`outcome.${detail.outcome}`), title }) : record.summary
+    case 'ticket.ended': {
+      if (!detail?.outcome || !title) return record.summary
+      const reason = detail.reason && detail.reason !== detail.outcome ? reasonLabel(t, detail.reason) : ''
+      return reason ? t('activityEvent.ticketEndedReason', { outcome: t(`outcome.${detail.outcome}`), reason, title })
+        : t('activityEvent.ticketEnded', { outcome: t(`outcome.${detail.outcome}`), title })
+    }
     case 'assignment.started':
       return t('activityEvent.assignmentStarted')
     case 'assignment.ended':
@@ -97,7 +101,8 @@ export function groupStatus(record: ActivityRecord): ActivityStatus {
 export function matchesActivityFilter(status: ActivityStatus, filter: ActivityFilter): boolean {
   switch (filter) {
     case 'all': return true
-    case 'attention': return status === 'review' || status === 'blocked' || status === 'failed'
+    case 'attention': return status === 'review' || status === 'answer' || status === 'delivery' || status === 'blocked'
+      || status === 'failed'
     case 'running': return status === 'queued' || status === 'working' || status === 'idle'
     case 'failed': return status === 'failed'
   }

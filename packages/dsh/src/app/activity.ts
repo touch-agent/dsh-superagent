@@ -12,7 +12,7 @@ import { preview } from './views/text.ts'
 export type ActivityLevel = 'quiet' | 'feed' | 'notice'
 
 /** How the work an event belongs to stands, in the words a person acts on. */
-export type ActivityStatus = 'queued' | 'working' | 'idle' | 'review' | 'blocked' | 'failed' | 'done'
+export type ActivityStatus = 'queued' | 'working' | 'idle' | 'review' | 'answer' | 'delivery' | 'blocked' | 'failed' | 'done'
 
 /** What an event is about: a Ticket, Thread, Trigger, Decision or the Policy, with enough to label and open it. */
 export interface ActivitySubject {
@@ -95,6 +95,8 @@ interface ActivityRead {
 /** The domain reads a feed page resolves names, states and jump targets through; `Store` implements them. */
 export interface ActivityLookup {
   ticket: (id: string) => Ticket | undefined
+  /** The Ticket a Trigger created, so an intake row joins the task its Decision went on to make. */
+  ticketForTrigger?: (id: string) => Ticket | undefined
   thread: (key: string) => Thread | undefined
   trigger: (id: string) => Trigger | undefined
   decision: (id: string) => Decision | undefined
@@ -103,7 +105,7 @@ export interface ActivityLookup {
 
 /** The Store reads behind an `ActivityLookup`; optional chaining keeps a partial test double from failing a read. */
 export interface ActivityStoreReads {
-  tickets: { get: (id: string) => Ticket | undefined }
+  tickets: { get: (id: string) => Ticket | undefined; byTrigger?: (id: string) => Ticket | undefined }
   threads: { get: (key: string) => Thread | undefined }
   triggers: { get: (id: string) => Trigger | undefined }
   decisions: { get: (id: string) => Decision | undefined }
@@ -111,7 +113,8 @@ export interface ActivityStoreReads {
 }
 /** Bind an `ActivityLookup` to a Store, so every feed page can name its objects without the routes passing four readers. */
 export function activityLookup(store: ActivityStoreReads): ActivityLookup {
-  return { ticket: id => store.tickets?.get(id), thread: key => store.threads?.get(key), trigger: id => store.triggers?.get(id),
+  return { ticket: id => store.tickets?.get(id), ticketForTrigger: id => store.tickets?.byTrigger?.(id),
+    thread: key => store.threads?.get(key), trigger: id => store.triggers?.get(id),
     decision: id => store.decisions?.get(id), firstTrigger: key => store.read?.firstTrigger(key) }
 }
 
@@ -128,14 +131,19 @@ export function endCoveredBy(ticket: Ticket): 'report' | 'human' | undefined {
   return report && (report.state === 'ready' || report.state === 'dropped') ? 'report' : undefined
 }
 
+/** The state an ending leaves behind: an unmerged close or a stop is a failure, every other outcome is done. */
+function endedStatus(outcome: TicketOutcome | undefined): ActivityStatus {
+  return outcome === 'closed' || outcome === 'stopped' ? 'failed' : 'done'
+}
+
 /** The state a Ticket is in: ended Tickets are done unless their outcome is a failure, and a person's turn maps to its action. */
 export function activityStatusOf(ticket: Ticket): ActivityStatus {
   const stage = ticketStage(ticket)
   switch (stage.stage) {
     case 'ended':
-      return ticket.ended?.outcome === 'closed' || ticket.ended?.outcome === 'stopped' ? 'failed' : 'done'
+      return endedStatus(ticket.ended?.outcome)
     case 'person':
-      return stage.action === 'review' ? 'review' : stage.action === 'failed' ? 'failed' : 'blocked'
+      return stage.action
     case 'working':
       return stage.action === 'queued' ? 'queued' : 'working'
     case 'idle':
@@ -294,15 +302,22 @@ function namedSubject(subject: ActivitySubject, thread: Thread | undefined, look
   return subject.kind === 'thread' && thread ? threadSubject(thread, lookup) : subject
 }
 
+/** The Trigger id a summary written before grading names, for intake and follow-up rows. */
+function legacyTriggerId(record: ActivityRecord): string | undefined {
+  return /^Trigger (\S+) (?:received|queued for a fresh assessment|left the follow-up queue)$/.exec(record.summary)?.[1]
+}
+
 /** A row stored before subjects were graded: name the object its summary or its Ticket names. */
 function inferredSubject(record: ActivityRecord, owner: Ticket | undefined, thread: Thread | undefined, lookup: ActivityLookup): ActivitySubject | undefined {
   if (record.subject) return namedSubject(record.subject, thread, lookup)
   const decision = /^Decision (\S+) \(/.exec(record.summary)?.[1]
   if (record.event === 'decision.recorded' && decision) return { kind: 'decision', id: decision }
+  // A follow row's object is the Thread even though the row also names the owning Ticket.
+  if ((record.event === 'thread.subscribed' || record.event === 'thread.unsubscribed') && thread) return threadSubject(thread, lookup)
+  const trigger = legacyTriggerId(record)
+  if (record.event.startsWith('trigger.') && trigger) return { kind: 'trigger', id: trigger }
   if (record.ticket) return { kind: 'ticket', id: record.ticket }
   if (owner) return { kind: 'ticket', id: owner.id }
-  const trigger = /^Trigger (\S+) received$/.exec(record.summary)?.[1]
-  if (record.event === 'trigger.received' && trigger) return { kind: 'trigger', id: trigger }
   return thread ? threadSubject(thread, lookup) : undefined
 }
 
@@ -311,23 +326,46 @@ function inferredReason(record: ActivityRecord): string | undefined {
   return /^Assignment \S+ ended on \S+: (.+)$/.exec(record.summary)?.[1]
 }
 
+const OUTCOMES = new Set<TicketOutcome>(['completed', 'merged', 'closed', 'dropped', 'stopped'])
+
+/** The ending a legacy summary names: an outcome, a reason, or neither when it does not parse. */
+function legacyEnd(record: ActivityRecord): { outcome?: TicketOutcome; reason?: string } {
+  const value = /^Ticket \S+ ended \((.+)\)$/.exec(record.summary)?.[1]
+  if (!value) return {}
+  return (OUTCOMES as Set<string>).has(value) ? { outcome: value as TicketOutcome } : { reason: value }
+}
+
+/**
+ * The ending a row records. A graded row keeps its stored facts even after the Ticket was resumed and ended again; a legacy
+ * row recovers what its summary names, and only an unparseable one falls back to the Ticket as it stands now.
+ */
+function endedFacts(record: ActivityRecord, ticket: Ticket | undefined): ActivityDetail | undefined {
+  if (record.event !== 'ticket.ended') return undefined
+  if (record.detail?.outcome) return { outcome: record.detail.outcome, ...record.detail.reason ? { reason: record.detail.reason } : {} }
+  const legacy = record.detail ? {} : legacyEnd(record)
+  const current = record.detail || legacy.outcome || legacy.reason ? undefined : ticket?.ended
+  const outcome = record.detail?.outcome ?? legacy.outcome ?? current?.outcome
+  const reason = record.detail?.reason ?? legacy.reason ?? current?.reason
+  return outcome || reason ? { ...outcome ? { outcome } : {}, ...reason ? { reason } : {} } : undefined
+}
+
 /**
  * Completes one stored record for the Events tab: the object badge, the owning task and its originating Thread, how the
  * work stood at this event and now, the event's facts, and how long after the task's start it happened. Every field is
  * optional so a row written before this presentation existed still reads: its Ticket, Thread and summary name it instead.
  */
 export function presentActivity(record: ActivityRecord, lookup: ActivityLookup): ActivityRecord {
-  const legacyTrigger = !record.subject && record.event === 'trigger.received'
-    ? /^Trigger (\S+) received$/.exec(record.summary)?.[1] : undefined
   const subjectRef = record.subject
-  const triggerId = subjectRef?.kind === 'trigger' ? subjectRef.id : legacyTrigger
+  const triggerId = subjectRef?.kind === 'trigger' ? subjectRef.id : !record.subject ? legacyTriggerId(record) : undefined
   const trigger = triggerId ? lookup.trigger(triggerId) : undefined
   const legacyDecision = !record.subject && record.event === 'decision.recorded'
     ? /^Decision (\S+) \(/.exec(record.summary)?.[1] : undefined
   const decisionId = subjectRef?.kind === 'decision' ? subjectRef.id : legacyDecision
   const decision = decisionId ? lookup.decision(decisionId) : undefined
-  const ticketId = record.ticket ?? (subjectRef?.kind === 'ticket' ? subjectRef.id : undefined) ?? decision?.ticketId
-  const ticket = ticketId ? lookup.ticket(ticketId) : undefined
+  // An accepted Trigger's intake row joins the Ticket the Decision created, so one task stays one group.
+  const originTicket = triggerId ? lookup.ticketForTrigger?.(triggerId) : undefined
+  const ticketId = record.ticket ?? (subjectRef?.kind === 'ticket' ? subjectRef.id : undefined) ?? decision?.ticketId ?? originTicket?.id
+  const ticket = (ticketId ? lookup.ticket(ticketId) : undefined) ?? originTicket
   const home = record.thread ?? (subjectRef?.kind === 'thread' ? subjectRef.id : undefined)
     ?? (trigger?.threads[0] ? threadKey(trigger.threads[0]) : undefined)
   const thread = home ? lookup.thread(home) : undefined
@@ -338,20 +376,22 @@ export function presentActivity(record: ActivityRecord, lookup: ActivityLookup):
     ? { id: ticket.id, title: ticket.title, status: activityStatusOf(ticket), ...parent ? { parent } : {} }
     : thread ? { id: thread.key, title: threadTitle(thread, lookup), status: statusOf(record.event, decision, undefined) } : undefined
 
+  const ended = endedFacts(record, ticket)
   const triggerPreview = trigger ? preview(trigger.text, 120) : undefined
   const detail: ActivityDetail = {
     ...record.detail,
-    ...record.event === 'ticket.ended' && ticket?.ended ? { outcome: ticket.ended.outcome, ...ticket.ended.reason ? { reason: ticket.ended.reason } : {} } : {},
+    ...ended && !record.detail?.outcome ? ended : {},
     ...record.event === 'decision.recorded' && decision ? { decision: decision.kind } : {},
     ...record.event === 'assignment.ended' && !record.detail?.reason && inferredReason(record)
       ? { reason: inferredReason(record) } : {},
-    ...record.event === 'trigger.received' && trigger ? { trigger: { source: trigger.source, ...triggerPreview ? { preview: triggerPreview } : {} } } : {},
+    ...record.event.startsWith('trigger.') && trigger
+      ? { trigger: { source: trigger.source, ...triggerPreview ? { preview: triggerPreview } : {} } } : {},
   }
   const started = ticket ? Date.parse(ticket.createdAt) : Number.NaN
   const at = Date.parse(record.at)
   const sinceStartMs = Number.isFinite(started) && Number.isFinite(at) && at - started >= 60_000 ? at - started : undefined
   return { ...record, ...subject ? { subject } : {}, ...task ? { task } : {}, ...home && !record.thread ? { thread: home } : {},
-    status: statusOf(record.event, decision, ticket),
+    status: record.event === 'ticket.ended' ? endedStatus(ended?.outcome) : statusOf(record.event, decision, ticket),
     ...Object.keys(detail).length ? { detail } : {}, ...sinceStartMs ? { sinceStartMs } : {} }
 }
 

@@ -263,6 +263,13 @@ export class Store implements Repositories {
   }
   readonly tickets = {
     get: (id: string): Ticket | undefined => { const row = this.db.prepare('SELECT value FROM ticket WHERE id=?').get(id); return row ? JSON.parse(String(row.value)) as Ticket : undefined },
+    /** The Ticket a Trigger created, so an Events row can join the task its intake became. */
+    byTrigger: (triggerId: string): Ticket | undefined => {
+      const row = this.db.prepare(`SELECT value FROM ticket WHERE value ->> '$.origin.triggerId' = ?
+        OR EXISTS (SELECT 1 FROM json_each(json_extract(value, '$.origin.triggerIds')) j WHERE j.value = ?) ORDER BY rowid LIMIT 1`)
+        .get(triggerId, triggerId)
+      return row ? JSON.parse(String(row.value)) as Ticket : undefined
+    },
     save: (ticket: Ticket): void => { this.db.prepare('INSERT INTO ticket VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value').run(ticket.id, JSON.stringify(ticket)) },
     /** Newest first. */
     list: (): Ticket[] => this.values('SELECT value FROM ticket ORDER BY rowid DESC'),
