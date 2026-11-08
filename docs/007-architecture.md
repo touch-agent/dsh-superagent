@@ -146,7 +146,7 @@ Trigger and Thread `meta` belong to the Source. The core does not interpret them
 
 `assessmentOutcome(assessment, settings, strength)` converts the model's assessment to an Engine outcome. It requires a judgement for every enabled rule, settled direction, a matching rule and evidence of intent. Outside auto mode, an inferred accept becomes a “would accept” record.
 
-`policyEffects(tickets, old, now, scope)` identifies which open Tickets a change affects and how. `Engine.policyChanged` notifies only those Tickets. `policyVersion` hashes rules, accept mode, the action ceiling and Mandate lifetime, and the Sources' Policy parts, including bot lists.
+`policyEffects(tickets, old, now, at, scope)` identifies which open Tickets a change affects and how. `Engine.policyChanged` notifies only those Tickets. `policyVersion` hashes rules, accept mode, the action ceiling and Mandate lifetime, and the Sources' Policy parts, including bot lists.
 
 ### Store
 
