@@ -15,7 +15,7 @@
 | 1 | **不新增第二个“顶层授权聚合”**。顶层任务仍是 `Ticket`；子任务（`Subtask`）挂在 Ticket 下，是同一授权内的委派工作，不另开 Mandate。 | 不复制授权、不产生两套结束条件、不让 Executor 直接创建 Ticket。 |
 | 2 | **只新增一个可持久化的覆盖层：任务类别（`TaskCategory`）及任务归属（`TaskPlacement`）**。类别是展示与组织元数据，不授予任何权限。 | 人工改名/合并/拆分只改覆盖层，不改 `Ticket`。 |
 | 3 | 第一级类别由 **Agent 在工单受理后异步归纳**，人工修改优先；低置信度进入“未归类”，永不隐藏工作。 | 需要一个小模型调用队列与置信度阈值；可关闭并回退。 |
-| 4 | 层级为 **类别 → 任务（Ticket）→ 子任务（Subtask）→ 更深子任务**；每个 **tracked** 任务节点有自己的 worker，lightweight Ticket 是叶子、没有 worker。默认显示 3 层（类别 + Ticket + 一级子任务），更深折叠。 | 符合“最多关心 2–3 级”；执行单元（Assignment/Session）不是任务层级，放在节点详情；lightweight 与 tracked 的边界见 3.5。 |
+| 4 | 层级为 **类别 → 任务（Ticket）→ 子任务（Subtask）→ 更深子任务**；每个 **tracked** 任务节点有自己的 worker，lightweight Ticket 是叶子、没有 worker。全页树视图默认展开 3 层（类别 + Ticket + 一级子任务），更深折叠；右栏默认是列表，不默认树。 | 符合“最多关心 2–3 级”；执行单元（Assignment/Session）不是任务层级，放在节点详情；lightweight 与 tracked 的边界见 3.5。 |
 | 5 | **右侧栏新增“任务”tab**，与“事件”并列；两者共享选中态，可互相定位。状态页保留完整任务页。 | 同一份 `GET tasks` 投影，两处不会给出不同归属。 |
 | 6 | 视图：右栏只做列表/紧凑树；完整页做列表、树、看板、时间线图。图不伪造依赖关系。 | 窄栏不塞看板与图，避免信息不可读。 |
 | 7 | **类别覆盖层第一阶段不改 schema**：存 `KV` 文档，`GET tasks` 只做加法；子任务在第 2 期用 schema 15 加法建表。旧任务树保留为回退。 | 老数据照常读；类别可开关回退；子任务 schema 15 是单向迁移，回滚需降级迁移/备份。 |
@@ -61,7 +61,7 @@
 | 表面 | 状态页任务 tab | 右栏任务 tab + 状态页完整页 | 新右栏 tab + 共享投影 |
 | 视图 | 树、时间线图 | 列表、树、看板、时间线图 | 新看板；图重新定位 |
 | 信息 | 状态/进度/耗时 | 加来源、执行者、会话、交付物、最近事件 | 投影扩展 |
-| 执行者 | tracked：通用 worker Session；lightweight：inline，无 worker（kernel 契约，生产未接通） | 每个 tracked 节点有自己的 worker；lightweight 明示无 worker/无审批 | 先展示 `worker-<ticketId>` / `subtask-<subtaskId>-<attempt>` / “轻量”，不伪造名字 |
+| 执行者 | tracked：通用 worker Session；lightweight：inline，无 worker（kernel 契约，生产未接通） | 每个 tracked 节点有自己的 worker；lightweight 明示无 worker/无审批 | 默认展示负责人角色（父 worker / 子任务 worker / “轻量”），不显示 `worker-`、`subtask-` 或 Session id；内部 id 只在折叠的技术详情（E2）出现 |
 | 拆分 | 只有 subagent 会话 | 父 worker 动态委派子任务、审交付、合并、解冲突 | 新 `delegate_task` 工具 + Subtask 持久化 + 子 worker 生命周期 |
 | 规划 | 只有工单标题/范围里的计划编号；worker 的执行计划不落库 | 已受理任务与执行单元可见；未受理的计划不伪造 | 结构化 plan 是另一个模型，不在本设计里硬造 |
 | 身份 | 标题里的计划编号 | 稳定类别 id + 工单 id | 新 id 与别名 |
@@ -73,7 +73,7 @@
 2. **一份数据，多个看法**。列表、树、看板、图、右栏、状态页都读同一个 `GET tasks` 投影；不允许某个视图自己推导一套归属。
 3. **未归类必须可见**。归纳失败、置信度低、用户没改的工单进入“未归类”，不隐藏、不丢弃、不静默合并。
 4. **人工修改优先且可撤销**。人的改名/合并/拆分是覆盖层；Agent 只能建议，不能覆盖人工决定；任何覆盖都能“恢复自动归纳”。
-5. **默认三层，更深折叠**。类别 + Ticket + 一级子任务默认可见；二级以下子任务与执行细节按需展开，避免树把默认视图撑爆。
+5. **树默认三层，右栏默认列表**。全页树视图默认展开类别 + Ticket + 一级子任务；二级以下子任务与执行细节按需展开，避免树把默认视图撑爆。右栏仍是列表，点开 Ticket 才显示一级子任务，不默认画树（§7.2–§7.3）。
 6. **来源是锚点，不是层级**。任务不按 GitHub/飞书/对话分组；来源作为任务上的 chip 与锚点列表，避免“多源任务”被拆成多条。
 7. **不伪造结构**。没有依赖数据就不画依赖边；没有交付物就不显示空的“交付”区块；没有子任务就不编造子任务；subagent 不冒充子任务。
 8. **先只读，再可编辑**。先把任务视角跑通并验证归纳质量，再开放写操作；写操作前先把冲突与审计做好。
@@ -233,7 +233,7 @@
 - 子任务只能由父节点的 worker 通过 `delegate_task` 请求 Engine 创建；Engine 校验深度、宽度与父 Mandate/maxActionLevel；`scope` 只是执行提示。
 - 子任务默认继承父 Ticket 的类别，**不单独跑分类器、不计入类别任务数**；类别是 Ticket 的组织方式。
 - 最大深度默认 5，单节点最多 8 个子任务、单 Ticket 同时活跃子任务最多 32；可配置，超限返回明确错误。
-- UI 默认显示 L1–L3；L4 折叠并显示“还有 N 层/ N 个”，用户最多关心 2–3 级。
+- UI 的**树视图**默认展开 L1–L3；L4 折叠并显示“还有 N 层/ N 个”，用户最多关心 2–3 级。**列表与右栏**默认只显示类别 + Ticket，点开 Ticket 才显示一级子任务；两者共用同一投影，不因默认形态不同而算出不同归属（§7.2–§7.3）。
 
 ### 4.2 合并规则：多个事件如何成为一个任务
 
@@ -327,7 +327,7 @@ Engine：校验父任务存活、父 Mandate/maxActionLevel 原样继承、深�
 父 worker：审查交付、接受/退回/取消、合并、解决冲突
   │ 父 Ticket 在 ready/结束前必须没有未结束子任务
   ▼
-父 Ticket ready → 人工最终验收
+父 Ticket ready → 有最终确认项时进入人工验收；没有确认项时按现有 ready 路径结束（6.6）
 ```
 
 | 动作 | 谁发起 | 结果 |
@@ -337,7 +337,7 @@ Engine：校验父任务存活、父 Mandate/maxActionLevel 原样继承、深�
 | `accept_subtask` | 父 worker | 子任务完成：state=`done`、`endedAt=now`，写 `resolution.kind='accepted'` + `acceptedReportAt=report.at` + `acceptedAttempt=report.attempt`，并终止当前子 worker；之后迟到报告被拒绝（`subtaskClosed`）。交付物可被父合并；不等于父任务完成 |
 | `return_subtask` | 父 worker | 子任务带修改意见重开；`attempt += 1`，清除整个 `resolution`、`report`、旧 `merge`/`endedAt`/`startedAt` 失效，`startedAt=now`，state 回 `working`，按新 attempt 启动新的子 worker 会话（旧 worker 与旧 attempt 报告全部拒绝）；不写 'returned'，否则会误判为已处置 |
 | `cancel_subtask` | 父 worker | 停止子树：state=`cancelled`、`endedAt=now`，写 `resolution.kind='cancelled'`，终止当前子 worker，之后迟到报告被拒绝（`subtaskClosed`）；父任务记录原因 |
-| `ready` | 父 worker | 仅在无未结束子任务且 6.6 聚合可批准时允许；进入人工验收 |
+| `ready` | 父 worker | 仅在无未结束子任务且 6.6 聚合可批准时允许；**有最终确认项时**进入人工验收，没有确认项时仍按现有 ready 路径结束（见 6.6） |
 | `human_action` | 父 worker | 子任务问题被父汇总后，最多一个问题问人 |
 
 **attempt fencing**：`Subtask.report`/`TicketInput.subtask-report` 必须带当前 `attempt`；Engine 只接受 `report.attempt === subtask.attempt` 的报告，旧 attempt 的 session 已终止，迟到报告被拒绝（`subtaskClosed`/`staleSubtaskReport`），不能推进父状态或 reviewRevision。`return_subtask` 递增 attempt 并换新 session；`accept_subtask`/`cancel_subtask` 终止当前 session。
@@ -346,7 +346,7 @@ Engine：校验父任务存活、父 Mandate/maxActionLevel 原样继承、深�
 
 - **父 worker**：目标拆解、选择委派、审查子交付、合并结果、解决冲突、对最终交付负责；可以自己继续做，不是每个任务都必须拆；不能把“子任务都完成了”当成自己的完成。
 - **子 worker**：在给定 scope 内完成子目标、按契约报告、把问题回父；不能扩大 scope、不能直接找人、不能结束父任务。
-- **人**：最终验收父 Ticket；可以停止父任务（级联），默认不直接回答子 worker。
+- **人**：最终验收父 Ticket 的**人工确认项**；没有确认项时沿用现有 ready/PR 关闭路径。人可以停止父任务（级联），默认不直接回答子 worker。
 - **Prompt/工具**：runtime 给父 worker 注入 `delegate_task`/`accept_subtask`/`return_subtask`/`cancel_subtask`，给子 worker 注入报告与“问题回父”规则；工具 schema 由 runtime 定义，worker 不能自己扩权。
 
 结束路径与守卫（必须做在 `Tickets.end`/`unfinished`，不能只在 worker report 里判断）：
@@ -458,6 +458,8 @@ Ticket accepted
 - 单用户本地运行冲突很少，但未来多人/多端必须要有。
 - 每次写记录 `history`：`at`、`actor`（human / agent / system）、`action`（含 `classify`、`suggest`、`accept-suggestion`、`dismiss-suggestion`、`move`、`merge`、`split` 等）、`before`、`after`、`reason`。这份 history 存在覆盖层文档内，不依赖 `activity` 表；后续若要进事件流，再加只读投影。
 - 类别变更属于展示元数据，**不写 Mandate、不产生通知、不触发 Eval**。
+- **分类不是自我进化提案**：归类只写可撤销的显示覆盖层；新类别、合并、拆分、验收模板仍只建议。高置信命中已有类别的自动归属可关闭，写入 `history`，且不改变授权、验收条件或上下文装配（见设计原则 PR #30 的 C.1/C.2）。
+- **类别不是群组/组织上下文**：群组由 Source 的 Channel 地址与 Thread/Subscription 派生（设计原则 C.3）；类别只表示展示归属，不派生成员名单、不进入 prompt 装配、不授予任何权限。两者可以同时存在，但不能互相替代。
 
 ## 6. 数据模型与接口
 
@@ -875,6 +877,8 @@ interface ExecutionUnitView {
 7. **无交付的 Ticket**：`ReviewAggregate` 为空；仍可结束，但不能声称“已验收”；UI 显示“无交付”。
 8. **lightweight**：没有 `Assignment.report.review`/`Subtask`，不产生 `TaskReviewView`；`TaskView.review` 缺省，人工不能批准一个不存在的 review。
 
+**实现边界（当前 vs 本提案）**：以上 `ReviewAggregate`、`reviewRevision` 与带 revision 的 `POST tickets/:id/approve` 都是**提案**。当前 `reviewTicket`/`Assignments.review` 只接受最新 Report 的 review，没有 revision 参数，也不会返回 `409 reviewStale`；`POST tickets/:id/approve` 只对 review-stage、带 preview 的 Report 记录接受者/时间，不结束 Ticket，后续 Report 会覆盖它。实现 6.6 之前，现有验收路径不变；设计原则（PR #30）里「按 revision 确认」也只能在 6.6 落地后成立，不能当作当前不变量。
+
 UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只读 `ticket.review` 的最新 Assignment；`TaskView.review` 是详情字段，列表只显示去重后的 `deliverables` 摘要。`GET tickets/:id` 的 review 视图同步改为聚合，避免两套验收口径。
 
 测试：子任务有 `HumanCriterion` → 父接受后仍出现在最终 review；人批准的 `reviewRevision` 覆盖该条；接受前子任务新报告使旧 revision 失效，必须重新批准；接受后报告被拒绝；父子同一 artifact/revision 只出现一行；未结束子任务不能批准；父 worker 不能通过 `accept_subtask` 清掉人的确认。
@@ -889,6 +893,8 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 | 状态页“任务” | 完整管理 | 列表/树/看板/图、类别管理、任务与子任务详情、批量操作 |
 
 两者都读 `GET tasks`；右栏不另建接口，状态页也不另算归属。
+
+> **展示边界（对齐设计原则 PR #30 的 E0–E3）**：任务视图属于 **E1**。默认行与详情显示目标、负责人角色、状态、交付、阻塞与来源，不显示 `worker-`、`subtask-<id>-<attempt>` 或 Session id；原始 id、Assignment/subagent 细节与 trace 只在折叠的“技术详情/执行细节”（E2）出现。E0 仍只给目标、状态、需决定与结果。该边界也符合 `docs/005` 的原则 4（内部标识只出现在折叠详情）。
 
 ### 7.2 右侧栏任务 tab
 
@@ -906,8 +912,8 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 │ 客户服务                            3 个任务 · 1 待办 │
 │  ● 华兴科技 2025 汇算清缴       进行中  3/5  12m   │
 │    对话 · 飞书 · PR #21              交付 1 待验收   │
-│    └ 资料解析（sub_…）          完成    subtask-…  │
-│    └ 底稿核算（sub_…）          进行中  subtask-…  │
+│    └ 资料解析（子任务）          完成     子 worker   │
+│    └ 底稿核算（子任务）          进行中   子 worker   │
 │  ● 恒润制造 2025 涉税风险体检   需我处理            │
 │    …                                              │
 │ 业务拓展                                             │
@@ -921,8 +927,8 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 - **默认列表**，不默认树：窄栏里树的缩进与连线会吃掉宽度；点任务行按需取一级子任务，再点“展开执行”看 Assignment/subagent。
 - **类别分组头**只在有类别时出现；“未归类”永远在最后，不隐藏。
 - **建议区**：未归类上方显示“类别建议：客户服务（3 个任务）[采用] [忽略]”；建议不占类别上限，采用后才进入类别列表。
-- **任务行**：状态点 + 标题 + 状态词 + 来源 chip（最多 3 个，超出显示 `+N`）+ 进度/交付摘要 + 最近事件时间。父 worker 与 Session 放在展开区；子任务行显示自己的 worker，不挤来源 chip。lightweight 行加“轻量”badge，不显示 worker/Session，也没有展开箭头。
-- **展开区**：仅 tracked 节点有；子任务行（标题、状态、自己的 worker）、父 worker 的交付审查/合并摘要、最近 3 条事件、“打开任务页”。子任务行再展开执行细节。lightweight 的详情是 action ledger + summary，不伪装成“待验收”。
+- **任务行**：状态点 + 标题 + 状态词 + 来源 chip（最多 3 个，超出显示 `+N`）+ 进度/交付摘要 + 最近事件时间。父 worker 的负责人角色放在展开区；子任务行显示自己的负责人角色（子 worker），不挤来源 chip，也不显示 worker/Session id。lightweight 行加“轻量”badge，不显示 worker/Session，也没有展开箭头。
+- **展开区**：仅 tracked 节点有；子任务行（标题、状态、负责人角色）、父 worker 的交付审查/合并摘要、最近 3 条事件、“打开任务页”。子任务行再展开“技术细节”（E2）时才显示 workerSessionId/subagent/Assignment。lightweight 的详情是 action ledger + summary，不伪装成“待验收”。
 - **选中与联动**：`TaskSelection = { kind: "ticket" | "subtask"; id: string }`。选中 Ticket 后切到“事件”tab，事件列表筛到该 Ticket；选中子任务时筛到父 Ticket，并在任务 tab 展开该子任务。在事件里点某条记录，切回“任务”tab 并定位对应 Ticket/子任务。两 tab 共享这个轻量状态（Session 内，不写库）。注意：现有 `EventsTab` 只有 all/attention/running/failed 筛选，**没有按任务筛选**；第 1 期要给事件分组加一个 `task` 维度，否则联动落不了地。
 - **未读/需处理**：tab 标题显示需处理任务数（review/answer/delivery/blocked/failed，加上未结束子任务的 blocked/failed/orphaned），与事件未读数分开，避免两个数字混在一起。
 - **数据范围**：`GET tasks` 是进程级数据，不按当前 Session 过滤；任何 Session 打开任务 tab 都看到同一份任务，和现有 `EventsTab` 一致。`masterId` 未知时只显示“正在连接主会话”，已知后正常显示；不要照搬 `SystemView` 的“仅主会话”限制（那只适用于状态页内嵌）。
@@ -940,9 +946,9 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 ────────────────────────────────────────────────────────
 客户服务                                    3 个任务 · 1 待办
   华兴科技 2025 汇算清缴     进行中   3/5   12m   …展开
-    └ 资料解析（子任务）      完成     subtask-…  交付通过
-    └ 底稿核算（子任务）      进行中   subtask-…  2/3
-        └ 固定资产底稿        进行中   subtask-…  执行细节
+    └ 资料解析（子任务）      完成     子 worker  交付通过
+    └ 底稿核算（子任务）      进行中   子 worker  2/3
+        └ 固定资产底稿        进行中   子 worker  执行细节
   恒润制造 2025 涉税风险体检  需我处理  …
 未归类
   …
@@ -960,14 +966,14 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 
 ### 7.4 任务详情
 
-顶层任务 = 工单；子任务详情复用同一套组件，隐藏 Mandate/来源锚点，显示父目标、子 scope、自己的 worker 与父审阅状态。详情不是新数据源，而是把现有工单页重组为“任务面”：
+顶层任务 = 工单；子任务详情复用同一套组件，隐藏 Mandate/来源锚点，显示父目标、子 scope、负责人角色与父审阅状态。详情不是新数据源，而是把现有工单页重组为“任务面”：
 
 | 区块 | 内容 | 现有来源 |
 | --- | --- | --- |
 | 头 | 标题、form（tracked/轻量）、类别（仅 Ticket 可改）、状态、来源（子任务显示父 Ticket）、耗时 | `GET tickets/:id` / `GET subtasks/:id` + `form` + 类别 |
 | 目标与来路 | Ticket 显示 Mandate scope、origin Trigger 摘要、计划标签；子任务显示父目标、子 scope、委派原因 | 现有 + `Subtask` |
-| 子任务 | 仅 tracked：直接子任务列表（标题、状态、自己的 worker、交付摘要、最近报告）；父节点显示“审阅/合并”进度；停止父任务/重试仍走工单页；子任务由父 worker 取消。lightweight 无此区块 | `TaskView.subtasks` / `SubtaskView` |
-| 谁在执行 | tracked：父 worker、当前节点 worker、子会话（subagent）、Assignment 历史；lightweight：显示 inline 执行与 action ledger，不显示 worker/Assignment；不编造“执行 Agent”名字 | `workerSessionId`、`Subtask.workerSessionId`、assignments、inline action |
+| 子任务 | 仅 tracked：直接子任务列表（标题、状态、负责人角色、交付摘要、最近报告）；父节点显示“审阅/合并”进度；停止父任务/重试仍走工单页；子任务由父 worker 取消。lightweight 无此区块 | `TaskView.subtasks` / `SubtaskView` |
+| 谁在执行 | tracked：显示父 worker / 当前节点 worker / 子会话（subagent）的**角色标签**；`workerSessionId` 只在“技术详情”（E2）显示；lightweight：显示 inline 执行与 action ledger，不显示 worker/Assignment；不编造“执行 Agent”名字 | `workerSessionId`、`Subtask.workerSessionId`、assignments、inline action |
 | 来源锚点 | Channels/Threads、PR/Issue/群/对话线程、关闭状态、最近事件；子任务继承父 Ticket 的来源，不单独建锚点 | `threads` |
 | 产出与交付 | tracked：每个节点从自己的 `report.review` 汇总 artifact/revision/preview/验收条件/批准状态；Ticket 详情用 6.6 `TaskReviewView` 展示父+已接受子任务的去重交付与确认来源，人按 `reviewRevision` 一次批准。子任务交付先由父 worker 审查。lightweight：只显示 inline summary/action ledger，**没有 Review/确认** | `latestReport` / `report.review`（现有 + 子任务）+ `TaskReviewView`；lightweight 用 inline action |
 | 父审阅/合并 | 子任务交付被接受/退回的记录、`Subtask.merge`（子 revision、冲突、`merged`/`escalated`）、冲突处理；只有父 worker 能推进 | `Subtask.report` / `Subtask.merge` + 活动 |
@@ -985,7 +991,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 - 子会话：节点 worker 开的 subagent，回答“节点里拆出去的哪一步是谁在做”。
 - lightweight：没有以上四类 worker/session；只显示 inline run 的 step/action ledger，不伪造会话。
 
-任务详情分别给入口；任务行只显示当前节点 worker，父 worker/来源会话放在展开区/详情，避免窄栏堆按钮。
+任务详情分别给入口；任务行只显示**负责人角色**，父 worker/来源会话入口放在展开区/详情；`worker-`/`subtask-` 内部 id 只在折叠的“技术详情”（E2）出现，避免窄栏堆按钮、也避免把内部标识当默认信息。
 
 ### 7.5 三视图的分工
 
@@ -1089,7 +1095,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 
 **2b 视图**
 
-- 列表/树显示 tracked Ticket → 子任务（默认一层，更深折叠）；子任务行显示自己的 worker、状态、交付摘要；Ticket 详情的交付审查用 6.6 `TaskReviewView`，显示子确认来源与 `reviewRevision`。lightweight 是叶子，不显示子任务。
+- 列表/树显示 tracked Ticket → 子任务（默认一层，更深折叠）；子任务行显示负责人角色、状态、交付摘要，不显示内部 worker/Session id；Ticket 详情的交付审查用 6.6 `TaskReviewView`，显示子确认来源与 `reviewRevision`。lightweight 是叶子，不显示子任务。
 - 父节点详情显示子任务、父审阅/合并状态；子节点详情复用组件，隐藏 Mandate/来源锚点。
 - 右栏只显示一层子任务；完整树进状态页。
 - 验收：父 worker 能创建 2 个子任务，各自有 worker；父能看到子交付并接受/退回；有未结束子任务时父不能 `ready`；停止父任务级联停止子任务；重启后子任务状态不丢；超过深度/宽度返回明确错误；不产生子 Ticket。
