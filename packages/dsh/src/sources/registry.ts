@@ -4,7 +4,7 @@ import type { Commands } from '../infra/commands.ts'
 import type { ConversationHost } from './host.ts'
 import { HealthBoard, type HealthEntry } from '../infra/health.ts'
 import { AdmissionTableSchema, type Settings } from '../policy.ts'
-import type { ChannelLink, ChannelLinks, ProbeAnswer, SourceAdapter, SourceDefinition, SourceInstance, SourceKind, TriggerContext, VariableSpec } from './kind.ts'
+import type { ChannelLink, ChannelLinks, ProbeAnswer, SourceAdapter, SourceDefinition, SourceInstance, SourceKind, TriggerContext, VariableSpec, Withdrawal } from './kind.ts'
 import { manifestForm, type SourceForm } from './manifest-form.ts'
 import { parseSourceManifest } from './manifest-schema.ts'
 
@@ -168,6 +168,13 @@ export class SourceRegistry implements SourceScope {
    */
   async probe(message: OutboundMessage, commands: Commands): Promise<ProbeAnswer | undefined> {
     return this.registrations.get(message.channel.source)?.adapter.channel?.probe?.({ commands }, message)
+  }
+  /**
+   * Takes back a message already sent through its Channel, for the kinds that declare a `withdraw` adapter; `undefined`
+   * when the kind cannot withdraw a sent message, so the caller never assumes a write was undone.
+   */
+  async withdraw(message: OutboundMessage, commands: Commands): Promise<Withdrawal | undefined> {
+    return this.registrations.get(message.channel.source)?.adapter.channel?.withdraw?.({ commands }, message)
   }
   link(channel: ChannelRef, links: ChannelLinks): ChannelLink {
     const link = this.registrations.get(channel.source)?.adapter.channel?.link(channel.address, links)

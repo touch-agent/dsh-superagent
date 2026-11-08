@@ -4,7 +4,7 @@ import type { OutboundMessage } from '@superagent/kernel'
 import { CliError, validItems } from '../infra/commands.ts'
 import { checkedImText } from '../infra/text.ts'
 import type { SourceContext } from './host.ts'
-import type { ChannelLink, ChannelLinks, ProbeAnswer } from './kind.ts'
+import type { ChannelLink, ChannelLinks, ProbeAnswer, Withdrawal } from './kind.ts'
 import { feishuTriggerId } from './feishu-trigger.ts'
 import { deliveryMark, deliveryMarkIds } from './feishu-mark.ts'
 
@@ -80,6 +80,14 @@ export async function probeFeishu(host: Pick<SourceContext, 'commands'>, message
   } catch (error) {
     return gone(error) ? 'gone' : 'unknown'
   }
+}
+/**
+ * Feishu can recall a bot message with `im messages delete`, but lark-cli marks that call a high-risk write that needs a
+ * person's explicit confirmation (`--yes`). The Outbox must not pass that flag on its own, so a sent message is refused
+ * with the reason instead of being recalled silently; the drill records the refusal.
+ */
+export async function withdrawFeishu(_host: Pick<SourceContext, 'commands'>, _message: OutboundMessage): Promise<Withdrawal> {
+  return { status: 'refused', reason: 'Recalling a Feishu message is a high-risk write that needs a person\'s confirmation' }
 }
 /** Fallback chat link on the bot's brand; the message's own deep link on its Trigger is preferred when available. */
 export const feishuLink = (address: Record<string, string>, links: ChannelLinks): ChannelLink => ({
