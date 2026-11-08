@@ -66,7 +66,7 @@ These surfaces depend on host seats introduced by `0.2.1-rc.5` (`conversation.he
 | --- | --- | --- |
 | Main-Session entry in New Session | ![Before](images/session-entry/before-master-entry.png) | ![After](images/session-entry/after-master-entry.png) |
 | Status page (reused management page) in the main Conversation | ![Before](images/session-entry/before-status-view.png) | ![After](images/session-entry/after-status-view.png) |
-| Events tab grouped by task, with unread title | ![Before](images/session-entry/before-events-groups.png) | ![After](images/session-entry/after-events-groups.png) |
+| Events tab grouped by task, with readable rows and filters | ![Before](images/session-entry/before-events-groups.png) | ![After](images/session-entry/after-events-groups.png) |
 
 Captured on DSH `0.2.1-rc.5`, same 1440×900 viewport and light theme. The entry's Before is the host without this plugin's surface; the Status row's Before is revision `c18d8a6`, where 体系 was a reduced read-only view; the Events row's Before is revision `37eaff3`, with the flat event list. After is this branch in every row. The Events pair uses the same seeded Tickets and events and both captures were taken with the tab already open, so the unread count is not part of the comparison.
 
