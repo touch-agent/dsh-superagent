@@ -1,5 +1,5 @@
 /** Actions: what a worker may do beyond reading, graded by how far its effect reaches. */
-import type { ActorRef } from './model.ts'
+import type { ActorRef, ChannelRef } from './model.ts'
 import { key } from './ids.ts'
 
 /** The levels in their order of consequence, which is also the order of any `maxActionLevel` comparison. */
@@ -16,6 +16,14 @@ export type ActionLevel = typeof ACTION_LEVELS[number]
 export type ActionCost =
   | { kind: 'money'; amount: number; currency: string }
   | { kind: 'time'; minutes: number }
+
+/** The kinds of message an outbox writes; each is also the action kind of the send it records. */
+export const OUTBOUND_KINDS = ['acknowledgement', 'reply', 'notice'] as const
+/** What an outbound message is for: a person's request taken up, an answer or result, or an automated notice. */
+export type OutboundKind = typeof OUTBOUND_KINDS[number]
+
+/** The system actor that writes through the outbox: the agent, not the person whose request it carries out. */
+export const OUTBOX_ACTOR: ActorRef = { source: 'dsh-superagent', id: 'outbox' }
 
 /** What an action is and the exact revision of the object it applies to, before its idempotency key is derived. */
 export interface ActionIdentity {
@@ -96,4 +104,35 @@ export function createAction(input: ActionIdentity & { cost?: ActionCost }): Act
   }
   if (input.cost !== undefined) throw new TypeError('Only a spend action carries a cost')
   return { kind, source, objectId, revision, actor, idempotencyKey, level: input.level }
+}
+
+/** An Action whose kind names an outbound write; the Outbox and its receipts carry this narrower shape. */
+export type OutboundAction = Action & { kind: OutboundKind }
+
+/** What a caller supplies to describe an outbound write, before its `send` Action and key are derived. */
+export interface OutboundActionInput {
+  /** What the message is for; it is also the Action's kind. */
+  kind: OutboundKind
+  /** The Source that owns the object written on, such as the conversation's Source. */
+  source: string
+  /** The object's id in that Source: the Trigger answered, the question asked, or the pull request reported. */
+  objectId: string
+  /** The content revision: the same revision is the same write, a new one is another message. */
+  revision: string
+  /** Who writes; the system outbox actor unless a caller names another. */
+  actor?: ActorRef
+}
+
+/**
+ * Build the `send` Action an outbound message carries. Its idempotency key becomes the message id and the `reply`
+ * effect's key, so two revisions of one write are two effects and a replay of one revision is one.
+ */
+export function outboundAction(input: OutboundActionInput): OutboundAction {
+  return createAction({ kind: input.kind, source: input.source, objectId: input.objectId, revision: input.revision,
+    actor: input.actor ?? OUTBOX_ACTOR, level: 'send' }) as OutboundAction
+}
+
+/** The send Action of an acknowledgement of `triggerId`, sent into `channel`; who accepted it does not change its key. */
+export function acknowledgementAction(channel: Pick<ChannelRef, 'source'>, triggerId: string): OutboundAction {
+  return outboundAction({ kind: 'acknowledgement', source: channel.source, objectId: triggerId, revision: 'accepted' })
 }

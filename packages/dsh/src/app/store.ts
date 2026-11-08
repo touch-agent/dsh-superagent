@@ -2,8 +2,8 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import { chmodSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { key, threadKey, type Approval, type ChannelRef, type Decision, type OutboundMessage, type ReplyStatus, type Repositories, type Span, type Thread,
-  type ThreadFact, type ThreadFacts, type Ticket, type Trigger, type TriggerDisposition } from '@superagent/kernel'
+import { key, threadKey, type Approval, type ChannelRef, type Decision, type OutboundMessage, type OutboundSend, type ReplyStatus, type Repositories, type Span,
+  type Thread, type ThreadFact, type ThreadFacts, type Ticket, type Trigger, type TriggerDisposition } from '@superagent/kernel'
 import { KV, type Family, type Key } from '../kv.ts'
 import { SettingsSchema, type Settings, type SettingsOrigin, type SettingsSave } from '../policy.ts'
 import { OLDEST_SCHEMA, SCHEMA_VERSION, migrateTo11, tooOld } from './migration.ts'
@@ -344,14 +344,16 @@ export class Store implements Repositories {
       JOIN outbox message ON message.id = ? LEFT JOIN effect ON effect.kind = 'reply' AND effect.key = earlier.id
       WHERE earlier.pending = message.pending AND earlier.rowid < message.rowid AND IFNULL(effect.attempts, 0) < ? LIMIT 1`).get(id, failures),
     /**
-     * Records a new pending message receipt; an already-recorded message ID keeps its original receipt.
+     * Records a new pending message receipt under its send Action's idempotency key; an already-recorded key keeps its
+     * original receipt.
      * @param window - The undo window and the moment it ends; a missing window means the message may be sent at once and
      * cannot be recalled, as for receipts migrated from versions that had no window.
      * @returns Whether the message ID was newly recorded.
      */
-    add: (message: OutboundMessage, window?: { dueAt: string; windowMs: number }): boolean => {
-      const receipt: Receipt = { ...message, status: 'pending', ...window }
-      return Number(this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)').run(message.id, JSON.stringify(receipt)).changes) > 0
+    add: (message: OutboundSend, window?: { dueAt: string; windowMs: number }): boolean => {
+      const id = message.action.idempotencyKey
+      const receipt: Receipt = { ...message, id, kind: message.action.kind, status: 'pending', ...window }
+      return Number(this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)').run(id, JSON.stringify(receipt)).changes) > 0
     },
     /**
      * Marks a receipt as sent or dropped (with drop reason and timestamp). A message withdrawn while its send was in flight
@@ -360,11 +362,11 @@ export class Store implements Repositories {
      */
     settle: (message: OutboundMessage, outcome: 'sent' | DropReason): void => {
       const settled = outcome === 'sent' ? { status: 'sent', recalled: null } : { status: 'dropped', recalled: null, dropped: { at: new Date().toISOString(), reason: outcome } }
-      const { id, channel, text, kind, ticketId } = message
+      const { id, channel, text, action, kind, ticketId } = message
       const updated = this.db.prepare("UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' IN ('pending', 'recalled')")
         .run(JSON.stringify(settled), id)
       if (!Number(updated.changes)) this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)')
-        .run(id, JSON.stringify({ id, channel, text, kind, ...ticketId ? { ticketId } : {}, ...settled }))
+        .run(id, JSON.stringify({ id, channel, text, ...action ? { action } : {}, ...kind ? { kind } : {}, ...ticketId ? { ticketId } : {}, ...settled }))
     },
     /**
      * Recalls a still-pending message whose undo window is open at `at`, keeping its receipt as `recalled`

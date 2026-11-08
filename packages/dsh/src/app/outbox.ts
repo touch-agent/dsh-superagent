@@ -1,5 +1,5 @@
 /** Reliable outbound message delivery backed by persistent receipts, an undo window, and retried reply effects. */
-import { UserError, type OutboundMessage, type Outbox as OutboxPort, type ReplyStatus } from '@superagent/kernel'
+import { UserError, type OutboundSend, type Outbox as OutboxPort, type ReplyStatus } from '@superagent/kernel'
 import type { Commands } from '../infra/commands.ts'
 import { checkedImText } from '../infra/text.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
@@ -19,6 +19,8 @@ export interface OutboxHost {
 /**
  * Persists outbound channel messages as receipts and delivers them sequentially through `Effects` and `SourceRegistry`.
  * Implements the core `Outbox` port for `Engine` and source contexts, ensuring per-conversation ordering for each ticket until an earlier message fails repeatedly.
+ * A message's `send` Action names the write: its idempotency key is the receipt id and the `reply` effect's key, so two
+ * revisions of one write are two effects and a replay of one revision is one.
  * A message waits out the Policy's undo window before its `reply` effect falls due; recalling it inside that window keeps
  * its receipt as `recalled` and cancels the effect, so it is never sent. Messages also wait while processing is paused or
  * their source is unavailable, and settle as dropped when the target conversation is ignored or gone.
@@ -29,19 +31,23 @@ export class Outbox implements OutboxPort {
     host.effects.handle('reply', (_payload, id) => this.deliver(id), { limit: () => host.paused() ? 0 : 1, retry: [5000, 300_000] })
   }
   /**
-   * Record a message receipt and enqueue its delivery effect for the end of the undo window atomically; duplicate message
-   * IDs are ignored, so a recalled or sent ID is never queued again.
+   * Record a message receipt and enqueue its delivery effect for the end of the undo window atomically, both under the
+   * send Action's idempotency key. A key already recorded is ignored, so a recalled or sent revision is never queued again.
    */
-  send(message: OutboundMessage): void {
+  send(message: OutboundSend): void {
+    if (message.action.level !== 'send' || message.action.source !== message.channel.source) {
+      throw new TypeError('An outbound message must carry a send Action for its Channel\'s Source')
+    }
+    const id = message.action.idempotencyKey
     // Validate IM reply length here; acknowledgements are already validated when decided.
-    if (message.kind === 'reply' && message.channel.source === 'feishu') checkedImText(message.text)
+    if (message.action.kind === 'reply' && message.channel.source === 'feishu') checkedImText(message.text)
     const { store, effects } = this.host
     const now = Date.now()
     const requested = this.host.undoWindowMs()
     const windowMs = Math.max(0, Number.isFinite(requested) ? requested : 0)
     const dueAt = new Date(now + windowMs).toISOString()
     store.atomic(() => {
-      if (store.receipts.add(message, { dueAt, windowMs })) effects.enqueue('reply', message.id, {}, now + windowMs)
+      if (store.receipts.add(message, { dueAt, windowMs })) effects.enqueue('reply', id, {}, now + windowMs)
     })
   }
   status(id: string): ReplyStatus | undefined { return this.host.store.receipts.get(id)?.status }

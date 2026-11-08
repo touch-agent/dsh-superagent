@@ -152,7 +152,7 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
       const ended = event.type === 'ticket.ended' ? store.tickets.get(event.data.ticketId) : undefined
       if (ended && setup.configured()) {
         const request = store.triggers.get(ended.origin.triggerId)?.text ?? ''
-        for (const message of pullEndNotices(ended, request, setup.deployment.repository)) outbox.send(message)
+        for (const message of pullEndNotices(ended, request, setup.deployment.repository, id => outbox.status(id) !== undefined)) outbox.send(message)
       }
     } })
   // Update the `evals` health entry on every pass if an evaluation failed as unavailable within the last hour.

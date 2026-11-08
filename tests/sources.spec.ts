@@ -420,7 +420,10 @@ describe('github source', () => {
     expect(h.store.threads.get('github:9')?.subscriptions).toEqual(['t1'])
     // The notice its end gives follows the language of the source request.
     const notices = pullEndNotices(h.store.tickets.get('t1')!, request.text, 'acme/widgets')
-    expect(notices).toEqual([expect.objectContaining({ kind: 'notice', channel: expect.objectContaining({ source: 'feishu' }), text: expect.stringContaining('已合并') })])
+    expect(notices).toEqual([expect.objectContaining({ action: expect.objectContaining({ kind: 'notice', objectId: '9', level: 'send' }), channel: expect.objectContaining({ source: 'feishu' }), text: expect.stringContaining('已合并') })])
+    // A notice queued by an older version under its old id is not derived again.
+    const legacy = key('pr-terminal', '9', 'feishu', JSON.stringify(notices[0]!.channel.address), 'merged')
+    expect(pullEndNotices(h.store.tickets.get('t1')!, request.text, 'acme/widgets', id => id === legacy)).toEqual([])
     expect(h.executor.stop).toHaveBeenCalledOnce()
     // Resumed after the merge, the ticket works on: a later look at the merged PR reports nothing again.
     h.store.tickets.save({ ...h.store.tickets.get('t1')!, ended: undefined, assignments: [...h.store.tickets.get('t1')!.assignments, { id: 'a2', state: 'pending', createdAt: '2026-09-03T00:00:00Z' }] })
@@ -431,7 +434,7 @@ describe('github source', () => {
     expect(h.store.tickets.get('t1')).toMatchObject({ ended: { outcome: 'merged' } })
     expect(Date.parse(h.store.tickets.get('t1')!.ended!.at)).toBeGreaterThan(Date.parse('2026-09-03T00:00:00Z'))
     // Its notice has the id of the first one, so it goes out once.
-    expect(pullEndNotices(h.store.tickets.get('t1')!, request.text, 'acme/widgets').map(notice => notice.id)).toEqual(notices.map(notice => notice.id))
+    expect(pullEndNotices(h.store.tickets.get('t1')!, request.text, 'acme/widgets').map(notice => notice.action.idempotencyKey)).toEqual(notices.map(notice => notice.action.idempotencyKey))
     h.store.close()
   })
   it('keeps a ticket working on its other open PR when one of its PRs merges', async () => {

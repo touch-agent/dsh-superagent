@@ -22,12 +22,21 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { feishuKind } from '@superagent/dsh/sources/feishu.ts'
 import { githubKind, pollRound } from '@superagent/dsh/sources/github.ts'
 import { CliError, Commands } from '@superagent/dsh/infra/commands.ts'
-import { UserError, key, runningAssignment, said, threadKey, waitsForPerson, type Trigger } from '@superagent/kernel'
+import { UserError, key, outboundAction, runningAssignment, said, threadKey, waitsForPerson, type ChannelRef, type OutboundKind, type Trigger } from '@superagent/kernel'
 import { feishuTrigger } from '@superagent/dsh/sources/feishu.ts'
 import { feishuChannel } from '@superagent/dsh/sources/feishu-trigger.ts'
 import { commentTrigger, githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
 import { IM_WORDS } from '@superagent/dsh/infra/text.ts'
 import { observePull, pullOf } from '@superagent/dsh/sources/github-pull.ts'
+
+/** The id an outbound message's send Action derives, as the Outbox and its receipt use it. */
+const outboundId = (kind: OutboundKind, channel: ChannelRef, objectId: string, revision: string) =>
+  outboundAction({ kind, source: channel.source, objectId, revision }).idempotencyKey
+/** The id of an acknowledgement of `trigger`. */
+const ackId = (trigger: Trigger) => outboundId('acknowledgement', trigger.channel!, trigger.id, 'accepted')
+/** The id of a pull-request terminal notice for `number` into `channel`. */
+const noticeId = (number: number, channel: ChannelRef, outcome: string) =>
+  outboundId('notice', channel, String(number), key('pr-notice', outcome, JSON.stringify(channel.address)))
 import { credentialHelper, workerGitConfig } from '@superagent/dsh/infra/environment.ts'
 import { policyHistory } from '@superagent/dsh/app/settings-history.ts'
 import { overview } from '@superagent/dsh/app/views/overview.ts'
@@ -230,7 +239,7 @@ it('relays an explicit member mention as a candidate and creates the ticket, ack
   expect(ticket.assignments).toEqual([expect.objectContaining({ state: 'running', startedAt: expect.any(String) })])
   expect(sessionId).toBe(`worker-${ticket.id}`)
   expect(runtime.store.threads.get(`feishu:${CHAT}:om_1`)?.subscriptions).toEqual([ticket.id])
-  expect(runtime.store.replyStatus(key('ack', trigger.id))).toBe('sent')
+  expect(runtime.store.replyStatus(ackId(trigger))).toBe('sent')
   const larkCalls = vi.mocked(Commands.prototype.lark).mock.calls.map(([args]) => args)
   expect(larkCalls.find(args => args[1] === '+messages-reply')).toEqual(expect.arrayContaining(['--message-id', 'om_1', '--markdown', '收到，修复回归。']))
   // The first message holds the request itself: an explicit ticket has no assignment text beyond it, and nothing to read first.
@@ -289,7 +298,7 @@ it('assesses a proactive observation in the orchestrator Session and creates the
   expect(accepted).toMatchObject({ decision: 'accept', ticket: { ticket_id: expect.any(String) } })
   const ticket = runtime.store.tickets.get((accepted.ticket as { ticket_id: string }).ticket_id)!
   expect(ticket.mandate).toMatchObject({ strength: 'inferred', basis: expect.objectContaining({ via: 'admission', rules: ['copy'], observation: { mode: 'auto' } }) })
-  expect(runtime.store.replyStatus(key('ack', again.id))).toBeDefined()
+  expect(runtime.store.replyStatus(ackId(again))).toBeDefined()
   expect(await runTool(`worker-${ticket.id}`, 'orchestrator_read', { resource: `ticket/${ticket.id}/assignment` })).toMatchObject({ text: expect.stringContaining('Proactively accepted under copy') })
 })
 
@@ -305,7 +314,7 @@ it('accepts silently under a rule that says so, gives the worker the rule proced
     rule_assessments: [{ rule_id: 'copy', matched: false, reason: 'no' }, { rule_id: 'visual', matched: false, reason: 'no' }, { rule_id: 'silent-bugfix', matched: true, reason: 'bug report' }],
     direction: { implementation_requested: true, target_basis: 'existing-standard', requires_design_decision: false, evidence: 'expected colour is the light palette' } })
   const ticket = runtime.store.tickets.get((accepted.ticket as { ticket_id: string }).ticket_id)!
-  expect(runtime.store.replyStatus(key('ack', trigger.id))).toBeUndefined()
+  expect(runtime.store.replyStatus(ackId(trigger))).toBeUndefined()
   await runtime.idle()
   expect(sections.get(`worker-${ticket.id}`)!.text({})).toContain(mandateInstructions({ strength: 'inferred' }))
   expect(await runTool(`worker-${ticket.id}`, 'orchestrator_read', { resource: `ticket/${ticket.id}/assignment` })).toMatchObject({ text: expect.stringContaining('沉默地复现和修复 (silent-bugfix): Reproduce minimally first; accept silently.') })
@@ -347,8 +356,8 @@ it('records worker reports, binds the task PR, ends the ticket on ready without 
   expect(runtime.store.threads.get('github:42')?.subscriptions).toEqual([ticket.id])
   // Its worker's last word was its ready report, so its turn is not cancelled: it ends it itself.
   expect(agents.get(sessionId)!.cancel).not.toHaveBeenCalled()
-  const notice = runtime.store.receipts.waiting().find(item => item.kind === 'notice')
-  expect(notice ?? runtime.store.replyStatus(key('pr-terminal', '42', 'feishu', JSON.stringify({ chatId: CHAT, messageId: 'om_1' }), 'merged'))).toBeTruthy()
+  expect(runtime.store.receipts.waiting().find(item => item.action?.kind === 'notice')).toMatchObject({
+    text: expect.stringContaining('已合并'), action: expect.objectContaining({ objectId: '42', level: 'send' }) })
 })
 
 it('lists each ticket with the Threads it subscribes to, as their Sources describe them', async () => {
@@ -1154,39 +1163,45 @@ it('credits each human reviewer once in the default delivery requirements on eve
 it('shows a failed reply as a problem with its attempts, an error of the reply effects after three, until it is withdrawn', async () => {
   const { trigger } = await acceptedTicket()
   vi.spyOn(Commands.prototype, 'lark').mockRejectedValue(new Error('internal error (2200)'))
-  runtime.outbox.send({ id: 'stuck', channel: trigger.channel!, text: '已合并。', kind: 'notice' })
+  const stuck = outboundAction({ kind: 'notice', source: trigger.channel!.source, objectId: 'stuck', revision: 'rev-1' })
+  runtime.outbox.send({ action: stuck, channel: trigger.channel!, text: '已合并。' })
   const outgoing = () => overviewOf(runtime).problems.filter(problem => problem.kind === 'outgoing')
   const at = async (ms: number) => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + ms })
     try { await runtime.sendReplies() } finally { vi.useRealTimers() }
   }
   await runtime.sendReplies()
-  expect(outgoing()).toEqual([{ kind: 'outgoing', outgoing: expect.objectContaining({ id: 'stuck', attempts: 1, error: expect.stringContaining('2200') }) }])
+  expect(outgoing()).toEqual([{ kind: 'outgoing', outgoing: expect.objectContaining({ id: stuck.idempotencyKey, attempts: 1, error: expect.stringContaining('2200') }) }])
   expect(runtime.health.reply).toMatchObject({ state: 'ready', detail: expect.stringContaining('1 waiting') })
   // Its retries come after 5 and then 10 more seconds.
   await at(5000); await at(15_000)
   expect(runtime.health.reply).toMatchObject({ state: 'error', detail: expect.stringContaining('2200') })
   expect(runtime.health.runtime).toMatchObject({ state: 'ready' })
   // A withdrawn reply takes its effect with it, which clears the error at once.
-  runtime.outbox.withdraw('stuck')
-  expect([outgoing(), runtime.health.reply, runtime.effects.pending('reply', 'stuck')])
+  runtime.outbox.withdraw(stuck.idempotencyKey)
+  expect([outgoing(), runtime.health.reply, runtime.effects.pending('reply', stuck.idempotencyKey)])
     .toEqual([[], expect.objectContaining({ state: 'ready', detail: 'Nothing waiting' }), false])
 })
 
 describe('the order of a Ticket\'s messages to one conversation', () => {
   const sent: string[] = []
   const refused = new Set<string>()
-  const message = (id: string, ticketId: string, channel = feishuChannel(CHAT, 'om_1')) => ({ id, channel, text: id, kind: 'reply' as const, ticketId })
+  const ids = new Map<string, string>()
+  const message = (id: string, ticketId: string, channel = feishuChannel(CHAT, 'om_1')) => {
+    const action = outboundAction({ kind: 'reply', source: channel.source, objectId: id, revision: 'rev-1' })
+    ids.set(id, action.idempotencyKey)
+    return { action, channel, text: id, ticketId }
+  }
   const at = async (ms: number) => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + ms })
     try { await runtime.sendReplies() } finally { vi.useRealTimers() }
   }
   beforeEach(async () => {
-    sent.length = 0; refused.clear()
+    sent.length = 0; refused.clear(); ids.clear()
     await acceptedTicket()
     vi.spyOn(runtime.sources, 'send').mockImplementation(async message => {
-      if (refused.has(message.id)) throw new Error('internal error (2200)')
-      sent.push(message.id)
+      if (refused.has(message.text)) throw new Error('internal error (2200)')
+      sent.push(message.text)
       return 'sent'
     })
   })
@@ -1200,7 +1215,7 @@ describe('the order of a Ticket\'s messages to one conversation', () => {
     runtime.outbox.send(message('ack-b', 'b', feishuChannel(CHAT, 'om_2')))
     runtime.outbox.send(message('issue-a', 'a', githubChannel(7)))
     await runtime.sendReplies()
-    expect([runtime.outbox.status('result-a'), sent]).toEqual(['pending', ['ack-b', 'issue-a']])
+    expect([runtime.outbox.status(ids.get('result-a')!), sent]).toEqual(['pending', ['ack-b', 'issue-a']])
     await at(5000)
     expect(sent).toEqual(['ack-b', 'issue-a', 'ack-a', 'result-a'])
   })
@@ -1214,17 +1229,19 @@ describe('the order of a Ticket\'s messages to one conversation', () => {
     expect(sent).toEqual([])
     await at(15_000)
     expect(sent).toEqual(['result-a'])
-    expect(overviewOf(runtime).problems).toContainEqual({ kind: 'outgoing', outgoing: expect.objectContaining({ id: 'ack-a', attempts: 3 }) })
+    expect(overviewOf(runtime).problems).toContainEqual({ kind: 'outgoing', outgoing: expect.objectContaining({ id: ids.get('ack-a'), attempts: 3 }) })
   })
 })
 
 it('keeps the receipt of a message withdrawn while it went out, so its id is not queued again', async () => {
   const { trigger } = await acceptedTicket()
   vi.spyOn(runtime.sources, 'send').mockImplementation(async message => { runtime.outbox.withdraw(message.id); return 'sent' })
-  runtime.outbox.send({ id: 'raced', channel: trigger.channel!, text: 'Done', kind: 'reply' })
+  const action = outboundAction({ kind: 'reply', source: trigger.channel!.source, objectId: 'raced', revision: 'rev-1' })
+  runtime.outbox.send({ action, channel: trigger.channel!, text: 'Done' })
   await runtime.sendReplies()
-  runtime.outbox.send({ id: 'raced', channel: trigger.channel!, text: 'Again', kind: 'reply' })
-  expect([runtime.store.receipts.get('raced'), runtime.effects.pending('reply')]).toEqual([expect.objectContaining({ text: 'Done', status: 'sent' }), false])
+  runtime.outbox.send({ action, channel: trigger.channel!, text: 'Again' })
+  expect([runtime.store.receipts.get(action.idempotencyKey), runtime.effects.pending('reply')])
+    .toEqual([expect.objectContaining({ text: 'Done', status: 'sent' }), false])
 })
 
 it('resumes several ended tickets on one thread from one message without the launch waiting on itself', async () => {
@@ -1267,8 +1284,14 @@ it('rereads a Source\'s display names on request, reports the new ones and keeps
 
 it('drops a message only when its conversation is gone or not listened to, newest drop first, and keeps it while its Source is off', async () => {
   const channel = feishu('7', 'x').channel!
+  const ids = new Map<string, string>()
   // Messages of no Ticket keep no order, so none waits behind another.
-  const queue = (id: string, address: Record<string, string>) => { runtime.outbox.send({ id, channel: { ...channel, address }, text: '已合并。', kind: 'notice' }) }
+  const queue = (id: string, address: Record<string, string>) => {
+    const target = { ...channel, address }
+    const action = outboundAction({ kind: 'notice', source: target.source, objectId: id, revision: 'rev-1' })
+    ids.set(id, action.idempotencyKey)
+    runtime.outbox.send({ action, channel: target, text: '已合并。' })
+  }
   queue('gone-reply', channel.address)
   queue('failing-reply', { ...channel.address, messageId: 'om_8' })
   vi.mocked(Commands.prototype.lark).mockImplementation(async args => {
@@ -1280,21 +1303,21 @@ it('drops a message only when its conversation is gone or not listened to, newes
   })
   await runtime.sendReplies()
   // The Feishu Channel reads the recall code as gone; any other failure keeps the reply for a retry.
-  expect(runtime.store.replyStatus('gone-reply')).toBe('dropped')
-  expect(runtime.store.replyStatus('failing-reply')).toBe('pending')
+  expect(runtime.store.replyStatus(ids.get('gone-reply')!)).toBe('dropped')
+  expect(runtime.store.replyStatus(ids.get('failing-reply')!)).toBe('pending')
   const settings = runtime.store.settings(), feishuSource = settings.sources.feishu!
   runtime.store.saveSettings({ ...settings, sources: { ...settings.sources, feishu: { ...feishuSource, enabled: false } } })
   queue('off-reply', { ...channel.address, messageId: 'om_9' })
   queue('ignored-reply', { chatId: 'oc_elsewhere', messageId: 'om_10' })
   await runtime.sendReplies()
-  expect([runtime.store.replyStatus('off-reply'), runtime.store.replyStatus('ignored-reply')]).toEqual(['pending', 'pending'])
+  expect([runtime.store.replyStatus(ids.get('off-reply')!), runtime.store.replyStatus(ids.get('ignored-reply')!)]).toEqual(['pending', 'pending'])
   // Once the Source is on again, the messages that waited go out or are dropped when they are tried again, after 5 seconds.
   runtime.store.saveSettings(settings)
   vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 5000 })
   try { await runtime.sendReplies() } finally { vi.useRealTimers() }
-  expect([runtime.store.replyStatus('off-reply'), runtime.store.replyStatus('ignored-reply')]).toEqual(['sent', 'dropped'])
+  expect([runtime.store.replyStatus(ids.get('off-reply')!), runtime.store.replyStatus(ids.get('ignored-reply')!)]).toEqual(['sent', 'dropped'])
   const dropped = ((await api('GET', 'sources')).body as unknown as { dropped: { id: string }[] }[]).flatMap(source => source.dropped)
-  expect(dropped).toMatchObject([{ id: 'ignored-reply', dropped: { reason: 'channelIgnored' } }, { id: 'gone-reply', dropped: { reason: 'channelGone' } }])
+  expect(dropped).toMatchObject([{ id: ids.get('ignored-reply'), dropped: { reason: 'channelIgnored' } }, { id: ids.get('gone-reply'), dropped: { reason: 'channelGone' } }])
 })
 
 it('reports a dropped acknowledgement as dropped, with its Ticket on the Source status and in the last day\'s flow', async () => {
@@ -1305,7 +1328,7 @@ it('reports a dropped acknowledgement as dropped, with its Ticket on the Source 
   expect(await runTool(sessionId, 'orchestrator_ack', { trigger_id: followup.id, text: '收到，也处理这个。' })).toMatchObject({ acknowledgement: 'dropped' })
   expect(await runTool(runtime.masterId, 'orchestrator_read', { resource: `trigger/${followup.id}` })).toMatchObject({ acknowledgement: 'dropped' })
   const dropped = ((await api('GET', 'sources')).body as unknown as { dropped: unknown[] }[]).flatMap(source => source.dropped)
-  expect(dropped).toMatchObject([{ id: key('ack', followup.id), ticket: { id: ticket.id, title: ticket.title } }])
+  expect(dropped).toMatchObject([{ id: ackId(followup), ticket: { id: ticket.id, title: ticket.title } }])
   expect(overviewOf(runtime).flow.dropped).toBe(1)
 })
 
@@ -1441,7 +1464,7 @@ it('tells the conversation that the PR merged when work a restart recovered ends
     user: { login: 'agent-bot' }, head: { sha: 'abc', ref: 'agent/x', repo: { full_name: 'acme/widgets' } } }
   await observePull(runtime.context(githubKind), merged)
   expect(runtime.store.tickets.get(ticket.id)).not.toHaveProperty('ended')
-  const id = key('pr-terminal', '42', 'feishu', JSON.stringify({ chatId: CHAT, messageId: 'om_1' }), 'merged')
+  const id = noticeId(42, { source: 'feishu', thread: `feishu:${CHAT}:om_1`, address: { chatId: CHAT, messageId: 'om_1' } }, 'merged')
   expect(runtime.store.replyStatus(id)).toBeUndefined()
   // Its ready report ends the ticket with the PR, and the conversation hears of the merge once.
   await runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'Recovered and verified' })

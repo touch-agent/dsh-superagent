@@ -252,6 +252,8 @@ graph LR
 - **验收**：同一 action 两种 revision 产生两条 effect；同一 revision 重复触发只有一条。断电注入测试见 T2-09。
 - **依赖**：T2-01。
 
+- **状态**：实现完成（2026-11-08，PR #13 待审查合并）。`packages/kernel/src/action.ts` 新增 `outboundAction`、`acknowledgementAction`、`OUTBOUND_KINDS` 与 `OUTBOX_ACTOR`：外发消息成为 `send` Action，key 由 `(source, objectId, kind, revision, actor)` 派生；`OutboundSend` 交给 Outbox，收据 id 与 `reply` effect key 同源，`effects.enqueue` 的 UPSERT 因此按同一 key 合并。ack、answer/result、attention、PR 终态通知分别构造 Action；撤回 attention 用同一派生 key；旧收据保留原 `kind` 可读。`tests/outbox.spec.ts` 覆盖同一 action 两个 revision 产生两条 effect、同一 revision 重复只有一条；`tests/action.spec.ts` 覆盖外发 Action 的 key 随各字段变化。Approval id 仍由 `ticketId` 与 action key 派生（`key('approval', ticketId, actionKey)`），与收据使用同一 action key。
+
 ### T2-06 Source `probe` 语义 · Connector · 3 人日
 
 - **交付**：manifest 增 `probe(idempotencyKey)`：源能回答「这条消息发出去了吗」；支持 probe 的源在撤回/重试时用它校验。

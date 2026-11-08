@@ -1,6 +1,6 @@
 /** Pull request binding, lifecycle observation, and terminal IM notification helpers. */
 import { z } from 'zod'
-import { key, liveTicket, type Follow, type OutboundMessage, type ThreadFact, type Ticket } from '@superagent/kernel'
+import { key, liveTicket, outboundAction, type Follow, type OutboundSend, type ThreadFact, type Ticket } from '@superagent/kernel'
 import type { Deployment } from '../deployment.ts'
 import { sameName } from '../infra/text.ts'
 import type { SourceContext } from './host.ts'
@@ -88,7 +88,8 @@ function closePull(ctx: SourceContext, pr: Pull): void {
  * opened, else the last one it followed). The notice language follows the ticket's source request: Chinese when it contains
  * Han characters and no kana, otherwise English.
  */
-export function pullEndNotices(ticket: Ticket, request: string, repository: string): OutboundMessage[] {
+export function pullEndNotices(ticket: Ticket, request: string, repository: string,
+  known: (id: string) => boolean = () => false): OutboundSend[] {
   const outcome = ticket.ended?.outcome
   const follows = (ticket.follows ?? []).filter(item => item.closed && pullNumber(item.thread) !== undefined)
   const latest = (items: Follow[]) => items.sort((a, b) => b.closed!.at.localeCompare(a.closed!.at))[0]
@@ -101,6 +102,11 @@ export function pullEndNotices(ticket: Ticket, request: string, repository: stri
     ? outcome === 'merged' ? `[PR #${number}](${url}) 已合并。` : `[PR #${number}](${url}) 已关闭，未合并。`
     : outcome === 'merged' ? `[PR #${number}](${url}) has merged.` : `[PR #${number}](${url}) was closed without merging.`
   // GitHub timelines and linked issues already show the merge or closure, so GitHub channels are skipped.
-  return ticket.channels.filter(channel => channel.source !== SOURCE).map(channel => ({
-    id: key('pr-terminal', String(number), channel.source, JSON.stringify(channel.address), outcome), channel, text, kind: 'notice', ticketId: ticket.id }))
+  return ticket.channels.filter(channel => channel.source !== SOURCE).flatMap(channel => {
+    // A notice queued before T2-05 used the old id; `known` lets the caller suppress its duplicate.
+    const legacy = key('pr-terminal', String(number), channel.source, JSON.stringify(channel.address), outcome)
+    if (known(legacy)) return []
+    return [{ action: outboundAction({ kind: 'notice', source: channel.source, objectId: String(number),
+      revision: key('pr-notice', outcome, JSON.stringify(channel.address)) }), channel, text, ticketId: ticket.id }]
+  })
 }

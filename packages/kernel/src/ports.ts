@@ -1,5 +1,5 @@
 /** Ports the core depends on. Sources, policies, assessors, executors, and channels are project-specific. */
-import type { ActionLevel } from './action.ts'
+import type { Action, ActionLevel, OutboundAction, OutboundKind } from './action.ts'
 import type { Approval } from './approval.ts'
 import type { Assignment, ChannelRef, Decision, DecisionKind, Mandate, MandateBasis, Strength, Thread, Ticket, TicketEndBy, TicketOutcome, Trigger }
   from './model.ts'
@@ -83,8 +83,16 @@ export interface Executor {
   stop(ticket: Ticket, assignment: Assignment, reason: string): void
 }
 
-/** A message for a Channel; `ticketId` names the Ticket it is for, when there is one. */
-export interface OutboundMessage { id: string; channel: ChannelRef; text: string; kind: 'acknowledgement' | 'reply' | 'notice'; ticketId?: string }
+/**
+ * What a caller asks the Outbox to write: the send Action that names the write, its Channel, the text, and the Ticket
+ * it is for. The Action's idempotency key is the message id, so it is not supplied separately.
+ */
+export interface OutboundSend { action: OutboundAction; channel: ChannelRef; text: string; ticketId?: string }
+/**
+ * A message as a Channel adapter receives it: its id is the send Action's idempotency key. `action` is absent on a receipt
+ * queued before outbound messages carried send Actions; such a receipt keeps the `kind` it was recorded with.
+ */
+export interface OutboundMessage { id: string; channel: ChannelRef; text: string; ticketId?: string; action?: Action; kind?: OutboundKind }
 /**
  * A queued message waits (`pending`) for its undo window, went out (`sent`), was recalled inside that window
  * (`recalled`), or was dropped because its conversation can never receive it (`dropped`).
@@ -92,8 +100,8 @@ export interface OutboundMessage { id: string; channel: ChannelRef; text: string
 export type ReplyStatus = 'pending' | 'sent' | 'recalled' | 'dropped'
 /** The messages queued for Channels; the Engine queues them inside its commands, and a sender delivers them later. */
 export interface Outbox {
-  /** Queue a message idempotently; an id queued before keeps its first message. */
-  send(message: OutboundMessage): void
+  /** Queue a message once per send Action revision; the same revision queued before keeps its first message. */
+  send(message: OutboundSend): void
   /** Whether a message was queued, and what became of it. */
   status(id: string): ReplyStatus | undefined
   /**

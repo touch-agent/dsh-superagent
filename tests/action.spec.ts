@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ACTION_LEVELS, actionKey, createAction, isActionLevel, withinActionLevel, type Action, type ActionCost, type ActionIdentity,
-  type ActionLevel } from '@superagent/kernel'
+import { ACTION_LEVELS, OUTBOUND_KINDS, OUTBOX_ACTOR, acknowledgementAction, actionKey, createAction, isActionLevel, outboundAction,
+  withinActionLevel, type Action, type ActionCost, type ActionIdentity, type ActionLevel } from '@superagent/kernel'
 
 const actor = { source: 'feishu', id: 'ou_1' }
 const base: Omit<ActionIdentity, 'level'> = { source: 'feishu', objectId: 'om_1', kind: 'mail.reply', revision: 'rev-1', actor }
@@ -87,5 +87,33 @@ describe('the other levels', () => {
 
   it('refuse a level outside the five even when a caller bypasses the type', () => {
     expect(() => createAction({ ...identity('send'), level: 'delete' as ActionLevel })).toThrow(/Unknown action level: delete/)
+  })
+})
+describe('outbound send actions', () => {
+  const channel = { source: 'feishu', thread: 'feishu:oc_1:om_1', address: { chatId: 'oc_1', messageId: 'om_1' } }
+  const outbound = (overrides: Partial<Parameters<typeof outboundAction>[0]> = {}) =>
+    outboundAction({ kind: 'reply', source: channel.source, objectId: 'om_1', revision: 'rev-1', ...overrides })
+
+  it('names the three outbound kinds and the system outbox actor', () => {
+    expect(OUTBOUND_KINDS).toEqual(['acknowledgement', 'reply', 'notice'])
+    expect(OUTBOX_ACTOR).toEqual({ source: 'dsh-superagent', id: 'outbox' })
+    expect(outbound()).toMatchObject({ kind: 'reply', source: 'feishu', objectId: 'om_1', revision: 'rev-1', level: 'send',
+      actor: OUTBOX_ACTOR })
+    expect(outbound()).not.toHaveProperty('cost')
+  })
+
+  it('derives the same key as the generic action identity, and another key for every part of it', () => {
+    const first = outbound()
+    expect(outbound().idempotencyKey).toBe(first.idempotencyKey)
+    expect(first.idempotencyKey).toBe(createAction({ ...first, level: 'send' }).idempotencyKey)
+    const variants = [outbound({ source: 'github' }), outbound({ objectId: 'om_2' }), outbound({ kind: 'notice' }),
+      outbound({ revision: 'rev-2' }), outbound({ actor: { source: 'feishu', id: 'ou_1' } })].map(action => action.idempotencyKey)
+    expect(new Set([first.idempotencyKey, ...variants]).size).toBe(6)
+  })
+
+  it('gives an acknowledgement the accepted revision of its Trigger, wherever it is sent from', () => {
+    const ack = acknowledgementAction(channel, 'om_1')
+    expect(ack).toMatchObject({ kind: 'acknowledgement', objectId: 'om_1', revision: 'accepted', level: 'send', actor: OUTBOX_ACTOR })
+    expect(ack.idempotencyKey).toBe(outbound({ kind: 'acknowledgement', revision: 'accepted' }).idempotencyKey)
   })
 })
