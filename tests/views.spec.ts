@@ -21,7 +21,9 @@ import { feishuChannel, feishuTriggerId } from '@superagent/dsh/sources/feishu-t
 import { githubLink } from '@superagent/dsh/sources/github-channel.ts'
 import { githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
 import { conversationDefinition, conversationTrigger } from '@superagent/dsh/sources/conversation.ts'
+import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
 import { followupOwners, type ChannelRef } from '@superagent/kernel'
+import { fakeDefinition, fakeManifest } from './fixtures/fake-source.ts'
 
 let directory: string
 let store: Store
@@ -96,6 +98,18 @@ it('marks the built-in conversation Source and a Ticket dispatched from it', () 
   expect(ticketList(host, 'open', 0, 10, 'github').items).toEqual([])
   expect(ticketDetail(host, 't1')?.conversationSession).toBe('orchestrator-1')
   expect(settingsView(store, host.sources, {}, {}, directory).sources.find(source => source.id === 'conversation')?.builtin).toBe(true)
+})
+
+it('shows the settings card and health entries of a Source that only supplies a manifest', () => {
+  const host = views()
+  host.sources.registerDefinition(fakeDefinition)
+  const card = settingsView(store, host.sources, {}, {}, directory).sources.find(source => source.id === fakeManifest.id)!
+  expect(card.title).toEqual(fakeManifest.title)
+  expect(card.form).toEqual(manifestForm(fakeManifest))
+  expect(card.form?.fields.map(field => field.key)).toEqual(['cli', 'target', 'observe', 'pollSeconds'])
+  expect(card.form?.auth.fields.map(field => field.label)).toEqual([fakeManifest.fields[0]!.label])
+  expect(card.value.config).toEqual({ cli: 'fixture-cli', target: '', observe: false, pollSeconds: 30 })
+  expect(sourcesStatus(host, {}, {}).find(source => source.id === fakeManifest.id)!.health.map(item => item.name)).toEqual(['fixture'])
 })
 
 it('shows a bound Channel and a followed Thread as anchors on the Ticket page', () => {

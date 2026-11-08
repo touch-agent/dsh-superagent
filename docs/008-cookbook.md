@@ -79,7 +79,7 @@ export const webhookDefinition: SourceDefinition<WebhookConfig> = { manifest: we
 ```
 
 - `id` is the stable Source id. It appears in Trigger `source`, Thread-key prefixes, the `source:webhook` settings block and the Source Policy.
-- `auth` names the fields that carry the credential; `{kind: 'none', fields: []}` describes a Source that signs in with nothing extra. The panel renders those fields as the sign-in part of the card.
+- `auth` names the fields that carry the credential; `{kind: 'none', fields: []}` describes a Source that signs in with nothing extra. The panel renders those fields and a sign-in hint built from `auth`, so the card says how the Source signs in.
 - The adapter's `schema` validates stored configuration and supplies defaults. Before an operator saves an instance, the registry creates an enabled instance from those defaults. Make defaults receive nothing; this example defaults to no conversations.
 - `fields` generates the Source settings form without custom panel code. A `rows` field edits entries keyed by its first column; `advanced` hides less common settings. Implement `refreshLabels` if the Source can resolve ids to display names. Save those names under `KV.sources.labels(kind)`. Columns with `choose` and `refresh` can then offer them.
 - Optional `facts(deployment)` displays values derived by setup, such as the account behind a CLI. Setup currently checks only GitHub and Feishu fields listed in `SETUP_FIELDS`, so this example supplies no facts.
