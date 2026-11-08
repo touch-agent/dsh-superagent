@@ -5,7 +5,7 @@ import { CliError } from '../infra/commands.ts'
 import { docMarker, docMarkerIds, docReplyText } from './feishu-doc-trigger.ts'
 import { readReplies } from './feishu-doc-read.ts'
 import type { SourceContext } from './host.ts'
-import type { ChannelLink } from './kind.ts'
+import type { ChannelLink, ProbeAnswer } from './kind.ts'
 
 /** Document types the reply API accepts; `+inspect` reports a bitable as `bitable` and a wiki as its underlying type. */
 const FILE_TYPES = new Set(['doc', 'docx', 'sheet', 'slides', 'bitable', 'base', 'file', 'apps'])
@@ -21,6 +21,19 @@ async function inspect(host: Pick<SourceContext, 'commands'>, document: string):
   return { token: inspected.token, type: inspected.type === 'base' ? 'bitable' : inspected.type }
 }
 /**
+ * Reads the card's replies and whether this message's mark is among them; `truncated` means the page cap may hide it.
+ * @throws when the card cannot be read; callers decide whether that is gone or retryable.
+ */
+async function existingMark(host: Pick<SourceContext, 'commands'>, message: OutboundMessage):
+  Promise<{ found: boolean; truncated: boolean; skipped: number }> {
+  const { document, commentId } = message.channel.address
+  if (!document || !commentId) throw new Error('The reply names no Feishu document comment')
+  const tally = { skipped: 0 }
+  const posted = await readReplies(host.commands, document, commentId, tally)
+  return { found: posted.replies.some(reply => docMarkerIds(docReplyText(reply)).includes(message.id)),
+    truncated: posted.truncated, skipped: tally.skipped }
+}
+/**
  * Posts one reply on a comment card.
  * Feishu has no idempotency key for comment replies, so the reply text starts with an invisible mark naming the outbound
  * message; a retried send reads the card's replies first and answers `sent` when the mark is already there. The same ID also
@@ -32,10 +45,10 @@ export async function sendFeishuDoc(host: Pick<SourceContext, 'commands'>, messa
   if (!document || !commentId) throw new Error('The reply names no Feishu document comment')
   if ([...message.text].length > 10_000) throw new Error('A Feishu comment reply cannot exceed 10000 characters')
   try {
-    const posted = await readReplies(host.commands, document, commentId)
-    if (posted.replies.some(reply => docMarkerIds(docReplyText(reply)).includes(message.id))) return 'sent'
+    const existing = await existingMark(host, message)
+    if (existing.found) return 'sent'
     // The reply may be past the page cap; posting then could not be checked, so leave it retryable instead of guessing.
-    if (posted.truncated) throw new Error('The comment card has more replies than the pre-send read covers')
+    if (existing.truncated) throw new Error('The comment card has more replies than the pre-send read covers')
   } catch (error) {
     // A deleted comment can never take the reply. Any other read failure stays retryable, so a reply is never posted twice.
     if (gone(error)) return 'gone'
@@ -52,6 +65,17 @@ export async function sendFeishuDoc(host: Pick<SourceContext, 'commands'>, messa
     throw error
   }
   return 'sent'
+}
+/** Reads whether the reply is already on the card; a read that may hide it is `unknown`, never a resend. */
+export async function probeFeishuDoc(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<ProbeAnswer> {
+  try {
+    const existing = await existingMark(host, message)
+    // An unreadable reply or a page cap could hide the mark, so neither lets a retry treat the reply as absent.
+    return existing.found ? 'sent' : existing.truncated || existing.skipped > 0 ? 'unknown' : 'gone'
+  } catch (error) {
+    // A deleted or solved comment cannot take the reply; any other read failure leaves the answer unknown.
+    return gone(error) ? 'gone' : 'unknown'
+  }
 }
 /** The link of a reply is the commented document; Feishu has no page link for one comment card. */
 export const feishuDocLink = (address: Record<string, string>): ChannelLink =>

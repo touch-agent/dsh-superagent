@@ -185,7 +185,7 @@ graph LR
 - **交付**：`tests/conformance/`：一组可被任何 adapter 复用 `describe` 的用例：幂等键生成、游标回退 5 秒、health claim 命名、`probe` 语义、scope 裁决、出站 `sent/gone` 两态。
 - **验收**：GitHub 与 Feishu 都跑通；故意写错幂等键的假 adapter 必须失败。
 - **依赖**：T1-04、T1-05。
-- **状态**：实现完成（2026-11-07，PR #1 待合并）。`tests/conformance/suite.ts` 由任何 Source 的 fixture 驱动；GitHub 与 Feishu 各有一个 spec，`tests/conformance/suite.spec.ts` 证明写错幂等键、漏掉 5 秒游标回退、丢掉出站幂等键的假 adapter 必红。probe 用例已留好，等 T2-06 给 adapter 加 `probe` 后填入。
+- **状态**：实现完成（2026-11-07，PR #1 待合并）。`tests/conformance/suite.ts` 由任何 Source 的 fixture 驱动；GitHub 与 Feishu 各有一个 spec，`tests/conformance/suite.spec.ts` 证明写错幂等键、漏掉 5 秒游标回退、丢掉出站幂等键的假 adapter 必红。probe 用例已接入三个 fixture。
 
 ### T1-07 / T1-08 / T1-09 三个新源：Gmail、飞书文档、日历 · Connector · 5 / 5 / 6 人日
 
@@ -259,6 +259,7 @@ graph LR
 - **交付**：manifest 增 `probe(idempotencyKey)`：源能回答「这条消息发出去了吗」；支持 probe 的源在撤回/重试时用它校验。
 - **验收**：conformance 增 probe 用例；假源返回 unknown 时必须走「保守不重发」分支。
 - **依赖**：T1-06。
+- **状态**：实现完成（2026-11-08，PR #14 待审查合并）。`SourceChannel.probe` 由 `SourceRegistry.probe` 转发；GitHub、飞书、飞书文档各自实现（读回发送时写入的不可见标记，读失败为 `unknown`）；Outbox 在首次尝试后记录 `attemptedAt`，重试先 probe，`sent` 直接落定、`unknown` 保持 pending 不重发、`gone` 才重发；conformance 三个 fixture 与 `tests/outbox.spec.ts` 覆盖。
 
 ### T2-07 面板「待我批准」视图 · Runtime · 3 人日
 

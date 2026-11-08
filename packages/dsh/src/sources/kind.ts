@@ -29,6 +29,11 @@ export interface SourcePolicyPart<P extends Record<string, unknown>> {
 /** UI link for a channel address; `triggerId` names the Trigger whose own deep link is preferred when available. */
 export interface ChannelLink { url: string; label: Localized; triggerId?: string }
 export type ChannelLinks = Partial<Pick<Deployment, 'repository' | 'feishu'>>
+/**
+ * Whether one outbound message reached the remote service: `'sent'` when it is there, `'gone'` when it is not (so
+ * sending it is safe), and `'unknown'` when the Source cannot tell, which a retry must treat as possibly sent.
+ */
+export type ProbeAnswer = 'sent' | 'gone' | 'unknown'
 /** Outbound messaging adapter for a source kind's threads. */
 export interface SourceChannel<C> {
   /** Whether a reply may still go to `address`; without it, every address may receive replies. */
@@ -38,6 +43,12 @@ export interface SourceChannel<C> {
    * @throws when delivery failed but may succeed on a later retry.
    */
   send(host: Pick<SourceContext, 'commands' | 'conversation'>, message: OutboundMessage): Promise<'sent' | 'gone'>
+  /**
+   * Answers whether `message` is already at the remote service, so a retry after an attempt whose outcome is unknown
+   * does not write it twice. Without it, the Outbox retries a failed send as before. A read failure is `'unknown'`,
+   * never a guess.
+   */
+  probe?(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<ProbeAnswer>
   /** Returns the URL and label for `address`; `url` is empty when `links` lack the required deployment info. */
   link(address: Record<string, string>, links: ChannelLinks): ChannelLink
 }

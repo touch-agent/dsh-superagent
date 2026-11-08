@@ -3,13 +3,14 @@ import { UserError, type OutboundSend, type Outbox as OutboxPort, type ReplyStat
 import type { Commands } from '../infra/commands.ts'
 import { checkedImText } from '../infra/text.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
+import type { ProbeAnswer } from '../sources/kind.ts'
 import { FAILURES_BEFORE_ERROR, Later, type Effects } from './effects.ts'
 import type { Store } from './store.ts'
 
 export interface OutboxHost {
   readonly store: Pick<Store, 'atomic' | 'receipts'>
   readonly effects: Pick<Effects, 'enqueue' | 'cancel' | 'handle' | 'idle'>
-  readonly sources: Pick<SourceRegistry, 'instance' | 'channelAllowed' | 'send'>
+  readonly sources: Pick<SourceRegistry, 'instance' | 'channelAllowed' | 'send' | 'probe'>
   readonly commands: Commands
   paused(): boolean
   /** How long a new message stays recallable before it is sent, in milliseconds; 0 sends it at once. */
@@ -94,6 +95,19 @@ export class Outbox implements OutboxPort {
     // Hold later messages for the same ticket and conversation behind an earlier pending message until it exceeds the failure threshold.
     if (store.receipts.behind(id, FAILURES_BEFORE_ERROR)) throw new Later('An earlier message of this ticket to this conversation waits')
     if (!sources.channelAllowed(receipt.channel)) { store.receipts.settle(receipt, 'channelIgnored'); return }
+    // An earlier attempt may have reached the remote service before it failed or the process stopped: ask first, and
+    // never resend what cannot be ruled out. A Source without a probe keeps the previous retry behavior.
+    if (receipt.attemptedAt) {
+      let answer: ProbeAnswer | undefined
+      try { answer = await sources.probe(receipt, commands) }
+      catch (error) { throw new Error(`The ${receipt.channel.source} delivery check failed, so the message is not resent: ${String(error)}`, { cause: error }) }
+      if (answer === 'sent') { store.receipts.settle(receipt, 'sent'); return }
+      if (answer === 'unknown') throw new Error(`The ${receipt.channel.source} Source cannot tell whether the message was sent; it is kept pending and not resent`)
+      // `gone` (or a Source without a probe) means it is not there, so sending it again is safe; a recall during the
+      // probe still keeps it unsent.
+      if (store.receipts.get(id)?.status !== 'pending') return
+    }
+    store.receipts.attempt(id, new Date().toISOString())
     // A permanently unreachable target (such as a recalled message or deleted Issue) settles as `channelGone` so its receipt prevents retries.
     const result = await sources.send(receipt, commands)
     if (result === 'waiting') throw new Later('The Source is not installed')

@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import type { SourceManifest } from '@superagent/kernel'
-import { feishuDocLink, sendFeishuDoc } from './feishu-doc-channel.ts'
+import { feishuDocLink, probeFeishuDoc, sendFeishuDoc } from './feishu-doc-channel.ts'
 import { refreshDocLabels, runFeishuDoc } from './feishu-doc-loops.ts'
 import { feishuDocThreadContext } from './feishu-doc-read.ts'
 import { docRef, docRepliesTo, SOURCE, type DocRef } from './feishu-doc-trigger.ts'
@@ -60,7 +60,7 @@ export const feishuDocAdapter: SourceAdapter<FeishuDocConfig> = {
   // A reply goes only to a document the Source still receives.
   channel: {
     allowed: (address, config) => config.documents.some(document => document.url === address.document),
-    send: sendFeishuDoc, link: feishuDocLink,
+    send: sendFeishuDoc, probe: probeFeishuDoc, link: feishuDocLink,
   },
   threadContext: feishuDocThreadContext,
   repliesTo: docRepliesTo,

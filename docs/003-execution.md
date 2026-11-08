@@ -186,6 +186,8 @@ Messages of other Tickets, and messages of no Ticket, do not wait for it.
 
 A message with failed attempts is a system problem until it goes out or is recalled.
 
+Before a retry whose earlier attempt may have reached the remote service, the Outbox asks the Source's `probe`: `sent` settles the message without writing it again, `gone` makes the retry safe, and `unknown` keeps it pending without resending, so a person can withdraw it from the panel. Each Channel reads back the invisible mark its send wrote next to the text, and a Feishu reply whose mark is gone but whose text is ours is `unknown`, never absent; a Source without a `probe` retries as before.
+
 A message is dropped only when its Source no longer listens to the conversation, or when the Source answers that the conversation can never receive it; while its Source is off, it waits.
 
 The Sources answer that for a deleted Issue or a locked conversation on GitHub, and for a recalled message or one Feishu no longer finds on Feishu.

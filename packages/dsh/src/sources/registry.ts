@@ -4,7 +4,7 @@ import type { Commands } from '../infra/commands.ts'
 import type { ConversationHost } from './host.ts'
 import { HealthBoard, type HealthEntry } from '../infra/health.ts'
 import { AdmissionTableSchema, type Settings } from '../policy.ts'
-import type { ChannelLink, ChannelLinks, SourceAdapter, SourceDefinition, SourceInstance, SourceKind, TriggerContext, VariableSpec } from './kind.ts'
+import type { ChannelLink, ChannelLinks, ProbeAnswer, SourceAdapter, SourceDefinition, SourceInstance, SourceKind, TriggerContext, VariableSpec } from './kind.ts'
 import { manifestForm, type SourceForm } from './manifest-form.ts'
 import { parseSourceManifest } from './manifest-schema.ts'
 
@@ -161,6 +161,13 @@ export class SourceRegistry implements SourceScope {
     if (!registration) return 'waiting'
     const conversation: ConversationHost = { deliver: (requestId, text) => this.deliver(requestId, text) }
     return registration.adapter.channel ? registration.adapter.channel.send({ commands, conversation }, message) : 'gone'
+  }
+  /**
+   * Asks a message's Channel whether it is already at the remote service, before a retry whose earlier attempt may have
+   * reached it. Answers nothing when the kind has no probe, so the caller retries as before.
+   */
+  async probe(message: OutboundMessage, commands: Commands): Promise<ProbeAnswer | undefined> {
+    return this.registrations.get(message.channel.source)?.adapter.channel?.probe?.({ commands }, message)
   }
   link(channel: ChannelRef, links: ChannelLinks): ChannelLink {
     const link = this.registrations.get(channel.source)?.adapter.channel?.link(channel.address, links)

@@ -3,7 +3,7 @@ import type { Commands } from '@superagent/dsh/infra/commands.ts'
 import { CliError } from '@superagent/dsh/infra/commands.ts'
 import { feishuDocAdapter, feishuDocDefinition, type FeishuDocConfig } from '@superagent/dsh/sources/feishu-doc.ts'
 import { readComments, readReplies } from '@superagent/dsh/sources/feishu-doc-read.ts'
-import { docTrigger } from '@superagent/dsh/sources/feishu-doc-trigger.ts'
+import { docMarker, docTrigger } from '@superagent/dsh/sources/feishu-doc-trigger.ts'
 import { cursorAt } from '@superagent/dsh/sources/poll.ts'
 import { testDeployment } from '../fixtures/deployment.ts'
 import type { ConformanceSubject, SendHost } from './suite.ts'
@@ -81,5 +81,24 @@ export function feishuDocConformance(): ConformanceSubject<FeishuDocConfig> {
     ],
     // Comment polling reads from the round's start; `cursorAt` steps it back for late writes.
     cursor: { from: LATEST, next: () => cursorAt(LATEST) },
+    // A retry looks for the reply's invisible mark on the card; a card it cannot read has no answer to trust.
+    probes: [
+      { name: 'a reply already on the card', key: 'reply-1', answer: 'sent' },
+      { name: 'a reply not on the card', key: 'reply-9', answer: 'gone' },
+      // The page cap may hide the mark, and an unreadable reply may be the one carrying it: neither is an absence.
+      { name: 'a card with more replies than the page cap', key: 'reply-7', answer: 'unknown' },
+      { name: 'a card with an unreadable reply', key: 'reply-8', answer: 'unknown' },
+      { name: 'a card it cannot read', key: 'reply-4', answer: 'unknown' },
+    ],
+    probe: key => {
+      // Each call pages to the cap with a fresh token, as a card whose marked reply is older than the cap does.
+      const truncated = () => { let page = 0; return () => ({ file_token: 'DOC1', file_type: 'docx', items: [], has_more: true, page_token: `p${++page}` }) }
+      const card = key === 'reply-1'
+        ? () => ({ items: [reply('r9', BOT, [text(`${docMarker('reply-1')}The margin is fixed`)])], has_more: false })
+        : key === 'reply-7' ? truncated()
+          : key === 'reply-8' ? () => ({ items: [{}], has_more: false })
+            : key === 'reply-4' ? () => { throw new CliError('Rate limited', 99991400) } : () => ({ items: [], has_more: false })
+      return feishuDocDefinition.adapter.channel!.probe!({ commands: host(card).commands }, outbound(key))
+    },
   }
 }
