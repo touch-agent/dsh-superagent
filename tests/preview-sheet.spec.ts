@@ -114,6 +114,30 @@ describe('the sheet previewer', () => {
     expect(preview.summary.rows).toEqual({ before: 5, after: 6, added: 1, removed: 0 })
   })
 
+  it('aligns a row removed in the middle instead of rewriting every later row', () => {
+    const preview = previewSheet({
+      before: { format: 'csv', content: 'id,amount\n1,10\n2,20\n3,30\n' },
+      after: { format: 'csv', content: 'id,amount\n1,10\n3,30\n' },
+      link,
+    })
+    expect(preview.changes).toEqual([])
+    expect(preview.sheets[0]!.rows).toEqual({ before: 4, after: 3, added: [], removed: [{ index: 2, cells: 2 }] })
+    expect(preview.summary.rows).toEqual({ before: 4, after: 3, added: 0, removed: 1 })
+  })
+
+  it('reports an unchanged table as unchanged with no structure or cell changes', () => {
+    const csv = 'id,amount\n1,10\n2,20\n'
+    const preview = previewSheet({ before: { format: 'csv', content: csv }, after: { format: 'csv', content: csv }, link })
+    expect(preview.sheets[0]!.status).toBe('unchanged')
+    expect(preview.changes).toEqual([])
+    expect(preview.summary).toEqual({
+      sheets: { before: 1, after: 1, added: 0, removed: 0, changed: 0 },
+      rows: { before: 3, after: 3, added: 0, removed: 0 },
+      columns: { before: 2, after: 2, added: 0, removed: 0 },
+      cells: { added: 0, removed: 0, formula: 0, value: 0 },
+    })
+  })
+
   it('keeps a shifted formula from reading as a formula change when a row is inserted', () => {
     const preview = previewSheet({
       before: { format: 'csv', content: 'id,amount,total\n1,10,=B2*2\n2,20,=B3*2\n3,30,=B4*2\n' },
@@ -136,6 +160,16 @@ describe('the sheet previewer', () => {
     expect(preview.sheets[0]!.rows).toEqual({ before: 3, after: 4, added: [{ index: 1, cells: 3 }], removed: [] })
   })
 
+  it('reports a formula whose relative offset changed when a column is inserted between it and its reference', () => {
+    const preview = previewSheet({
+      before: { format: 'csv', content: 'a,b,total\n1,2,=A2+B2\n' },
+      after: { format: 'csv', content: 'a,note,b,total\n1,x,2,=A2+C2\n' },
+      link,
+    })
+    expect(preview.changes).toHaveLength(1)
+    expect(preview.changes[0]).toMatchObject({ kind: 'formula', address: 'D2' })
+  })
+
   it('aligns a column inserted in the middle instead of shifting every later column', () => {
     const preview = previewSheet({
       before: { format: 'csv', content: 'id,region,amount\n1,north,10\n2,south,20\n3,east,30\n' },
@@ -152,6 +186,7 @@ describe('the sheet previewer', () => {
     expect(shiftFormula('$A$1+A1', 0, 0, 2, 3)).toBe('$A$1+D3')
     expect(shiftFormula("'My Sheet'!B2+LOG10(C3)", 0, 0, 1, 0)).toBe("'My Sheet'!B3+LOG10(C4)")
     expect(shiftFormula('A1+"A1"+SUM(A1:B2)', 0, 0, 1, 1)).toBe('B2+"A1"+SUM(B2:C3)')
+    expect(shiftFormula('LOG10 (A1)+B1', 0, 0, 1, 0)).toBe('LOG10 (A2)+B2')
     expect(shiftFormula('A1', 0, 0, -1, 0)).toBe('A1')
   })
 
@@ -165,6 +200,12 @@ describe('the sheet previewer', () => {
     const parsed = parseXlsx(bytes('empty-shared-string.xlsx'))
     expect(parsed[0]!.rows.map(row => row.cells.map(cell => [cell.address, cell.value])))
       .toEqual([[['A1', 'first']], [['A3', 'third']]])
+  })
+
+  it('expands a shared formula whose master comes after its follower', () => {
+    const parsed = parseXlsx(bytes('shared-formula-up.xlsx'))
+    expect([parsed[0]!.rows[1]!.cells.find(cell => cell.address === 'D2')!.formula,
+      parsed[0]!.rows[2]!.cells.find(cell => cell.address === 'D3')!.formula]).toEqual(['B2*C2', 'B3*C3'])
   })
 
   it('degrades an unreadable workbook to a line diff with the original link and the parse code', () => {
@@ -200,6 +241,18 @@ describe('the sheet previewer', () => {
     ])
   })
 
+  it('keeps editor line numbers when blank lines are skipped in the fallback', () => {
+    const encoder = new TextEncoder()
+    const preview = previewSheet({
+      before: { format: 'xlsx', content: encoder.encode('not a zip'), text: 'alpha\n\nbeta\ngamma' },
+      after: { format: 'xlsx', content: encoder.encode('not a zip'), text: 'alpha\n\nbeta\ndelta' },
+      link,
+    })
+    expect(preview.lines).toEqual([
+      { kind: 'changed', before: { line: 4, text: 'gamma' }, after: { line: 4, text: 'delta' } },
+    ])
+  })
+
   it('refuses a malformed package or caller error instead of inventing a preview', () => {
     let failure: unknown
     try { parseXlsx(bytes('no-workbook.xlsx')) } catch (error) { failure = error }
@@ -210,12 +263,35 @@ describe('the sheet previewer', () => {
     failure = undefined
     try { parseXlsx(bytes('missing-relationship.xlsx')) } catch (error) { failure = error }
     expect((failure as SheetParseError).code).toBe('missingSheet')
+    failure = undefined
+    try { parseXlsx(bytes('bad-shared-string.xlsx')) } catch (error) { failure = error }
+    expect((failure as SheetParseError).code).toBe('invalidWorkbook')
     expect(() => previewSheet({ before: { format: 'csv', content: 'a' }, after: { format: 'xlsx', content: bytes('ledger-after.xlsx') }, link }))
       .toThrow(TypeError)
     expect(() => previewSheet({ before: { format: 'csv', content: 'a' }, after: { format: 'csv', content: 'b' }, link: ' ' }))
       .toThrow(TypeError)
     expect(() => previewSheet({ before: { format: 'xlsx', content: 'not bytes' }, after: { format: 'xlsx', content: 'not bytes' }, link }))
       .not.toThrow()
+  })
+
+  it('compares a 10,000-row 40-column table in well under two seconds', () => {
+    const header = Array.from({ length: 40 }, (_, column) => `c${column}`).join(',')
+    const row = (index: number, changed: boolean) => Array.from({ length: 40 }, (_, column) =>
+      changed ? `x${column}` : String((index * 40 + column) % 97)).join(',')
+    const beforeRows = [header]
+    const afterRows = [header]
+    for (let index = 0; index < 10_000; index++) {
+      beforeRows.push(row(index, false))
+      afterRows.push(row(index, index === 5_000))
+    }
+    const started = performance.now()
+    const preview = previewSheet({ before: { format: 'csv', content: beforeRows.join('\n') },
+      after: { format: 'csv', content: afterRows.join('\n') }, link })
+    const elapsed = performance.now() - started
+    expect(preview.changes).toHaveLength(40)
+    expect(preview.changes.every(change => change.kind === 'value' && change.row === 5_001)).toBe(true)
+    expect(preview.sheets[0]!.rows).toMatchObject({ before: 10_001, after: 10_001, added: [], removed: [] })
+    expect(elapsed).toBeLessThan(2_000)
   })
 
   it('compares a 10,000-row .xlsx workbook in well under two seconds', () => {

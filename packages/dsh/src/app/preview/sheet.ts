@@ -176,6 +176,8 @@ export interface SheetPreview {
 
 /** The cells any alignment may fill, beyond which a changed run is paired by position. */
 const MAX_PAIR_CELLS = 20_000
+/** Column pairs whose Dice score is computed; each comparison walks every row, so this stays small. */
+const MAX_COLUMN_PAIR_WORK = 512
 /** The steps the row and column aligner may take before it gives up on exact anchors and pairs by position. */
 const MAX_ALIGN_WORK = 2_000_000
 /** How alike two rows must be for an unmatched removal and insertion to be read as one changed row. */
@@ -224,6 +226,15 @@ export function columnIndex(label: string): number {
 export function cellAddress(row: number, column: number): string {
   if (!isIndex(row) || !isIndex(column)) throw new TypeError('A cell position must be two non-negative integers')
   return `${columnLabel(column)}${row + 1}`
+}
+
+/** The zero-based position of an A1 address, or undefined when the address is malformed. */
+function cellPosition(address: string): { row: number; column: number } | undefined {
+  const match = /^([A-Za-z]{1,4})([0-9]{1,7})$/.exec(address.trim())
+  if (!match) return undefined
+  const column = columnIndex(match[1]!)
+  const row = Number(match[2]!) - 1
+  return column < 0 || row < 0 ? undefined : { row, column }
 }
 
 /** The cached value of a formula cell; a CSV formula's visible text is the formula itself and is not a cached result. */
@@ -421,6 +432,7 @@ function workbookSheets(xml: string): WorkbookSheet[] {
 interface WorkbookRelationship {
   target: string
   worksheet: boolean
+  sharedStrings: boolean
 }
 
 /** Read the workbook relationships, keeping every target and whether it is a worksheet. */
@@ -431,7 +443,10 @@ function workbookRelationships(xml: string): Map<string, WorkbookRelationship> {
     const id = xmlAttribute(attributes, 'Id')
     const target = xmlAttribute(attributes, 'Target')
     const type = xmlAttribute(attributes, 'Type')
-    if (id && target) relationships.set(id, { target, worksheet: type?.endsWith('/worksheet') === true })
+    if (id && target) {
+      relationships.set(id, { target, worksheet: type?.endsWith('/worksheet') === true,
+        sharedStrings: type?.endsWith('/sharedStrings') === true })
+    }
   }
   return relationships
 }
@@ -464,8 +479,28 @@ interface SharedFormula {
   column: number
 }
 
+/** Find every shared-formula master before parsing cells, so a follower written above its master still resolves. */
+function sharedFormulaMasters(xml: string): Map<string, SharedFormula> {
+  const masters = new Map<string, SharedFormula>()
+  if (!xml.includes('t="shared"')) return masters
+  for (const cellMatch of xml.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+    const body = cellMatch[2]
+    if (!body) continue
+    const position = cellPosition(xmlAttribute(cellMatch[1] ?? '', 'r') ?? '')
+    if (!position) continue
+    const formula = /<f\b([^>]*?)(?:\/>|>([\s\S]*?)<\/f>)/.exec(body)
+    if (!formula || formula[2] === undefined) continue
+    const attributes = formula[1] ?? ''
+    if (xmlAttribute(attributes, 't') !== 'shared') continue
+    const id = xmlAttribute(attributes, 'si')
+    const text = xmlText(formula[2]).replace(/^=/, '').trim()
+    if (id && text) masters.set(id, { text, row: position.row, column: position.column })
+  }
+  return masters
+}
+
 /** A cell reference in a formula, with the absolute markers that decide whether it shifts. */
-const FORMULA_REFERENCE = /(?<![A-Za-z0-9_.$])((?:'[^']*'|[A-Za-z_][\w.]*)!)?(\$?)([A-Za-z]{1,3})(\$?)([0-9]{1,7})(?![A-Za-z0-9_(])/g
+const FORMULA_REFERENCE = /(?<![A-Za-z0-9_.$])((?:'[^']*'|[A-Za-z_][\w.]*)!)?(\$?)([A-Za-z]{1,3})(\$?)([0-9]{1,7})(?![A-Za-z0-9_]|\s*\()/g
 
 /** One cell reference found in a formula, ready for shifting or position-normalizing. */
 interface FormulaReference {
@@ -558,7 +593,10 @@ function cellValue(body: string, type: string | undefined, strings: readonly str
   if (type === 's') {
     if (!value.trim()) return ''
     const at = Number(value.trim())
-    return Number.isInteger(at) && at >= 0 ? strings[at] ?? '' : ''
+    if (!Number.isInteger(at) || at < 0 || at >= strings.length) {
+      throw new SheetParseError('invalidWorkbook', `shared string index ${value} is out of range`)
+    }
+    return strings[at]!
   }
   if (type === 'b') return value === '1' ? 'TRUE' : 'FALSE'
   return value
@@ -567,7 +605,7 @@ function cellValue(body: string, type: string | undefined, strings: readonly str
 /** Parse one worksheet's cells, resolving shared strings, inline text and shared formulas. */
 function parseWorksheet(name: string, xml: string, strings: readonly string[]): Sheet {
   const cells: SheetCell[] = []
-  const shared = new Map<string, SharedFormula>()
+  const shared = sharedFormulaMasters(xml)
   let lastRow = -1
   for (const rowMatch of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
     const rowAttributes = rowMatch[1] ?? ''
@@ -580,9 +618,11 @@ function parseWorksheet(name: string, xml: string, strings: readonly string[]): 
     for (const cellMatch of rowBody.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const attributes = cellMatch[1] ?? ''
       const body = cellMatch[2] ?? ''
-      const reference = /^([A-Za-z]{1,4})([0-9]{1,7})$/.exec((xmlAttribute(attributes, 'r') ?? '').trim())
-      const column = reference ? columnIndex(reference[1]!) : lastColumn + 1
-      const cellRow = reference ? Number(reference[2]) - 1 : row
+      const reference = xmlAttribute(attributes, 'r')
+      const position = reference === undefined ? undefined : cellPosition(reference)
+      if (reference !== undefined && !position) continue
+      const column = position ? position.column : lastColumn + 1
+      const cellRow = position ? position.row : row
       if (column < 0 || cellRow < 0) continue
       lastColumn = column
       const formula = cellFormula(body, cellRow, column, shared)
@@ -607,7 +647,8 @@ export function parseXlsx(bytes: Uint8Array): Sheet[] {
   if (!sheets.length) throw new SheetParseError('invalidWorkbook', 'the workbook has no sheets')
   const rels = zipEntry(bytes, WORKBOOK_RELS_ENTRY)
   const relationships = rels ? workbookRelationships(textDecoder.decode(rels)) : new Map<string, WorkbookRelationship>()
-  const shared = zipEntry(bytes, SHARED_STRINGS_ENTRY)
+  const sharedTarget = [...relationships.values()].find(relationship => relationship.sharedStrings)?.target
+  const shared = zipEntry(bytes, sharedTarget ? worksheetPath(sharedTarget) : SHARED_STRINGS_ENTRY)
   const strings = shared ? sharedStrings(textDecoder.decode(shared)) : []
   const parsed: Sheet[] = []
   for (const sheet of sheets) {
@@ -772,8 +813,14 @@ function pairRun(run: readonly AxisOp[], before: readonly AxisItem[], after: rea
   kind: 'row' | 'column' | 'line'): AxisOp[] {
   const deletes = run.filter((op): op is Extract<AxisOp, { kind: 'delete' }> => op.kind === 'delete').map(op => op.before)
   const inserts = run.filter((op): op is Extract<AxisOp, { kind: 'insert' }> => op.kind === 'insert').map(op => op.after)
+  // An equal number of unmatched columns with no exact anchor is read by position: scoring every column pair would
+  // rebuild a row-token map per pair, which is O(columns^2 * rows) on a wide table.
+  if (kind === 'column' && deletes.length === inserts.length) {
+    return deletes.map((removed, index) => ({ kind: 'same' as const, before: removed, after: inserts[index]! }))
+  }
   const pairs: { before: number; after: number; score: number }[] = []
-  if (deletes.length * inserts.length <= MAX_PAIR_CELLS) {
+  const pairWork = kind === 'column' ? MAX_COLUMN_PAIR_WORK : MAX_PAIR_CELLS
+  if (deletes.length * inserts.length <= pairWork) {
     const threshold = kind === 'row' ? ROW_SIMILARITY : COLUMN_SIMILARITY
     for (const removed of deletes) {
       for (const added of inserts) {
@@ -1026,32 +1073,31 @@ function fallbackText(side: SheetSource): string {
   return textDecoder.decode(side.content).replace(/[^\t\n\r\x20-\x7e\u00a0-\uffff]/g, ' ')
 }
 
-/** The non-empty lines a fallback text diff compares. */
-function fallbackLines(side: SheetSource): string[] {
+/** The non-empty lines a fallback text diff compares, keeping the editor's one-based line number; blank lines and
+ * trailing whitespace are ignored. */
+function fallbackLines(side: SheetSource): SheetLine[] {
   return fallbackText(side).replace(/\r\n?/g, '\n').split('\n')
-    .map(line => line.replace(/\s+$/, ''))
-    .filter(line => line.trim())
+    .map((text, index) => ({ line: index + 1, text: text.replace(/\s+$/, '') }))
+    .filter(line => line.text.trim())
 }
 
 /** A line diff for the D4 fallback: changed lines are paired by position, extras become added or removed. */
-function diffLines(before: readonly string[], after: readonly string[]): SheetLineChange[] {
-  const beforeItems: AxisItem[] = before.map((text, index) => ({ index, tokens: [text], key: text }))
-  const afterItems: AxisItem[] = after.map((text, index) => ({ index, tokens: [text], key: text }))
+function diffLines(before: readonly SheetLine[], after: readonly SheetLine[]): SheetLineChange[] {
+  const beforeItems: AxisItem[] = before.map((line, index) => ({ index, tokens: [line.text], key: line.text }))
+  const afterItems: AxisItem[] = after.map((line, index) => ({ index, tokens: [line.text], key: line.text }))
   const changes: SheetLineChange[] = []
   for (const op of alignAxis(beforeItems, afterItems, 'line')) {
     if (op.kind === 'delete') {
-      changes.push({ kind: 'removed', before: { line: op.before + 1, text: before[op.before]! } })
+      changes.push({ kind: 'removed', before: before[op.before]! })
       continue
     }
     if (op.kind === 'insert') {
-      changes.push({ kind: 'added', after: { line: op.after + 1, text: after[op.after]! } })
+      changes.push({ kind: 'added', after: after[op.after]! })
       continue
     }
     const previous = before[op.before]!
     const next = after[op.after]!
-    if (previous !== next) {
-      changes.push({ kind: 'changed', before: { line: op.before + 1, text: previous }, after: { line: op.after + 1, text: next } })
-    }
+    if (previous.text !== next.text) changes.push({ kind: 'changed', before: previous, after: next })
   }
   changes.sort((left, right) => (left.after?.line ?? left.before?.line ?? 0) - (right.after?.line ?? right.before?.line ?? 0)
     || (left.before?.line ?? 0) - (right.before?.line ?? 0))
