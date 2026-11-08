@@ -1,0 +1,26 @@
+{
+  "to": [
+    "Alice <alice@example.com>",
+    { "name": "Bob", "address": "bob@example.com" }
+  ],
+  "cc": [
+    "Carol <carol@example.com>"
+  ],
+  "bcc": [],
+  "subject": "Q4 launch plan",
+  "body": "Hi team,\n\nThe launch is on Thursday.\nPlease review the checklist before then.\n\nThanks,\nDana",
+  "attachments": [
+    {
+      "name": "plan.pdf",
+      "contentType": "application/pdf",
+      "size": 18234,
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "budget.xlsx",
+      "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "size": 9000,
+      "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}

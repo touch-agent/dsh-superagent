@@ -1,0 +1,5 @@
+---
+'@superagent/dsh': minor
+---
+
+Add the mail previewer: two structured mail drafts are compared into recipient, subject, body and attachment sections. The recipient envelope is compared per address, so a move between To, Cc and Bcc — including the dangerous move to Bcc — is one explicit `changed` recipient rather than a removal and a hidden addition. `recipients.audience` lists every address the after revision will reach, once, with its fields and Bcc visibility, and coded warnings name a Bcc presence, a move to Bcc, an address in more than one field and an empty envelope. The body is a line diff of the readable text, with unchanged lines anchoring the alignment; an attachment with supplied content or a digest is compared by that fingerprint, so a same-named file with new bytes is a change. The previewer registry that stores the preview and gives the Deliverable its `PreviewRef` comes with the review surface.

@@ -1,0 +1,29 @@
+{
+  "to": [
+    "Alice <alice@example.com>",
+    "Erin <erin@example.com>"
+  ],
+  "cc": [
+    "Carol <carol@example.com>"
+  ],
+  "bcc": [
+    "Bob <bob@example.com>",
+    "Dave <dave@example.com>"
+  ],
+  "subject": "Q4 launch plan — Friday",
+  "body": "Hi team,\n\nThe launch is on Friday.\nPlease review the checklist before then.\n\nThanks,\nDana",
+  "attachments": [
+    {
+      "name": "plan.pdf",
+      "contentType": "application/pdf",
+      "size": 18300,
+      "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "name": "notes.txt",
+      "contentType": "text/plain",
+      "size": 12,
+      "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  ]
+}
