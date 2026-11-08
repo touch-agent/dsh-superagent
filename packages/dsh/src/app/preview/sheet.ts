@@ -178,7 +178,7 @@ export interface SheetPreview {
 const MAX_PAIR_CELLS = 20_000
 /** Column pairs whose Dice score is computed; each comparison walks every row, so this stays small. */
 const MAX_COLUMN_PAIR_WORK = 512
-/** The steps the row and column aligner may take before it gives up on exact anchors and pairs by position. */
+/** The steps one Myers gap may take before that gap pairs by position. */
 const MAX_ALIGN_WORK = 2_000_000
 /** How alike two rows must be for an unmatched removal and insertion to be read as one changed row. */
 const ROW_SIMILARITY = 0.5
@@ -384,7 +384,7 @@ function xmlText(value: string): string {
     named: string | undefined) => {
     if (decimal) return codePoint(Number(decimal), whole)
     if (hex) return codePoint(Number.parseInt(hex, 16), whole)
-    return XML_ENTITIES[named!.toLowerCase()] ?? whole
+    return Object.hasOwn(XML_ENTITIES, named!.toLowerCase()) ? XML_ENTITIES[named!.toLowerCase()]! : whole
   })
 }
 
@@ -666,7 +666,11 @@ export function parseXlsx(bytes: Uint8Array): Sheet[] {
     }
     const xml = zipEntry(bytes, path)
     if (!xml) throw new SheetParseError('missingSheet', sheet.name)
-    parsed.push(parseWorksheet(sheet.name, textDecoder.decode(xml), strings))
+    const worksheet = textDecoder.decode(xml)
+    const isWorksheet = /<worksheet\b[^>]*>/.test(worksheet)
+    const isClosed = /<\/worksheet>/.test(worksheet) || /<worksheet\b[^>]*\/>/.test(worksheet)
+    if (!isWorksheet || !isClosed) throw new SheetParseError('invalidWorkbook', `the sheet ${sheet.name} is not a worksheet`)
+    parsed.push(parseWorksheet(sheet.name, worksheet, strings))
   }
   if (!parsed.length) throw new SheetParseError('invalidWorkbook', 'the workbook has no worksheet')
   return parsed
@@ -718,12 +722,97 @@ function backtrack(trace: readonly Int32Array[], depth: number, before: number, 
   return ops
 }
 
-/**
- * Align two key lists with Myers' shortest edit script. Exact equal keys anchor the alignment, keeping an inserted or
- * deleted row from rewriting every later row. Work is bounded, so a workbook that changes everywhere falls back to
- * pairing by position instead of taking time quadratic in the table size.
- */
-function alignKeys(beforeKeys: readonly string[], afterKeys: readonly string[]): AxisOp[] | undefined {
+/** One exact key that occurs once on each side and is kept as an alignment anchor. */
+interface KeyAnchor {
+  before: number
+  after: number
+}
+
+/** The longest ordered run of keys that occur exactly once on each side (patience anchors). */
+function uniqueAnchors(beforeKeys: readonly string[], afterKeys: readonly string[]): KeyAnchor[] {
+  if (!beforeKeys.length || !afterKeys.length) return []
+  const beforeCounts = new Map<string, number>()
+  for (const key of beforeKeys) beforeCounts.set(key, (beforeCounts.get(key) ?? 0) + 1)
+  const afterCounts = new Map<string, number>()
+  for (const key of afterKeys) afterCounts.set(key, (afterCounts.get(key) ?? 0) + 1)
+  const afterAt = new Map<string, number>()
+  for (let index = 0; index < afterKeys.length; index++) {
+    const key = afterKeys[index]!
+    if (afterCounts.get(key) === 1) afterAt.set(key, index)
+  }
+  const candidates: KeyAnchor[] = []
+  for (let index = 0; index < beforeKeys.length; index++) {
+    const key = beforeKeys[index]!
+    if (beforeCounts.get(key) !== 1) continue
+    const after = afterAt.get(key)
+    if (after !== undefined) candidates.push({ before: index, after })
+  }
+  if (!candidates.length) return []
+  const tails: number[] = []
+  const previous = new Int32Array(candidates.length).fill(-1)
+  for (let index = 0; index < candidates.length; index++) {
+    const value = candidates[index]!.after
+    let low = 0
+    let high = tails.length
+    while (low < high) {
+      const middle = (low + high) >> 1
+      if (candidates[tails[middle]!]!.after < value) low = middle + 1
+      else high = middle
+    }
+    if (low > 0) previous[index] = tails[low - 1]!
+    tails[low] = index
+  }
+  const anchors: KeyAnchor[] = []
+  let cursor = tails[tails.length - 1]!
+  while (cursor >= 0) {
+    anchors.push(candidates[cursor]!)
+    cursor = previous[cursor]!
+  }
+  anchors.reverse()
+  return anchors
+}
+
+/** Offset an alignment operation from a sliced gap back to the full key lists. */
+function offsetOp(op: AxisOp, before: number, after: number): AxisOp {
+  if (op.kind === 'same') return { kind: 'same', before: op.before + before, after: op.after + after }
+  if (op.kind === 'delete') return { kind: 'delete', before: op.before + before }
+  return { kind: 'insert', after: op.after + after }
+}
+
+/** Align one gap between anchors, using Myers when it is bounded and position when it is not. */
+function alignSegment(beforeKeys: readonly string[], afterKeys: readonly string[],
+  beforeStart: number, beforeEnd: number, afterStart: number, afterEnd: number): AxisOp[] {
+  const beforeLength = beforeEnd - beforeStart
+  const afterLength = afterEnd - afterStart
+  if (!beforeLength) {
+    return Array.from({ length: afterLength }, (_value, index) => ({ kind: 'insert' as const, after: afterStart + index }))
+  }
+  if (!afterLength) {
+    return Array.from({ length: beforeLength }, (_value, index) => ({ kind: 'delete' as const, before: beforeStart + index }))
+  }
+  const segment = myersAlign(beforeKeys.slice(beforeStart, beforeEnd), afterKeys.slice(afterStart, afterEnd))
+  return segment
+    ? segment.map(op => offsetOp(op, beforeStart, afterStart))
+    : positionalPairs(beforeLength, afterLength).map(op => offsetOp(op, beforeStart, afterStart))
+}
+
+/** Keep the patience anchors and align every gap between them. */
+function alignAnchored(beforeKeys: readonly string[], afterKeys: readonly string[], anchors: readonly KeyAnchor[]): AxisOp[] {
+  const ops: AxisOp[] = []
+  let beforeStart = 0
+  let afterStart = 0
+  for (const anchor of anchors) {
+    ops.push(...alignSegment(beforeKeys, afterKeys, beforeStart, anchor.before, afterStart, anchor.after))
+    ops.push({ kind: 'same', before: anchor.before, after: anchor.after })
+    beforeStart = anchor.before + 1
+    afterStart = anchor.after + 1
+  }
+  ops.push(...alignSegment(beforeKeys, afterKeys, beforeStart, beforeKeys.length, afterStart, afterKeys.length))
+  return ops
+}
+
+/** Myers' shortest edit script over a gap with no patience anchors; undefined when the work budget is exhausted. */
+function myersAlign(beforeKeys: readonly string[], afterKeys: readonly string[]): AxisOp[] | undefined {
   const before = beforeKeys.length
   const after = afterKeys.length
   if (!before && !after) return []
@@ -754,6 +843,17 @@ function alignKeys(beforeKeys: readonly string[], afterKeys: readonly string[]):
   return undefined
 }
 
+/**
+ * Align two key lists with unique exact keys as patience anchors, then Myers inside each gap. The anchors keep a heavily
+ * edited table from exhausting the whole-table work budget and falling back to position for every later row.
+ */
+function alignKeys(beforeKeys: readonly string[], afterKeys: readonly string[]): AxisOp[] | undefined {
+  if (!beforeKeys.length && !afterKeys.length) return []
+  if (!beforeKeys.length) return afterKeys.map((_key, index) => ({ kind: 'insert', after: index }))
+  if (!afterKeys.length) return beforeKeys.map((_key, index) => ({ kind: 'delete', before: index }))
+  const anchors = uniqueAnchors(beforeKeys, afterKeys)
+  return anchors.length ? alignAnchored(beforeKeys, afterKeys, anchors) : myersAlign(beforeKeys, afterKeys)
+}
 /** Dice similarity over the tokens of two columns, which keeps a moved row insertion from breaking the columns. */
 function columnSimilarity(before: AxisItem, after: AxisItem): number {
   if (before.key === after.key) return 1
@@ -922,18 +1022,19 @@ function cellLookup(sheet: Sheet): Map<number, Map<number, SheetCell>> {
 
 /**
  * Compare one cell. A formula change is the formula difference and is never also a value change, even when the cached
- * result moved with it; a value change is a different stored value under the same formula, or two plain values.
+ * result moved with it; a value change is a different stored value under the same formula, or two plain values. A
+ * removed cell is reported where it used to be, and an added cell where it now is.
  */
-function cellChange(sheet: string, row: number, column: number, before: SheetCell | undefined,
-  after: SheetCell | undefined): SheetCellChange | undefined {
+function cellChange(sheet: string, beforeRow: number, beforeColumn: number, afterRow: number, afterColumn: number,
+  before: SheetCell | undefined, after: SheetCell | undefined): SheetCellChange | undefined {
   if (!before && !after) return undefined
-  if (!before) return { sheet, kind: 'added', row, column, address: cellAddress(row, column), after }
-  if (!after) return { sheet, kind: 'removed', row, column, address: cellAddress(row, column), before }
+  if (!before) return { sheet, kind: 'added', row: afterRow, column: afterColumn, address: cellAddress(afterRow, afterColumn), after }
+  if (!after) return { sheet, kind: 'removed', row: beforeRow, column: beforeColumn, address: cellAddress(beforeRow, beforeColumn), before }
   let kind: SheetCellChange['kind']
   if (formulaKey(before) !== formulaKey(after)) kind = 'formula'
   else if (storedValue(before) !== storedValue(after)) kind = 'value'
   else return undefined
-  return { sheet, kind, row, column, address: cellAddress(row, column), before, after }
+  return { sheet, kind, row: afterRow, column: afterColumn, address: cellAddress(afterRow, afterColumn), before, after }
 }
 
 /** The empty counts a fallback and an unchanged sheet share. */
@@ -987,7 +1088,7 @@ function diffSheet(before: Sheet, after: Sheet): { diff: SheetDiff; changes: She
   const changes: SheetCellChange[] = []
   for (const row of rows) {
     for (const column of columns) {
-      const change = cellChange(before.name, row.after, column.after,
+      const change = cellChange(before.name, row.before, column.before, row.after, column.after,
         beforeCells.get(row.before)?.get(column.before), afterCells.get(row.after)?.get(column.after))
       if (change) changes.push(change)
     }
@@ -1104,9 +1205,35 @@ function diffLines(before: readonly SheetLine[], after: readonly SheetLine[]): S
   return changes
 }
 
+/** A readable side's non-empty cells as fallback lines, so a ZIP is never diffed as text when it can be parsed. */
+function fallbackSheetLines(sheets: readonly Sheet[]): SheetLine[] {
+  const lines: SheetLine[] = []
+  for (const sheet of sheets) {
+    if (sheets.length > 1) lines.push({ line: lines.length + 1, text: `# ${sheet.name}` })
+    for (const row of sheet.rows) {
+      for (const cell of row.cells) {
+        const text = cell.formula === undefined ? cell.value : `=${cell.formula}`
+        if (text) lines.push({ line: lines.length + 1, text: `${cell.address}\t${text}` })
+      }
+    }
+  }
+  return lines
+}
+
+/** The fallback lines of one side: parsed cells when it reads, the best text otherwise. */
+function readableLines(source: SheetSource): SheetLine[] {
+  try { return fallbackSheetLines(parseSide(source)) } catch (error) {
+    if (error instanceof SheetParseError) return fallbackLines(source)
+    throw error
+  }
+}
+
 /** The D4 fallback: a line diff of both sides' best text, the original link and the coded parse failure. */
 function degradedPreview(before: SheetSource, after: SheetSource, link: string, side: 'before' | 'after',
   error: SheetParseError): SheetPreview {
+  // The side that parsed contributes its cells, not the ZIP bytes it happens to arrive as.
+  const beforeLines = side === 'before' ? fallbackLines(before) : readableLines(before)
+  const afterLines = side === 'after' ? fallbackLines(after) : readableLines(after)
   return {
     kind: 'text/diff',
     format: before.format,
@@ -1116,7 +1243,7 @@ function degradedPreview(before: SheetSource, after: SheetSource, link: string, 
     addedSheets: [],
     removedSheets: [],
     changes: [],
-    lines: diffLines(fallbackLines(before), fallbackLines(after)),
+    lines: diffLines(beforeLines, afterLines),
     summary: emptySummary(),
     degraded: { code: error.code, message: error.message, side },
   }

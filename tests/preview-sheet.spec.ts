@@ -228,6 +228,40 @@ describe('the sheet previewer', () => {
     })
   })
 
+  it('keeps the readable side when only the other workbook cannot be parsed', () => {
+    const preview = previewSheet({
+      before: { format: 'xlsx', content: bytes('broken-before.xlsx') },
+      after: { format: 'xlsx', content: bytes('ledger-after.xlsx') },
+      link,
+    })
+    expect(preview.degraded).toMatchObject({ code: 'notZip', side: 'before' })
+    expect(preview.lines?.some(change => change.after?.text === 'A1\tItem')).toBe(true)
+    expect(preview.lines?.some(change => change.after?.text.startsWith('D2\t='))).toBe(true)
+    const reversed = previewSheet({
+      before: { format: 'xlsx', content: bytes('ledger-after.xlsx') },
+      after: { format: 'xlsx', content: bytes('broken-before.xlsx') },
+      link,
+    })
+    expect(reversed.degraded).toMatchObject({ code: 'notZip', side: 'after' })
+    expect(reversed.lines?.some(change => change.before?.text === 'A1\tItem')).toBe(true)
+  })
+
+  it('reports a removed cell where it used to be after a row insertion above it', () => {
+    const preview = previewSheet({
+      before: { format: 'csv', content: 'a,b\n1,2\n' },
+      after: { format: 'csv', content: 'a,b\nnew,row\n1,\n' },
+      link,
+    })
+    expect(preview.sheets[0]!.rows.added).toEqual([{ index: 1, cells: 2 }])
+    expect(preview.changes.find(change => change.kind === 'removed'))
+      .toMatchObject({ kind: 'removed', address: 'B2', row: 1, column: 1 })
+  })
+
+  it('keeps an entity-looking name literal instead of reading it from Object.prototype', () => {
+    const parsed = parseXlsx(bytes('entity.xlsx'))
+    expect(parsed[0]!.rows[0]!.cells.find(cell => cell.address === 'A1')!.value).toBe('&constructor;')
+  })
+
   it('pairs an edited fallback line with its own revision when a line is inserted above it', () => {
     const encoder = new TextEncoder()
     const preview = previewSheet({
@@ -266,6 +300,12 @@ describe('the sheet previewer', () => {
     failure = undefined
     try { parseXlsx(bytes('bad-shared-string.xlsx')) } catch (error) { failure = error }
     expect((failure as SheetParseError).code).toBe('invalidWorkbook')
+    failure = undefined
+    try { parseXlsx(bytes('not-worksheet.xlsx')) } catch (error) { failure = error }
+    expect((failure as SheetParseError).code).toBe('invalidWorkbook')
+    failure = undefined
+    try { parseXlsx(bytes('truncated-sheet.xlsx')) } catch (error) { failure = error }
+    expect((failure as SheetParseError).code).toBe('invalidWorkbook')
     expect(() => previewSheet({ before: { format: 'csv', content: 'a' }, after: { format: 'xlsx', content: bytes('ledger-after.xlsx') }, link }))
       .toThrow(TypeError)
     expect(() => previewSheet({ before: { format: 'csv', content: 'a' }, after: { format: 'csv', content: 'b' }, link: ' ' }))
@@ -291,6 +331,27 @@ describe('the sheet previewer', () => {
     expect(preview.changes).toHaveLength(40)
     expect(preview.changes.every(change => change.kind === 'value' && change.row === 5_001)).toBe(true)
     expect(preview.sheets[0]!.rows).toMatchObject({ before: 10_001, after: 10_001, added: [], removed: [] })
+    expect(elapsed).toBeLessThan(2_000)
+  })
+
+  it('keeps a row insertion structural in a 10,000-row table with 2,000 edited rows', () => {
+    const beforeRows = ['id,left,right']
+    const afterRows = ['id,left,right']
+    const insertAt = 5_002
+    for (let index = 0; index < 10_000; index++) {
+      const edited = index % 5 === 0
+      beforeRows.push(`${index},${index + 100},${index + 200}`)
+      if (index === insertAt) afterRows.push(`${index},inserted,row`)
+      afterRows.push(edited ? `${index},${index + 500},${index + 600}` : `${index},${index + 100},${index + 200}`)
+    }
+    const started = performance.now()
+    const preview = previewSheet({ before: { format: 'csv', content: beforeRows.join('\n') },
+      after: { format: 'csv', content: afterRows.join('\n') }, link })
+    const elapsed = performance.now() - started
+    expect(preview.sheets[0]!.rows.added).toEqual([{ index: insertAt + 1, cells: 3 }])
+    expect(preview.sheets[0]!.rows.removed).toEqual([])
+    expect(preview.changes).toHaveLength(4_000)
+    expect(preview.changes.every(change => change.kind === 'value')).toBe(true)
     expect(elapsed).toBeLessThan(2_000)
   })
 

@@ -11,6 +11,9 @@ updating the expected result with it.
 | `empty-shared-string.xlsx` | Shared strings include a self-closing empty `<si/>`, so later string indices must not shift |
 | `bad-shared-string.xlsx` | A cell names a shared-string index past the table; the workbook is a parse failure rather than silently empty |
 | `shared-formula-up.xlsx` | A shared-formula follower appears above its master, so resolution must not depend on document order |
+| `entity.xlsx` | An inline string contains `&constructor;`, which must stay literal instead of resolving through `Object.prototype` |
+| `not-worksheet.xlsx` | A worksheet relationship points at `styles.xml`; the sheet must fail as `invalidWorkbook`, not become empty |
+| `truncated-sheet.xlsx` | The worksheet part is cut off before its closing tag; the sheet must fail instead of dropping its remaining cells |
 | `large-before.xlsx`, `large-after.xlsx` | Two 10,001-row sheets with one changed value, for the under-two-second acceptance |
 | `broken-before.xlsx`, `broken-after.xlsx` | Text files with an `.xlsx` name; the previewer cannot read them as a ZIP and degrades to a line diff of the decoded text |
 | `no-workbook.xlsx`, `missing-sheet.xlsx`, `missing-relationship.xlsx` | A package without `xl/workbook.xml`, a workbook that names a sheet the archive does not hold, and a workbook whose relationships part does not name the sheet it lists; the three structured parse failures |
