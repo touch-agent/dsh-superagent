@@ -293,3 +293,17 @@ describe('whole-message attach after a split', () => {
     expect(openTickets(h.repo)).toHaveLength(2)
   })
 })
+
+describe('a context-only follower', () => {
+  it('does not block a whole-message attach to another ticket', () => {
+    const h = harness('single')
+    const target = h.dispatch({ title: 'Target', scope: 'Target.' }, 'Target', 'msg_1')
+    if ('refused' in target) throw new Error(target.refused)
+    h.repo.threads.save({ key: 'conversation:msg_2', ref: { source: 'conversation', id: 'msg_2' },
+      createdAt: new Date().toISOString(), subscriptions: [target.ticket!.id], context: [target.ticket!.id],
+      correlated: [], pending: [], meta: {} })
+    const result = h.dispatch({ ticketId: target.ticket!.id }, 'A message the target follows for context.', 'msg_2')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(result.attached).toBe(true)
+  })
+})

@@ -38,7 +38,7 @@ export interface DispatchHost {
   disposition(triggerId: string): TriggerDisposition | undefined
   ticket(id: string): Ticket | undefined
   /** The Thread a message's Triggers share, read before receiving a split so a reachable ticket is never mutated by a refused dispatch. */
-  thread?(key: string): { subscriptions: readonly string[] } | undefined
+  thread?(key: string): { subscriptions: readonly string[]; context?: readonly string[] } | undefined
   config?(): DispatchConfigView
 }
 /** What happened to one item: its Trigger, the Ticket it started or joined, or why it did not. */
@@ -92,6 +92,9 @@ const receipt = (title: string, source: string): string => CJK.test(source) ? `å
 const intentText = (item: PlannedItem): string => `${item.title}\n${item.scope}${item.ticketId ? `\n${item.ticketId}` : ''}`
 const intentKey = (item: PlannedItem): string => createHash('sha256').update(intentText(item)).digest('hex').slice(0, 12)
 const sameIntent = (item: PlannedItem): string => intentText(item).toLowerCase().replace(/\s+/gu, ' ').trim()
+/** Whether a Thread already reached a ticket that decides it, rather than one that only follows it for context. */
+const reachedThread = (thread: { subscriptions: readonly string[]; context?: readonly string[] } | undefined): boolean =>
+  !!thread?.subscriptions.some(ticketId => !thread.context?.includes(ticketId))
 
 /**
  * The latest message in the main Session must be the person's, not a notice or relay the plugin delivered; otherwise the
@@ -233,7 +236,7 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
     if (host.disposition(trigger.id)?.decisionId) return { triggerId: trigger.id, duplicate: true }
     // A whole-message attach shares the message's Thread: if that Thread already reached a ticket, receiving it here would
     // add an input to those siblings before the attach. Refuse before receiving, as a changed split plan does.
-    if (host.thread?.(threadKey(trigger.threads[0]!))?.subscriptions.length) {
+    if (reachedThread(host.thread?.(threadKey(trigger.threads[0]!)))) {
       return { refused: 'This message already reached a ticket; attach the new request to that ticket or send it in a new message.' }
     }
     const received = host.engine.receive(trigger)
@@ -267,7 +270,7 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
   }
   // A changed plan for a message that already reached a ticket must be refused before receiving anything: receiving would
   // add its Triggers to that ticket as inputs and the decision would then fail, leaving the conversation changed.
-  if (host.thread?.(threadKey(prepared[0]!.trigger.threads[0]!))?.subscriptions.length) {
+  if (reachedThread(host.thread?.(threadKey(prepared[0]!.trigger.threads[0]!)))) {
     return { refused: 'This message already reached a ticket; attach the new request to that ticket or send it in a new message.' }
   }
   // Receive every item before deciding any of them: once the first ticket exists it subscribes to the shared thread, and a
