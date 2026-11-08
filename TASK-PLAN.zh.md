@@ -335,7 +335,7 @@ graph LR
 
 - **交付**：`views/tickets.ts` 在 stage=person/review 时强制渲染 preview；缺 preview 显示「无法审核」而不是「批准」按钮。
 - **验收**：`tests/panel-execution.spec.tsx` 断言无 preview 时 approve 按钮不存在。
-- **状态**：实现完成（2026-11-08，PR #24 待审查合并）。`orchestrator_report` 接受可选 `deliverable`，`Assignments.report` 用 `enterReview` 归一化并随 Report 保存；`ticketDetail` 在 `person/review` 投影交付物、修订、预览与验收标准，`TicketPage` 只在有 preview 时显示批准并调用 `POST tickets/:id/approve`，缺 preview 显示「无法审核」；`Engine.reviewTicket` 记录批准人，不结束工单。`tests/core-engine.spec.ts`、`tests/views.spec.ts`、`tests/http.spec.ts`、`tests/panel-execution.spec.tsx` 覆盖有/无 preview 两条路径。
+- **状态**：实现完成（2026-11-08，PR #24 待审查合并）。`orchestrator_report` 接受可选 `deliverable`，`Assignments.report` 用 `enterReview` 归一化并随 Report 保存；`ticketDetail` 在 `person/review` 投影交付物、修订、预览与验收标准，`TicketPage` 只在有 preview 时显示批准并调用 `POST tickets/:id/approve`，缺 preview 显示「无法审核」；`Engine.reviewTicket` 记录批准人，不结束工单。`tests/core-engine.spec.ts`、`tests/views.spec.ts`、`tests/http.spec.ts`、`tests/panel-execution.spec.tsx` 覆盖有/无 preview 两条路径。预览器注册表仍未实现，本任务只渲染 worker 提供的 `previewRef`，不调用 T3-02 的结构化预览。
 
 ### T3-08 工单时间线（审计视图）· Runtime · 3 人日
 
