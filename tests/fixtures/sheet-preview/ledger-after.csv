@@ -1,0 +1,5 @@
+Item,Q1,Q2,Total
+Widgit,11,12,=C2+B2
+Gadget,7,9,=B3+C3
+Doohickey,,5,=B4*C4
+Sprocket,2,3,=B5+C5

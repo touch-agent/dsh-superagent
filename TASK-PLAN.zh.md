@@ -314,6 +314,7 @@ graph LR
 
 - **交付**：`preview/sheet.ts`：按行列 diff，标注公式变化与数值变化两类。
 - **验收**：公式改动不会被误报为数值改动；大表（1 万行）耗时 < 2s。
+- **状态**：实现完成（2026-11-08，PR #待填）。`packages/dsh/src/app/preview/sheet.ts` 读 CSV 与 `.xlsx`（工作簿、共享字符串、内联字符串、共享公式），按行列对齐后逐格比较：公式改动记 `formula`，同一公式下的缓存值改动记 `value`，公式改动即使缓存值一起变也不重复记 `value`；公式按单元格相对引用归一化，插入行/列不会把随位置平移的公式误报为公式改动；整表新增/删除单独列出。`tests/preview-sheet.spec.ts` 覆盖 CSV 引号与公式、共享公式展开、公式/数值分类、行列表格增删、无法解析时的 `text/diff` 降级，以及 1 万行 CSV 与 1 万行 `.xlsx` 均低于 2s。previewer registry 与 review 表面接线仍属于后续任务。
 
 ### T3-04 mail previewer · Runtime · 4 人日
 
