@@ -57,11 +57,11 @@ Ticket details show the originating Trigger, Decision and reason, scope and Poli
 
 A Ticket at `person / review` shows its review above the Mandate details: the artifact kind and reference, the revision, the preview kind and a link to the preview, the worker's summary, and the acceptance criteria. **批准 / Approve** accepts that revision and is shown only when the Report carried a preview; the button records the panel as the accepting actor, while the Ticket stays open for its followed pull request. A review-stage Ticket without a preview, or with a preview of another revision, shows **无法审核** and no approval button, and the HTTP route refuses the same request.
 
-| Before (main `a45e643`) | After (this change) |
+| Before (main `c2ff8e6`) | After (this change) |
 | --- | --- |
 | ![Review-stage Ticket without a preview section](images/review-preview/before-review.png) | ![Review-stage Ticket with its preview and Approve button](images/review-preview/after-review.png) |
 
-Same 1440×1000 viewport and light theme, with the same synthetic review-stage Ticket, pull request Thread and report. Before is the merge of #21, which has no review section; after is this branch, which renders the preview and offers **Approve**.
+Same 1440×1000 viewport and light theme, with the same synthetic review-stage Ticket, pull request Thread and report. Before is the merge of #22 (current main), which has no review section; after is this branch, which renders the preview and offers **Approve**.
 
 ![The same Ticket when its report has no preview](images/review-preview/after-review-missing.png)
 
