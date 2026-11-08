@@ -717,7 +717,7 @@ interface TaskView {
   review?: TaskReviewView              // tracked 详情：父+已接受子任务的聚合；lightweight 无
   inline?: { steps: number; lastActionAt?: string; summary?: string; traceId?: string } // lightweight 的执行摘要，不是 DeliverableSummary
   subtasks?: SubtaskView[]             // 仅 tracked 详情查询返回；lightweight 无子任务
-  subtaskSummary: { total: number; queued: number; running: number; waiting: number; done: number; dropped: number; cancelled: number; blocked: number; failed: number; orphaned: number; unresolved: number } // running = working/review; unresolved = 上述状态且无 resolution
+  subtaskSummary: { total: number; queued: number; running: number; waiting: number; done: number; dropped: number; cancelled: number; blocked: number; failed: number; orphaned: number; unresolved: number } // running = working/review; unresolved = 上述状态且无当前有效 resolution；这些计数只用于子任务，不汇总进 TaskCategoryView.counts
   executionUnits?: ExecutionUnitView[] // 懒加载或详情读
 }
 
