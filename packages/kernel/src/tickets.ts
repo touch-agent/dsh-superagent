@@ -1,11 +1,12 @@
 /** Tickets: their lifecycle from an accept to their end, their Subscriptions and their Inputs. */
-import { acknowledgementAction } from './action.ts'
+import { acknowledgementAction, withinActionLevel } from './action.ts'
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
-import { channelThread, latestAssignment, latestReport, liveTicket, readUntil, runningAssignment, settled, threadKey, waitsForPerson } from './model.ts'
+import { channelThread, latestAssignment, latestReport, liveTicket, readUntil, runningAssignment, settled, threadKey, ticketForm, waitsForPerson }
+  from './model.ts'
 import type { Assignment, ChannelRef, Evaluation, Follow, Mandate, PolicyEffect, ThreadRef, Ticket, TicketEndBy, TicketInput, TicketOutcome,
   Trigger, TriggerDisposition } from './model.ts'
-import type { AssessmentOutcome } from './ports.ts'
+import type { AssessmentOutcome, InlineResult, InlineStep } from './ports.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
 import { canRetry } from './stage.ts'
@@ -24,7 +25,8 @@ const STATUS_REQUEST = 'Report the current ticket status with orchestrator_repor
 /**
  * Manages each ticket's lifecycle: creates the ticket for an accept decision with its Mandate, Subscriptions, and first
  * Assignment, binds and attaches Threads, adds Inputs, resumes, retries, restarts, and ends tickets, and drops Subscriptions.
- * Coordinates with Replies for the acknowledgement an accept carries and with Executor to start, deliver to, and stop assignments.
+ * Coordinates with Replies for the acknowledgement an accept carries, with Executor to start, deliver to, and stop assignments,
+ * and with the inline executor to run a lightweight ticket's action sequence and record it in the ticket's trace.
  * Intake, Evals, Assignments, and Engine delegate ticket and subscription mutations here.
  */
 export class Tickets extends EnginePart {
@@ -33,7 +35,9 @@ export class Tickets extends EnginePart {
   /**
    * Create the ticket an accept decided, under `mandate`, with the Channels and Threads of the Eval's Triggers, its first
    * Assignment, and the acknowledgement the accept carries, and queue its launch. Its origin is the admissible Trigger that
-   * gave the Eval its strength, or the Eval's last Trigger for an Eval recorded before `primary` existed.
+   * gave the Eval its strength, or the Eval's last Trigger for an Eval recorded before `primary` existed. A lightweight
+   * accept gets no Assignment: its actions run inline instead.
+   * @throws TypeError when the accept chose the lightweight form but no inline executor is configured.
    */
   create(id: string, decisionId: string, mandate: Mandate, evaluation: Pick<Evaluation, 'triggerIds' | 'primary'>,
     outcome: Extract<AssessmentOutcome, { kind: 'accept' }>, at: string): void {
@@ -41,22 +45,63 @@ export class Tickets extends EnginePart {
     // Fall back to the last trigger for Evals recorded before `primary` existed.
     const primary = this.repo.triggers.get(evaluation.primary ?? triggerIds.at(-1)!)
     const origin = { triggerId: primary?.id ?? triggerIds[0]!, triggerIds }
-    let ticket: Ticket = { id, title: outcome.title, decisionId, mandate, channels: [], assignments: [], inputs: [], undelivered: [],
-      createdAt: at, updatedAt: at, origin }
+    let ticket: Ticket = { id, title: outcome.title, decisionId, mandate, form: outcome.form ?? 'tracked', channels: [], assignments: [],
+      inputs: [], undelivered: [], createdAt: at, updatedAt: at, origin }
     for (const triggerId of triggerIds) {
       const channel = this.repo.triggers.get(triggerId)?.channel
       if (channel && !ticket.channels.some(item => sameChannel(item, channel))) ticket.channels.push(channel)
     }
     ticket = this.options.prepareTicket?.(ticket, outcome) ?? ticket
-    const assignment = this.newAssignment(ticket)
+    const lightweight = ticketForm(ticket) === 'lightweight'
+    // A lightweight ticket cannot wait for a Session that never starts, so the deployment must provide the inline path.
+    if (lightweight && !this.options.inline) throw new TypeError('A lightweight Ticket needs an inline executor')
+    const assignment = lightweight ? undefined : this.newAssignment(ticket)
     this.repo.tickets.save(ticket)
     for (const triggerId of triggerIds) for (const ref of this.repo.triggers.get(triggerId)?.threads ?? []) this.subscribe(id, ref)
     if (outcome.acknowledgement && primary) this.replies.acknowledgeAccepted(id, primary, outcome.acknowledgement)
     const created = this.require(id)
     const from = primary ?? this.repo.triggers.get(created.origin.triggerId)
     if (from) this.stage(from, 'attach', { ref: id, data: { ticketId: id, created: true } })
-    this.options.executor.start(created, assignment)
+    if (lightweight) {
+      this.stageOf(created, 'dispatch', { ref: 'inline', data: { form: 'lightweight' } })
+      this.options.inline!.start(created)
+    } else this.options.executor.start(created, assignment!)
     this.emit('ticket.created', { ticketId: id, decisionId, strength: mandate.strength })
+  }
+  /**
+   * Record one Action a lightweight ticket's inline run performed, as it runs: an `action` stage under the Trigger's trace,
+   * naming the Action's kind, source, object, revision and level. A step above `draft` is refused, as that level needs a
+   * tracked ticket and a worker Session (R5).
+   * @throws UserError when the ticket is unknown or has ended.
+   * @throws TypeError when the ticket is not lightweight or the step is above `draft`.
+   */
+  inlineAction(ticketId: string, step: InlineStep): void {
+    const ticket = this.require(ticketId)
+    if (!liveTicket(ticket)) throw new UserError('ticketEnded')
+    if (ticketForm(ticket) !== 'lightweight') throw new TypeError('Only a lightweight Ticket records inline actions')
+    if (ticket.assignments.length) throw new TypeError('A lightweight Ticket runs without an Assignment')
+    if (!withinActionLevel(step.action.level, 'draft')) throw new TypeError(`A lightweight Ticket cannot record a ${step.action.level} action`)
+    this.stageOf(ticket, 'action', { at: step.at, ref: step.action.idempotencyKey, data: {
+      action: { kind: step.action.kind, source: step.action.source, objectId: step.action.objectId, revision: step.action.revision,
+        level: step.action.level, actor: step.action.actor }, ok: step.ok, ...step.error === undefined ? {} : { error: step.error.slice(0, 300) } } })
+  }
+  /**
+   * Record that a lightweight ticket's inline run ended and end it: the disposition's take-up of the person's message it
+   * started from and a `report` stage with its outcome. Its actions are already recorded by `inlineAction`.
+   * @throws UserError when the ticket is unknown or has ended.
+   * @throws TypeError when the ticket is not lightweight or has an Assignment.
+   */
+  inlineFinished(ticketId: string, result: InlineResult): Ticket {
+    const ticket = this.require(ticketId)
+    if (!liveTicket(ticket)) throw new UserError('ticketEnded')
+    if (ticketForm(ticket) !== 'lightweight') throw new TypeError('Only a lightweight Ticket finishes inline')
+    if (ticket.assignments.length) throw new TypeError('A lightweight Ticket runs without an Assignment')
+    const at = this.now()
+    // The ticket did this person's message, so their disposition says it was taken up rather than left for Eval again.
+    this.takeUp(ticket.id, ticket.origin.triggerId)
+    this.stageOf(ticket, 'report', { at, ref: `${at}:${result.outcome}`, data: { state: result.outcome, form: 'lightweight' } })
+    this.end(ticketId, 'executor', result.outcome, at, result.summary)
+    return this.require(ticketId)
   }
   /**
    * Subscribes an open ticket to `thread` and records it in `ticket.follows` (`own` when opened by the ticket).
@@ -274,6 +319,7 @@ export class Tickets extends EnginePart {
    * and no Decision, since nothing new is authorized. One whose Mandate the current Policy no longer holds stays ended and
    * takes nothing (see `refuse`). While processing is paused the message waits, and the first pass after the pause resumes
    * the ticket under the Policy then. Reads the ticket afresh, so it is idempotent and leaves an already-resumed ticket alone.
+   * A lightweight ticket runs inline again, with the person's message waiting for its next run.
    */
   wake(ticketId: string): void {
     const ticket = this.repo.tickets.get(ticketId)
@@ -285,13 +331,18 @@ export class Tickets extends EnginePart {
     // Only a human's message resumes an ended ticket; bot/CI triggers wait alongside inputs from before the ticket ended.
     const first = ticket.undelivered.map(id => ticket.inputs.find(input => input.id === id)).find(input => input?.kind === 'trigger' && input.human)
     if (first?.kind !== 'trigger') return
+    const lightweight = ticketForm(ticket) === 'lightweight'
+    if (lightweight && !this.options.inline) { this.refuse(ticket); return }
     delete ticket.ended; ticket.updatedAt = at
-    const assignment = this.newAssignment(ticket)
+    const assignment = lightweight ? undefined : this.newAssignment(ticket)
     // Prepend the resumed marker so it is delivered ahead of the waiting messages.
     const resumed: TicketInput = { id: key('input', ticket.id, 'resumed', first.triggerId), kind: 'resumed', triggerId: first.triggerId, at }
     ticket.inputs.push(resumed); ticket.undelivered.unshift(resumed.id)
     this.repo.tickets.save(ticket)
-    this.options.executor.start(ticket, assignment)
+    if (lightweight) {
+      this.stageOf(ticket, 'dispatch', { ref: `inline:${resumed.id}`, data: { form: 'lightweight', resumed: true } })
+      this.options.inline!.start(ticket)
+    } else this.options.executor.start(ticket, assignment!)
     this.emit('ticket.resumed', { ticketId, triggerId: first.triggerId })
   }
   /** The Triggers of a ticket's trigger Inputs, or of those of them whose Input ids are `ids`. */
@@ -389,6 +440,8 @@ export class Tickets extends EnginePart {
     this.letGo(ticketId, waiting, left)
     this.emit('ticket.ended', { ticketId, by, outcome, ...why })
     for (const assignment of stopping) this.options.executor.stop(ticket, assignment, reason ?? outcome)
+    // A lightweight ticket's run has no Assignment to stop, so the inline executor is told directly.
+    if (ticketForm(ticket) === 'lightweight') this.options.inline?.stop(ticket, reason ?? outcome)
   }
   /**
    * Whether a ticket's work has not finished at a close at `at`: its worker took up a person's message the ticket decides and

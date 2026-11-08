@@ -308,13 +308,13 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/limits.ts` | The limits of the values a person sets, which the settings schemas check and the panel's fields offer |
 | `packages/dsh/src/kv.ts` | `KV`: every family of `kv` records with its key, its value's type and its owner, and the `Key` and `Family` types the Store and `SourceContext.state` take |
 | `packages/dsh/src/navigation.ts` | Opens a DeepSeek Harness Session from the panel once the host's catalog lists it |
-| `packages/kernel/src/model.ts` | The domain types, among them the typed Ticket and `MandateBasis`, with `threadKey`, `ticketOutcome`, `reached`, `followupOwners`, `settled`, `waitsForPerson`, `liveTicket`, `runningAssignment`, `latestAssignment` and `latestReport` |
-| `packages/kernel/src/ports.ts` | The ports: `Repositories`, `Policy`, `SourceScope`, `Assessor`, `Executor`, `Outbox`, and the domain events |
-| `packages/kernel/src/engine.ts` | The Engine, the core's entry point, and the role interfaces `EngineForSources`, `EngineForMainSession`, `EngineForPeople`, `EngineForSettings` and `EngineForExecutor` |
+| `packages/kernel/src/model.ts` | The domain types, among them the typed Ticket with its `TicketForm` (`tracked` or `lightweight`) and `MandateBasis`, with `ticketForm`, `threadKey`, `ticketOutcome`, `reached`, `followupOwners`, `settled`, `waitsForPerson`, `liveTicket`, `runningAssignment`, `latestAssignment` and `latestReport` |
+| `packages/kernel/src/ports.ts` | The ports: `Repositories`, `Policy`, `SourceScope`, `Assessor`, `Executor`, `InlineExecutor` (with `InlineStep` and `InlineResult` for a lightweight Ticket's action sequence), `Outbox`, and the domain events |
+| `packages/kernel/src/engine.ts` | The Engine, the core's entry point, and the role interfaces `EngineForSources`, `EngineForMainSession`, `EngineForPeople`, `EngineForSettings`, `EngineForExecutor` and `EngineForInline` |
 | `packages/kernel/src/part.ts` | `EnginePart`, the base of the Engine's parts, and `EngineOptions` |
 | `packages/kernel/src/intake.ts` | `Intake`: Triggers from Sources, to their Tickets and, unless a person's message reached one, to Eval |
 | `packages/kernel/src/evals.ts` | `Evals`: the Evals of Threads and their Decisions |
-| `packages/kernel/src/tickets.ts` | `Tickets`: the Ticket lifecycle, the Threads a Ticket follows, Subscriptions and Inputs |
+| `packages/kernel/src/tickets.ts` | `Tickets`: the Ticket lifecycle, its tracked or lightweight form, the Threads a Ticket follows, Subscriptions and Inputs, and the inline run and action ledger of a lightweight Ticket |
 | `packages/kernel/src/assignments.ts` | `Assignments`: the Executor's facts and its workers' Reports, including the normalized deliverable a ready Report carries and a person's acceptance of that revision |
 | `packages/kernel/src/replies.ts` | `Replies`: the Engine's Channel writes |
 | `packages/kernel/src/stage.ts` | `ticketStage` and `canRetry`: the Ticket stages of [003 Execution](003-execution.md) |
@@ -324,7 +324,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/kernel/src/errors.ts` | `UserError` and `USER_ERRORS` |
 | `packages/kernel/src/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
 | `packages/kernel/src/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
-| `packages/kernel/src/trace.ts` | `Span` and `SpanKind`, the ten stages `SPAN_KINDS` names in the order they run (`ingest`, `dedupe`, `enqueue`, `gate`, `admission`, `assess`, `decide`, `attach`, `dispatch`, `report`), and `traceId`/`spanId`: what the Engine reports as a Trigger moves, and the ids that keep one Trigger's stages together |
+| `packages/kernel/src/trace.ts` | `Span` and `SpanKind`, the stages `SPAN_KINDS` names in the order they run (`ingest`, `dedupe`, `enqueue`, `gate`, `admission`, `assess`, `decide`, `attach`, `dispatch`, `action`, `report`), and `traceId`/`spanId`: what the Engine reports as a Trigger moves, each action a lightweight Ticket runs, and the ids that keep one Trigger's stages together |
 | `packages/kernel/src/memory.ts` | `MemoryRepositories`: the Store's repositories in memory, in the Store's order and with its nested rollback, for domain tests |
 | `packages/kernel/src/index.ts` | The core's exports |
 | `packages/dsh/src/app/runtime.ts` | The Runtime, the composition root, with its start and stop |
@@ -450,6 +450,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/layers.spec.ts` | The dependency rules of this document, read off the imports: Sources never import the host, the panel takes only types and whitelisted plain values, `packages/` is reached only as `@superagent/kernel` or `@superagent/dsh`, and the browser half uses no Node built-in |
 | `tests/core-engine.spec.ts` | Domain rules on in-memory repositories: receiving, Eval, fan-out, resume and stop, interrupted Assignments, the pause, Policy changes, reports and outcomes, attaching, replies, failed deliveries, dismissed problems, a ready Report's deliverable review and its acceptance |
 | `tests/stage.spec.ts` | The Ticket stages, row by row |
+| `tests/lightweight.spec.ts` | Lightweight Tickets: an accept with no Assignment or worker Session, each inline action recorded as an `action` span in order with the end `report` and the disposition's take-up, a dropped run, a `send` step refused, a missing inline executor rolling the accept back, a person's follow-up resuming inline, the ten-second inline budget, and tracked remaining the default form |
 | `tests/action.spec.ts` | The five action levels and their distinct idempotency keys, the key moving with every part of an action's identity, a spend requiring a money or time cost, and outbound `send` actions naming their kind, object and revision |
 | `tests/approval.spec.ts` | The Approval state machine: one record per Ticket and Action, each transition out of `requested`, no jump out of a final state, a decision at or after the expiry refused, a repeated decision idempotent, and the Store's per-Ticket and pending queues in SQLite as in memory |
 | `tests/deliverable.spec.ts` | Entering review: the five artifact kinds and preview kinds, a review without a deliverable or preview refused, a preview of another revision refused, only the acceptance rules the kernel can judge kept, an unknown rule (including `values.match` without an expected-value payload) or a windowed rule without a positive window downgraded to a human confirmation with a coded reason, and malformed artifacts, previews and criteria refused |

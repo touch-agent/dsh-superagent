@@ -266,6 +266,7 @@ const TEXT = {
   'span.decide': ['决定', 'Decided'],
   'span.attach': ['挂接', 'Attached'],
   'span.dispatch': ['派工', 'Dispatched'],
+  'span.action': ['动作', 'Action'],
   'span.report': ['报告', 'Reported'],
   idleLabel: ['等待新触发', 'Waiting for a Trigger'],
   problemNoAllowed: ['没有人能发起工作：各来源上的名单都为空，任何请求都不会成为工单', 'No one may originate work: the lists on every Source are empty, so no request can become a Ticket'],

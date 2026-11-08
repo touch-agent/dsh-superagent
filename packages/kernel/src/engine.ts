@@ -2,7 +2,7 @@
 import { UserError } from './errors.ts'
 import { isoTime, liveTicket } from './model.ts'
 import type { ActorRef, ChannelRef, Decision, PolicyEffect, ThreadRef, Ticket, Trigger } from './model.ts'
-import type { Candidate, Repositories } from './ports.ts'
+import type { Candidate, InlineResult, InlineStep, Repositories } from './ports.ts'
 import type { EngineOptions } from './part.ts'
 import { Assignments, type WorkerReport } from './assignments.ts'
 import { Evals, type Outcome } from './evals.ts'
@@ -253,6 +253,24 @@ export class Engine {
    */
   report(ticketId: string, report: WorkerReport): Ticket { return this.repo.atomic(() => this.assignments.report(ticketId, report)) }
   /**
+   * Record one Action a lightweight ticket's inline execution performed, as it runs: it becomes an `action` stage under the
+   * ticket's Trigger trace, so a run that never finishes keeps the actions it did.
+   * @throws UserError when the ticket is unknown or has ended.
+   * @throws TypeError when the ticket is not lightweight or the step is above the `draft` level.
+   */
+  inlineAction(ticketId: string, step: InlineStep): void {
+    this.repo.atomic(() => { this.tickets.inlineAction(ticketId, step) })
+  }
+  /**
+   * Record that a lightweight ticket's inline execution ended and end it: its disposition records that it took the person's
+   * message up, a `report` stage names the outcome, and the ticket ends `completed` or `dropped`.
+   * @throws UserError when the ticket is unknown or has ended.
+   * @throws TypeError when the ticket is not lightweight or has an Assignment.
+   */
+  inlineFinished(ticketId: string, result: InlineResult): Ticket {
+    return this.repo.atomic(() => this.tickets.inlineFinished(ticketId, result))
+  }
+  /**
    * Handles an assignment that was running when the host stopped: restarts it with a recovery note unless its latest report is
    * `waiting`, `ready`, `blocked`, or `failed` and no Input reached its worker after that report, in which case it keeps its
    * Session and state and gets the Inputs that wait for it.
@@ -283,3 +301,5 @@ export type EngineForSettings = Pick<Engine, 'policyChanged'>
 /** What the Executor tells the Engine, and what its workers ask of it. */
 export type EngineForExecutor = Pick<Engine, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed'
   | 'assignmentInterrupted' | 'report' | 'markUnrelated' | 'handback' | 'followForContext' | 'reply'>
+/** What the inline executor tells the Engine: each action a lightweight ticket ran, and how its run ended. */
+export type EngineForInline = Pick<Engine, 'inlineAction' | 'inlineFinished'>
