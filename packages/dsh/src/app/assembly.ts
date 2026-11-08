@@ -8,6 +8,7 @@ import type { HealthBoard, HealthEntry } from '../infra/health.ts'
 import type { Machine } from '../deployment.ts'
 import { environmentOf, type Variable } from './execution-environment.ts'
 import { DshExecutor } from '../executor/dsh.ts'
+import { InlineWork } from '../executor/inline.ts'
 import { ticketCard } from './cards.ts'
 import { SqliteTraceSink } from './trace.ts'
 import { ActivityLog } from './activity.ts'
@@ -25,6 +26,7 @@ import { Outbox } from './outbox.ts'
 import { Passes } from './passes.ts'
 import { Setup } from './setup.ts'
 import { feishuSettings } from '../sources/feishu.ts'
+import { readRepositoryPath } from '../sources/github-read.ts'
 import type { Health, SourceContext } from '../sources/host.ts'
 import { Sessions } from './sessions.ts'
 import { Settings } from './settings.ts'
@@ -68,6 +70,8 @@ interface Parts {
   sessions: Sessions
   settings: Settings
   executor: DshExecutor
+  /** Runs a lightweight ticket's read-only work inline, without an Assignment or a Session. */
+  inline: InlineWork
   assessor: MasterAssessor
   outbox: Outbox
   engine: Engine
@@ -127,6 +131,9 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const executor = parts.executor = new DshExecutor({ context: ctx, get engine() { return parts.engine }, store, effects,
     health: board.claim('worker'), machine, lifetime, sessions, closing: () => host.closing(), paused: () => host.paused(), environment,
     sourceLink: link, repliedTo: trigger => repliedTo({ store, sources }, trigger) })
+  const inline = parts.inline = new InlineWork({ store, get engine() { return parts.engine },
+    read: (path, signal) => readRepositoryPath(commands.withSignal(signal), path, 'file'),
+    warn: message => ctx.logger.warn('%s', message) })
   const assessor = parts.assessor = new MasterAssessor({ get engine() { return parts.engine }, commands, get deployment() { return setup.deployment },
     effects, settings: () => store.settings(), paused: () => host.paused(), threadContext: trigger => sources.threadContext(trigger),
     deliver: (id, text) => sessions.prompt(masterId, id, text, 'steer'), candidateCard: candidate => candidateCard(links, candidate) })
@@ -137,9 +144,11 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const trace = parts.trace = new SqliteTraceSink(store)
   // Every domain event is graded and stored in the same transaction that produced it; no other part needs the log itself.
   const activity = new ActivityLog(store)
-  const engine = parts.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, outbox, trace,
+  const engine = parts.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, inline, outbox, trace,
     // A lightweight ticket runs inline and has no workspace or assignment text, so it must not claim execution metadata.
-    prepareTicket: (ticket, outcome) => ticketForm(ticket) === 'lightweight' ? ticket : executor.prepare(ticket, outcome), emit: event => {
+    // `executor.lightweight` is the deployment's fallback: turning it off keeps every accept tracked, with its workspace.
+    prepareTicket: (ticket, outcome) => ticketForm(ticket) === 'lightweight' && store.settings().executor.lightweight
+      ? ticket : executor.prepare({ ...ticket, form: 'tracked' }, outcome), emit: event => {
       // Record every event once, in the same transaction, then decide whether it may disturb a person.
       activity.record(event)
       // Notify the main Session only about domain events it did not initiate itself.

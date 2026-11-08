@@ -55,6 +55,13 @@ describe('conversation dispatch', () => {
     expect(target.engine.decide).not.toHaveBeenCalled()
   })
 
+  it('passes a lightweight form to the accept only when the item asks for it', () => {
+    const target = host()
+    dispatchConversation(agent(user('Read `docs/003-execution.md`')), target, { title: 'Read a document', scope: 'Read docs/003-execution.md.', form: 'lightweight' })
+    expect(target.engine.decide).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ form: 'lightweight' }))
+    expect(target.engine.decide.mock.calls[0]![1]).not.toHaveProperty('form', 'tracked')
+  })
+
   it('refuses new work without a title and scope', () => {
     const target = host()
     expect(dispatchConversation(agent(user('Fix it')), target, {})).toEqual({ refused: expect.stringContaining('title') })

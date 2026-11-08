@@ -54,14 +54,14 @@ Two flows use the Source:
 
 ### 4.2 The dispatch tool
 
-`orchestrator_dispatch` is available only to the main Session. Its input is a message reference (default: the message that triggered the current turn), a title, optionally a Ticket id to attach to, and, for a message with several requests, `items` with one title, scope and acknowledgement each. It:
+`orchestrator_dispatch` is available only to the main Session. Its input is a message reference (default: the message that triggered the current turn), a title, optionally a Ticket id to attach to, optionally `form: lightweight` for one read-only repository lookup, and, for a message with several requests, `items` with one title, scope, acknowledgement and form each. It:
 
 1. verifies the message was written by the local user in this conversation;
 2. builds one Trigger per item the dispatch configuration takes from the message (or one Trigger for the whole message), receiving every Trigger before deciding any;
 3. calls `Engine.receive` for each, which stores it and schedules Eval, then records the accept (or attach) for each as a direct Eval;
 4. returns every Trigger id and Ticket card it started or joined.
 
-It does not accept work itself, does not decide scope, and cannot dispatch a message authored by the agent or a different person. A refused dispatch leaves the conversation unchanged and reports why.
+It does not accept work itself, does not decide scope, and cannot dispatch a message authored by the agent or a different person. A refused dispatch leaves the conversation unchanged and reports why. Omitting `form` keeps the Ticket tracked, which is the default; the form is only for a request that reads named repository files and needs no edit, send or spend.
 
 #### One message, several tickets
 

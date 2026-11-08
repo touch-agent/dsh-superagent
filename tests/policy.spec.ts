@@ -320,7 +320,7 @@ describe('settings migration', () => {
       policy: { rules: [], maxActionLevel: 'draft', mandateMinutes: 0, undoWindowSeconds: 30, approval: { sources: {} }, sources: { feishu: { allowed: [{ id: MEMBER, name: 'A' }], admission: {} }, github: { allowed: [{ id: 'a' }], admission: {} } } },
       eval: { mode: 'auto', timeoutSeconds: 90, model: { provider: 'p', model: 'm' } },
       dispatch: { mode: 'single', maxTickets: 5 },
-      executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [] },
+      executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [], lightweight: true },
     })
     expect(migrateSettings(migrated)).toEqual(migrated)
   })

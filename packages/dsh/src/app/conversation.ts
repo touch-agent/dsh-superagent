@@ -25,6 +25,8 @@ export interface DispatchItemInput {
   ticketId?: string
   note?: string
   name?: string
+  /** Set only for one read-only repository lookup the inline executor can finish; omitted means tracked. */
+  form?: 'lightweight'
 }
 export interface DispatchInput extends DispatchItemInput {
   /** Distinct requests the main Session found in the message, for `auto` mode. */
@@ -60,6 +62,7 @@ interface PlannedItem {
   acknowledgement?: string
   ticketId?: string
   note?: string
+  form?: 'lightweight'
 }
 interface Plan { items: PlannedItem[]; split: boolean }
 
@@ -153,7 +156,8 @@ function plannedItem(input: DispatchItemInput, source: string): PlannedItem | un
   const label = title || titleFrom(scope) || titleFrom(source) || 'Existing ticket'
   return { title: cut(label, 200), scope: cut(scope || title || source || label, SCOPE_CHARS), name: worktreeName(clean(input.name) || label),
     ...input.acknowledgement?.trim() ? { acknowledgement: input.acknowledgement.trim() } : {},
-    ...ticketId ? { ticketId } : {}, ...input.note?.trim() ? { note: input.note.trim() } : {} }
+    ...ticketId ? { ticketId } : {}, ...input.note?.trim() ? { note: input.note.trim() } : {},
+    ...input.form === 'lightweight' ? { form: 'lightweight' } : {} }
 }
 
 /** Fills an item's missing acknowledgement with a short receipt, so every accepted ticket answers the source message. */
@@ -175,8 +179,11 @@ function singleItem(input: DispatchInput, text: string, fresh: readonly PlannedI
   const acknowledgement = clean(input.acknowledgement)
     || (fresh.length > 1 ? receipt(title, text) : clean(fresh[0]?.acknowledgement) || clean(input.items?.[0]?.acknowledgement))
   if (!title || !scope) return { refused: 'A new dispatch needs a title and a scope; only an attach to an existing ticket omits them.' }
+  // A combined fallback is one ticket: keep the lightweight form only when the whole item is one lookup.
+  const forms = [...fresh, ...(input.items ?? [])]
+  const form = input.form === 'lightweight' ? 'lightweight' : forms.length === 1 ? forms[0]!.form : undefined
   return { title: cut(title, 200), scope: cut(scope, SCOPE_CHARS), name: worktreeName(name),
-    ...acknowledgement ? { acknowledgement } : {} }
+    ...acknowledgement ? { acknowledgement } : {}, ...form ? { form } : {} }
 }
 
 /** Builds the tickets one message becomes, by the configured mode, and never loses work to a failed or over-wide split. */
@@ -297,7 +304,8 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
         continue
       }
       const decision = host.engine.decide(trigger.id, { kind: 'accept', title: item.title, scope: item.scope, name: item.name,
-        reason: 'Dispatched from the conversation', ...(item.acknowledgement ? { acknowledgement: item.acknowledgement } : {}) })
+        reason: 'Dispatched from the conversation', ...(item.acknowledgement ? { acknowledgement: item.acknowledgement } : {}),
+        ...(item.form ? { form: item.form } : {}) })
       if (!decision.ticketId) { results.push({ ...head, refused: `Ticket was not created: ${reasonText(decision.reason)}` }); continue }
       const ticket = host.ticket(decision.ticketId)
       if (ticket) tickets.push(ticket)

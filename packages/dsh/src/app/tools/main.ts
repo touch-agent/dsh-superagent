@@ -56,6 +56,7 @@ const RouteItemSchema = z.object({
   ticket_id: z.string().nullish().describe('attach and stop: the ticket.'),
   title: z.string().nullish().describe('accept: a short label of at most 200 characters describing the original request; no added requirements or implementation advice.'),
   worktree_name: z.string().nullish().describe(`accept: ${WorktreeNameSchema.description ?? ''}`),
+  form: z.literal('lightweight').nullish().describe('accept: a read-only lookup of named files; omit to stay tracked.'),
   acknowledgement: z.string().nullish().describe(`accept: one brief sentence of at most ${IM_WORDS} words naming the concrete change and intended result in the source language. It is posted as a reply to the original source on acceptance, so do not quote the source; quote an earlier proposal briefly only when the trigger merely confirms it and the sentence does not already state it. No generic I will handle it.`),
   note: z.string().nullish().describe(`accept and attach: ${RoutingNoteSchema.description ?? ''}`),
   reason: z.string().nullish().describe('ignore and stop: why, at most 500 characters; an ignore needs it.'),
@@ -68,6 +69,7 @@ const FIELDS: Record<Field, { check: z.ZodType; reads: readonly Kind[]; needs: r
   ticket_id: { check: z.string(), reads: ['attach', 'stop'], needs: ['attach', 'stop'] },
   title: { check: z.string().max(200), reads: ['accept'], needs: ['accept'] },
   worktree_name: { check: WorktreeNameSchema, reads: ['accept'], needs: ['accept'] },
+  form: { check: z.literal('lightweight'), reads: ['accept'], needs: [] },
   acknowledgement: { check: AcknowledgementSchema, reads: ['accept'], needs: ['accept'] },
   note: { check: RoutingNoteSchema, reads: ['accept', 'attach'], needs: [] },
   reason: { check: z.string().max(500), reads: ['ignore', 'stop'], needs: ['ignore'] },
@@ -101,7 +103,8 @@ function route(host: MainToolsHost, item: RouteItem, decided: ReadonlyMap<string
     case 'accept': {
       const before = host.store.triggers.disposition(item.trigger_id)?.decisionId
       const decision = host.engine.decide(item.trigger_id, { kind: 'accept', title: item.title!, scope: item.title!, reason: { code: 'explicitRouted' },
-        acknowledgement: item.acknowledgement!, name: item.worktree_name!, ...note })
+        acknowledgement: item.acknowledgement!, name: item.worktree_name!, ...note,
+        ...(item.form === 'lightweight' ? { form: 'lightweight' } : {}) })
       // A Decision that created no ticket is the item's refusal; one that existed before keeps what it was accepted with.
       if (decision.kind !== 'accept' || !decision.ticketId) return { refused: `Ticket was not created: ${reasonText(decision.reason)}` }
       if (decision.id === before) {
@@ -172,12 +175,14 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
         acknowledgement: AcknowledgementSchema.optional().describe('One sentence naming the change and result, in the source language.'),
         ticket_id: z.string().optional().describe('Attach the whole message to this ticket instead of starting work.'),
         note: RoutingNoteSchema.optional().describe('attach: routing background or an explicit constraint, never instructions.'),
+        form: z.literal('lightweight').optional().describe('Only for a read-only lookup of named files; omit to stay tracked.'),
         items: z.array(z.object({
           title: z.string().trim().min(1).max(200).optional().describe('Short label of this item.'),
           scope: z.string().trim().min(1).max(2000).optional().describe('What this item asks for, in the person\'s terms.'),
           acknowledgement: AcknowledgementSchema.optional().describe('One sentence for this item.'),
           ticket_id: z.string().optional().describe('Attach this item to an existing ticket instead of starting work.'),
           worktree_name: WorktreeNameSchema.optional(),
+          form: z.literal('lightweight').optional().describe('Only for this item\'s read-only lookup; omit to stay tracked.'),
           note: RoutingNoteSchema.optional().describe('attach: routing background, never instructions.'),
         }).strict().refine(item => !!item.title || !!item.scope || !!item.ticket_id, 'An item needs a title, a scope, or a ticket_id'))
           .min(1).max(LIMITS.dispatchTickets.max).optional()
@@ -185,8 +190,8 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
       }).strict(),
       execute: async args => {
         const result = host.quietly(() => host.dispatch(agent, { title: args.title, scope: args.scope, acknowledgement: args.acknowledgement,
-          ticketId: args.ticket_id, note: args.note, items: args.items?.map(item => ({ title: item.title, scope: item.scope,
-            acknowledgement: item.acknowledgement, ticketId: item.ticket_id, name: item.worktree_name, note: item.note })) }))
+          ticketId: args.ticket_id, note: args.note, form: args.form, items: args.items?.map(item => ({ title: item.title, scope: item.scope,
+            acknowledgement: item.acknowledgement, ticketId: item.ticket_id, name: item.worktree_name, note: item.note, form: item.form })) }))
         if ('refused' in result) return result
         host.requestPass()
         const cards = (result.tickets ?? (result.ticket ? [result.ticket] : [])).map(ticketCard)

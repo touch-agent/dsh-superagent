@@ -5,7 +5,7 @@ import { AssessmentSchema, EvalReadSchema, MasterAssessor, type AssessorHost } f
 import { mainAdmissionPolicy } from '@superagent/dsh/app/context.ts'
 import { Engine, MemoryRepositories, type Executor, type Policy, type Trigger } from '@superagent/kernel'
 import type { Commands } from '@superagent/dsh/infra/commands.ts'
-import { SettingsSchema } from '@superagent/dsh/policy.ts'
+import { SettingsSchema, assessmentOutcome, type Assessment } from '@superagent/dsh/policy.ts'
 import { testDeployment } from './fixtures/deployment.ts'
 import { deferred } from './fixtures/async.ts'
 import { githubKind } from '@superagent/dsh/sources/github.ts'
@@ -180,4 +180,20 @@ it('lets the main Session read on from the cursor its loaded window ends with, a
   s2.engine.receive(long); s2.engine.receive({ ...issue(3), threads: issue(1).threads }); s2.engine.evaluateDue()
   const other = await s2.assessor.context('issue-3', signal) as { batch: Record<string, unknown>[] }
   expect(other.batch).toEqual([expect.objectContaining({ trigger_id: 'long', chars: long.text.length, read: 'trigger/long' })])
+})
+
+it('carries the lightweight form only when the assessment chooses it', () => {
+  const base: Assessment = {
+    decision: 'accept',
+    rule_assessments: [{ rule_id: 'copy', matched: true, reason: 'a read-only lookup the inline executor can finish' },
+      { rule_id: 'visual', matched: false, reason: 'not a visual fix' }],
+    direction: { implementation_requested: true, target_basis: 'specified', requires_design_decision: false, evidence: 'read the file' },
+    title: 'Read a document', scope: 'Read docs/003-execution.md', intent_evidence: 'read it', reason: 'asked', worktree_name: 'read-document',
+    form: 'lightweight',
+  }
+  const settings = SettingsSchema.parse({})
+  expect(assessmentOutcome(base, settings, 'explicit')).toMatchObject({ kind: 'accept', form: 'lightweight' })
+  const tracked = assessmentOutcome({ ...base, form: undefined }, settings, 'explicit')
+  expect(tracked).toMatchObject({ kind: 'accept' })
+  expect(tracked).not.toHaveProperty('form')
 })

@@ -23,7 +23,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { feishuKind } from '@superagent/dsh/sources/feishu.ts'
 import { githubKind, pollRound } from '@superagent/dsh/sources/github.ts'
 import { CliError, Commands } from '@superagent/dsh/infra/commands.ts'
-import { UserError, key, outboundAction, runningAssignment, said, threadKey, waitsForPerson, type ChannelRef, type OutboundKind, type Trigger } from '@superagent/kernel'
+import { UserError, key, outboundAction, runningAssignment, said, threadKey, traceId, waitsForPerson, type ChannelRef, type OutboundKind, type Trigger } from '@superagent/kernel'
 import { feishuTrigger } from '@superagent/dsh/sources/feishu.ts'
 import { feishuChannel } from '@superagent/dsh/sources/feishu-trigger.ts'
 import { commentTrigger, githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
@@ -345,6 +345,78 @@ it('accepts silently under a rule that says so, gives the worker the rule proced
   await runTool(`worker-${ticket.id}`, 'orchestrator_report', { state: 'dropped', summary: 'too complex; recorded in #123' })
   expect(runtime.store.tickets.get(ticket.id)).toMatchObject({ ended: expect.objectContaining({ by: 'executor', outcome: 'dropped' }) })
   expect(await runTool(runtime.masterId, 'orchestrator_reply', { ticket_id: ticket.id, purpose: 'result', text: '看到这个问题我试了一下，能复现，修复需要较大改动，已记在 #123。' })).toEqual({ status: 'sent' })
+})
+
+it('runs an accepted read-only lookup inline, without a worker or workspace, and records its read and result', async () => {
+  const policy = runtime.store.settings().policy
+  await runtime.settings.save('policy', { ...policy, rules: [...policy.rules, { id: 'lookup', name: 'Read-only lookup', enabled: true,
+    instruction: 'Accept one read-only lookup that names repository files; the inline executor reads them and ends the ticket.' }] },
+  runtime.store.blockRevision('policy'), 'panel')
+  await runtime.settings.save('eval', { ...runtime.store.settings().eval, mode: 'auto' }, runtime.store.blockRevision('eval'), 'panel')
+  vi.mocked(Commands.prototype.run).mockImplementation(async (_program, args) => args.join(' ').includes('contents/docs/003-execution.md')
+    ? '# Execution\n\nThe tracked path.\n' : '{"ok":true,"data":{}}')
+  const trigger = feishu('30', '读一下 docs/003-execution.md 并告诉我它讲什么', { mentions: [] })
+  await receive(trigger)
+  vi.spyOn(Commands.prototype, 'lark').mockResolvedValue({ items: [{ message_id: 'om_30', chat_id: CHAT }] })
+  await runTool(runtime.masterId, 'orchestrator_eval', { trigger_id: trigger.id })
+  const started = Date.now()
+  const accepted = await runTool(runtime.masterId, 'orchestrator_eval_decide', { trigger_id: trigger.id, decision: 'accept', title: '读取执行文档',
+    worktree_name: 'read-execution-doc', form: 'lightweight', scope: 'docs/003-execution.md', reason: 'read-only lookup', intent_evidence: 'quoted',
+    acknowledgement: '收到，读取后告诉你。',
+    rule_assessments: [{ rule_id: 'copy', matched: false, reason: 'no' }, { rule_id: 'visual', matched: false, reason: 'not visual' },
+      { rule_id: 'lookup', matched: true, reason: 'one read-only lookup' }],
+    direction: { implementation_requested: true, target_basis: 'specified', requires_design_decision: false, evidence: 'the message names the file' } })
+  const elapsed = Date.now() - started
+  const ticket = runtime.store.tickets.get((accepted.ticket as { ticket_id: string }).ticket_id)!
+  expect(ticket).toMatchObject({ form: 'lightweight', assignments: [], ended: expect.objectContaining({ by: 'executor', outcome: 'completed' }) })
+  expect(ticket.execution).toBeUndefined()
+  expect(agents.has(`worker-${ticket.id}`)).toBe(false)
+  expect(ticket.ended?.reason).toContain('The tracked path.')
+  expect(elapsed).toBeLessThan(10_000)
+  const trace = runtime.store.spans.trace(traceId(trigger.id))
+  expect(trace.filter(span => span.kind === 'action')).toEqual([expect.objectContaining({ data: expect.objectContaining({ ok: true,
+    action: expect.objectContaining({ kind: 'repository.read', objectId: 'docs/003-execution.md', level: 'read' }) }) })])
+  expect(trace.find(span => span.kind === 'report')?.data).toMatchObject({ state: 'completed', form: 'lightweight' })
+  expect(runtime.store.replyStatus(ackId(trigger))).toBeDefined()
+})
+
+it('keeps an accepted lightweight choice tracked with its Assignment and worker when executor.lightweight is off', async () => {
+  const policy = runtime.store.settings().policy
+  await runtime.settings.save('policy', { ...policy, rules: [...policy.rules, { id: 'lookup', name: 'Read-only lookup', enabled: true,
+    instruction: 'Accept one read-only lookup that names repository files; the inline executor reads them and ends the ticket.' }] },
+  runtime.store.blockRevision('policy'), 'panel')
+  await runtime.settings.save('eval', { ...runtime.store.settings().eval, mode: 'auto' }, runtime.store.blockRevision('eval'), 'panel')
+  await runtime.settings.save('executor', { ...runtime.store.settings().executor, lightweight: false }, runtime.store.blockRevision('executor'), 'panel')
+  const trigger = feishu('31', '读一下 docs/003-execution.md 并告诉我它讲什么', { mentions: [] })
+  await receive(trigger)
+  vi.spyOn(Commands.prototype, 'lark').mockResolvedValue({ items: [{ message_id: 'om_31', chat_id: CHAT }] })
+  await runTool(runtime.masterId, 'orchestrator_eval', { trigger_id: trigger.id })
+  const accepted = await runTool(runtime.masterId, 'orchestrator_eval_decide', { trigger_id: trigger.id, decision: 'accept', title: '读取执行文档',
+    worktree_name: 'read-execution-doc', form: 'lightweight', scope: 'docs/003-execution.md', reason: 'read-only lookup', intent_evidence: 'quoted',
+    acknowledgement: '收到，读取后告诉你。',
+    rule_assessments: [{ rule_id: 'copy', matched: false, reason: 'no' }, { rule_id: 'visual', matched: false, reason: 'not visual' },
+      { rule_id: 'lookup', matched: true, reason: 'one read-only lookup' }],
+    direction: { implementation_requested: true, target_basis: 'specified', requires_design_decision: false, evidence: 'the message names the file' } })
+  const ticket = runtime.store.tickets.get((accepted.ticket as { ticket_id: string }).ticket_id)!
+  expect(ticket).toMatchObject({ form: 'tracked', assignments: [expect.objectContaining({ state: 'running' })] })
+  expect(ticket.execution).toMatchObject({ name: expect.stringContaining('read-execution-doc') })
+  expect(ticket.ended).toBeUndefined()
+  expect(agents.has(`worker-${ticket.id}`)).toBe(true)
+  expect(runtime.store.spans.trace(traceId(trigger.id)).filter(span => span.kind === 'action')).toEqual([])
+})
+
+it('routes an explicit read-only lookup with form lightweight through orchestrator_route, without a worker', async () => {
+  vi.mocked(Commands.prototype.run).mockImplementation(async (_program, args) => args.join(' ').includes('contents/docs/003-execution.md')
+    ? '# Execution\n\nThe tracked path.\n' : '{"ok":true,"data":{}}')
+  const trigger = feishu('32', '@bot 读一下 docs/003-execution.md 并告诉我它讲什么')
+  await receive(trigger)
+  const result = await route({ kind: 'accept', trigger_id: trigger.id, title: '读取执行文档', worktree_name: 'read-execution-doc',
+    acknowledgement: '收到，读取后告诉你。', form: 'lightweight' })
+  const ticket = runtime.store.tickets.get((result.ticket as { ticket_id: string }).ticket_id)!
+  expect(ticket).toMatchObject({ form: 'lightweight', assignments: [], ended: expect.objectContaining({ outcome: 'completed' }) })
+  expect(ticket.execution).toBeUndefined()
+  expect(agents.has(`worker-${ticket.id}`)).toBe(false)
+  expect(ticket.ended?.reason).toContain('The tracked path.')
 })
 
 it('records worker reports, binds the task PR, ends the ticket on ready without a PR, and relays attention', async () => {

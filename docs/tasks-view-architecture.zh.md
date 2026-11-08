@@ -151,7 +151,7 @@
 
 **结论：lightweight 是任务树里的叶子，不是另一种顶层任务，也不是 Subtask。** 任务树节点仍是 `Ticket`；UI 用 `form` badge 区分。轻量任务可以出现在任一 L1 类别下，但没有 L3 子节点，也没有“自己的 worker”。
 
-**落地状态（先校正一个前提）**：#29 合入的是 **kernel 契约**（`TicketForm`、`ticketForm()`、`InlineExecutor` 端口与测试），不是生产可用的 lightweight 运行时。当前 `assembly.ts` 没有注入 `inline`，没有生产 `InlineExecutor` 实现，Eval 也还不写 `form`（见 `docs/003-execution.md`），所以产品今天仍只创建 tracked Ticket；lightweight 只能由 kernel 测试构造。本文把 lightweight 作为**前向兼容的任务形态**设计，不把它当成“已经能受理”的运行时事实。
+**落地状态（2026-11-09 更新）**：#29 合入 **kernel 契约**（`TicketForm`、`ticketForm()`、`InlineExecutor` 端口与测试）；T3-05 Phase 0 已把生产 `InlineWork` 注入 `assembly.ts`，Eval、`orchestrator_route` 与 `orchestrator_dispatch` 可写 `form: lightweight`，`executor.lightweight` 可回退 tracked。能力边界仍是**一次只读仓库查文件**（最多 4 个路径，不 commit/send/spend）；改单元格、发草稿等仍需 tracked。任务视图的 lightweight 叶子按这个边界验收，而不是按“任意小活都能 inline”验收。
 
 因此 Phase 1 的验收只覆盖 tracked；lightweight 行/详情只有在 Phase 0 接通运行时后才算验收项。见 3.5.5 与 9 的 Phase 0。
 
