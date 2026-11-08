@@ -253,22 +253,23 @@ export class Engine {
    */
   report(ticketId: string, report: WorkerReport): Ticket { return this.repo.atomic(() => this.assignments.report(ticketId, report)) }
   /**
-   * Record one Action a lightweight ticket's inline execution performed, as it runs: it becomes an `action` stage under the
-   * ticket's Trigger trace, so a run that never finishes keeps the actions it did.
-   * @throws UserError when the ticket is unknown or has ended.
-   * @throws TypeError when the ticket is not lightweight or the step is above the `draft` level.
+   * Record one Action a lightweight ticket's inline run performed, as it runs: it becomes an `action` stage under the
+   * ticket's Trigger trace, so a run that never finishes keeps the actions it did. `run` is the token `InlineExecutor.start`
+   * received, and a callback from an earlier run is refused.
+   * @throws UserError when the ticket has ended or its Mandate no longer allows the Action.
+   * @throws TypeError when the run is not the ticket's current one, the ticket is not lightweight, or the step is above `draft`.
    */
-  inlineAction(ticketId: string, step: InlineStep): void {
-    this.repo.atomic(() => { this.tickets.inlineAction(ticketId, step) })
+  inlineAction(ticketId: string, run: string, step: InlineStep): void {
+    this.repo.atomic(() => { this.tickets.inlineAction(ticketId, run, step) })
   }
   /**
-   * Record that a lightweight ticket's inline execution ended and end it: its disposition records that it took the person's
-   * message up, a `report` stage names the outcome, and the ticket ends `completed` or `dropped`.
-   * @throws UserError when the ticket is unknown or has ended.
-   * @throws TypeError when the ticket is not lightweight or has an Assignment.
+   * Record that a lightweight ticket's inline run ended and end it: its disposition records that it took the person's
+   * message up and the Inputs the run read, a `report` stage names the outcome, and the ticket ends `completed` or `dropped`.
+   * @throws UserError when the ticket has ended.
+   * @throws TypeError when the run is not the ticket's current one, the ticket is not lightweight, or its result is not one.
    */
-  inlineFinished(ticketId: string, result: InlineResult): Ticket {
-    return this.repo.atomic(() => this.tickets.inlineFinished(ticketId, result))
+  inlineFinished(ticketId: string, run: string, result: InlineResult): Ticket {
+    return this.repo.atomic(() => this.tickets.inlineFinished(ticketId, run, result))
   }
   /**
    * Handles an assignment that was running when the host stopped: restarts it with a recovery note unless its latest report is

@@ -103,26 +103,29 @@ export interface InlineStep {
 export interface InlineResult {
   /** `completed` when the work is done, or `dropped` when there was nothing to do. */
   outcome: Extract<TicketOutcome, 'completed' | 'dropped'>
-  /** A bounded, person-readable account of what it did, recorded as the ticket's end reason. */
+  /** A person-readable account of what it did, recorded as the ticket's end reason. */
   summary: string
   /**
    * The Inputs the run read, by Input id. A trigger Input's message counts as taken up, so ending the ticket does not hand it
-   * back to Eval; an Input the run did not name keeps waiting for the next run. An Input that is not the ticket's own is
-   * refused.
+   * back to Eval; an Input the run did not name keeps waiting. An Input that is not the ticket's own is refused.
    */
   read?: readonly string[]
 }
 
 /**
  * Runs a lightweight ticket inline: without an Assignment, a worker Session or a workspace. The Engine calls it inside its
- * commands, so it only queues the work. Each action comes back through `Engine.inlineAction` as it runs, so the action
- * ledger survives a run that never finishes, and the result through `Engine.inlineFinished`, which ends the ticket. An
- * Input that arrives while it runs stays with the ticket and is read on the next run.
+ * commands, so it only queues the work. Each action comes back through `Engine.inlineAction` as it runs, with the run token
+ * `start` was given, so the action ledger survives a run that never finishes and a late callback from an earlier run is
+ * refused; the end comes through `Engine.inlineFinished`. An Input that arrives while it runs stays with the ticket and is
+ * read by the next run.
  */
 export interface InlineExecutor {
-  /** Queue `ticket` for an inline run of the actions its request needs; the ticket has no Assignment. */
-  start(ticket: Ticket): void
-  /** Stop a queued or running inline execution; called after the ticket ended in the domain. */
+  /**
+   * Queue `ticket` for an inline run under `run`; the ticket has no Assignment. Every callback for this run names `run`, and
+   * the run is current until `inlineFinished` or the ticket's end.
+   */
+  start(ticket: Ticket, run: string): void
+  /** Stop a queued or running inline execution, for this run or whatever it queued for the ticket. */
   stop(ticket: Ticket, reason: string): void
 }
 
