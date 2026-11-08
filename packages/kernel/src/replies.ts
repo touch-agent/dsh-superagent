@@ -18,6 +18,9 @@ export type ReplyRequest =
 /** A queued message: its id, whether it went out, and whether an earlier request had queued it already. */
 export interface Reply { id: string; status: ReplyStatus; reused: boolean }
 
+/** The built-in local Source: a reply there never leaves the deployment, so a ticketless answer needs no Mandate. */
+const LOCAL_SOURCE = 'conversation'
+
 /**
  * Replies writes the Engine's messages to Channels through the Outbox port: an acknowledgement, the answer to a person's
  * question, a ticket's result, and its question for a person, each only when its rule allows it. A message is queued under
@@ -115,6 +118,8 @@ export class Replies extends EnginePart {
     const ready = !ticket || !trigger || ticket.answers?.includes(trigger.id)
     if (request.purpose === 'answer' && !ready && !existing) throw new UserError('noAnswer')
     if (!message) throw new UserError('noChannel')
+    // An external message without a Ticket has no Mandate to approve it; only the local conversation may answer freely.
+    if (!ticket && message.channel.source !== LOCAL_SOURCE) throw new UserError('ticketlessReply')
     // A legacy receipt under the old id already carries the message; queueing it under the new id would send it twice.
     if (!existing) this.options.outbox.send(message)
     if (request.purpose === 'answer' && ticket && trigger && ticket.answers?.includes(trigger.id)) {

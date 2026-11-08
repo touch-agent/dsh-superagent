@@ -27,10 +27,11 @@ export interface ActionApprovalRequest {
   now?: () => string
 }
 
-/** The gate's answer: an Approval whose state says whether it may run now, or the refusal reason to record instead. */
+/** The gate's answer: a granted Approval that may run, one still waiting for a person, or the refusal reason to record. */
 export type ActionApprovalOutcome =
-  | { ok: true; approval: Approval }
-  | { ok: false; reason: Reason }
+  | { kind: 'approved'; approval: Approval }
+  | { kind: 'pending'; approval: Approval }
+  | { kind: 'refused'; reason: Reason }
 
 /**
  * Revalidate one consequential Action against its Ticket's Mandate and request the Approval it needs. A Mandate refusal
@@ -45,7 +46,7 @@ export function requestActionApproval(store: Pick<Repositories, 'atomic' | 'appr
   const now = request.now ?? (() => new Date().toISOString())
   const at = now()
   const revalidation = request.policy.revalidate(request.ticket.mandate, at, { level: request.action.level })
-  if (!revalidation.ok) return { ok: false, reason: revalidation.reason }
+  if (!revalidation.ok) return { kind: 'refused', reason: revalidation.reason }
   try {
     const approval = requestApproval(store, {
       ticketId: request.ticket.id,
@@ -55,18 +56,19 @@ export function requestActionApproval(store: Pick<Repositories, 'atomic' | 'appr
       ...request.requestedBy === undefined ? {} : { requestedBy: request.requestedBy },
     }, request.approvalPolicy, now)
     // A repeated request returns the first record whatever its state: a decided one must not be treated as a fresh grant.
-    if (approval.state === 'denied') return { ok: false, reason: { code: 'approvalDenied' } }
-    if (approval.state === 'revoked') return { ok: false, reason: { code: 'approvalRevoked' } }
-    if (approval.state === 'approved' && !withinActionLevel(request.action.level, approval.grantedLevel ?? approval.action.level)) {
-      return { ok: false, reason: { code: 'approvalLevelInsufficient', values: { level: request.action.level } } }
+    if (approval.state === 'denied') return { kind: 'refused', reason: { code: 'approvalDenied' } }
+    if (approval.state === 'revoked') return { kind: 'refused', reason: { code: 'approvalRevoked' } }
+    if (approval.state === 'expired') return { kind: 'refused', reason: { code: 'approvalExpired', values: { at: approval.expiresAt } } }
+    if (!withinActionLevel(request.action.level, approval.grantedLevel ?? approval.action.level)) {
+      return { kind: 'refused', reason: { code: 'approvalLevelInsufficient', values: { level: request.action.level } } }
     }
-    return { ok: true, approval }
+    return { kind: approval.state === 'approved' ? 'approved' : 'pending', approval }
   } catch (error) {
     if (!(error instanceof UserError)) throw error
     if (error.code === 'approvalTargetMismatch') {
-      return { ok: false, reason: { code: 'approvalTargetMismatch', values: { target: request.target ?? '' } } }
+      return { kind: 'refused', reason: { code: 'approvalTargetMismatch', values: { target: request.target ?? '' } } }
     }
-    if (error.code === 'approvalExpired') return { ok: false, reason: { code: 'approvalExpired', values: error.values } }
+    if (error.code === 'approvalExpired') return { kind: 'refused', reason: { code: 'approvalExpired', values: error.values } }
     throw error
   }
 }

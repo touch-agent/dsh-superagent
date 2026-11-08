@@ -84,16 +84,16 @@ export interface Executor {
 }
 
 /**
- * What a caller asks the Outbox to write: the send Action that names the write, its Channel, the text, the Ticket it is
- * for, and optionally where it reaches, which the Approval records as its target. The Action's idempotency key is the
- * message id, so it is not supplied separately.
+ * What a caller asks the Outbox to write: the send Action that names the write, its Channel, the text and the Ticket it
+ * is for. The Approval derives where it reaches from the Channel, so a caller cannot name a different destination. The
+ * Action's idempotency key is the message id, so it is not supplied separately.
  */
-export interface OutboundSend { action: OutboundAction; channel: ChannelRef; text: string; ticketId?: string; target?: string }
+export interface OutboundSend { action: OutboundAction; channel: ChannelRef; text: string; ticketId?: string }
 /**
  * A message as a Channel adapter receives it: its id is the send Action's idempotency key. `action` is absent on a receipt
  * queued before outbound messages carried send Actions; such a receipt keeps the `kind` it was recorded with.
  */
-export interface OutboundMessage { id: string; channel: ChannelRef; text: string; ticketId?: string; target?: string; action?: Action; kind?: OutboundKind }
+export interface OutboundMessage { id: string; channel: ChannelRef; text: string; ticketId?: string; action?: Action; kind?: OutboundKind }
 /**
  * A queued message waits (`pending`) for its undo window, went out (`sent`), was recalled inside that window
  * (`recalled`), or was dropped because its conversation can never receive it (`dropped`).

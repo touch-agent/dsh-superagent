@@ -874,6 +874,7 @@ const TEXT = {
   'userError.notAttention': ['待人工决定的消息需要在 human_action 中写明工单当前待人工决定的问题。日常未完成的工作只在内部保留。', USER_ERRORS.notAttention[1]],
   'userError.notQuestion': ['回答必须针对最初由人提出的问题，而不是执行器报告或自动触发。', USER_ERRORS.notQuestion[1]],
   'userError.noAnswer': ['执行器还没有回答这条人发的触发。请等待执行器的报告，或用 orchestrator_ticket_request_status 请求一份（它只对处于等待状态的执行器起作用）；普通进展不能当作回答。', USER_ERRORS.noAnswer[1]],
+  'userError.ticketlessReply': ['外部回复必须属于一个工单；这条人发的消息没有创建工单，因此没有可审批的授权，不能发出。', USER_ERRORS.ticketlessReply[1]],
   'userError.noChannel': ['这个工单或触发没有可以回复的渠道。', USER_ERRORS.noChannel[1]],
   'userError.unknownReply': ['找不到这条待发送消息。', USER_ERRORS.unknownReply[1]],
   'userError.replySettled': ['这条消息已经离开待发送队列：{status}。', USER_ERRORS.replySettled[1]],

@@ -39,6 +39,7 @@ export const USER_ERRORS = {
   notAttention: ['refused', 'Attention requires the ticket\'s current attention question in human_action. Routine unfinished work stays internal.'],
   notQuestion: ['refused', 'An answer must target the original human question, not a worker report or automated trigger'],
   noAnswer: ['refused', 'No worker answer is ready for this human trigger. Wait for the worker\'s report, or request one with orchestrator_ticket_request_status, which acts only on a worker that reported waiting; ordinary progress cannot be relabelled as an answer.'],
+  ticketlessReply: ['refused', 'An external reply needs a Ticket; this question did not start one, so it has no Mandate to approve it'],
   noChannel: ['refused', 'No reply channel for this ticket or trigger'],
   unknownReply: ['missing', 'Unknown queued message'],
   replySettled: ['refused', 'This message already left the outbox: {status}'],

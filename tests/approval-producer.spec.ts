@@ -5,7 +5,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Commands } from '@superagent/dsh/infra/commands.ts'
 import { requestActionApproval } from '@superagent/dsh/app/action-gate.ts'
-import { approvalQueue } from '@superagent/dsh/app/views/approvals.ts'
 import { settingsPolicy } from '@superagent/dsh/policy.ts'
 import { createAction, OUTBOX_ACTOR, outboundAction, type Approval } from '@superagent/kernel'
 import type { Receipt } from '@superagent/dsh/app/store.ts'
@@ -46,8 +45,9 @@ it('queues an external message for approval, with its target and revision, and p
   expect(approval).toMatchObject({ ticketId: ticket.id, target: CHAT, state: 'requested',
     action: { kind: 'acknowledgement', objectId: trigger.id, revision: 'accepted', level: 'send' } })
   expect(receipt).toMatchObject({ status: 'pending', ticketId: ticket.id, approvalId: approval.id })
-  // The panel's Overview queue reads the same request.
-  expect(approvalQueue(h.runtime.store).find(row => row.id === approval.id)).toMatchObject({
+  // The panel's Overview endpoint reads the same request.
+  const panel = await h.api('GET', 'overview') as unknown as { body: { approvals: { id: string }[] } }
+  expect(panel.body.approvals.find(row => row.id === approval.id)).toMatchObject({
     ticket: { id: ticket.id, title: ticket.title },
     action: { kind: 'acknowledgement', objectId: trigger.id, revision: 'accepted', level: 'send' } })
   // Before a decision the effect is not even queued, so a pass cannot deliver it.
@@ -139,6 +139,19 @@ it('refuses a message whose Mandate no longer authorizes its level, without aski
   expect(sent()).toBe(0)
 })
 
+it('recalls a held message after its Approval expired instead of failing the recall', async () => {
+  const { trigger } = await h.acceptedTicket(feishu('9', '@bot 修一下回归'))
+  const approval = request()
+  vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 25 * 60 * 60 * 1000 })
+  try {
+    expect(h.runtime.outbox.recall(approval.action.idempotencyKey)).toBe('recalled')
+    expect(h.runtime.store.approvals.get(approval.id)?.state).toBe('expired')
+    await h.runtime.sendReplies()
+  } finally { vi.useRealTimers() }
+  expect(acknowledgement(trigger.id).status).toBe('recalled')
+  expect(sent()).toBe(0)
+})
+
 it('revalidates at release, so a Policy lowered while the request waited drops the approved message', async () => {
   const { trigger, ticket } = await h.acceptedTicket(feishu('9', '@bot 修一下回归'))
   const approval = request()
@@ -165,8 +178,10 @@ it('lets the Policy approve an internal target itself, and never approves a spen
   expect(sent()).toBe(1)
 
   const channel = trigger.channel!
+  // The destination comes from the Channel: an internal document URL is matched by the Policy's whitelist.
+  const internal = { ...channel, address: { ...channel.address, url: 'https://corp.example/doc/1' } }
   const action = outboundAction({ kind: 'reply', source: 'feishu', objectId: trigger.id, revision: 'auto-1' })
-  h.runtime.outbox.send({ action, channel, text: '内部文档。', ticketId: ticket.id, target: 'https://corp.example/doc/1' })
+  h.runtime.outbox.send({ action, channel: internal, text: '内部文档。', ticketId: ticket.id })
   await h.runtime.sendReplies()
   expect(h.runtime.store.replyStatus(action.idempotencyKey)).toBe('sent')
   expect(h.runtime.store.approvals.pending()).toEqual([])
@@ -177,6 +192,6 @@ it('lets the Policy approve an internal target itself, and never approves a spen
     cost: { kind: 'money', amount: 100, currency: 'CNY' } })
   const outcome = requestActionApproval(h.runtime.store, { ticket, action: spend, target: 'https://corp.example/doc/1',
     policy: settingsPolicy(h.runtime.store.settings(), h.runtime.sources), approvalPolicy: h.runtime.store.settings().policy.approval })
-  expect(outcome).toMatchObject({ ok: true, approval: { state: 'requested', action: { level: 'spend' }, target: 'https://corp.example/doc/1' } })
-  expect(h.runtime.store.approvals.pending().map(row => row.id)).toContain(outcome.ok ? outcome.approval.id : '')
+  expect(outcome).toMatchObject({ kind: 'pending', approval: { state: 'requested', action: { level: 'spend' }, target: 'https://corp.example/doc/1' } })
+  expect(h.runtime.store.approvals.pending().map(row => row.id)).toContain(outcome.kind === 'refused' ? '' : outcome.approval.id)
 })

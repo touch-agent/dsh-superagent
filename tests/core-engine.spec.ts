@@ -660,6 +660,14 @@ describe('follow-up owners', () => {
     h.engine.report(ticketId, { state: 'dropped', summary: 'nothing to do' })
     expect([h.repo.threads.get('chat:t1')!.pending, h.repo.triggers.disposition('2')!.fanout]).toEqual([[], [ticketId]])
   })
+  it('refuses an external answer that belongs to no ticket, while the local conversation stays direct', () => {
+    const h = harness()
+    h.engine.receive(trigger('7', { threads: [{ source: 'chat', id: 'other' }] }))
+    expect(() => h.engine.reply({ purpose: 'answer', triggerId: '7', text: 'x' })).toThrow(new UserError('ticketlessReply'))
+    const local = trigger('8', { channel: { source: 'conversation', thread: 'conversation:r', address: {} } })
+    h.engine.receive(local)
+    expect(h.engine.reply({ purpose: 'answer', triggerId: '8', text: 'hi' })).toMatchObject({ status: 'pending' })
+  })
   it('does not queue the accept acknowledgement when an older receipt already carries it', () => {
     const h = harness()
     h.engine.receive(trigger('1')); h.pump()

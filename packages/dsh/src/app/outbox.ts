@@ -1,13 +1,13 @@
 /** Reliable outbound message delivery backed by persistent receipts, an undo window, an approval gate, and retried reply effects. */
-import { expire, revoke, UserError, withinActionLevel, type Approval, type ChannelRef, type OutboundSend, type Outbox as OutboxPort, type Policy,
-  type ReplyStatus } from '@superagent/kernel'
+import { expire, revoke, UserError, withinActionLevel, type ActorRef, type Approval, type ChannelRef, type OutboundSend,
+  type Outbox as OutboxPort, type Policy, type ReplyStatus } from '@superagent/kernel'
 import type { Commands } from '../infra/commands.ts'
 import { checkedImText } from '../infra/text.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import type { ProbeAnswer } from '../sources/kind.ts'
 import type { ApprovalPolicy } from '../policy.ts'
 import { requestActionApproval } from './action-gate.ts'
-import { PANEL_ACTOR } from './approvals.ts'
+import { ENGINE_ACTOR, PANEL_ACTOR } from './approvals.ts'
 import { FAILURES_BEFORE_ERROR, Later, type Effects } from './effects.ts'
 import type { DropReason, Store } from './store.ts'
 
@@ -76,17 +76,17 @@ export class Outbox implements OutboxPort {
       let held: Approval | undefined
       // The built-in conversation Source is local: the operator's own UI, not an external effect, so it needs no gate.
       if (ticket && !sources.trusted(message.channel.source)) {
-        const outcome = requestActionApproval(store, { ticket, action: message.action, target: message.target ?? destinationOf(message.channel),
+        const outcome = requestActionApproval(store, { ticket, action: message.action, target: destinationOf(message.channel),
           policy: this.host.policy(), approvalPolicy: this.host.approvalPolicy(), requestedBy: message.action.actor,
           now: () => new Date(now).toISOString() })
-        if (!outcome.ok) {
+        if (outcome.kind === 'refused') {
           if (store.receipts.add(message, { dueAt, windowMs })) {
             store.receipts.settle({ ...message, id }, dropReason(outcome.reason.code), { at: new Date(now).toISOString(), values: outcome.reason.values })
           }
           return
         }
-        // A requested Approval holds the message; an automatic grant is audit-only and may run at once.
-        if (outcome.approval.state === 'requested') held = outcome.approval
+        // A pending Approval holds the message; an automatic grant is audit-only and may run at once.
+        if (outcome.kind === 'pending') held = outcome.approval
       }
       if (!store.receipts.add(message, { dueAt, windowMs }, held?.id)) return
       if (!held) effects.enqueue('reply', id, {}, now + windowMs)
@@ -134,7 +134,8 @@ export class Outbox implements OutboxPort {
       }
       const reason: DropReason = approval.state === 'approved' ? 'approvalLevelInsufficient'
         : approval.state === 'denied' ? 'approvalDenied' : approval.state === 'revoked' ? 'approvalRevoked' : 'approvalExpired'
-      store.atomic(() => { store.receipts.settle(receipt, reason, { at }) })
+      const values = approval.state === 'expired' ? { at: approval.expiresAt } : undefined
+      store.atomic(() => { store.receipts.settle(receipt, reason, { at, ...(values ? { values } : {}) }) })
     }
   }
   /** Withdraw a message best-effort: a pending message is cancelled even after its window, such as one whose retries keep failing. */
@@ -147,7 +148,7 @@ export class Outbox implements OutboxPort {
       if (!store.receipts.withdraw(id, at)) return
       effects.cancel('reply', id)
       // A request no longer needed must leave the panel queue too; an already decided Approval stays for the audit.
-      if (approval?.state === 'requested') store.approvals.save(revoke(approval, { at, by: PANEL_ACTOR, reason: 'The message was withdrawn before its decision' }))
+      if (approval?.state === 'requested') store.approvals.save(cancelRequest(approval, at, ENGINE_ACTOR, 'The message was withdrawn before its decision'))
     })
   }
   /**
@@ -172,7 +173,7 @@ export class Outbox implements OutboxPort {
         recalled = store.receipts.withdraw(id, at)
         if (!recalled) return
         effects.cancel('reply', id)
-        if (approval?.state === 'requested') store.approvals.save(revoke(approval, { at, by: PANEL_ACTOR, reason: 'The message was recalled before its decision' }))
+        if (approval?.state === 'requested') store.approvals.save(cancelRequest(approval, at, PANEL_ACTOR, 'The message was recalled before its decision'))
       })
       if (recalled) return 'recalled'
     }
@@ -229,6 +230,32 @@ function destinationOf(channel: ChannelRef): string {
 }
 
 /** The receipt's drop reason for a gate refusal; every refusal code the gate returns names a drop reason. */
+const GATE_DROP_REASONS: Partial<Record<string, DropReason>> = {
+  actionLevelExceeded: 'actionLevelExceeded',
+  mandateExpired: 'mandateExpired',
+  revoked: 'revoked',
+  approvalDenied: 'approvalDenied',
+  approvalRevoked: 'approvalRevoked',
+  approvalExpired: 'approvalExpired',
+  approvalMissing: 'approvalMissing',
+  approvalLevelInsufficient: 'approvalLevelInsufficient',
+  approvalTargetMismatch: 'approvalTargetMismatch',
+}
 function dropReason(code: string): DropReason {
-  return code as DropReason
+  const reason = GATE_DROP_REASONS[code]
+  if (!reason) throw new Error(`Unknown action gate refusal: ${code}`)
+  return reason
+}
+
+/**
+ * Cancel a still-requested Approval for a message that will not run. A request already past its expiry cannot be
+ * revoked, so it is recorded as expired instead; either way the audit no longer shows it as waiting.
+ */
+function cancelRequest(approval: Approval, at: string, by: ActorRef, reason: string): Approval {
+  try {
+    return revoke(approval, { at, by, reason })
+  } catch (error) {
+    if (error instanceof UserError && error.code === 'approvalExpired') return expire(approval, at)
+    throw error
+  }
 }

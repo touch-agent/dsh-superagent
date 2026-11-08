@@ -386,12 +386,12 @@ export class Store implements Repositories {
     settle: (message: OutboundMessage, outcome: 'sent' | DropReason, details: { at?: string; values?: Record<string, string> } = {}): void => {
       const settled = outcome === 'sent' ? { status: 'sent', recalled: null }
         : { status: 'dropped', recalled: null, dropped: { at: details.at ?? new Date().toISOString(), reason: outcome,
-          ...details.values ? { values: details.values } : {} } }
-      const { id, channel, text, target, action, kind, ticketId } = message
+          ...details.values && Object.keys(details.values).length ? { values: details.values } : {} } }
+      const { id, channel, text, action, kind, ticketId } = message
       const updated = this.db.prepare("UPDATE outbox SET value = json_patch(value, ?) WHERE id = ? AND value ->> '$.status' IN ('pending', 'recalled')")
         .run(JSON.stringify(settled), id)
       if (!Number(updated.changes)) this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)')
-        .run(id, JSON.stringify({ id, channel, text, ...target ? { target } : {}, ...action ? { action } : {}, ...kind ? { kind } : {}, ...ticketId ? { ticketId } : {}, ...settled }))
+        .run(id, JSON.stringify({ id, channel, text, ...action ? { action } : {}, ...kind ? { kind } : {}, ...ticketId ? { ticketId } : {}, ...settled }))
     },
     /**
      * Recalls a still-pending message whose undo window is open at `at`, keeping its receipt as `recalled`
