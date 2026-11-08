@@ -229,7 +229,7 @@
 
 - 每个 **tracked** `Ticket`/`Subtask` 节点最多一个自己的 worker；worker 的身份是 `worker-<ticketId>` 或 `subtask-<subtaskId>-<attempt>`。lightweight Ticket 没有 worker（3.5）。
 - **不能把子任务 session 编成 `worker-<ticketId>-<subtaskId>`**：现有 `ticketOfSession` 只切 `worker-` 前缀，会把 `-sub` 当成 ticketId。子任务用独立前缀 `subtask-<subtaskId>-<attempt>` + `session → (ticketId, subtaskId, attempt)` 注册表；`ticketOfSession`、`Sessions.decorate`/`ticketOf`、预设选择、工具注册与 `workOnly` 都要按注册表解析，且写保护同时检查父 Ticket 存活与子任务未结束。
-- **Executor 的事件处理也要按 `(ticketId, subtaskId)` 解析**：`DshExecutor.install` 的 `ticketOf`、`agent/status`、`agent/inbox/claimed`、`session/event`、`agent/error` 处理器都 keyed by `ticketOfSession(agent.id)`；子 session 若解析成父 Ticket，会把子 turn 的 `workerIdle`/`failed` 写到父 Assignment 上。要加 per-subtask lifecycle（子 idle/error 只推进子状态），并让 `Sessions.limitSubagent` 解析最近的 worker/subtask、套用该节点的 `workOnly`/受限执行配置，不能把子 subagent 绑到父 Ticket 绕过限制。
+- **Executor 的事件处理也要按 `(ticketId, subtaskId, attempt)` 解析**：`DshExecutor.install` 的 `ticketOf`、`agent/status`、`agent/inbox/claimed`、`session/event`、`agent/error` 处理器都 keyed by `ticketOfSession(agent.id)`；子 session 若解析成父 Ticket，会把子 turn 的 `workerIdle`/`failed` 写到父 Assignment 上。要加 per-subtask lifecycle（子 idle/error 只推进子状态），并让 `Sessions.limitSubagent` 解析最近的 worker/subtask/attempt、套用该节点的 `workOnly`/受限执行配置，不能把子 subagent 绑到父 Ticket 绕过限制。**旧 attempt 的 agent/status、agent/error、session/event 到达时必须丢弃（`staleSubtaskSession`），不能推进新 attempt 的 state、report 或父状态；只有 `attempt === subtask.attempt` 的事件才处理。**
 - 子任务只能由父节点的 worker 通过 `delegate_task` 请求 Engine 创建；Engine 校验深度、宽度与父 Mandate/maxActionLevel；`scope` 只是执行提示。
 - 子任务默认继承父 Ticket 的类别，**不单独跑分类器、不计入类别任务数**；类别是 Ticket 的组织方式。
 - 最大深度默认 5，单节点最多 8 个子任务、单 Ticket 同时活跃子任务最多 32；可配置，超限返回明确错误。
@@ -335,7 +335,7 @@ Engine：校验父任务存活、父 Mandate/maxActionLevel 原样继承、深�
 | `delegate_task` | 父 worker | Engine 创建 Subtask 与子 worker，写入父子关系 |
 | 子任务报告 | 子 worker | 进入父 worker 的输入；不直接产生人的注意力请求 |
 | `accept_subtask` | 父 worker | 子任务完成：state=`done`、`endedAt=now`，写 `resolution.kind='accepted'` + `acceptedReportAt=report.at` + `acceptedAttempt=report.attempt`，并终止当前子 worker；之后迟到报告被拒绝（`subtaskClosed`）。交付物可被父合并；不等于父任务完成 |
-| `return_subtask` | 父 worker | 子任务带修改意见重开；`attempt += 1`，清除整个 `resolution`、旧 `merge`/`endedAt` 失效，state 回 `working`，按新 attempt 启动新的子 worker 会话（旧 worker 与旧 attempt 报告全部拒绝）；不写 'returned'，否则会误判为已处置 |
+| `return_subtask` | 父 worker | 子任务带修改意见重开；`attempt += 1`，清除整个 `resolution`、`report`、旧 `merge`/`endedAt`/`startedAt` 失效，`startedAt=now`，state 回 `working`，按新 attempt 启动新的子 worker 会话（旧 worker 与旧 attempt 报告全部拒绝）；不写 'returned'，否则会误判为已处置 |
 | `cancel_subtask` | 父 worker | 停止子树：state=`cancelled`、`endedAt=now`，写 `resolution.kind='cancelled'`，终止当前子 worker，之后迟到报告被拒绝（`subtaskClosed`）；父任务记录原因 |
 | `ready` | 父 worker | 仅在无未结束子任务且 6.6 聚合可批准时允许；进入人工验收 |
 | `human_action` | 父 worker | 子任务问题被父汇总后，最多一个问题问人 |
@@ -561,7 +561,7 @@ type ReviewSource =
   | { kind: 'subtask'; subtaskId: string; attempt: number }
 
 interface ReviewConfirmationView {
-  /** 稳定标识：ticket:<assignmentId>:<index> 或 subtask:<subtaskId>:<index> */
+  /** 稳定标识：ticket:<assignmentId>:<index> 或 subtask:<subtaskId>:<attempt>:<index> */
   ref: string
   source: ReviewSource
   criterion: HumanCriterion
@@ -736,12 +736,12 @@ interface SubtaskView {
   attempt: number                      // 当前 attempt；旧 attempt 的 report/session 已作废
   workerSessionId: string              // subtask-<subtaskId>-<attempt>
   depth: number
-  startedAt?: string
+  startedAt?: string                   // 当前 attempt 的开始时间；return 时重置
   endedAt?: string
-  durationMs?: number
+  durationMs?: number                 // 只算当前 attempt
   progress?: { done: number; total: number }
-  deliverables: DeliverableSummary[]
-  resolution?: Subtask['resolution']   // 可能是旧 accepted；读取时要检查 acceptedReportAt === report.at
+  deliverables: DeliverableSummary[]  // 只来自 report.attempt === attempt 的当前报告
+  resolution?: Subtask['resolution']   // 旧 accepted 必须同时满足 acceptedAttempt === attempt 且 acceptedReportAt === report.at
   workspace?: Subtask['workspace']
   merge?: Subtask['merge']
   subtasks?: SubtaskView[]             // 懒加载；默认只取一层
@@ -1143,7 +1143,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 - 子 worker 没有 `delegate_ticket`、`send_message`、commit/send/spend/merge/审批请求工具；尝试创建 Ticket 或直接找人必须失败并记录。
 - 子 worker 的 `bash` 受限：`git push`、`gh pr create`、`curl` 外网、写父受保护路径、`subagent` 都失败；子 worker 的 subagent 不能借 `limitSubagent` 重新拿到父/子执行工具。
 - `subtask-<subtaskId>-<attempt>` 能通过注册表解析到 `(ticketId, subtaskId, attempt)`，不会把 `-sub` 当 ticketId；`decorate`/`ticketOf`/`workOnly`/`limitSubagent`/预设/工具注册都命中子任务，写保护同时检查父 Ticket 与子任务状态。
-- 子 session 的 `agent/status`/`agent/error` 只推进子任务，不调用父 Assignment 的 `workerIdle`/`failed`；子 worker 的 subagent 绑定最近的子任务并继承受限执行配置。
+- 子 session 的 `agent/status`/`agent/error` 只推进子任务，不调用父 Assignment 的 `workerIdle`/`failed`；旧 attempt 的 status/error/event 被丢弃（`staleSubtaskSession`），不能改新 attempt；子 worker 的 subagent 绑定最近的子任务/attempt 并继承受限执行配置。
 - `delegate_task` 在深度 6、单节点 9 个、单 Ticket 33 个活跃子任务时拒绝；错误可读，不静默截断。
 - 子 worker 不能提高 `maxActionLevel`；父 Mandate 原样继承，文本 `scope` 不能当授权。
 - 父 `ready`/`dropped`、人停止、`follows`/PR 合并四条结束路径：有未结束子任务时都不能静默结束；`dropped`/人停止取消子树，PR 合并先挂起并产生一个注意力请求；父 `failed` 取消子树但 Ticket 保持 live、可重试。
@@ -1164,7 +1164,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 - 类别继承：review Ticket 的 `inherited` placement 是读时解析，被审 Ticket 移动后自动跟随；不产生需要级联的持久化 placement。
 - form 选择：未注入 `inline`、需要 review/workspace/子任务/外部写时，accept 不得选 lightweight；review Ticket 永远 tracked。
 - `accept_subtask` 后 state=`done`/`endedAt` 被设置，旧 attempt 的迟到报告被拒绝；`cancel_subtask` 后 state=`cancelled`/`endedAt` 被设置并终止子 worker，迟到报告同样被拒绝；都不能停留在 `review`。
-- `return_subtask` 后 `attempt` 递增，旧 attempt 的 report 被拒绝、旧 `Subtask.merge` 与 `resolution` 失效；新 attempt 的 worker 报告才被接受，重新接受写新 revision 的合并记录，不能复用旧合并。
+- `return_subtask` 后 `attempt` 递增，旧 attempt 的 report 被拒绝、旧 `Subtask.report`/`startedAt`/`Subtask.merge` 与 `resolution` 失效；新 attempt 的 worker 报告才被接受，重新接受写新 revision 的合并记录，不能复用旧合并；`SubtaskView` 不显示旧 attempt 的交付/时长。
 - attempt fencing：`subtask-<id>-1` 的 report 在 return 后到 `subtask-<id>-2` 时被拒绝（`staleSubtaskReport`），只有 `attempt=2` 的 report 推进状态；旧 session 不能通过复用 ID 绕过。
 - `cancel_subtask` 后旧 session 的迟到 report 被拒绝（`subtaskClosed`），不会把 `cancelled` 改回 `review`。
 - 类别/归属：子任务不进入分类器、不计入类别任务数、不产生类别建议；父类别改变时子任务跟随。
