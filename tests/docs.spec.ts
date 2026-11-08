@@ -34,9 +34,20 @@ function listed(heading: string): string[] {
   })
 }
 
+/** The numbered documents the README's Documentation list names, in order. */
+function readmeList(): string[] {
+  const readme = read('README.md')
+  const start = readme.indexOf('## Documentation')
+  const end = readme.indexOf('## Development')
+  return [...readme.slice(start, end).matchAll(/\]\(docs\/(\d{3})-[a-z0-9-]+\.md\)/g)].map(match => match[1]!)
+}
+
 describe('documentation', () => {
   it('numbers documents consecutively from 000', () => {
     expect(numbered.map(name => name.slice(0, 3))).toEqual(numbered.map((_, index) => String(index).padStart(3, '0')))
+  })
+  it('lists every numbered document once in the README, in order', () => {
+    expect(readmeList()).toEqual(numbered.map(name => name.slice(0, 3)))
   })
   it('links numbered documents only to earlier numbered documents', () => {
     const violations = numbered.flatMap(name => links(join(ROOT, 'docs', name)).flatMap(target => {

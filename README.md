@@ -198,6 +198,7 @@ Read the numbered documents in order; each builds only on the ones before it.
 - [007 Architecture](docs/007-architecture.md): the classes, modules, tests and tables of the implementation.
 - [008 Cookbook](docs/008-cookbook.md): the full recipe for adding a Source.
 - [009 Conversation tasks](docs/009-conversation-tasks.md): assigning work by talking to the agent, and multi-source tasks.
+- [010 Adding a Source in 30 minutes](docs/010-adding-a-source.md): the fast path from an empty checkout to a registered, panel-visible Source.
 
 The larger design and planning notes are in Chinese: [PLATFORM-EVOLUTION.zh.md](PLATFORM-EVOLUTION.zh.md) explains why the project has this shape, and [TASK-PLAN.zh.md](TASK-PLAN.zh.md) records the milestones, tasks and evidence. They are working documents and can be ahead of, or behind, the numbered set.
 
@@ -218,7 +219,7 @@ pnpm changeset        # record a version bump for a package change
 
 `pnpm test:install-e2e` needs `dsh` on `PATH` (or `DSH_BIN` pointing at another copy); `KEEP=1` keeps the temporary home. The same applies to `tests/dump-config.spec.ts`, which composes an installed profile through the host's own `--dump-config`.
 
-The tests are the specification. `tests/kernel-boundary.spec.ts` and `tests/layers.spec.ts` enforce the package boundaries; `tests/conformance/` is the contract every Source must satisfy; `tests/chaos.spec.ts` and `tests/withdraw-drill.spec.ts` cover delivery failure; `tests/runtime.spec.ts` runs the application against a simulated host, and the panel specs against a fake management API; `tests/docs.spec.ts` checks that the numbered documents link only backwards and that the 007 module and test tables stay complete.
+The tests are the specification. `tests/kernel-boundary.spec.ts` and `tests/layers.spec.ts` enforce the package boundaries; `tests/conformance/` is the contract every Source must satisfy; `tests/chaos.spec.ts` and `tests/withdraw-drill.spec.ts` cover delivery failure; `tests/runtime.spec.ts` runs the application against a simulated host, and the panel specs against a fake management API; `tests/docs.spec.ts` checks that the numbered documents link only backwards, that the README lists every numbered document once and in order, and that the 007 module and test tables stay complete.
 
 CI runs three workflows: `check` (the gate above, with the pinned host installed so the dump-config test is real, plus a `changesets` job that requires a package change to name the package it bumps), `install-e2e` (the bundle installs, opens and uninstalls), and `release` (a dry run on `main` that shows the versions and changelogs a release would write; nothing is published).
 
