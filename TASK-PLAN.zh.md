@@ -236,7 +236,7 @@ graph LR
 - **交付**：`policy.ts` 的 mandate 增加 `maxActionLevel`；`revalidate` 时同时校验等级（当前只校验规则与 strength）。
 - **验收**：政策把等级从 send 降到 draft 后，在跑的工单下一动作被拒并记 reason；`tests/policy.spec.ts` 覆盖。
 - **依赖**：T2-01、T2-02。
-- **状态**：实现完成（2026-11-08，PR #8 待合并）。Mandate 增加 `maxActionLevel` 与可选 `expiresAt`；Policy 增加 `maxActionLevel`（默认 `draft`）与 `mandateMinutes`；`revalidate(mandate, action?, at?)` 在动作时点校验授权过期、等级上限与准入基础，返回 `mandateExpired` / `actionLevelExceeded` / `revoked` 原因，且 Mandate 不会因 Policy 放宽而变宽；`tests/policy.spec.ts` 覆盖 send 降到 draft 后的下一动作拒绝，`tests/action.spec.ts` 覆盖等级比较。
+- **状态**：实现完成（2026-11-08，PR #8 待合并）。Mandate 增加 `maxActionLevel` 与可选 `expiresAt`；Policy 增加 `maxActionLevel`（默认 `draft`）与 `mandateMinutes`；`revalidate(mandate, at, action?)` 每次都校验授权过期，动作时点再按 Mandate 记录上限与当前 Policy 上限中更严者校验等级，返回 `mandateExpired` / `actionLevelExceeded` / `revoked` 原因；记录了上限的 Mandate 不会因 Policy 放宽而变宽（旧 Mandate 无记录时跟随当前 Policy）。`tests/policy.spec.ts` 覆盖 send 降到 draft 后的下一动作拒绝，`tests/action.spec.ts` 覆盖等级比较。
 
 ### T2-04 outbox `pending-send` + 撤销窗口 + `recalled` 态 · Runtime · 3 人日
 

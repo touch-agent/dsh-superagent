@@ -133,11 +133,11 @@ A condition on what the Executor may do with its own result, such as when it may
 
 An ended Ticket keeps its Mandate. A person's message on one of its own Threads can resume the same work without a new Eval or Decision, regardless of who sent it. Bots and CI do not wake ended Tickets. The Executor decides whether the request fits the scope and ends the round if it does not.
 
-Only three operations change a Mandate: accept creates it, a person's stop withdraws it, and failed revalidation revokes it. A Ticket stopped by a person stays ended and receives nothing more. Work requested there needs a new accept.
+Only three operations change a Mandate: accept creates it, a person's stop withdraws it, and a failed revalidation before resume or attachment revokes it. An action-time refusal rejects that action only; the Mandate stays, subject to the same checks on its next action. A Ticket stopped by a person stays ended and receives nothing more. Work requested there needs a new accept.
 
 ### Revalidation before resume
 
-The Source must still listen to the original Thread. The remaining checks depend on the Mandate's basis:
+The Mandate must not have expired, and the Source must still listen to the original Thread. The remaining checks depend on the Mandate's basis:
 
 - An explicit follow-up Mandate passes.
 - An inferred Mandate needs `auto` mode and its matched rules still enabled.
@@ -149,7 +149,7 @@ If revalidation fails, the Ticket stays ended and takes none of its waiting mess
 
 ### Revalidation before an action
 
-A Mandate also records the highest action level it permits (`maxActionLevel`) and, when the Policy sets a lifetime, when it expires. The Policy's maximum is `draft` by default: work that only produces internal objects needs no further enablement, while `commit`, `send` and `spend` require the Policy to raise the ceiling explicitly.
+A Mandate also records the highest action level it permits (`maxActionLevel`) and, when the Policy sets a lifetime, when it expires. The Policy's maximum is `draft` by default: work that only produces internal objects needs no further enablement, while `commit`, `send` and `spend` require the Policy to raise the ceiling explicitly. A Mandate accepted before this field existed has no recorded ceiling; it follows the Policy's current maximum until new work is accepted.
 
 A running Ticket revalidates its Mandate at each action point, with the action's level and the moment:
 
@@ -157,7 +157,7 @@ A running Ticket revalidates its Mandate at each action point, with the action's
 - an action above the level the Mandate was accepted with, or above the Policy's current maximum, is refused with `actionLevelExceeded`;
 - an admission basis that no longer holds, such as a Source that stopped listening, a sender removed from the list or matched rules disabled, is refused with `revoked`.
 
-A Policy that lowers its maximum therefore stops the next higher-level action of every running Ticket; the refusal carries the reason the caller records with that action. A Mandate never widens when the Policy raises its maximum; work under a wider ceiling needs a new accept. Policy changes do not withdraw Mandates by themselves, and this revalidation does not end the Ticket: its remaining actions at allowed levels continue.
+A Policy that lowers its maximum therefore stops the next higher-level action of every running Ticket; the refusal carries the reason the caller records with that action. A Mandate with a recorded ceiling never widens when the Policy raises its maximum; a legacy Mandate without one follows the current Policy, and work under a wider ceiling needs a new accept. Policy changes do not withdraw Mandates by themselves, and this revalidation does not end the Ticket: its remaining actions at allowed levels continue.
 
 - **A person saying "stop" in a Thread is an ordinary Trigger,** and Eval decides stop. An Executor cannot declare that a person asked it to stop.
 - **Stop in the panel is a command.** It acts on the Ticket directly and is recorded as a manual stop.

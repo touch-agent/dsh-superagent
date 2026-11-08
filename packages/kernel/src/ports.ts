@@ -29,10 +29,10 @@ export interface Policy {
   paused: boolean
   gate(trigger: Trigger, thread: Thread, tickets: Ticket[]): GateResult
   /**
-   * Re-check a Mandate under this Policy, before an ended Ticket resumes and before a running Ticket takes an action.
-   * Without `action` only the admission basis is checked; with it the action's level and `at`'s expiry are checked too.
+   * Re-check a Mandate under this Policy at `at`, before an ended Ticket resumes and before a running Ticket takes an
+   * action. Every call checks the admission basis and expiry; `action` additionally checks the action's level.
    */
-  revalidate(mandate: Mandate, action?: ActionRequest, at?: string): Revalidation
+  revalidate(mandate: Mandate, at: string, action?: ActionRequest): Revalidation
   /** The maximum level and the expiry a Mandate accepted at `at` receives from this Policy. */
   mandateLimits(at: string): { maxActionLevel: ActionLevel; expiresAt?: string }
   /** Whether an inferred candidate may be accepted on the rules its assessment matched: assessments accept, and each rule is enabled. */

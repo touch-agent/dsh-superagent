@@ -142,7 +142,7 @@ export interface Mandate {
   scope: string
   /**
    * The highest action level this authorization permits. A Mandate accepted before the action gate has none, and the
-   * Policy's current maximum applies; a later Policy may lower this but never raises it for the same Mandate.
+   * Policy's current maximum applies until it is re-accepted; a recorded ceiling is never widened by a later Policy.
    */
   maxActionLevel?: ActionLevel
   /** When this authorization stops permitting actions; absent when it has no time limit. */

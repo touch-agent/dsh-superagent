@@ -312,6 +312,27 @@ describe('resume and stop', () => {
     // The message still reaches Eval as a follow-up, but no reopen Decision is needed or possible.
     expect(h.repo.decisions.byThread('chat:t1').filter(decision => decision.kind !== 'ignore')).toHaveLength(decisions)
   })
+  it('records the accept-time action limit and expiry, and refuses to resume or attach an ended Ticket after the expiry', async () => {
+    const expiresAt = '2026-09-23T00:01:00.000Z'
+    const h = harness({
+      mandateLimits: () => ({ maxActionLevel: 'commit', expiresAt }),
+      revalidate: (_mandate, at) => Date.parse(at) < Date.parse(expiresAt) ? { ok: true }
+        : { ok: false, reason: { code: 'mandateExpired', values: { at: expiresAt } } },
+    })
+    const ticketId = accepted(h).ticketId!
+    expect(h.repo.tickets.get(ticketId)!.mandate).toMatchObject({ maxActionLevel: 'commit', expiresAt })
+    h.engine.report(ticketId, { state: 'ready', summary: 'done' })
+    h.tick(61)
+    // A person's message can no longer resume the expired Mandate: the Ticket stays ended and takes nothing new.
+    h.engine.receive(trigger('2', { actor: guest }))
+    const ticket = h.repo.tickets.get(ticketId)!
+    expect(ticket.ended).toBeDefined()
+    expect(ticket.assignments).toHaveLength(1)
+    expect(ticket.undelivered).toEqual([])
+    // Attaching another message to the ended Ticket is refused for the same expired Mandate.
+    h.engine.receive(trigger('3', { actor: guest, threads: [{ source: 'chat', id: 'elsewhere' }] }))
+    expect(() => h.engine.attach(ticketId, '3')).toThrow(new UserError('mandateRevoked'))
+  })
   it('resumes an ended ticket an earlier version left with a person\'s message waiting, on the next pass', async () => {
     const h = harness()
     const ticketId = await ended(h, 'executor')

@@ -140,7 +140,7 @@ Trigger and Thread `meta` belong to the Source. The core does not interpret them
 
 - `version`, `paused` and `evalTimeoutMs` describe its current state.
 - `gate(trigger, thread, tickets)` returns admission strength and basis.
-- `revalidate(mandate, action?, at?)` checks whether an existing Mandate still holds; with an action it also enforces the Mandate's expiry and the action's level, and it returns `{ ok: true }` or the `reason` a caller records.
+- `revalidate(mandate, at, action?)` checks whether an existing Mandate still holds at `at`; it always enforces the Mandate's expiry and, with an action, its level, and it returns `{ ok: true }` or the `reason` a caller records.
 - `mandateLimits(at)` gives a new Mandate its maximum action level and, when the Policy sets a lifetime, its expiry.
 - `admitsInferred(rules)` permits proactive acceptance only in auto mode with enabled matching rules.
 

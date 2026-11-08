@@ -10,6 +10,7 @@ import type { Thread, Ticket, Trigger } from '@superagent/kernel'
 const MEMBER = 'ou_alice'
 const CHAT = 'oc_team'
 const OBSERVED = 'oc_1111111111111111111111111111'
+const NOW = '2026-09-23T00:00:00.000Z'
 const feishuSource = (config: { chats: { chatId: string; listen: 'mentions' | 'all' }[]; directMessages: boolean }, enabled = true) => ({ enabled, config })
 const base = SettingsSchema.parse({
   policy: { sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'Alice' }] } } },
@@ -155,9 +156,9 @@ describe('admission table', () => {
     const gate = setup(open).policy.gate(inChat(CHAT, STRANGER), thread(), [])
     if (!gate.admissible) throw new Error('expected admission')
     const mandate = { strength: gate.strength, policyVersion: 'v', basis: gate.basis, actor: { source: 'feishu', id: STRANGER }, scope: '' }
-    expect(setup(open).policy.revalidate(mandate).ok).toBe(true)
-    expect(setup(withTable({ [CHAT]: { unlistedAddressed: 'inferred' } })).policy.revalidate(mandate).ok).toBe(false)
-    expect(setup(withTable({})).policy.revalidate(mandate).ok).toBe(false)
+    expect(setup(open).policy.revalidate(mandate, NOW).ok).toBe(true)
+    expect(setup(withTable({ [CHAT]: { unlistedAddressed: 'inferred' } })).policy.revalidate(mandate, NOW).ok).toBe(false)
+    expect(setup(withTable({})).policy.revalidate(mandate, NOW).ok).toBe(false)
   })
   it('changes the Policy version when a cell changes', () => {
     expect(setup(withTable({ [CHAT]: { unlistedAddressed: 'explicit' } })).version).not.toBe(setup().version)
@@ -199,27 +200,27 @@ describe('revalidating a Mandate from the admission table', () => {
     const basis: MandateBasis = { via: 'admission', source: 'feishu', scope: { chatId: CHAT, direct: false, mentioned: addressed }, row: CHAT, cell: item.cell,
       ...addressed ? { addressed: 'mention' as const } : {}, ...observed }
     const mandate = { strength: item.strength, policyVersion: 'v', basis, actor: { source: 'feishu', id: SENDER }, scope: '' }
-    expect(setup(settings).policy.revalidate(mandate).ok).toBe(expected(item))
+    expect(setup(settings).policy.revalidate(mandate, NOW).ok).toBe(expected(item))
   })
 })
 describe('revalidate and version', () => {
   it('keeps explicit Mandates while the sender stays allowed and the Source still listens, and rule Mandates only while auto mode and the rules hold', () => {
     const basis: MandateBasis = { via: 'addressed', source: 'feishu', scope: { chatId: CHAT, direct: false }, sender: 'Alice', addressed: 'mention' }
     const mandate = { strength: 'explicit' as const, policyVersion: 'v', basis, actor: { source: 'feishu', id: MEMBER }, scope: '' }
-    expect(policy.revalidate(mandate).ok).toBe(true)
+    expect(policy.revalidate(mandate, NOW).ok).toBe(true)
     const nobody = { ...base, policy: { ...base.policy, sources: {} } }
-    expect(setup(nobody).policy.revalidate(mandate).ok).toBe(false)
+    expect(setup(nobody).policy.revalidate(mandate, NOW).ok).toBe(false)
     const silent = { ...base, sources: { feishu: feishuSource({ chats: [], directMessages: true }) } }
-    expect(setup(silent).policy.revalidate(mandate).ok).toBe(false)
+    expect(setup(silent).policy.revalidate(mandate, NOW).ok).toBe(false)
     // A Mandate from before the gate recorded how it admitted a Trigger holds while its sender is listed and the Source listens.
     const listed: MandateBasis = { via: 'listed', source: 'feishu', scope: { chatId: CHAT, direct: false }, sender: 'Alice' }
-    expect(setup(silent).policy.revalidate({ ...mandate, basis: listed }).ok).toBe(false)
-    expect(policy.revalidate({ ...mandate, basis: listed }).ok).toBe(true)
+    expect(setup(silent).policy.revalidate({ ...mandate, basis: listed }, NOW).ok).toBe(false)
+    expect(policy.revalidate({ ...mandate, basis: listed }, NOW).ok).toBe(true)
     const inferred = { ...mandate, strength: 'inferred' as const, basis: { via: 'listed', observation: {}, rules: ['copy'] } satisfies MandateBasis }
-    expect(policy.revalidate(inferred).ok).toBe(true)
-    expect(setup({ ...base, eval: { ...base.eval, mode: 'observe' } }).policy.revalidate(inferred).ok).toBe(false)
-    expect(setup({ ...base, policy: { ...base.policy, rules: base.policy.rules.map(rule => ({ ...rule, enabled: rule.id !== 'copy' })) } }).policy.revalidate(inferred).ok).toBe(false)
-    expect(setup(nobody).policy.revalidate({ ...mandate, basis: { via: 'followup' } }).ok).toBe(true)
+    expect(policy.revalidate(inferred, NOW).ok).toBe(true)
+    expect(setup({ ...base, eval: { ...base.eval, mode: 'observe' } }).policy.revalidate(inferred, NOW).ok).toBe(false)
+    expect(setup({ ...base, policy: { ...base.policy, rules: base.policy.rules.map(rule => ({ ...rule, enabled: rule.id !== 'copy' })) } }).policy.revalidate(inferred, NOW).ok).toBe(false)
+    expect(setup(nobody).policy.revalidate({ ...mandate, basis: { via: 'followup' } }, NOW).ok).toBe(true)
   })
   it('changes the Policy version for rules, accept mode, action limits and the Sources\' parts, not for pause, concurrency, models or Source configuration', () => {
     const version = setup().version
@@ -238,18 +239,21 @@ describe('action-time revalidation', () => {
   const sending = (policy: Partial<Settings['policy']> = {}) =>
     SettingsSchema.parse({ ...base, policy: { ...base.policy, maxActionLevel: 'send', ...policy } })
   it('refuses a running Ticket\'s next send action after the Policy lowers its ceiling from send to draft, and names the reason', () => {
-    expect(setup(sending()).policy.revalidate(mandate({ maxActionLevel: 'send' }), { level: 'send' })).toEqual({ ok: true })
+    expect(setup(sending()).policy.revalidate(mandate({ maxActionLevel: 'send' }), NOW, { level: 'send' })).toEqual({ ok: true })
     const lowered = setup(sending({ maxActionLevel: 'draft' }))
-    expect(lowered.policy.revalidate(mandate({ maxActionLevel: 'send' }), { level: 'send' })).toEqual({ ok: false,
+    expect(lowered.policy.revalidate(mandate({ maxActionLevel: 'send' }), NOW, { level: 'send' })).toEqual({ ok: false,
       reason: { code: 'actionLevelExceeded', values: { level: 'send', max: 'draft' } } })
     // Lowering the ceiling catches only the actions above it; a draft stays authorized.
-    expect(lowered.policy.revalidate(mandate({ maxActionLevel: 'send' }), { level: 'draft' })).toEqual({ ok: true })
+    expect(lowered.policy.revalidate(mandate({ maxActionLevel: 'send' }), NOW, { level: 'draft' })).toEqual({ ok: true })
+    // When both ceilings are below the action, the reason names the stricter current Policy ceiling.
+    expect(lowered.policy.revalidate(mandate({ maxActionLevel: 'send' }), NOW, { level: 'spend' })).toEqual({ ok: false,
+      reason: { code: 'actionLevelExceeded', values: { level: 'spend', max: 'draft' } } })
   })
-  it('keeps the level a Mandate was accepted with, so raising the Policy never widens it, while a Mandate without one follows the Policy', () => {
-    expect(setup(sending()).policy.revalidate(mandate({ maxActionLevel: 'commit' }), { level: 'send' })).toEqual({ ok: false,
+  it('keeps the level a Mandate was accepted with, so raising the Policy never widens a recorded one; a Mandate without one follows the Policy', () => {
+    expect(setup(sending()).policy.revalidate(mandate({ maxActionLevel: 'commit' }), NOW, { level: 'send' })).toEqual({ ok: false,
       reason: { code: 'actionLevelExceeded', values: { level: 'send', max: 'commit' } } })
-    expect(setup(sending()).policy.revalidate(mandate(), { level: 'send' })).toEqual({ ok: true })
-    expect(setup(base).policy.revalidate(mandate(), { level: 'send' })).toEqual({ ok: false,
+    expect(setup(sending()).policy.revalidate(mandate(), NOW, { level: 'send' })).toEqual({ ok: true })
+    expect(setup(base).policy.revalidate(mandate(), NOW, { level: 'send' })).toEqual({ ok: false,
       reason: { code: 'actionLevelExceeded', values: { level: 'send', max: 'draft' } } })
   })
   it('gives a new Mandate the Policy ceiling and, when set, its expiry', () => {
@@ -259,12 +263,15 @@ describe('action-time revalidation', () => {
   })
   it('refuses an expired authorization and a withdrawn Source, naming the reason', () => {
     const expiring = mandate({ maxActionLevel: 'send', expiresAt: '2026-01-01T00:30:00.000Z' })
-    expect(setup(sending()).policy.revalidate(expiring, { level: 'send' }, '2026-01-01T00:29:59.999Z')).toEqual({ ok: true })
-    expect(setup(sending()).policy.revalidate(expiring, { level: 'send' }, '2026-01-01T00:30:00.000Z')).toEqual({ ok: false,
+    expect(setup(sending()).policy.revalidate(expiring, '2026-01-01T00:29:59.999Z', { level: 'send' })).toEqual({ ok: true })
+    // Expiry binds even when the action level is allowed, and on the resume path without an action too.
+    expect(setup(sending()).policy.revalidate(expiring, '2026-01-01T00:30:00.000Z', { level: 'send' })).toEqual({ ok: false,
+      reason: { code: 'mandateExpired', values: { at: '2026-01-01T00:30:00.000Z' } } })
+    expect(setup(sending()).policy.revalidate(expiring, '2026-01-01T00:30:00.000Z')).toEqual({ ok: false,
       reason: { code: 'mandateExpired', values: { at: '2026-01-01T00:30:00.000Z' } } })
     // A Source that no longer receives the Thread revokes the Mandate even at a level it once allowed.
     const silent = { ...sending(), sources: { feishu: feishuSource({ chats: [], directMessages: true }) } }
-    expect(setup(silent).policy.revalidate(mandate({ maxActionLevel: 'send' }), { level: 'send' }, '2026-01-01T00:00:00.000Z'))
+    expect(setup(silent).policy.revalidate(mandate({ maxActionLevel: 'send' }), NOW, { level: 'send' }))
       .toEqual({ ok: false, reason: { code: 'revoked' } })
   })
 })
@@ -395,39 +402,39 @@ describe('policy effects', () => {
   it('tells a ticket how a change bears on it, and leaves the others alone', () => {
     const rules = (copy: object, visual: object = {}) => ({ ...base, policy: { ...base.policy, rules: [{ ...base.policy.rules[0]!, ...copy }, { ...base.policy.rules[1]!, ...visual }] } })
     // A rule the ticket was not accepted under changes nothing for it.
-    expect(policyEffects([inferred, explicit], base, rules({}, { enabled: false }), scope).size).toBe(0)
-    expect(policyEffects([inferred], base, rules({ instruction: 'Fix typos only.' }), scope).get('t1'))
+    expect(policyEffects([inferred, explicit], base, rules({}, { enabled: false }), NOW, scope).size).toBe(0)
+    expect(policyEffects([inferred], base, rules({ instruction: 'Fix typos only.' }), NOW, scope).get('t1'))
       .toEqual({ rules: [{ id: 'copy', name: 'Copy', change: 'changed', instruction: 'Fix typos only.' }] })
-    expect(policyEffects([inferred], base, rules({ enabled: false }), scope).get('t1')).toEqual({ rules: [{ id: 'copy', name: 'Copy', change: 'disabled' }] })
+    expect(policyEffects([inferred], base, rules({ enabled: false }), NOW, scope).get('t1')).toEqual({ rules: [{ id: 'copy', name: 'Copy', change: 'disabled' }] })
     // Another sender on the list, as a member sync adds, bears on no ticket; taking the requester off it does.
     const allowed = (list: { id: string }[]) => ({ ...base, policy: { ...base.policy, sources: { ...base.policy.sources, feishu: { ...base.policy.sources.feishu!, allowed: list } } } })
-    expect(policyEffects([inferred, explicit], base, allowed([{ id: 'ou_alice' }, { id: 'ou_bob' }]), scope).size).toBe(0)
-    expect(policyEffects([explicit], base, allowed([]), scope).get('t2')).toEqual({ requesterAllowed: false, requester: { source: 'feishu', id: 'ou_alice' } })
+    expect(policyEffects([inferred, explicit], base, allowed([{ id: 'ou_alice' }, { id: 'ou_bob' }]), NOW, scope).size).toBe(0)
+    expect(policyEffects([explicit], base, allowed([]), NOW, scope).get('t2')).toEqual({ requesterAllowed: false, requester: { source: 'feishu', id: 'ou_alice' } })
   })
   it('tells an inferred ticket that inferred work is no longer accepted when the accept mode leaves auto, and names a bot it is for', () => {
     const auto = { ...base, eval: { ...base.eval, mode: 'auto' as const } }
     const observe = { ...base, eval: { ...base.eval, mode: 'observe' as const } }
     const rule = ticket('t3', { strength: 'inferred', actor: { source: 'feishu', id: 'ou_alice' },
       basis: { via: 'listed', source: 'feishu', rules: ['copy'], observation: {} } })
-    const effects = policyEffects([rule, explicit], auto, observe, scope)
+    const effects = policyEffects([rule, explicit], auto, observe, NOW, scope)
     // Not a sender's removal: the person who wrote it may still start work.
     expect(effects.get('t3')).toEqual({ proactive: false })
     expect(effects.has('t2')).toBe(false)
     const bot = ticket('t4', { strength: 'explicit', actor: { source: 'feishu', id: 'cli_ci_bot' }, basis: { via: 'listed', source: 'feishu' } })
     const listed = { ...base, policy: { ...base.policy, sources: { ...base.policy.sources, feishu: { ...base.policy.sources.feishu!, allowed: [{ id: 'cli_ci_bot' }] } } } }
-    expect(policyEffects([bot], listed, base, scope).get('t4')).toEqual({ requesterAllowed: false, requester: { source: 'feishu', id: 'cli_ci_bot' } })
+    expect(policyEffects([bot], listed, base, NOW, scope).get('t4')).toEqual({ requesterAllowed: false, requester: { source: 'feishu', id: 'cli_ci_bot' } })
   })
   it('keeps an inferred follow-up\'s Mandate only while candidates become work and its rules are on, as any inferred one', () => {
     const followup = ticket('t5', { strength: 'inferred', actor: { source: 'feishu', id: 'ou_guest' }, scope: '',
       basis: { via: 'followup', source: 'feishu', scope: { chatId: 'oc_team' }, rules: ['copy'] } })
     const mode = (value: 'auto' | 'observe' | 'off') => ({ ...base, eval: { ...base.eval, mode: value } })
     const disabled = { ...mode('auto'), policy: { ...base.policy, rules: base.policy.rules.map(rule => ({ ...rule, enabled: rule.id !== 'copy' })) } }
-    expect(settingsPolicy(mode('auto'), scope()).revalidate(followup.mandate).ok).toBe(true)
-    for (const settings of [mode('observe'), mode('off'), disabled]) expect(settingsPolicy(settings, scope()).revalidate(followup.mandate).ok).toBe(false)
-    expect(policyEffects([followup], mode('auto'), mode('observe'), scope).get('t5')).toEqual({ proactive: false })
+    expect(settingsPolicy(mode('auto'), scope()).revalidate(followup.mandate, NOW).ok).toBe(true)
+    for (const settings of [mode('observe'), mode('off'), disabled]) expect(settingsPolicy(settings, scope()).revalidate(followup.mandate, NOW).ok).toBe(false)
+    expect(policyEffects([followup], mode('auto'), mode('observe'), NOW, scope).get('t5')).toEqual({ proactive: false })
     // An explicit follow-up holds whatever the mode.
     const explicitFollowup = ticket('t6', { ...followup.mandate, strength: 'explicit', actor: { source: 'feishu', id: 'ou_alice' } })
-    expect(settingsPolicy(mode('off'), scope()).revalidate(explicitFollowup.mandate).ok).toBe(true)
+    expect(settingsPolicy(mode('off'), scope()).revalidate(explicitFollowup.mandate, NOW).ok).toBe(true)
   })
   it('revokes an inferred ticket whose cell weakens or whose candidates no longer become work, and reports a deleted rule disabled', () => {
     const chat = 'oc_1111111111111111111111111111'
@@ -437,15 +444,15 @@ describe('policy effects', () => {
     const proactive = ticket('t3', { strength: 'inferred', actor: { source: 'feishu', id: 'ou_guest' }, scope: '',
       basis: { via: 'admission', cell: 'unlistedUnaddressed', source: 'feishu', scope: { chatId: chat }, row: chat, rules: ['copy'],
         observation: { mode: 'auto' } } })
-    expect(policyEffects([proactive], table('inferred'), table('inferred'), observed).size).toBe(0)
+    expect(policyEffects([proactive], table('inferred'), table('inferred'), NOW, observed).size).toBe(0)
     // A weaker cell takes the work from its sender, whom the effect names; a mode change only stops inferred work.
-    expect(policyEffects([proactive], table('inferred'), table('ignore'), observed).get('t3'))
+    expect(policyEffects([proactive], table('inferred'), table('ignore'), NOW, observed).get('t3'))
       .toEqual({ requesterAllowed: false, requester: { source: 'feishu', id: 'ou_guest' } })
-    expect(policyEffects([proactive], table('inferred'), table('inferred', 'observe'), observed).get('t3')).toEqual({ proactive: false })
+    expect(policyEffects([proactive], table('inferred'), table('inferred', 'observe'), NOW, observed).get('t3')).toEqual({ proactive: false })
     const deleted = { ...base, policy: { ...base.policy, rules: base.policy.rules.filter(rule => rule.id !== 'visual') } }
     const visual = ticket('t4', { strength: 'explicit', actor: { source: 'feishu', id: 'ou_alice' },
       basis: { via: 'listed', source: 'feishu', rules: ['visual'] } })
-    expect(policyEffects([visual], base, deleted, scope).get('t4')).toEqual({ rules: [{ id: 'visual', name: 'Visual', change: 'disabled' }] })
+    expect(policyEffects([visual], base, deleted, NOW, scope).get('t4')).toEqual({ rules: [{ id: 'visual', name: 'Visual', change: 'disabled' }] })
   })
 })
 describe('bots and events without a sender', () => {
@@ -476,9 +483,9 @@ describe('bots and events without a sender', () => {
     const mandate = { strength: 'inferred' as const, policyVersion: '', actor: comment.actor, scope: '',
       basis: { via: 'bot' as const, source: 'github', scope: comment.meta, row: 'comments', sender: 'dependabot[bot]',
         observation: { mode: 'auto' as const } } }
-    expect(setup(settings).policy.revalidate(mandate).ok).toBe(true)
-    expect(setup(observing({ observeComments: true }, { bots: [] })).policy.revalidate(mandate).ok).toBe(false)
-    expect(setup({ ...settings, eval: { ...settings.eval, mode: 'observe' } }).policy.revalidate(mandate).ok).toBe(false)
+    expect(setup(settings).policy.revalidate(mandate, NOW).ok).toBe(true)
+    expect(setup(observing({ observeComments: true }, { bots: [] })).policy.revalidate(mandate, NOW).ok).toBe(false)
+    expect(setup({ ...settings, eval: { ...settings.eval, mode: 'observe' } }).policy.revalidate(mandate, NOW).ok).toBe(false)
   })
   it('admits the default branch\'s CI through its row once observed and set, and never a PR\'s CI', () => {
     const admission = { ci: { unlistedUnaddressed: 'inferred' } }

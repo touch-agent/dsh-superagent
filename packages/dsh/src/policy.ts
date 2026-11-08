@@ -81,7 +81,7 @@ export const PolicyConfigSchema = z.object({
   rules: z.array(RuleSchema).refine(rules => new Set(rules.map(rule => rule.id)).size === rules.length, 'Duplicate rule IDs').default(DEFAULT_RULES),
   /**
    * The highest action level any Mandate may authorize. A Policy that lowers it refuses higher-level actions on running
-   * Tickets at their next action point; raising it never widens a Mandate already accepted.
+   * Tickets at their next action point; raising it never widens a Mandate that recorded a ceiling.
    */
   maxActionLevel: z.enum(ACTION_LEVELS).default(DEFAULT_MAX_ACTION_LEVEL),
   /** How many minutes a new Mandate authorizes actions; 0 keeps it valid until revoked. */
@@ -150,7 +150,7 @@ function admissionOf(settings: Settings, source: string, row: string | undefined
 const STRENGTH: Readonly<Record<Admission, number>> = { ignore: 0, inferred: 1, explicit: 2 }
 
 /** Compute how a settings change from `old` to `now` affects the authorization or matched rules of each open ticket. */
-export function policyEffects(tickets: readonly Ticket[], old: Settings, now: Settings, scope: (settings: Settings) => SourceScope):
+export function policyEffects(tickets: readonly Ticket[], old: Settings, now: Settings, at: string, scope: (settings: Settings) => SourceScope):
   Map<string, PolicyEffect> {
   const before = settingsPolicy(old, scope(old)), after = settingsPolicy(now, scope(now))
   const effects = new Map<string, PolicyEffect>()
@@ -161,10 +161,10 @@ export function policyEffects(tickets: readonly Ticket[], old: Settings, now: Se
       return JSON.stringify(was) === JSON.stringify(is) ? [] : [{ id, name: is.name, change: 'changed', instruction: is.instruction }]
     })
     const effect: PolicyEffect = rules.length ? { rules } : {}
-    if (before.revalidate(ticket.mandate).ok && !after.revalidate(ticket.mandate).ok) {
+    if (before.revalidate(ticket.mandate, at).ok && !after.revalidate(ticket.mandate, at).ok) {
       // With the previous accept mode and rules, the Mandate holds unless the sender or receiving scope lost authorization.
       const asBefore = { ...now, eval: old.eval, policy: { ...now.policy, rules: old.policy.rules } }
-      if (!settingsPolicy(asBefore, scope(now)).revalidate(ticket.mandate).ok) {
+      if (!settingsPolicy(asBefore, scope(now)).revalidate(ticket.mandate, at).ok) {
         Object.assign(effect, { requesterAllowed: false, requester: ticket.mandate.actor })
       } else if (ticket.mandate.strength === 'inferred' && old.eval.mode === 'auto' && now.eval.mode !== 'auto') effect.proactive = false
     }
@@ -263,17 +263,16 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
       return { admissible: false, reason: !allowed ? 'not_a_member' : receivable && admission === 'ignore' ? 'admission_ignored' : 'no_mention' }
     },
     admitsInferred: rules => mode === 'auto' && rules.length > 0 && rules.every(id => settings.policy.rules.some(rule => rule.enabled && rule.id === id)),
-    revalidate(mandate: Mandate, action?: ActionRequest, at?: string) {
+    revalidate(mandate: Mandate, at: string, action?: ActionRequest) {
       // An authorization that has reached its expiry authorizes nothing, even at a level it once allowed.
-      if (at && mandate.expiresAt && Date.parse(at) >= Date.parse(mandate.expiresAt)) {
+      if (mandate.expiresAt && Date.parse(at) >= Date.parse(mandate.expiresAt)) {
         return refuse('mandateExpired', { at: mandate.expiresAt })
       }
-      // A Mandate keeps the level it was accepted with, so a later Policy can lower the ceiling but never widen it.
+      // The narrower of the recorded ceiling and the Policy's current one binds; a recorded ceiling never widens.
       if (action) {
-        const authorized = mandate.maxActionLevel ?? maxActionLevel
-        const max = !withinActionLevel(action.level, authorized) ? authorized
-          : !withinActionLevel(action.level, maxActionLevel) ? maxActionLevel : undefined
-        if (max !== undefined) return refuse('actionLevelExceeded', { level: action.level, max })
+        const recorded = mandate.maxActionLevel ?? maxActionLevel
+        const max = withinActionLevel(recorded, maxActionLevel) ? recorded : maxActionLevel
+        if (!withinActionLevel(action.level, max)) return refuse('actionLevelExceeded', { level: action.level, max })
       }
       // The admission basis follows docs/002: the same checks apply before a resume and before an action.
       return holds(mandate) ? { ok: true } : refuse('revoked')
