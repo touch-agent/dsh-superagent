@@ -1,6 +1,7 @@
 /** Deliverables: what a worker produced, the preview a person reviews it by, and the criteria that can accept it. */
 import { UserError } from './errors.ts'
 import type { ActorRef } from './model.ts'
+import type { Reason } from './reasons.ts'
 
 /** The five things a Ticket can deliver: a file, a document, a spreadsheet, a mail draft or a calendar invite. */
 export const ARTIFACT_KINDS = ['file', 'document', 'spreadsheet', 'mail-draft', 'calendar-invite'] as const
@@ -20,7 +21,10 @@ export interface Artifact {
   revision: string
 }
 
-/** The previewers a review may name, by the kind of structured preview each renders. */
+/**
+ * The preview kinds a review may name. A new kind is a kernel change made with the previewer that renders it, so the
+ * gate can validate the reference it is given; the previewers add their kinds here as they land.
+ */
 export const PREVIEW_KINDS = ['text/redline', 'text/diff', 'sheet/cell-diff', 'mail/draft', 'calendar/slot'] as const
 /** What kind of structured preview a person reviews an artifact by. */
 export type PreviewKind = typeof PREVIEW_KINDS[number]
@@ -42,7 +46,7 @@ export interface PreviewRef {
  * own tests, so a deployment cannot turn an arbitrary string into automatic acceptance; anything else falls back to a
  * person. The evidence a rule needs, such as a merge or a send, is recorded by the delivery and its Source.
  */
-export const ACCEPTANCE_RULES = ['pr.merged', 'artifact.sent', 'artifact.unchanged', 'values.match'] as const
+export const ACCEPTANCE_RULES = ['pr.merged', 'artifact.sent', 'artifact.unchanged'] as const
 /** A condition a machine can decide, from facts the delivery and its Source record. */
 export type AcceptanceRule = typeof ACCEPTANCE_RULES[number]
 
@@ -58,14 +62,14 @@ export interface RuleCriterion {
 }
 
 /**
- * A criterion a person confirms. `reason` says why, and is set when a declared rule could not be judged;
- * `degradedRule` keeps that rule so the review record explains what became a question for a person.
+ * A criterion a person confirms. `reason` says why as a coded reason the panel can localize, and is set when a
+ * declared rule could not be judged; `degradedRule` keeps that rule so the record explains what became a question.
  */
 export interface HumanCriterion {
   kind: 'human'
   /** Who should confirm it; the reviewer when no one is named. */
   who?: ActorRef
-  reason?: string
+  reason?: Reason
   degradedRule?: string
 }
 
@@ -92,14 +96,20 @@ export interface DeliverableInput {
   acceptanceCriteria?: AcceptanceCriterionInput[]
 }
 
-/** What a Ticket delivered: one artifact at one revision, its preview, and how it can be accepted. */
+/**
+ * What a Ticket delivered: one artifact at one revision, its preview, and how it can be accepted. Attaching it to a
+ * Ticket (its id and field) and storing it are the review surface's work; this is the value contract.
+ */
 export interface Deliverable {
   artifact: Artifact
   previewRef: PreviewRef
   acceptanceCriteria: AcceptanceCriterion[]
 }
 
-/** A Deliverable that may be shown for review, split by who decides each criterion. */
+/**
+ * A Deliverable that may be shown for review, split by who decides each criterion. Only `enterReview` builds a Review;
+ * its two lists are the split of `deliverable.acceptanceCriteria`, so callers should not assemble one by hand.
+ */
 export interface Review {
   deliverable: Deliverable
   /** The criteria a machine decides; no person waits for one of these. */
@@ -146,21 +156,25 @@ function reviewedCriterion(input: AcceptanceCriterionInput): AcceptanceCriterion
     if (input.rule !== undefined) throw new TypeError('A human criterion cannot name a rule')
     if (input.window !== undefined) throw new TypeError('A human criterion cannot carry a window')
     const who = input.who === undefined ? undefined : requireActor(input.who, 'The confirming actor')
-    const reason = input.reason === undefined ? undefined : requireText(input.reason, 'The human criterion reason')
-    return { kind: 'human', ...(who ? { who } : {}), ...(reason ? { reason } : {}) }
+    const said = input.reason === undefined ? undefined : requireText(input.reason, 'The human criterion reason')
+    return { kind: 'human', ...(who ? { who } : {}), ...(said ? { reason: { code: 'said', values: { text: said } } } : {}) }
   }
   if (input.kind !== 'rule') throw new TypeError(`Unknown acceptance criterion kind: ${String((input as { kind?: unknown }).kind)}`)
   if (input.who !== undefined) throw new TypeError('A rule criterion cannot name a person')
   if (input.reason !== undefined) throw new TypeError('A rule criterion cannot carry a human reason')
+  if (input.rule !== undefined && input.rule !== null && typeof input.rule !== 'string') {
+    throw new TypeError('The acceptance rule must be a string')
+  }
   const declared = typeof input.rule === 'string' ? input.rule.trim() : ''
-  const human = (reason: string): HumanCriterion =>
-    ({ kind: 'human', reason, ...(declared ? { degradedRule: declared } : {}) })
-  if (!declared) return human('No acceptance rule was named; a person must confirm the result')
-  if (!isAcceptanceRule(declared)) return human(`The kernel cannot judge the acceptance rule “${declared}”`)
+  const human = (code: 'acceptanceNoRule' | 'acceptanceUnknownRule' | 'acceptanceWindowMissing'): HumanCriterion =>
+    ({ kind: 'human', reason: { code, ...(declared ? { values: { rule: declared } } : {}) },
+      ...(declared ? { degradedRule: declared } : {}) })
+  if (!declared) return human('acceptanceNoRule')
+  if (!isAcceptanceRule(declared)) return human('acceptanceUnknownRule')
   if (WINDOWED_RULES.has(declared)) {
     const window = input.window
     if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) {
-      return human(`The acceptance rule “${declared}” needs a positive window in hours`)
+      return human('acceptanceWindowMissing')
     }
     return { kind: 'rule', rule: declared, window }
   }
@@ -171,9 +185,10 @@ function reviewedCriterion(input: AcceptanceCriterionInput): AcceptanceCriterion
 /**
  * The structural gate a Ticket passes before a person may review its result. A review without a Deliverable, or without a
  * preview of the artifact's revision, is refused: a person cannot judge what they cannot see, so the panel must not offer
- * approval for it. Each declared criterion the kernel cannot judge becomes a human confirmation with its reason kept,
- * while the machine-judgeable rules stay separate. The runtime does not submit Deliverables yet; this is the contract the
- * review surface (T3-07) and later acceptance rules call.
+ * approval for it. The kernel does not decide which preview kind fits an artifact; the previewer that produced the ref
+ * does, and the previewers register their pairings. Each declared criterion the kernel cannot judge becomes a human
+ * confirmation with its reason kept, while the machine-judgeable rules stay separate. The runtime does not submit
+ * Deliverables yet; this is the contract the review surface (T3-07) and later acceptance rules call.
  */
 export function enterReview(input: DeliverableInput | null | undefined): Review {
   if (!input) throw new UserError('deliverableMissing')

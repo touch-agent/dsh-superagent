@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ACCEPTANCE_RULES, ARTIFACT_KINDS, PREVIEW_KINDS, UserError, enterReview, isAcceptanceRule, isArtifactKind, isPreviewKind,
+import { ACCEPTANCE_RULES, ARTIFACT_KINDS, PREVIEW_KINDS, UserError, enterReview, isAcceptanceRule, isArtifactKind, isPreviewKind, reasonText,
   type AcceptanceCriterionInput, type Artifact, type DeliverableInput, type PreviewRef } from '@superagent/kernel'
 
 const reviewer = { source: 'feishu', id: 'ou_alice' }
@@ -24,9 +24,10 @@ describe('the deliverable model', () => {
     expect(PREVIEW_KINDS).toEqual(['text/redline', 'text/diff', 'sheet/cell-diff', 'mail/draft', 'calendar/slot'])
     expect(PREVIEW_KINDS.map(isPreviewKind)).toEqual([true, true, true, true, true])
     expect([isPreviewKind('text/html'), isPreviewKind(undefined)]).toEqual([false, false])
-    expect(ACCEPTANCE_RULES).toEqual(['pr.merged', 'artifact.sent', 'artifact.unchanged', 'values.match'])
-    expect(ACCEPTANCE_RULES.map(isAcceptanceRule)).toEqual([true, true, true, true])
-    expect([isAcceptanceRule('pr.closed'), isAcceptanceRule(undefined)]).toEqual([false, false])
+    expect(ACCEPTANCE_RULES).toEqual(['pr.merged', 'artifact.sent', 'artifact.unchanged'])
+    expect(ACCEPTANCE_RULES.map(isAcceptanceRule)).toEqual([true, true, true])
+    // values.match needs an expected-value payload the criterion does not carry yet, so it is not judgeable.
+    expect([isAcceptanceRule('values.match'), isAcceptanceRule('pr.closed'), isAcceptanceRule(undefined)]).toEqual([false, false, false])
   })
 
   it('enters review with one artifact revision, its preview and its criteria', () => {
@@ -39,19 +40,19 @@ describe('the deliverable model', () => {
     expect(review.deliverable).toEqual({ artifact: artifact(), previewRef: preview(), acceptanceCriteria: [
       { kind: 'rule', rule: 'pr.merged' },
       { kind: 'rule', rule: 'artifact.unchanged', window: 24 },
-      { kind: 'human', who: reviewer, reason: 'The tone is right' },
+      { kind: 'human', who: reviewer, reason: { code: 'said', values: { text: 'The tone is right' } } },
     ] })
     expect(review.criteria).toEqual([
       { kind: 'rule', rule: 'pr.merged' },
       { kind: 'rule', rule: 'artifact.unchanged', window: 24 },
     ])
-    expect(review.confirmations).toEqual([{ kind: 'human', who: reviewer, reason: 'The tone is right' }])
+    expect(review.confirmations).toEqual([{ kind: 'human', who: reviewer, reason: { code: 'said', values: { text: 'The tone is right' } } }])
     // The input is read, not mutated, and the result is plain data that survives the Store.
     expect(input.acceptanceCriteria).toHaveLength(3)
     expect(JSON.parse(JSON.stringify(review))).toEqual(review)
   })
 
-  it('lets every artifact kind enter review, each with its own preview kind', () => {
+  it('carries each artifact kind together with the preview reference its previewer chooses', () => {
     const pairs = [['file', 'text/diff'], ['document', 'text/redline'], ['spreadsheet', 'sheet/cell-diff'],
       ['mail-draft', 'mail/draft'], ['calendar-invite', 'calendar/slot']] as const
     for (const [kind, previewKind] of pairs) {
@@ -81,13 +82,11 @@ describe('the deliverable model', () => {
     const review = enterReview(deliverable({ acceptanceCriteria: criteria(
       { kind: 'rule', rule: 'pr.merged' },
       { kind: 'rule', rule: 'artifact.sent' },
-      { kind: 'rule', rule: 'values.match' },
       { kind: 'rule', rule: 'artifact.unchanged', window: 24 },
     ) }))
     expect(review.criteria).toEqual([
       { kind: 'rule', rule: 'pr.merged' },
       { kind: 'rule', rule: 'artifact.sent' },
-      { kind: 'rule', rule: 'values.match' },
       { kind: 'rule', rule: 'artifact.unchanged', window: 24 },
     ])
     expect(review.confirmations).toEqual([])
@@ -95,25 +94,29 @@ describe('the deliverable model', () => {
 
   it('downgrades a rule the kernel cannot judge to a human confirmation and keeps the reason', () => {
     const review = enterReview(deliverable({ acceptanceCriteria: criteria(
-      { kind: 'rule', rule: 'pr.closed' },
+      { kind: 'rule', rule: 'values.match' },
       { kind: 'rule' },
       { kind: 'rule', rule: 'artifact.unchanged' },
       { kind: 'rule', rule: 'artifact.unchanged', window: 0 },
     ) }))
     expect(review.criteria).toEqual([])
     expect(review.confirmations).toHaveLength(4)
-    expect(review.confirmations[0]).toMatchObject({ kind: 'human', degradedRule: 'pr.closed' })
-    expect(review.confirmations[0]!.reason).toMatch(/cannot judge the acceptance rule “pr\.closed”/)
+    // A rule without the payload it needs to be judged is an unknown rule, not an accidental automatic accept.
+    expect(review.confirmations[0]).toMatchObject({ kind: 'human', degradedRule: 'values.match',
+      reason: { code: 'acceptanceUnknownRule', values: { rule: 'values.match' } } })
+    expect(reasonText(review.confirmations[0]!.reason)).toBe('The kernel cannot judge the acceptance rule “values.match”')
     // A criterion that never named a rule has nothing to keep as the degraded rule.
-    expect(review.confirmations[1]).toMatchObject({ kind: 'human' })
+    expect(review.confirmations[1]).toMatchObject({ kind: 'human', reason: { code: 'acceptanceNoRule' } })
     expect(review.confirmations[1]).not.toHaveProperty('degradedRule')
-    expect(review.confirmations[1]!.reason).toMatch(/No acceptance rule was named/)
+    expect(reasonText(review.confirmations[1]!.reason)).toBe('No acceptance rule was named; a person must confirm the result')
     // A windowed rule without a positive window cannot be judged either.
-    expect(review.confirmations[2]).toMatchObject({ kind: 'human', degradedRule: 'artifact.unchanged' })
-    expect(review.confirmations[2]!.reason).toMatch(/needs a positive window in hours/)
-    expect(review.confirmations[3]).toMatchObject({ kind: 'human', degradedRule: 'artifact.unchanged' })
+    expect(review.confirmations[2]).toMatchObject({ kind: 'human', degradedRule: 'artifact.unchanged',
+      reason: { code: 'acceptanceWindowMissing', values: { rule: 'artifact.unchanged' } } })
+    expect(reasonText(review.confirmations[2]!.reason)).toBe('The acceptance rule “artifact.unchanged” needs a positive window in hours')
+    expect(review.confirmations[3]).toMatchObject({ kind: 'human', degradedRule: 'artifact.unchanged',
+      reason: { code: 'acceptanceWindowMissing', values: { rule: 'artifact.unchanged' } } })
     // The declared rule survives the downgrade, so a later rule can be recognized as what it replaced.
-    expect(review.confirmations.map(item => item.degradedRule ?? null)).toEqual(['pr.closed', null, 'artifact.unchanged', 'artifact.unchanged'])
+    expect(review.confirmations.map(item => item.degradedRule ?? null)).toEqual(['values.match', null, 'artifact.unchanged', 'artifact.unchanged'])
   })
 
   it('keeps a deliberately human criterion, with or without a named person and reason', () => {
@@ -124,7 +127,7 @@ describe('the deliverable model', () => {
     expect(review.criteria).toEqual([])
     expect(review.confirmations).toEqual([
       { kind: 'human', who: reviewer },
-      { kind: 'human', reason: 'A person must read the final wording' },
+      { kind: 'human', reason: { code: 'said', values: { text: 'A person must read the final wording' } } },
     ])
   })
 
@@ -152,6 +155,8 @@ describe('the deliverable model', () => {
       .toThrow(/rule criterion cannot name a person/)
     expect(() => enterReview(deliverable({ acceptanceCriteria: criteria({ kind: 'rule', rule: 'pr.merged', reason: 'Chosen by the team' }) })))
       .toThrow(/rule criterion cannot carry a human reason/)
+    expect(() => enterReview(deliverable({ acceptanceCriteria: criteria({ kind: 'rule', rule: 42 as unknown as string }) })))
+      .toThrow(/acceptance rule must be a string/)
     expect(() => enterReview(deliverable({ acceptanceCriteria: {} as AcceptanceCriterionInput[] })))
       .toThrow(/acceptance criteria must be a list/)
   })

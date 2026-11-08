@@ -33,6 +33,9 @@ export const REASONS = {
   noRuleMatched: 'No enabled admission rule matched',
   ignoredFromCard: 'Ignored from its card, without a rule assessment',
   observed: 'Observe mode: would accept ({text})',
+  acceptanceNoRule: 'No acceptance rule was named; a person must confirm the result',
+  acceptanceUnknownRule: 'The kernel cannot judge the acceptance rule “{rule}”',
+  acceptanceWindowMissing: 'The acceptance rule “{rule}” needs a positive window in hours',
 } as const
 export type ReasonCode = keyof typeof REASONS
 /** Reason code and template values; `triggerId` identifies the trigger in a batch that the reason applies to. */
