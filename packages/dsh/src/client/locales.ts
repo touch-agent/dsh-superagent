@@ -144,6 +144,8 @@ const TEXT = {
   approvalsHint: ['每条只批准列出的动作与修订；批准为较低等级只会授予更小的动作。', 'Each decision covers only the Action and revision shown; approving a lower level grants less.'],
   approve: ['批准', 'Approve'],
   deny: ['拒绝', 'Deny'],
+  denyConfirmTitle: ['拒绝这个审批？', 'Deny this approval?'],
+  denyConfirm: ['拒绝后不能改判，这个动作不会再执行。', 'Denial is final; the Action will not run.'],
   approvalAction: ['动作', 'Action'],
   approvalObject: ['对象', 'Object'],
   approvalConsequence: ['后果', 'Effect'],

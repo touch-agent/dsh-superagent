@@ -268,8 +268,10 @@ export class Store implements Repositories {
     save: (approval: Approval): void => { this.db.prepare('INSERT INTO approval (id, value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value').run(approval.id, JSON.stringify(approval)) },
     /** A Ticket's Approvals, oldest first. */
     byTicket: (ticketId: string): Approval[] => this.values('SELECT value FROM approval WHERE ticket = ? ORDER BY rowid', ticketId),
-    /** Approvals still waiting for a decision, oldest first. */
-    pending: (): Approval[] => this.values('SELECT value FROM approval WHERE pending IS NOT NULL ORDER BY rowid'),
+    /** Approvals still waiting for a decision at `now` and not past their expiry, oldest first. */
+    pending: (now = Date.now()): Approval[] => this.values(
+      'SELECT value FROM approval WHERE pending IS NOT NULL AND json_extract(value, \'$.expiresAt\') > ? ORDER BY rowid',
+      new Date(now).toISOString()),
   }
   /** The stages of each Trigger's trace, written by the tracing sink and read by the panel and the tools. */
   readonly spans = {

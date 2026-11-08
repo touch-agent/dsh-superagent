@@ -116,6 +116,14 @@ it('reports judgements per hour over the day', () => {
   store.close()
 })
 
+it('counts a request past its expiry even before the expired state is recorded', () => {
+  const store = new Store(path())
+  store.approvals.save(approval('due', -3600, -3540))
+  store.approvals.save(approval('waiting', -100, 1000))
+  expect(metrics(store, NOW).approval).toEqual({ samples: 1, medianSeconds: 60, p90Seconds: 60 })
+  store.close()
+})
+
 it('measures the wait from an Approval to its decision, leaving withdrawals and older decisions out', () => {
   const store = new Store(path())
   const decided = (record: Approval, offset: number): Approval => approve(record, { by: panel, at: at(offset) })

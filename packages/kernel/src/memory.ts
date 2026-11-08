@@ -53,6 +53,7 @@ export class MemoryRepositories implements Repositories {
     get: (id: string) => clone(this.approvalRows.get(id)),
     save: (approval: Approval) => { this.approvalRows.set(approval.id, clone(approval)) },
     byTicket: (ticketId: string) => [...this.approvalRows.values()].filter(approval => approval.ticketId === ticketId).map(clone),
-    pending: () => [...this.approvalRows.values()].filter(approval => approval.state === 'requested').map(clone),
+    pending: (now = Date.now()) => [...this.approvalRows.values()]
+      .filter(approval => approval.state === 'requested' && Date.parse(approval.expiresAt) > now).map(clone),
   }
 }

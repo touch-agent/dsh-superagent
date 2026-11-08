@@ -222,6 +222,21 @@ it('queues a pending Approval with its Ticket and the levels a person may grant,
     action: { kind: 'mail.reply', source: 'feishu', objectId: 'om_1', level: 'send' }, levels: ['read', 'draft', 'commit', 'send'] })
 })
 
+it('orders the approval queue by request time and falls back to the Ticket id when its Ticket is gone', () => {
+  const now = Date.now()
+  const action = (objectId: string) => createAction({ source: 'feishu', objectId, kind: 'mail.reply', revision: 'rev-1',
+    actor: { source: 'feishu', id: 'ou_bot' }, level: 'send' })
+  const later = createApproval({ ticketId: 't-missing', action: action('om_later'),
+    requestedAt: new Date(now - 1_000).toISOString(), expiresAt: new Date(now + 60_000).toISOString() })
+  const earlier = createApproval({ ticketId: 't-missing-too', action: action('om_earlier'),
+    requestedAt: new Date(now - 2_000).toISOString(), expiresAt: new Date(now + 60_000).toISOString() })
+  store.approvals.save(later)
+  store.approvals.save(earlier)
+  const queue = approvalQueue(store, now)
+  expect(queue.map(row => row.id)).toEqual([earlier.id, later.id])
+  expect(queue[0]?.ticket).toEqual({ id: 't-missing-too', title: 't-missing-too' })
+})
+
 it('lists an Eval past its deadline, and as dsh-superagent\'s own errors only parts no Source or Policy sync reports', () => {
   const host = views()
   const evaluating = { id: 'e1', threadKey: 'github:1', triggerIds: ['t1'], strength: 'explicit' as const, actor: { source: 'github',

@@ -25,7 +25,13 @@ The tabs follow the workflow: **Overview**, **Source**, **Trigger**, **Eval**, *
 
 ### Approvals
 
-An Action can wait for a person before it runs. Overview opens with **Waiting for my approval** when any Approval is still decidable: one row per request, in the order requested, showing its Ticket, Action and object, the consequence of the requested level, and when it expires. **Approve** runs the Action at the requested level; choosing a lower level in the selector grants only that smaller action. **Deny** refuses it. The panel records itself as the decider, and the wait from request to decision feeds the approval figure below. The section takes no space when the queue is empty, and a request past its expiry is not shown.
+An Action can wait for a person before it runs. Overview opens with **Waiting for my approval** when any Approval is still decidable: one row per request, in the order requested, showing its Ticket, Action, object and revision, the consequence of the requested level, and when it expires. **Approve** records consent at the requested level; choosing a lower level records only that smaller grant for the caller that runs the Action, and the consequence follows the chosen level. **Deny** records a refusal after a confirmation. The panel records itself as the decider, and the wait from request to decision feeds the approval figure below. The section takes no space when the queue is empty; a request past its expiry is neither shown nor returned as pending, and its wait counts as an expiry.
+
+| Before (main `37eaff3`) | After (this change) |
+| --- | --- |
+| ![Overview before the approval queue](images/approval-panel/before-overview.png) | ![Overview with the approval queue and latency figure](images/approval-panel/after-overview.png) |
+
+Same 1440×1000 viewport and light theme, cropped to the management panel, with a synthetic local Store holding two requested Approvals and one earlier decision. Before is the merge of #8, which has no approval section; after is this branch, which adds the queue and the fifth health figure.
 
 ### Reading individual records
 

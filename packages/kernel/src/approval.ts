@@ -146,9 +146,10 @@ function grantedLevel(approval: Approval, level: ActionLevel | undefined): Actio
  * approved Approval returns it unchanged; any other final state refuses the change.
  */
 export function approve(approval: Approval, decision: ApprovalDecision): Approval {
+  if (approval.state === 'approved') return approval
   const level = grantedLevel(approval, decision.level)
   const next = decide(approval, 'approved', decision)
-  return next === approval || level === undefined ? next : { ...next, grantedLevel: level }
+  return level === undefined ? next : { ...next, grantedLevel: level }
 }
 
 /** Deny the Action. Denying an already denied Approval returns it unchanged; any other final state refuses the change. */

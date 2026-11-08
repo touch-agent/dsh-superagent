@@ -154,7 +154,7 @@ Trigger and Thread `meta` belong to the Source. The core does not interpret them
 
 Its interfaces are grouped by purpose:
 
-- **Domain repositories:** `atomic`, plus `triggers`, `threads`, `tickets`, `decisions` and `approvals`, each with `get`, `save` and list queries. Indexed working sets are `threads.active()`, `tickets.open()`, `tickets.active()`, `approvals.pending()` and `read.subscribedThreads`.
+- **Domain repositories:** `atomic`, plus `triggers`, `threads`, `tickets`, `decisions` and `approvals`, each with `get`, `save` and list queries. Indexed working sets are `threads.active()`, `tickets.open()`, `tickets.active()`, `approvals.pending()`, which leaves out requests past their expiry, and `read.subscribedThreads`.
 - **Read queries:** `read` serves views, tools and Source polls through methods such as `threadTriggers`, `triggerStats`, `search` and `droppedReplies`. These methods never write.
 - **Source metadata:** `threads.describe` and `threads.patchMeta` update Source-owned Thread metadata.
 - **Settings:** `settings`, `saveSettings`, `blockRevision` and `settingsHistory`. Settings and prompts use numbered `Versions` (`packages/dsh/src/app/versions.ts`).
@@ -318,7 +318,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/kernel/src/replies.ts` | `Replies`: the Engine's Channel writes |
 | `packages/kernel/src/stage.ts` | `ticketStage` and `canRetry`: the Ticket stages of [003 Execution](003-execution.md) |
 | `packages/kernel/src/action.ts` | `Action` and the five `ActionLevel`s, the `ActionCost` a spend carries, `actionKey` and `createAction`, which derives the idempotency key and refuses a spend without a money or time cost |
-| `packages/kernel/src/approval.ts` | `Approval`, one person's consent to one Action and revision, with its five states, `createApproval`, and `approve`, `deny`, `revoke` and `expire`: no jump out of a final state, a repeated decision kept idempotent, and a decision at or after the expiry refused |
+| `packages/kernel/src/approval.ts` | `Approval`, one person's consent to one Action and revision, with its five states, `createApproval`, and `approve` (which may keep a lower granted level as `grantedLevel`), `deny`, `revoke` and `expire`: no jump out of a final state, a repeated decision kept idempotent, a higher level refused, and a decision at or after the expiry refused |
 | `packages/kernel/src/errors.ts` | `UserError` and `USER_ERRORS` |
 | `packages/kernel/src/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
 | `packages/kernel/src/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
@@ -513,7 +513,7 @@ One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.
 | `thread` | Threads: Subscriptions, the Tickets that follow it for context, queued Triggers, the Eval in progress, the count of its expiries and `meta`; the generated columns `active`, set while Triggers are queued or an Eval runs, and `subscribed`, its Source while a Ticket subscribes to it | Engine; Sources write `meta` |
 | `ticket` | Tickets with their Mandate, origin, execution, Assignments, Channels, Inputs and the Threads they follow; the generated columns `open`, set while it has not ended, and `active`, set while Inputs are undelivered or the latest Assignment is pending or running | Engine |
 | `decision` | Decisions, by Thread | Engine |
-| `approval` | Approvals, by Ticket: the Action and revision they approve, their state, request and expiry times, who decided (or that it was revoked automatically), and why it was approved, denied or revoked; the generated columns `ticket`, the Ticket they belong to, and `pending`, set while they wait for a decision | The approval commands that record or decide one (T2-07/08) |
+| `approval` | Approvals, by Ticket: the Action and revision they approve, their state, request and expiry times, who decided (or that it was revoked automatically), and why it was approved, denied or revoked; the generated columns `ticket`, the Ticket they belong to, and `pending`, set while they wait for a decision; the `pending()` query also leaves out those past expiry | The approval commands that record or decide one (T2-07/08) |
 | `effect` | The effect queue: per kind and key, the payload, its order, failed attempts with the last error, and when it is due | Effects; the schema 11 migration queues what earlier versions kept for the main Session |
 | `span` | Each stage a Trigger passed, by its trace's id, with the kind of stage, its `at` and the bounded facts recorded for it; a stage recorded twice keeps its first row, because its id is derived from the trace, the stage and an optional ref that tells repeated happenings apart | The Engine, through `SqliteTraceSink` |
 | `activity` | Every domain event as one JSON row, by a monotonic `seq` that is the system view's cursor: its `quiet`, `feed` or `notice` level, a one-line summary, its Ticket and Thread, and why a notice-worthy event was suppressed. The newest 5,000 rows are kept | The Engine's emit hook, through `ActivityLog` |

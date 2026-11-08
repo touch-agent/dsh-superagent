@@ -13,6 +13,7 @@ const approver = { source: 'feishu', id: 'ou_alice' }
 const action = (revision = 'rev-1'): Action => createAction({ source: 'feishu', objectId: 'om_1', kind: 'mail.reply', revision,
   actor: requester, level: 'send' })
 const times = { requestedAt: '2026-11-07T10:00:00.000Z', expiresAt: '2026-11-07T11:00:00.000Z' }
+const pendingAt = Date.parse('2026-11-07T10:30:00.000Z')
 const request = (overrides: Partial<Parameters<typeof createApproval>[0]> = {}) =>
   ({ ticketId: 't1', action: action(), ...times, requestedBy: requester, ...overrides })
 const requested = (): Approval => createApproval(request())
@@ -108,6 +109,8 @@ describe('the approval state machine', () => {
     // A repeated approval keeps the first decision, including its granted level.
     const approved = approve(requested(), { ...decided(), level: 'draft' })
     expect(approve(approved, { ...decided('2026-11-07T10:20:00.000Z'), level: 'commit' })).toEqual(approved)
+    // A repeated approval is unchanged even when it names a level the original request could not grant.
+    expect(approve(approved, { ...decided('2026-11-07T10:20:00.000Z'), level: 'spend' })).toEqual(approved)
   })
 
   it('refuses a decision before the request, an expiry that is not later, and an action that no longer matches its key', () => {
@@ -138,18 +141,21 @@ describe('the approval repository', () => {
         repo.approvals.save(other)
         expect(repo.approvals.get(one.id)).toEqual(one)
         expect(repo.approvals.byTicket('t1').map(approval => approval.id)).toEqual([one.id, two.id])
-        expect(repo.approvals.pending().map(approval => approval.id)).toEqual([one.id, two.id, other.id])
+        expect(repo.approvals.pending(pendingAt).map(approval => approval.id)).toEqual([one.id, two.id, other.id])
         const approved = approve(one, { ...decided(), level: 'draft' })
         repo.approvals.save(approved)
         expect(repo.approvals.get(one.id)).toEqual(approved)
         expect(repo.approvals.get(one.id)).toMatchObject({ grantedLevel: 'draft' })
-        expect(repo.approvals.pending().map(approval => approval.id)).toEqual([two.id, other.id])
+        expect(repo.approvals.pending(pendingAt).map(approval => approval.id)).toEqual([two.id, other.id])
         // A repeated approval of the stored record keeps the first decision; it does not add another row.
         repo.approvals.save(approve(repo.approvals.get(one.id)!, { by: { source: 'feishu', id: 'ou_bob' }, at: '2026-11-07T12:00:00.000Z' }))
         expect(repo.approvals.get(one.id)).toEqual(approved)
         expect(repo.approvals.byTicket('t1').map(approval => approval.id)).toEqual([one.id, two.id])
         repo.approvals.save(expire(two, times.expiresAt))
-        expect(repo.approvals.pending().map(approval => approval.id)).toEqual([other.id])
+        expect(repo.approvals.pending(pendingAt).map(approval => approval.id)).toEqual([other.id])
+        const due = createApproval(request({ action: action('rev-due'), expiresAt: '2026-11-07T10:20:00.000Z' }))
+        repo.approvals.save(due)
+        expect(repo.approvals.pending(pendingAt).map(approval => approval.id)).toEqual([other.id])
         expect(repo.approvals.get(two.id)).toMatchObject({ state: 'expired' })
       }
     } finally { store.close() }
@@ -193,7 +199,7 @@ describe('the approval repository', () => {
     const approval = createApproval(request())
     store.approvals.save(approval)
     expect(store.approvals.byTicket('t1')).toEqual([approval])
-    expect(store.approvals.pending()).toEqual([approval])
+    expect(store.approvals.pending(pendingAt)).toEqual([approval])
     store.close()
   })
 })

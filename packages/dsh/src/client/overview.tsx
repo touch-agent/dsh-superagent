@@ -62,8 +62,10 @@ function ApprovalLine({ approval, onChanged }: { approval: ApprovalRow; onChange
   const { t, call, navigate } = usePanel()
   const [level, setLevel] = useState(approval.action.level)
   const post = useAction((request: () => Promise<unknown>) => request(), { reload: onChanged })
-  const spend = approval.action.cost
-  const consequence = `${valueLabel(t, 'levelEffect', approval.action.level)}${spend === undefined ? ''
+  // The effect follows the level the person picked: a lower grant does less than the requested Action, and a spend
+  // costs nothing unless it is granted at the level that carries the cost.
+  const spend = level === approval.action.level ? approval.action.cost : undefined
+  const consequence = `${valueLabel(t, 'levelEffect', level)}${spend === undefined ? ''
     : ` · ${spend.kind === 'money' ? `${spend.currency} ${spend.amount}` : t('approvalCostTime', { minutes: spend.minutes })}`}`
   return <li className="dt-row dt-link dt-approval">
     <div className="dt-row-main">
@@ -71,21 +73,23 @@ function ApprovalLine({ approval, onChanged }: { approval: ApprovalRow; onChange
         id: approval.ticket.id })}>{approval.ticket.title}</button></div>
       <div className="dt-row-meta">
         <LabelValue label={t('approvalAction')} value={`${approval.action.kind} · ${valueLabel(t, 'level', approval.action.level)}`} />
-        <LabelValue label={t('approvalObject')} value={`${valueLabel(t, 'source', approval.action.source)} ${approval.action.objectId}`} />
+        <LabelValue label={t('approvalObject')} value={`${valueLabel(t, 'source', approval.action.source)} ${approval.action.objectId} · ${approval.action.revision}`} />
         <LabelValue label={t('approvalConsequence')} value={consequence} />
         <LabelValue label={t('approvalExpires')} value={<When at={approval.expiresAt} />} />
       </div>
       <div className="dt-row-meta dt-row-buttons">
-        {approval.levels.length > 1 && <select className="dt-select dt-approval-level" aria-label={t('approvalLevel')}
-          title={t('approvalLevel')} value={level}
+        {approval.levels.length > 1 && <select className="dt-select dt-approval-level"
+          aria-label={`${t('approvalLevel')} · ${approval.ticket.title}`} title={t('approvalLevel')} value={level}
           onChange={event => setLevel(event.target.value as ApprovalRow['action']['level'])}>
           {approval.levels.map(item => <option key={item} value={item}>{valueLabel(t, 'level', item)}</option>)}
         </select>}
         <Button variant="primary" size="sm" icon={<Icon name="decision" size={14} />} disabled={post.busy}
+          aria-label={`${t('approve')} · ${approval.ticket.title}`}
           onClick={() => { void post.run(() => call('POST approvals/:id/approve', { id: approval.id,
             body: level === approval.action.level ? {} : { level } })) }}>{t('approve')}</Button>
-        <Button variant="outline" size="sm" icon={<Icon name="dismiss" size={14} />} disabled={post.busy}
-          onClick={() => { void post.run(() => call('POST approvals/:id/deny', { id: approval.id })) }}>{t('deny')}</Button>
+        <ConfirmButton variant="outline" icon="dismiss" label={t('deny')} title={t('denyConfirmTitle')}
+          message={t('denyConfirm')} ariaLabel={`${t('deny')} · ${approval.ticket.title}`}
+          onConfirm={async () => { await call('POST approvals/:id/deny', { id: approval.id }); await onChanged() }} />
       </div>
     </div>
   </li>

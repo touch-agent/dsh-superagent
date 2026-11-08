@@ -25,18 +25,17 @@ const actionOf = (approval: Approval): ApprovalRow['action'] => {
  * a decision yet, and it is not actionable. The list is bounded by the number of pending approvals, which stays small.
  */
 export function approvalQueue(store: Pick<Store, 'approvals' | 'tickets'>, now = Date.now()): ApprovalRow[] {
-  return store.approvals.pending().flatMap(approval => {
-    if (Date.parse(approval.expiresAt) <= now) return []
+  return store.approvals.pending(now).map(approval => {
     const ticket = store.tickets.get(approval.ticketId)
-    return [{
+    return {
       id: approval.id,
       ticket: { id: approval.ticketId, title: ticket?.title ?? approval.ticketId },
       action: actionOf(approval),
       requestedAt: approval.requestedAt,
       expiresAt: approval.expiresAt,
       levels: ACTION_LEVELS.filter(level => withinActionLevel(level, approval.action.level)),
-    }]
-  })
+    }
+  }).sort((left, right) => left.requestedAt.localeCompare(right.requestedAt) || left.id.localeCompare(right.id))
 }
 
 export type ApprovalQueueView = ReturnType<typeof approvalQueue>
