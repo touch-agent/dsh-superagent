@@ -9,7 +9,7 @@ The terms are those of [001 Domain model](001-domain.md). The rule that keeps th
 
 A `noop` Source that:
 
-- installs as `dsh-superagent/noop-watch`, disabled by default like Feishu;
+- installs as `dsh-superagent/noop-watch`, disabled by default like the optional Feishu Sources;
 - validates its configuration (empty in this example);
 - appears in **Settings › Sources** with its title and description and no hand-written form code;
 - lists under **Eval → On each Source** once it declares a `policy` part (§7), so its admission table can be configured;
@@ -43,7 +43,9 @@ import { z } from 'zod'
 import type { SourceManifest } from '@superagent/kernel'
 import type { SourceAdapter, SourceDefinition } from './kind.ts'
 
-export type NoopConfig = Record<string, never>
+const NoopConfigSchema = z.object({}).strict()
+
+export type NoopConfig = z.infer<typeof NoopConfigSchema>
 
 export const noopManifest: SourceManifest = {
   id: 'noop',
@@ -53,7 +55,7 @@ export const noopManifest: SourceManifest = {
   fields: [],
   health: [],
 }
-export const noopAdapter: SourceAdapter<NoopConfig> = { schema: z.object({}).strict() }
+export const noopAdapter: SourceAdapter<NoopConfig> = { schema: NoopConfigSchema }
 export const noopDefinition: SourceDefinition<NoopConfig> = { manifest: noopManifest, adapter: noopAdapter }
 
 export const name = 'dsh-superagent-noop'
@@ -127,7 +129,7 @@ A Source that is not reachable as a plugin cannot load. Add these seven pieces, 
    "./noop-watch": "./lib/noop-watch.js",
    ```
 
-5. **Patch row** in `cordis.patch.yml`, next to the other Sources and disabled like them:
+5. **Patch row** in `cordis.patch.yml`, next to the other Sources and disabled, as the optional Feishu Sources are:
 
    ```yaml
        - id: dsh-superagent-noop
@@ -141,8 +143,8 @@ A Source that is not reachable as a plugin cannot load. Add these seven pieces, 
 
 7. **The checks that enumerate Sources**:
 
-   - Two tests assert the exact plugin rows: `tests/bundle-patch.spec.ts` and `tests/dump-config.spec.ts` (X-11, whose names and message also say "six rows"). Add `dsh-superagent-noop` to both expected lists and update those counts.
-   - `docs/007-architecture.md` must list the new modules in its Modules table (`packages/dsh/src/sources/noop.ts` and `meta/noop-watch.ts`); `tests/docs.spec.ts` fails on a module that is not listed.
+   - Two tests assert the exact plugin rows: `tests/bundle-patch.spec.ts` and `tests/dump-config.spec.ts` (X-11). Add `dsh-superagent-noop` to both expected row lists, change dump-config's `toHaveLength(6)` to 7, and update its "six rows" names and message plus the expected dump string in the incomplete-dump test.
+   - `docs/007-architecture.md` must list `packages/dsh/src/sources/noop.ts` in its Modules table; `tests/docs.spec.ts` checks every TypeScript file under `packages/`. Add `meta/noop-watch.ts` next to the other bundle entries for consistency; `docs.spec.ts` does not check `meta/`.
    - If the module grows past one file, list each file. If you add a spec, list it in the Tests table too.
    - `pnpm build && pnpm check:size` may report the new entry over the total budget. That is a real product cost: raise `scripts/bundle-budget.json` in the same change only when shipping the Source is intended.
 
@@ -178,7 +180,7 @@ Run it and then decide whether to keep it: a real Source should keep a spec and 
 Finally, see it in the panel:
 
 1. Build (`pnpm build`).
-2. In the profile's `cordis.patch.yml`, set the row's `disabled: false`.
+2. In the profile's `cordis.patch.yml`, add the row with the same id and `disabled: false` (the example profile does this for Feishu).
 3. Restart the profile and open **Settings › Sources**. The card shows the manifest's title and description with an empty form; its state is `ready`.
 4. Confirm the boundary: `git diff --stat packages/dsh/src/app` prints nothing.
 5. Run the full gate once before opening a pull request: `pnpm check`.
