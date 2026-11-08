@@ -126,6 +126,26 @@ describe('the doc previewer', () => {
         { kind: 'added', after: { index: 0, kind: 'paragraph', text: 'Nothing alike here.' } }])
   })
 
+  it('reads a ZIP-stored document entry as well as the deflated one', () => {
+    expect(parseDocx(bytes('stored.docx'))).toEqual([
+      { kind: 'heading', level: 1, text: 'Stored notes' },
+      { kind: 'paragraph', text: 'A stored entry is one ZIP writes without compression.' },
+    ])
+  })
+
+  it('names a missing document entry and a document without a body', () => {
+    const failure = (name: string): unknown => {
+      try { parseDocx(bytes(name)) } catch (error) { return error }
+      throw new Error(`${name} was expected to fail`)
+    }
+    expect(failure('no-document.docx')).toMatchObject({ name: 'DocParseError', code: 'missingDocument' })
+    expect(failure('no-body.docx')).toMatchObject({ name: 'DocParseError', code: 'invalidDocument' })
+    const preview = previewDoc({ before: { format: 'docx', content: bytes('no-document.docx') },
+      after: { format: 'docx', content: bytes('notes-after.docx') }, link })
+    expect(preview.degraded).toMatchObject({ code: 'missingDocument', side: 'before' })
+    expect(preview.kind).toBe('text/diff')
+  })
+
   it('refuses a caller error instead of degrading it', () => {
     expect(() => previewDoc({ before: { format: 'markdown', content: 'a' }, after: { format: 'docx', content: bytes('notes-after.docx') }, link }))
       .toThrow(TypeError)

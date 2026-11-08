@@ -129,7 +129,9 @@ const MAX_INLINE_SEGMENTS = 400
 const CHANGE_THRESHOLD = 0.5
 /** The largest `word/document.xml` the previewer inflates, so one document cannot exhaust the process. */
 const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
-/** The ZIP records a .docx needs; a document has many more entries, but no more than this are read. */
+/** The bytes decoded for a fallback line diff, so an unreadable binary cannot allocate without a bound. */
+const MAX_FALLBACK_BYTES = 4 * 1024 * 1024
+/** The most ZIP entries read from one archive; a .docx has a few dozen. */
 const MAX_ZIP_ENTRIES = 10_000
 
 const ZIP_END = 0x06054b50
@@ -146,7 +148,9 @@ function zipEntry(bytes: Uint8Array, name: string): Uint8Array {
   const first = Math.max(0, bytes.length - 22 - ZIP_COMMENT_MAX)
   let end = -1
   for (let at = bytes.length - 22; at >= first; at--) {
-    if (view.getUint32(at, true) === ZIP_END) { end = at; break }
+    if (view.getUint32(at, true) !== ZIP_END) continue
+    // The comment length must reach the end of the file, or a signature inside the comment would win the scan.
+    if (at + 22 + view.getUint16(at + 20, true) === bytes.length) { end = at; break }
   }
   if (end < 0) throw new DocParseError('notZip')
   const count = view.getUint16(end + 10, true)
@@ -247,10 +251,10 @@ function docxParagraph(paragraph: string): DocBlock | undefined {
 }
 
 /**
- * Parse a Word document into paragraph blocks. The body's paragraphs are read in document order; tables are flattened
- * to their cell paragraphs and an embedded text box is read as part of its paragraph. Paragraph style, outline level
- * and numbering give a heading or list block; formatting-only differences the XML hides, such as fonts and colours, are
- * not compared.
+ * Parse a Word document into paragraph blocks. The body's paragraphs are read in document order; a table flattens to
+ * its cell paragraphs, and a text box is not read, so its drawing cannot swallow the paragraph that contains it.
+ * Paragraph style, outline level and numbering give a heading or list block; formatting-only differences the XML hides,
+ * such as fonts and colours, are not compared.
  */
 export function parseDocx(bytes: Uint8Array): DocBlock[] {
   if (!(bytes instanceof Uint8Array)) throw new TypeError('The .docx content must be bytes')
@@ -258,8 +262,9 @@ export function parseDocx(bytes: Uint8Array): DocBlock[] {
   if (!/<(?:\w+:)?document\b/.test(xml) || !/<(?:\w+:)?body\b/.test(xml)) {
     throw new DocParseError('invalidDocument', 'the document has no body')
   }
+  const body = xml.replace(/<(?:\w+:)?txbxContent\b[^>]*>[\s\S]*?<\/(?:\w+:)?txbxContent>/g, '')
   const blocks: DocBlock[] = []
-  for (const match of xml.matchAll(/<(?:\w+:)?p(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?p>/g)) {
+  for (const match of body.matchAll(/<(?:\w+:)?p(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?p>/g)) {
     const block = docxParagraph(match[1]!)
     if (block) blocks.push(block)
   }
@@ -589,7 +594,8 @@ function summarize(before: readonly DocBlock[], after: readonly DocBlock[], chan
 function fallbackText(side: DocSource): string {
   if (side.text !== undefined) return side.text
   if (typeof side.content === 'string') return side.content
-  return textDecoder.decode(side.content).replace(/[^\t\n\r\x20-\x7e\u00a0-\uffff]/g, ' ')
+  const content = side.content.length > MAX_FALLBACK_BYTES ? side.content.subarray(0, MAX_FALLBACK_BYTES) : side.content
+  return textDecoder.decode(content).replace(/[^\t\n\r\x20-\x7e\u00a0-\uffff]/g, ' ')
 }
 
 /** A line diff's blocks: non-empty lines, trailing blanks removed, so a fallback still reads as a diff. */
