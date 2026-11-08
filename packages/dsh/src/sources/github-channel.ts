@@ -87,7 +87,9 @@ export async function withdrawGithub(host: Pick<SourceContext, 'commands'>, mess
     await commands.api(`${collection}/${comment.id}`, '--method', 'DELETE')
     return { status: 'withdrawn' }
   } catch (error) {
-    if (missing(error)) return { status: 'gone' }
+    // A deleted Issue answers 410, so its comment is gone. A 404 is not proof: on a private repository it can mean lost
+    // access, and reporting `gone` then would claim a withdrawal that may not have happened; refuse instead.
+    if (error instanceof CliError && error.code === 410) return { status: 'gone' }
     return { status: 'refused', reason: `GitHub did not withdraw the comment: ${String(error)}` }
   }
 }

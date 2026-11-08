@@ -118,5 +118,10 @@ describe('withdrawal drill', () => {
     const refused = await registry.withdraw(message, commands)
     expect(refused).toMatchObject({ status: 'refused' })
     expect((refused as { reason: string }).reason).toContain('locked')
+    // A 404 is not proof of absence: a private repository can answer it when access is lost, so the drill refuses.
+    Object.assign(commands, { pages: vi.fn(async () => { throw new CliError('Not Found', 404) }), api: vi.fn() })
+    const unreadable = await registry.withdraw(message, commands)
+    expect(unreadable).toMatchObject({ status: 'refused' })
+    expect((unreadable as { reason: string }).reason).toContain('Not Found')
   })
 })
