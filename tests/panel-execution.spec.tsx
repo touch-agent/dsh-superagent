@@ -64,7 +64,7 @@ it('stops an open Ticket from its page after confirmation', async () => {
 })
 
 it('renders a review-stage Ticket\'s preview and approves that revision', async () => {
-  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never, review: { canReview: true,
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never /* the fixture narrows action to "queued" */, review: { canReview: true,
     deliverable: { artifact: { kind: 'document', ref: 'docs/review.md', revision: 'rev-1' }, acceptanceCriteria: [],
       previewRef: { kind: 'text/redline', ref: 'https://example.test/preview/rev-1', revision: 'rev-1' } },
     criteria: [{ kind: 'rule', rule: 'pr.merged' }],
@@ -82,7 +82,7 @@ it('renders a review-stage Ticket\'s preview and approves that revision', async 
 })
 
 it('says a review-stage Ticket without a preview cannot be reviewed and offers no approval', async () => {
-  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never, review: { canReview: false } }
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never /* the fixture narrows action to "queued" */, review: { canReview: false } }
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
   expect(text()).toContain(zh.reviewUnavailable)

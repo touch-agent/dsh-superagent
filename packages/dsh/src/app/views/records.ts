@@ -59,6 +59,8 @@ export function snapshot(host: ViewHost): Snapshot {
   const named = (name: string) => ({ zh: name, en: name })
   const actor = ({ source, id }: ActorRef, human?: boolean): ActorView => {
     if (!id) return { source, id }
+    // The panel acts as one local person; name it for review acceptance and approval history.
+    if (source === 'panel' && id === 'local') return { source, id, name: { zh: '管理页', en: 'Panel' } }
     const entry = allowedSender(settings, { source, id }) ?? listedBot(settings, { source, id })
     if (entry) return { source, id, name: named(entry.name || entry.id) }
     const unnamed = sources.kind(source)?.policy?.unnamed

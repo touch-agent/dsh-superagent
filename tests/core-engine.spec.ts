@@ -1495,6 +1495,7 @@ describe('review preview', () => {
     h.engine.report(ticketId, { state: 'ready', summary: 'A new revision' })
     expect(latestAssignment(h.repo.tickets.get(ticketId)!)!.report).toMatchObject({ summary: 'A new revision' })
     expect(latestAssignment(h.repo.tickets.get(ticketId)!)!.report!.accepted).toBeUndefined()
+    expect(latestAssignment(h.repo.tickets.get(ticketId)!)!.report!.review).toBeUndefined()
   })
   it('refuses approval of a review-stage Ticket whose report has no deliverable preview', () => {
     const h = harness()

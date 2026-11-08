@@ -55,7 +55,7 @@ A human follow-up still owned by an Executor is marked **Delivered to Ticket**, 
 
 Ticket details show the originating Trigger, Decision and reason, scope and Policy version. Assignments and secondary details are folded below the immediate actions. **Retry** is available for failed Input delivery or a Ticket waiting for a person after a blocked or failed Report. Ended Tickets show outcomes such as **Pull request merged** or **Stopped by a person**.
 
-A Ticket at `person / review` shows its review above the Mandate details: the artifact kind and reference, the revision, the preview kind and a link to the preview, the worker's summary, and the acceptance criteria. **批准 / Approve** accepts that revision and is shown only when the Report carried a preview; the button records the panel as the accepting actor, while the Ticket stays open for its followed pull request. A review-stage Ticket without a preview, or with a preview of another revision, shows **无法审核** and no approval button, and the HTTP route refuses the same request.
+A Ticket at `person / review` shows its review above the Mandate details: the artifact kind and reference, the revision, the preview kind and a link to the preview, the worker's summary, and the acceptance criteria. **批准 / Approve** accepts that revision and is shown only when the Report carried a preview; the button records the panel as the accepting actor, while the Ticket stays open for its followed pull request. A review-stage Ticket without a Deliverable preview shows **无法审核** and no approval button, and the HTTP route refuses the same request.
 
 | Before (main `c2ff8e6`) | After (this change) |
 | --- | --- |

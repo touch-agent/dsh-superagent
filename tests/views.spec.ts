@@ -418,9 +418,12 @@ it('projects a review-stage Ticket\'s deliverable preview, and marks a review wi
       ...report } }] })
   ticket('t1', { review, accepted: { by: { source: 'feishu', id: 'ou_alice' }, at } })
   ticket('t2', {})
+  ticket('t3', { review, accepted: { by: { source: 'panel', id: 'local' }, at } })
   expect(ticketDetail(host, 't1')!.review).toMatchObject({ canReview: true, deliverable: review.deliverable,
     criteria: [{ kind: 'rule', rule: 'pr.merged' }], confirmations: [{ kind: 'human', reason: { code: 'said' } }],
     summary: 'Ready for review', accepted: { by: { source: 'feishu', id: 'ou_alice' } } })
+  // The panel's own acceptance names the panel, rather than showing its stored local actor id.
+  expect(ticketDetail(host, 't3')!.review).toMatchObject({ accepted: { by: { source: 'panel', id: 'local', name: { zh: '管理页', en: 'Panel' } } } })
   // A review-stage Ticket whose report carried no deliverable says that it cannot be reviewed; it has nothing to approve.
   expect(ticketDetail(host, 't2')!.review).toEqual({ canReview: false })
 })
