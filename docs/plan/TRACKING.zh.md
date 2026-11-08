@@ -45,7 +45,7 @@
 | T3-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/22 | `tests/preview-doc.spec.ts`；doc redline | 2026-11-08 |
 | T3-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/23 | `tests/preview-sheet.spec.ts`；sheet 公式与值分列 | 2026-11-08 |
 | T3-04 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/35 | `tests/preview-mail.spec.ts`；四段 diff 与抄送/密送显式清单 | 2026-11-09 |
-| T3-05 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/29 | `tests/lightweight.spec.ts`；kernel 轻量工单与 inline 契约（PR #29）；Phase 0 的生产 `InlineExecutor`、Eval `form` 与 <10s 验收未做 | 2026-11-08 |
+| T3-05 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/36 | `tests/lightweight.spec.ts`、`tests/inline-work.spec.ts`；kernel 契约（PR #29）+ Phase 0 生产 `InlineWork`、Eval/route/dispatch 的 `form`、`executor.lightweight` 回退；真实只读小活 943 ms（复测 918/928 ms），tracked 仍为默认 | 2026-11-09 |
 | T3-06 | 未开始 | — | — | 2026-11-08 |
 | T3-07 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/24 | `tests/panel-approval.spec.tsx`；review 必须有 preview | 2026-11-08 |
 | T3-08 | 未开始 | — | — | 2026-11-08 |
