@@ -145,7 +145,7 @@ const TEXT = {
   approve: ['批准', 'Approve'],
   deny: ['拒绝', 'Deny'],
   denyConfirmTitle: ['拒绝这个审批？', 'Deny this approval?'],
-  denyConfirm: ['拒绝后不能改判，这个动作不会再执行。', 'Denial is final; the Action will not run.'],
+  denyConfirm: ['拒绝后不能改判。', 'Denial is final and cannot be changed.'],
   approvalAction: ['动作', 'Action'],
   approvalObject: ['对象', 'Object'],
   approvalConsequence: ['后果', 'Effect'],
