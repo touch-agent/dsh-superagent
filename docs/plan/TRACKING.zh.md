@@ -12,7 +12,7 @@
 | T0-03 | 已完成 | — | `1377989`；`tests/metrics.spec.ts` 四指标 | 2026-11-08 |
 | T0-04 | 已完成 | — | `1377989`；Overview「运行健康」与中断/恢复提示 | 2026-11-08 |
 | T0-05 | 已完成 | — | `894c1a5`；changesets 与包体积门 | 2026-11-08 |
-| T0-06 | 已完成 | — | `492e668`、`a3809b1`；`docs/runbooks/why-not-sent.md` 与三次查找演练 | 2026-11-08 |
+| T0-06 | 已完成 | — | `492e668`、`a3809b1`；`../runbooks/why-not-sent.md` 与三次查找演练 | 2026-11-08 |
 | T1-01 | 已完成 | — | `packages/kernel/src/manifest.ts`；`tests/manifest.spec.ts` | 2026-11-08 |
 | T1-02 | 已完成 | — | `packages/dsh/src/sources/manifest-form.ts`；`tests/manifest-form.spec.ts` | 2026-11-08 |
 | T1-03 | 已完成 | — | `packages/dsh/src/sources/registry.ts`；`tests/registry.spec.ts` | 2026-11-08 |
@@ -24,11 +24,11 @@
 | T1-09 | 未开始 | — | — | 2026-11-08 |
 | T1-10 | 未开始 | — | — | 2026-11-08 |
 | T1-11 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/9 | `tests/panel-source.spec.tsx`；设置页由 manifest 驱动 | 2026-11-08 |
-| T1-12 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/25 | `docs/010-adding-a-source.md`；`tests/docs.spec.ts` | 2026-11-08 |
-| T1-13 | 已完成 | — | `tests/conversation.spec.ts`；`docs/009` 的 T1-13 进度 | 2026-11-08 |
+| T1-12 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/25 | `../010-adding-a-source.md`；`tests/docs.spec.ts` | 2026-11-08 |
+| T1-13 | 已完成 | — | `tests/conversation.spec.ts`；`../009-conversation-tasks.md` 的 T1-13 进度 | 2026-11-08 |
 | T1-14 | 已完成 | — | `tests/dispatch.spec.ts`、`tests/dispatch-split.spec.ts` | 2026-11-08 |
 | T1-15 | 已完成 | — | `tests/conversation.spec.ts`；任务线程回执 | 2026-11-08 |
-| T1-16 | 已完成 | — | `tests/panel-source.spec.tsx`；`docs/009` 的会话来源区块 | 2026-11-08 |
+| T1-16 | 已完成 | — | `tests/panel-source.spec.tsx`；`../009-conversation-tasks.md` 的会话来源区块 | 2026-11-08 |
 | T1-17 | 已完成 | — | `tests/dispatch.spec.ts`；PR Channel 自动绑定 | 2026-11-08 |
 | T2-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/5 | `tests/action.spec.ts`；五级 Action | 2026-11-08 |
 | T2-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/7 | `tests/approval.spec.ts`；Approval 状态机 | 2026-11-08 |
@@ -68,8 +68,8 @@
 | X-12 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/31 | `tests/docs.spec.ts` 新增文档结构与跟踪表校验 | 2026-11-08 |
 | S-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity.spec.ts`；`activity` 表与三级分级 | 2026-11-08 |
 | S-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity-feed.spec.ts`；`endCoveredBy` 单一通知预算 | 2026-11-08 |
-| S-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | `tests/runtime.spec.ts` 的 `<stateDir>/system` 目录断言 | 2026-11-08 |
-| S-04 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | 主会话入口与 `masterId`；`docs/005` | 2026-11-08 |
+| S-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/runtime.spec.ts` 的 `<stateDir>/system` 目录断言 | 2026-11-08 |
+| S-04 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | 主会话入口与 `masterId`；`../005-panel.md` | 2026-11-08 |
 | S-05 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | 状态页复用完整管理页；PR #6 修正 | 2026-11-08 |
 | S-06 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | 右侧事件栏；`tests/activity-feed.spec.ts` | 2026-11-08 |
 | S-07 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/4 | SSE 游标、心跳与同源校验；`tests/activity-feed.spec.ts` | 2026-11-08 |

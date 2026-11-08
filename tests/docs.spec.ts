@@ -40,25 +40,33 @@ function listed(heading: string): string[] {
   })
 }
 
-/** The numbered documents the README's Documentation list names, in order. */
+/** The numbered document filenames the README's Documentation list names, in order. */
 function readmeList(): string[] {
   const readme = read('README.md')
   const start = readme.indexOf('## Documentation')
   const end = readme.indexOf('## Development')
-  return [...readme.slice(start, end).matchAll(/\]\(docs\/(\d{3})-[a-z0-9-]+(?:\.zh)?\.md\)/g)].map(match => match[1]!)
+  return [...readme.slice(start, end).matchAll(/\]\(docs\/((\d{3})-[a-z0-9-]+(?:\.zh)?\.md)\)/g)].map(match => match[1]!)
 }
 
 /**
- * Design principles (011) and platform evolution (012) are a deliberate
- * cross-referencing pair, so each may link to the other in either direction.
+ * Design principles (011) and platform evolution (012) are a deliberate pair,
+ * so 011 may link forward to 012. The reverse needs no exception: 011 is earlier.
  */
-const PAIR: Record<string, string> = { '011': '012', '012': '011' }
+const PAIR: Record<string, string> = { '011': '012' }
 
 const TASK_PLAN = 'docs/plan/TASK-PLAN.zh.md'
 const TRACKING = 'docs/plan/TRACKING.zh.md'
 const TASK_STATUSES = new Set(['未开始', '进行中', '已完成', '已暂停', '已取消'])
+// Format gate only: CI cannot prove the PR exists, is merged, or matches the row.
 const PR_URL = /^https:\/\/github\.com\/touch-agent\/dsh-superagent\/pull\/\d+$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/
+/** A real calendar date in YYYY-MM-DD form. */
+function validDate(value: string): boolean {
+  if (!DATE.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year!, month! - 1, day!))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month! - 1 && date.getUTCDate() === day
+}
 
 interface TrackingRow {
   task: string
@@ -69,9 +77,10 @@ interface TrackingRow {
 }
 
 function trackingRows(): TrackingRow[] {
-  return read(TRACKING).split('\n').filter(line => /^\| [TSXE]\d?-\d{2} \|/.test(line)).map(line => {
+  return read(TRACKING).split('\n').filter(line => /^\|\s*[TSXE]\d?-\d{2}\s*\|/.test(line)).map(line => {
+    const task = /^\|\s*([TSXE]\d?-\d{2})\s*\|/.exec(line)![1]!
     const cells = line.replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim())
-    return { task: cells[0]!, status: cells[1]!, pr: cells[2]!, evidence: cells[3]!, updated: cells[4]! }
+    return { task, status: cells[1]!, pr: cells[2]!, evidence: cells[3]!, updated: cells[4]! }
   })
 }
 
@@ -85,9 +94,13 @@ describe('documentation', () => {
     expect(numbered.map(name => name.slice(0, 3))).toEqual(numbered.map((_, index) => String(index).padStart(3, '0')))
   })
   it('lists every numbered document once in the README, in order', () => {
-    expect(readmeList()).toEqual(numbered.map(name => name.slice(0, 3)))
+    expect(readmeList()).toEqual(numbered)
   })
-  it('links numbered documents only to earlier numbered documents', () => {
+  it('maps every numbered document once in docs/README, in order', () => {
+    const mapped = [...read('docs/README.md').matchAll(/\]\(((\d{3})-[a-z0-9-]+(?:\.zh)?\.md)\)/g)].map(match => match[1]!)
+    expect(mapped).toEqual(numbered)
+  })
+  it('links numbered documents only backwards, except 011 → 012', () => {
     const violations = numbered.flatMap(name => links(join(ROOT, 'docs', name)).flatMap(target => {
       const linked = resolve(ROOT, 'docs', target)
       if (!linked.endsWith('.md')) return []
@@ -97,6 +110,10 @@ describe('documentation', () => {
       return dirname(linked) === join(ROOT, 'docs') && !allowed ? [`${name} → ${target}`] : []
     }))
     expect(violations).toEqual([])
+  })
+  it('links the design and evolution pair to each other', () => {
+    expect(links(join(ROOT, 'docs', '011-design-principles.zh.md'))).toContain('012-platform-evolution.zh.md')
+    expect(links(join(ROOT, 'docs', '012-platform-evolution.zh.md'))).toContain('011-design-principles.zh.md')
   })
   it('resolves every local link', () => {
     const missing = documents().flatMap(path => {
@@ -123,7 +140,7 @@ describe('documentation', () => {
       if (!TASK_STATUSES.has(row.status)) issues.push(`bad status: ${row.status}`)
       if (row.pr !== '—' && !PR_URL.test(row.pr)) issues.push(`bad PR: ${row.pr}`)
       if (!row.evidence) issues.push('empty evidence')
-      if (!DATE.test(row.updated) || Number.isNaN(Date.parse(row.updated))) issues.push(`bad date: ${row.updated}`)
+      if (!validDate(row.updated)) issues.push(`bad date: ${row.updated}`)
       if (row.status === '未开始' && (row.pr !== '—' || row.evidence !== '—')) issues.push('未开始 must have no PR or evidence')
       if (row.status === '已完成' && row.evidence === '—') issues.push('已完成 needs acceptance evidence')
       return issues.map(issue => `${row.task}: ${issue}`)

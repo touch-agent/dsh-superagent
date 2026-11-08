@@ -245,4 +245,4 @@ SSE 是 `GET /orchestrator/api/activity/stream` 的 exact 路由：`Last-Event-I
 - `packages/dsh/src/app/execution-environment.ts`、`runtime.ts`：`systemRoot`、主会话 cwd、默认工单根。
 - `packages/dsh/src/client/{index.tsx,system.tsx,activity-feed.ts,master.ts,panel.ts}`：主会话入口、复用管理页的状态视图、事件栏、SSE/轮询客户端。
 - `tests/activity.spec.ts`、`tests/http.spec.ts`、`tests/activity-feed.spec.ts`、`tests/client.spec.tsx` 与报告/目录/迁移相关断言。
-- 本文与 `TASK-PLAN.zh.md` §10.2、`docs/003`、`docs/005`、`docs/006`、`docs/007`。
+- 本文与 `TASK-PLAN.zh.md` §10.2、`../003-execution.md`、`../005-panel.md`、`../006-deployment.md`、`../007-architecture.md`。

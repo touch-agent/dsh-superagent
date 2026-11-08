@@ -31,7 +31,7 @@
 | conformance 套件 | **不存在** | `tests/conformance/` 无此目录 |
 | `dump-config` 断言 | **不存在**，X-11 未开始 | `grep -rn "dump-config" tests src scripts` 无结果 |
 | lint | **不存在**，X-01 未开始 | 无 eslint/oxlint 配置 |
-| 宿主版本 | 本机与 `docs/006` 均为 `0.2.1-rc.5` | `dsh --version`；`../006-deployment.md:76` |
+| 宿主版本 | 本机与 `../006-deployment.md` 均为 `0.2.1-rc.5` | `dsh --version`；`../006-deployment.md:76` |
 | 计划漂移 | `T1-11` 指定的 `src/client/settings-sources.tsx` **不存在**，实际是 `src/client/source.tsx` + `settings-kit.tsx` | `grep` 仅命中 `TASK-PLAN.zh.md:197` |
 
 ### 1.1 复跑陷阱（重要，写进交接）
@@ -82,7 +82,7 @@ env -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_NOSYSTEM -u GIT_AUTHOR_NAME -u GIT_AUTHOR
 | 方案 | 内容 | 代价 |
 | --- | --- | --- |
 | A（推荐） | kernel 只放 **纯 TS 类型** `SourceManifest`；zod schema 放 `src/sources/manifest-schema.ts`（`@superagent/dsh`，已有 zod 4.4.3） | 偏离 T1-01 原文一句；kernel 零依赖契约原样保留 |
-| B | 给 kernel 加 `zod` 依赖，`kernel-boundary.spec.ts` 与 `docs/007` 的依赖规则同步放宽 | 放弃「kernel 零依赖」，但 manifest 校验与第三方 adapter 的契约集中在领域层 |
+| B | 给 kernel 加 `zod` 依赖，`kernel-boundary.spec.ts` 与 `../007-architecture.md` 的依赖规则同步放宽 | 放弃「kernel 零依赖」，但 manifest 校验与第三方 adapter 的契约集中在领域层 |
 
 推荐 A：manifest 的**类型**是领域契约（kernel），**校验实现**是 runtime 的事（dsh 包）。B 的唯一好处是第三方作者能直接 `import` 校验器，但那个场景要等 `source-kit` 独立拆包（`../../PLUGIN-PACKAGING.zh.md` §3 的「第三个 adapter 作者出现」）才需要。
 
@@ -161,7 +161,7 @@ graph LR
 | 任务分解与验收口径 | `TASK-PLAN.zh.md` §4、§11、§12 | 每个 PR 对照六个字段（目标/交付/验收/估时/依赖/泳道） |
 | 切包与安装边界 | `../../PLUGIN-PACKAGING.zh.md` §3–§5 | X-07/X-08/X-11 的设计依据与最坏失败模式 |
 | 排障三步法 | `../runbooks/why-not-sent.md` + `.drill.md` | 接手第一周做一次 30 秒定位演练 |
-| 领域与架构 | `docs/000` → `docs/007` 顺序读 | 每篇只依赖前一篇，不要跳读 |
+| 领域与架构 | `../000-philosophy.md` → `../007-architecture.md` 顺序读 | 每篇只依赖前一篇，不要跳读 |
 | 启动包（本文） | `M1-KICKOFF.zh.md` | 排期、决策、DoD、交接会 |
 | 决策记录 | 本文 §3 + `../012-platform-evolution.zh.md` §D1–D5 | 未拍板的决策不得用"先这样"绕过 |
 | 可执行契约 | `tests/*.spec.ts`（尤其 `layers` / `kernel-boundary` / `docs` / `bundle-patch`） | 改不动就说明越界了 |
@@ -190,7 +190,7 @@ graph LR
 - [ ] `git switch main && git pull`；`git status` 干净；HEAD 为 `1a268c5` 或其后
 - [ ] 跑 §1.1 的干净环境全量测试：65 文件 / 1233 通过
 - [ ] `./node_modules/.bin/tsc --noEmit` 通过；`./node_modules/.bin/tsdown` 产物 11 个
-- [ ] 读 `docs/000` → `007`，再做一次 runbook 演练（30 秒内说出卡点）
+- [ ] 读 `../000-philosophy.md` → `../007-architecture.md`，再做一次 runbook 演练（30 秒内说出卡点）
 - [ ] 读 `TASK-PLAN.zh.md` §4 与本文 §2，认领第一张 PR（X-07 或 T1-01）
 - [ ] 确认本机 `dsh --version`（当前 `0.2.1-rc.5`）在 `engines.dsh` 范围内
 
@@ -200,7 +200,7 @@ graph LR
 - 动 `packages/kernel`：契约测试先行；`kernel-boundary.spec.ts` 必须保持绿。
 - 动 schema：迁移向前兼容 + 旧库拒启文案不变。
 - 动面板：空态 / 错误态 / 无权限态三态都渲染过。
-- 动 `src` 或 `packages` 的文件清单：`docs/007` 的 Modules 表必须同步（`docs.spec.ts` 会抓）。
+- 动 `src` 或 `packages` 的文件清单：`../007-architecture.md` 的 Modules 表必须同步（`docs.spec.ts` 会抓）。
 - 任何包变更带 changeset；CI 三个工作流（`check` / `changesets` / `release`）必须绿。
 - PR ≤ 400 行有效 diff；超过就拆。周节奏：周一排、周三中检、周五演示 + 退出证据留档。
 
@@ -224,7 +224,7 @@ graph LR
 | R7 宿主漂移 | `dsh` 升到新 rc，patch 锚点变化 | X-10 兼容矩阵先跑 `rc.5`；`X-11` 是兜底 |
 | R6 包管理 | `pnpm` 报 corepack EPERM | 用 `./node_modules/.bin/*`；CI 不受影响 |
 | 环境误判 | 全量跑出 2 个 runtime 失败 | 先按 §1.1 清环境复跑，再判断是否回归 |
-| 文档漂移 | `docs/006` 仍写 rc.3；`T1-11` 指向不存在的文件 | 随 X-07/T1-11 顺手修正，并在 PR 里说明 |
+| 文档漂移 | `../006-deployment.md` 仍写 rc.3；`T1-11` 指向不存在的文件 | 随 X-07/T1-11 顺手修正，并在 PR 里说明 |
 
 ---
 

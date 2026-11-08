@@ -133,7 +133,7 @@ graph LR
 
 - **目标**：方案 §9 的九个数字里先上四个，加上「按工单看 span」的入口。
 - **交付**：`packages/dsh/src/app/views/overview.ts` 增一块；`packages/dsh/src/client/` 增一个 `Trace` 视图（列表 + 时间轴），走 `api.ts` 的类型契约。
-- **验收**：面板显示真实数字；无数据时整块不显示（docs/005「默认安静」）；`tests/panel.spec.ts` 覆盖空态与有数据态。
+- **验收**：面板显示真实数字；无数据时整块不显示（`../005-panel.md`「默认安静」）；`tests/panel.spec.ts` 覆盖空态与有数据态。
 - **依赖**：T0-03。**回退**：视图独立，隐藏即回退。
 
 ### T0-05 changesets 与两段 CI · Platform · 1 人日
@@ -198,7 +198,7 @@ graph LR
 
 ### T1-10 `kind.ts` 退役与等价证明 · Connector · 2 人日
 
-- **交付**：删 `packages/dsh/src/sources/kind.ts`（或缩成 manifest 的 re-export）；`docs/007` 与 `docs/001` 同步。
+- **交付**：删 `packages/dsh/src/sources/kind.ts`（或缩成 manifest 的 re-export）；`../007-architecture.md` 与 `../001-domain.md` 同步。
 - **验收**：全量绿 + conformance 覆盖新旧两版；diff 里没有行为改动。
 - **依赖**：T1-07…09。
 
@@ -211,9 +211,9 @@ graph LR
 
 ### T1-12 文档：新增源 30 分钟指南 · Platform · 1 人日
 
-- **交付**：`docs/009-adding-a-source.md`；`docs.spec.ts` 的文档表同步。
+- **交付**：`../010-adding-a-source.md`；`docs.spec.ts` 的文档表同步。
 - **验收**：按指南从零写一个假源（noop），全程无 `packages/dsh/src/app` 改动。
-- **状态**：实现完成（2026-11-08，PR #25 待合并）。`docs/009` 已被会话任务文档占用，指南落在 `docs/010-adding-a-source.md`；README 文档表补齐 009/010，`tests/docs.spec.ts` 新增“README 按序列全每个编号文档”的检查，007 的 Sources 一节改为描述 `SourceDefinition` 注册路径。按指南在干净 worktree 里从零加了临时 noop 源（manifest + adapter + 插件入口 + 运行时/包入口、导出、patch 行、tsconfig/vitest 子路径、007 表与两个精确行测试）：`pnpm typecheck`、89 个文件 / 1504 个测试、`pnpm build`、体积门通过，`packages/dsh/src/app` 无改动；该练习补出了 `tests/dump-config.spec.ts` 也要同步这一条，已写进指南。
+- **状态**：实现完成（2026-11-08，PR #25 待合并）。009 这个编号已被会话任务文档占用，指南落在 `../010-adding-a-source.md`；README 文档表补齐 009/010，`tests/docs.spec.ts` 新增“README 按序列全每个编号文档”的检查，`../007-architecture.md` 的 Sources 一节改为描述 `SourceDefinition` 注册路径。按指南在干净 worktree 里从零加了临时 noop 源（manifest + adapter + 插件入口 + 运行时/包入口、导出、patch 行、tsconfig/vitest 子路径、007 表与两个精确行测试）：`pnpm typecheck`、89 个文件 / 1504 个测试、`pnpm build`、体积门通过，`packages/dsh/src/app` 无改动；该练习补出了 `tests/dump-config.spec.ts` 也要同步这一条，已写进指南。
 
 ---
 
@@ -403,11 +403,11 @@ graph LR
 
 | PR | 标题 | 改哪些文件 | 验收（跑什么、看什么） |
 | --- | --- | --- | --- |
-| PR-1 | kernel: trace 端口 + `span` 表 + schema 12 | `packages/kernel/src/ports.ts`（新增 `TraceSink` / `SpanContext`，只有接口）、`packages/kernel/src/trace.ts`（`SpanKind` 十个枚举 + `TraceId`）、`packages/dsh/src/app/trace.ts`（`SqliteTraceSink`，实现端口）、`packages/dsh/src/app/store.ts`（`span` 表 + `trace_id`/`kind` 索引）、`packages/dsh/src/app/migration.ts`（`SCHEMA_VERSION = 12`，11→12 迁移）、`docs/007-architecture.md`（表清单 + Modules 两行）、`tests/trace.spec.ts`、`tests/migration.spec.ts` | `tsc --noEmit`；`vitest run`（新增 ≥8 个断言：span 树可按 trace_id 取回、迁移 11→12 后可读旧 trigger、`OLDEST_SCHEMA` 仍为 10、旧库拒启文案不变）；`Makefile`/CI 无改动 |
+| PR-1 | kernel: trace 端口 + `span` 表 + schema 12 | `packages/kernel/src/ports.ts`（新增 `TraceSink` / `SpanContext`，只有接口）、`packages/kernel/src/trace.ts`（`SpanKind` 十个枚举 + `TraceId`）、`packages/dsh/src/app/trace.ts`（`SqliteTraceSink`，实现端口）、`packages/dsh/src/app/store.ts`（`span` 表 + `trace_id`/`kind` 索引）、`packages/dsh/src/app/migration.ts`（`SCHEMA_VERSION = 12`，11→12 迁移）、`../007-architecture.md`（表清单 + Modules 两行）、`tests/trace.spec.ts`、`tests/migration.spec.ts` | `tsc --noEmit`；`vitest run`（新增 ≥8 个断言：span 树可按 trace_id 取回、迁移 11→12 后可读旧 trigger、`OLDEST_SCHEMA` 仍为 10、旧库拒启文案不变）；`Makefile`/CI 无改动 |
 | PR-2 | runtime: 前五段埋点（ingest → authorize） | `packages/dsh/src/core/engine.ts`（`receive` / `evaluateDue` 用注入的 `TraceSink` 开 span，不 import 实现）、`packages/dsh/src/core/intake.ts`、`packages/dsh/src/core/evals.ts`、`packages/kernel/src/part.ts`（`queueForEval` 里带 span）、`tests/trace-stages.spec.ts`（表驱动：断言一次 receive 产生且仅产生 `ingest / dedupe / gate / admission / enqueue` 五段，名字与顺序固定） | `vitest run tests/core-engine.spec.ts tests/trace-stages.spec.ts`；`grep -rn "trace" packages/kernel/src/*.ts` 只出现类型引用、无实现 |
 | PR-3 | panel: 四指标 + 只读健康页 | `packages/dsh/src/app/metrics.ts`（TTFA / duplicate-send / restart-recovery / decision-throughput 四条 SQL 或增量派生）、`packages/dsh/src/app/http.ts`（`GET /metrics`）、`packages/dsh/src/app/views/overview.ts`（或新 `health.ts`）、`packages/dsh/src/client/panels/health.tsx`、`packages/dsh/src/client/locales.ts`、`tests/metrics.spec.ts` | `curl -s localhost:3082/api/metrics` 返回四个数字齐全；空库返回 0 而不是 `NaN`/`null`；面板在空库、有数据、查询失败三态都渲染过 |
 
-**三个 PR 的共同约束**：kernel 仍然零依赖；每个 PR 自带迁移或不动 schema；不动 `docs/007` 的表结构描述就会红（`docs.spec.ts` 强制）。
+**三个 PR 的共同约束**：kernel 仍然零依赖；每个 PR 自带迁移或不动 schema；不动 `../007-architecture.md` 的表结构描述就会红（`docs.spec.ts` 强制）。
 
 ---
 
@@ -533,5 +533,5 @@ graph LR
 | T2-01…10 | §6.2 Action、§6.3 Ledger |
 | T3-01…08 | §6.4 Acceptance、§6.5 Deliverable、§6.6 Runtime |
 | T4-01…06 | §6.7 Tenant 与保留 |
-| X-07…X-11 | `../../PLUGIN-PACKAGING.zh.md` §3（切包）、§4（入口）、§5（安装边界） |
+| X-07…X-12 | `../../PLUGIN-PACKAGING.zh.md` §3（切包）、§4（入口）、§5（安装边界） |
 | X-01…06 | §10.1、§10.5 |

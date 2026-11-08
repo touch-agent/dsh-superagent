@@ -35,7 +35,7 @@ principles, then 012 for the evolution story and the cross-check.
 
 | # | Document | Role |
 | --- | --- | --- |
-| 011 | [Design principles](011-design-principles.zh.md) | Attention as the budget, internalized organization, independent evolution and replaceable boundaries; each principle has a status and landing checkpoints. |
+| 011 | [Design principles](011-design-principles.zh.md) | Attention as the budget, internalized organization, independent evolution, composable context and replaceable boundaries; each principle has a status and landing checkpoints. |
 | 012 | [Platform evolution](012-platform-evolution.zh.md) | The problem definition, target architecture, domain model v2, mechanisms and migration path that the principles sit above. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
@@ -45,9 +45,10 @@ resolved in 011 §7.
 ## Plans
 
 [`plan/`](plan/README.md) holds the milestone plan, its dated kickoff and
-session-entry notes, and the single task tracking table. Status lives only in
-[`plan/TRACKING.zh.md`](plan/TRACKING.zh.md); a plan document's dated progress
-section is a snapshot, not a second status source.
+session-entry notes, and the single task tracking table. Current per-task
+status lives only in [`plan/TRACKING.zh.md`](plan/TRACKING.zh.md); the root
+README's milestone table and a plan document's dated progress section are
+summaries, not a second status source.
 
 ## Other references
 

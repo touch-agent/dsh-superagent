@@ -162,7 +162,7 @@ From a GitHub account on the allowed list, comment `@<agent-login> <request>` on
 
 ## Status and limitations
 
-The milestones are tracked in [TASK-PLAN.zh.md](docs/plan/TASK-PLAN.zh.md), and the live per-task status, PR and evidence are in [TRACKING.zh.md](docs/plan/TRACKING.zh.md). In summary:
+The milestone definitions are in [TASK-PLAN.zh.md](docs/plan/TASK-PLAN.zh.md), and the live per-task status, PR and evidence are in [TRACKING.zh.md](docs/plan/TRACKING.zh.md). In summary:
 
 | Milestone | State | Landed / remaining |
 | --- | --- | --- |
