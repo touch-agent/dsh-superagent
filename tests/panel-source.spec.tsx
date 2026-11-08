@@ -3,10 +3,9 @@
 import { act } from 'react'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { zh } from '@superagent/dsh/client/locales.ts'
-import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
 import { usePanel, mount, remount, settle, all, find, tab, click, type, text, field, at } from './fixtures/panel.tsx'
 import { server, problemOf, droppedReply } from './fixtures/panel-server.ts'
-import { fakeManifest } from './fixtures/fake-source.ts'
+import { fakeAppView, fakeSilentView, fakeSourceView } from './fixtures/fake-source.ts'
 
 usePanel()
 it('shows each Source\'s state on the Source status and opens its settings from a setup problem', async () => {
@@ -61,22 +60,26 @@ it('rereads the chats the bot has joined on request and says which are new, keep
   expect([...all('.dt-card')[1]!.querySelectorAll('button')].some(item => item.textContent === '刷新群列表')).toBe(false)
 })
 
-it('renders a Source whose manifest is its only description, with its sign-in, health entries and polling default', async () => {
-  const form = manifestForm(fakeManifest)
-  server.extraSources = [{ id: fakeManifest.id, kind: fakeManifest.id, title: form.title, description: form.description, installed: true,
-    value: { enabled: true, config: { cli: 'fake-cli', target: 'acme/repo', observe: true, pollSeconds: 30 } }, revision: 0,
-    restarts: [], form, facts: {}, labels: {} }]
+it('renders Sources whose manifests are their only description, with their sign-in, health entries and polling defaults', async () => {
+  server.extraSources = [fakeSourceView({ target: 'acme/repo', observe: true }), fakeAppView(), fakeSilentView({ note: 'hello' })]
   await mount()
   await click(tab(zh['tab.settings']))
-  const card = all('.dt-card').find(item => item.textContent?.includes('示例来源'))!
-  const labels = () => [...card.querySelectorAll('label')].map(label => label.textContent)
-  expect(labels()).toEqual(['示例命令行', '示例目标'])
-  expect(card.textContent).toContain('接收示例事件')
-  expect(card.textContent).toContain('登录方式 命令行（示例命令行）')
-  expect(card.textContent).toContain('健康项 fixture')
-  expect(card.textContent).toContain('轮询默认 30 秒')
-  await click([...card.querySelectorAll<HTMLElement>('[data-disclosure-row]')].find(row => row.textContent?.includes('高级'))!)
-  expect(labels()).toEqual(['示例命令行', '示例目标', '示例轮询间隔 / 秒'])
+  const card = (title: string) => all('.dt-card').find(item => item.querySelector('.dt-card-title')?.textContent === title)!
+  const labels = (item: HTMLElement) => [...item.querySelectorAll('label')].map(label => label.textContent)
+  const cli = card('示例来源')
+  expect(labels(cli)).toEqual(['示例命令行', '示例目标'])
+  expect(cli.textContent).toContain('接收示例事件')
+  expect(cli.textContent).toContain('登录方式 命令行（示例命令行）')
+  expect(cli.textContent).toContain('健康项 fixture')
+  expect(cli.textContent).toContain('轮询默认 30 秒')
+  await click([...cli.querySelectorAll<HTMLElement>('[data-disclosure-row]')].find(row => row.textContent?.includes('高级'))!)
+  expect(labels(cli)).toEqual(['示例命令行', '示例目标', '示例轮询间隔 / 秒'])
+  // An application sign-in names the same fields under a different word.
+  expect(card('示例应用来源').textContent).toContain('登录方式 应用身份（示例命令行）')
+  // A Source with no auth, health entries or limits gets no summary row.
+  const silent = card('无登录来源')
+  expect(silent.querySelector('.dt-row-meta')).toBeNull()
+  expect(labels(silent)).toEqual(['示例说明'])
 })
 
 it('renders each Source\'s settings from its manifest and saves one Source against its own revision', async () => {

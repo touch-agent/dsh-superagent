@@ -1,7 +1,9 @@
-/** A Source that exists only as a manifest: registering it must make the panel show its fields, sign-in, health entries and polling default without panel code. */
+/** Sources that exist only as manifests: registering one must make the panel show its fields, sign-in, health entries and polling default without panel code. */
 import { z } from 'zod'
 import type { SourceManifest } from '@superagent/kernel'
+import type { SourceView } from '@superagent/dsh/client/api.ts'
 import type { SourceAdapter, SourceDefinition } from '@superagent/dsh/sources/kind.ts'
+import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
 
 const localized = (zh: string, en: string) => ({ zh, en })
 
@@ -32,3 +34,36 @@ export type FixtureConfig = z.infer<typeof FixtureConfigSchema>
 
 export const fakeAdapter: SourceAdapter<FixtureConfig> = { schema: FixtureConfigSchema }
 export const fakeDefinition: SourceDefinition<FixtureConfig> = { manifest: fakeManifest, adapter: fakeAdapter }
+
+/** A Source that signs in through an application identity instead of a CLI. */
+export const fakeAppManifest: SourceManifest = { ...fakeManifest, id: 'fixture-app',
+  title: localized('示例应用来源', 'Example App Source'), auth: { kind: 'app', fields: ['cli'] } }
+export const fakeAppAdapter: SourceAdapter<FixtureConfig> = { schema: FixtureConfigSchema }
+
+const SilentConfigSchema = z.object({ note: z.string().default('') }).strict()
+/** A Source with no sign-in, no health entries and no declared limits, which the card must leave unadorned. */
+export const fakeSilentManifest: SourceManifest = {
+  id: 'fixture-silent',
+  title: localized('无登录来源', 'No-sign-in Source'),
+  description: localized('没有登录、健康项或限流的测试来源。', 'A test Source with no sign-in, health entries or limits.'),
+  auth: { kind: 'none', fields: [] },
+  fields: [{ key: 'note', type: 'text', label: localized('示例说明', 'Example note') }],
+  health: [],
+}
+export const fakeSilentAdapter: SourceAdapter<z.infer<typeof SilentConfigSchema>> = { schema: SilentConfigSchema }
+
+/**
+ * The settings card a manifest-only registration produces: title, description and form come from `manifestForm`, exactly
+ * as `settingsView` builds them, and the configuration defaults come from the adapter's schema.
+ */
+function sourceViewOf(manifest: SourceManifest, config: Record<string, unknown>): SourceView {
+  const form = manifestForm(manifest)
+  return { id: manifest.id, kind: manifest.id, title: form.title, description: form.description, installed: true,
+    value: { enabled: true, config }, revision: 0, restarts: [], form, facts: {}, labels: {} }
+}
+export const fakeSourceView = (config: Partial<FixtureConfig> = {}): SourceView =>
+  sourceViewOf(fakeManifest, FixtureConfigSchema.parse(config))
+export const fakeAppView = (config: Partial<FixtureConfig> = {}): SourceView =>
+  sourceViewOf(fakeAppManifest, FixtureConfigSchema.parse(config))
+export const fakeSilentView = (config: { note?: string } = {}): SourceView =>
+  sourceViewOf(fakeSilentManifest, SilentConfigSchema.parse(config))

@@ -1,7 +1,8 @@
 /** The manifest form model: the panel's fields, sign-in fields, admission hints, health names and polling defaults come from the manifest, and match the hand-written Source kind. */
 import { describe, expect, it } from 'vitest'
 import type { SourceManifest } from '@superagent/kernel'
-import { githubKind, githubManifest } from '@superagent/dsh/sources/github.ts'
+import { githubDefinition, githubKind, githubManifest } from '@superagent/dsh/sources/github.ts'
+import { feishuDocDefinition } from '@superagent/dsh/sources/feishu-doc.ts'
 import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
 
 const text = (value: string) => ({ zh: value, en: value })
@@ -46,6 +47,10 @@ describe('a manifest form', () => {
   it('leaves limits absent when the manifest declares none', () => {
     const { limits: _, ...withoutLimits } = manifest()
     expect(manifestForm(withoutLimits).limits).toBeUndefined()
+  })
+  it('keeps each declared polling default equal to its adapter schema default', () => {
+    for (const definition of [githubDefinition, feishuDocDefinition])
+      expect(definition.manifest.limits?.pollSeconds).toBe(definition.adapter.schema.parse({}).pollSeconds)
   })
   it('matches the hand-written GitHub kind it will replace', () => {
     const form = manifestForm(githubManifest)

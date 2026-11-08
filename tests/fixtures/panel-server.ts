@@ -112,9 +112,8 @@ export interface PanelServer {
   opened: string[]
   dropped: DroppedReply[]
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
-  /** Source cards and status rows a test adds as if their plugin had loaded, such as the manifest-only fixture. */
+  /** Source cards a test adds as if their plugin had loaded, such as the manifest-only fixture. */
   extraSources: SourceView[]
-  extraStatuses: SourceStatusRow[]
 }
 export let server: PanelServer
 
@@ -164,7 +163,7 @@ function sourceStatuses(): SourceStatusRow[] {
       filtered: feishu ? [] : [{ id: 'e9', at: '2026-09-23T00:02:00Z', actor: actor('github', 'someone'), preview: 'looks wrong',
         reason: { code: 'source_disabled' } }],
       dropped: server.dropped.filter(item => item.channel.source === kind.kind && item.dropped.at >= dayAgo()) }
-  }), ...server.extraStatuses]
+  })]
 }
 const stateView = (): StateView => ({
   setup: server.setup, load: { running: server.setup.problem ? 0 : 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers },
@@ -262,7 +261,7 @@ function initial(): PanelServer {
   const defaults = { revision: 0, previousRevision: null, savedAt: '', source: 'defaults' }
   return {
     health: {}, down: false, pending: 0, opened: [], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
-    extraSources: [], extraStatuses: [],
+    extraSources: [],
     setup: { machine: MACHINE, problem: null, feishuProblem: null,
       accounts: { repository: 'acme/widgets', agent: 'agent-bot', feishu: { appId: 'cli_bot', brand: 'feishu', botId: 'ou_bot',
         name: 'Widgets Bot' } } },
