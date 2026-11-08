@@ -14,6 +14,7 @@ import { HOME, TABS, initialLocation, lastSettingsGroup, parseRoute, remember, r
   type Route, type Tab } from './route.ts'
 import { SettingsPage } from './settings.tsx'
 import { SourceStatus } from './source.tsx'
+import { TasksPage } from './tasks.tsx'
 import { actorName, errorText, reasonLabel, valueLabel, type T, readableMarkers } from './text.ts'
 import { ThreadPage } from './thread.tsx'
 import { TicketPage } from './ticket.tsx'
@@ -152,6 +153,7 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix }: { route: R
   const page = (() => {
     switch (route.page) {
       case 'overview': return <OverviewPage />
+      case 'tasks': return <TasksPage />
       case 'source': return <SourceStatus />
       case 'trigger': return route.id !== undefined ? <ThreadPage key={route.id} id={route.id} target={route.query?.trigger} />
         : <TriggerStatus filter={route.query?.filter ?? 'subscribed'} />

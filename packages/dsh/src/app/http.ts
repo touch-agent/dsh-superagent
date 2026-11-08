@@ -31,6 +31,7 @@ import { decisionList, search, threadDetail, threadList } from './views/threads.
 import { executorLoad, ticketDetail, ticketList } from './views/tickets.ts'
 import { triggerTrace } from './views/trace.ts'
 import { activityFeed, activityLookup } from './activity.ts'
+import { taskBoard } from './tasks.ts'
 
 export interface HttpHost {
   readonly store: Store
@@ -158,7 +159,6 @@ const ApprovalDecision = z.object({ level: z.enum(ACTION_LEVELS).optional() })
 
 function routes(runtime: HttpHost): Routes {
   const { store } = runtime
-  const activity = activityLookup(store)
   const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
   const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
@@ -166,9 +166,10 @@ function routes(runtime: HttpHost): Routes {
     'GET overview': () => overview(views(runtime), runtime.health, policyVersion(store.settings()),
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
     'GET metrics': () => metrics(store),
+    'GET tasks': () => taskBoard(views(runtime)),
     'GET activity': ({ query }) => {
       const { after, limit, level } = ActivityQuery.parse(query)
-      return activityFeed(store.activity, after, limit, level, activity)
+      return activityFeed(store.activity, after, limit, level, activityLookup(store))
     },
     'GET search': ({ query }) => search(views(runtime), query.q ?? '', runtime.sourceLinks),
     'GET sources': () => sourcesStatus(views(runtime), runtime.health, setupState(runtime)),
