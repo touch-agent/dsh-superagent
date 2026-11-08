@@ -32,10 +32,14 @@ export interface MailRecipientRef {
 
 /** One address in the after revision, once, with every field it appears in. This is the explicit audience. */
 export interface MailAudienceEntry {
+  /**
+   * The address. When the same mailbox appears in more than one field with different display names, `address` keeps
+   * the first one seen in To, Cc, Bcc order; the per-role refs in a change keep each field's own display name.
+   */
   address: MailAddress
   /** The fields the address is in, in To, Cc, Bcc order; an address may be in more than one. */
   roles: MailRecipientRole[]
-  /** True when the address is in Bcc, so the other recipients do not see it. */
+  /** True when the address has a Bcc copy, which the other recipients do not see. */
   bcc: boolean
 }
 
@@ -110,19 +114,27 @@ export interface MailBodyChange {
 export interface MailBodyDiff {
   changes: MailBodyChange[]
   summary: { before: number; after: number; added: number; removed: number; changed: number }
+  /**
+   * How the lines were aligned. `lines` used common unchanged lines as anchors after trimming the common prefix and
+   * suffix; `position` paired an oversized middle by position, so a line that merely shifted can be reported as
+   * changed and the panel should say so.
+   */
+  alignment: 'lines' | 'position'
 }
 
 /**
  * One attachment as a draft declares it. `content` is the bytes or text; when it is given the previewer hashes it
  * (SHA-256) and measures it, so a same-named attachment whose content changed is not read as unchanged. `digest` and
- * `size` let a caller describe a large attachment without handing its bytes to the preview.
+ * `size` let a caller describe a large attachment without handing its bytes to the preview; a supplied `digest` must be
+ * the SHA-256 hex of the bytes. Attachments are compared by name and names are case-sensitive; a revision with two
+ * attachments of the same name is a caller error because the comparison would be ambiguous.
  */
 export interface MailAttachment {
   name: string
   contentType?: string
   /** The size in bytes when the caller knows it; content, when given, is measured instead. */
   size?: number
-  /** A content fingerprint, such as a hex SHA-256, used only when `content` is not given. */
+  /** A content fingerprint, which must be the SHA-256 hex of the bytes, used only when `content` is not given. */
   digest?: string
   content?: string | Uint8Array
   /** Whether the attachment is shown inside the message rather than listed beside it. */
@@ -151,10 +163,16 @@ export interface MailAttachmentChange {
   fields?: MailAttachmentField[]
 }
 
-/** The attachment section: every change and the counts a panel shows above it. */
+/** The attachment section: every change, the content the preview could not verify, and the counts a panel shows. */
 export interface MailAttachmentsDiff {
   changes: MailAttachmentChange[]
   summary: { before: number; after: number; added: number; removed: number; changed: number }
+  /**
+   * Attachments that exist on both sides but whose content could not be compared because at least one revision
+   * supplied neither content nor a digest. A one-sided fingerprint is also reported as a `content` change, so content
+   * is never silently called unchanged; this list says which attachments have only metadata compared.
+   */
+  unverified: string[]
 }
 
 /**
@@ -206,6 +224,8 @@ const MAX_BODY_ALIGN_CELLS = 1_000_000
 const MAX_BODY_PAIR_COMPARISONS = 10_000
 /** How alike two body lines must be for a removal and an insertion to read as one changed line. */
 const BODY_CHANGE_THRESHOLD = 0.5
+/** The characters of a body line used to score likeness, so a handful of enormous lines cannot dominate the diff. */
+const MAX_BODY_SIMILARITY_CHARS = 4_000
 const textEncoder = new TextEncoder()
 
 /** Whether a value is a plain object, never an array. */
@@ -213,11 +233,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Strip the quotes a display name may carry, and refuse a name that could break a header. */
+/** Strip the quotes a display name may carry, and refuse a name that could break a header or spoof an address. */
 function displayName(raw: string, what: string): string | undefined {
   let name = raw.trim()
   if (name.length >= 2 && name.startsWith('"') && name.endsWith('"')) name = name.slice(1, -1).replace(/\\"/g, '"').trim()
-  if (/[\r\n]/.test(name)) throw new TypeError(`${what} has a display name with a line break`)
+  // A name that contains angle brackets can swallow a second address in a joined string; refuse it rather than
+  // showing one recipient while silently dropping another.
+  if (/[\u0000-\u001f\u007f<>]/.test(name)) {
+    throw new TypeError(`${what} has a display name with a control character or angle bracket`)
+  }
   return name || undefined
 }
 
@@ -244,9 +268,10 @@ function parseAddress(value: MailAddressInput, what: string): MailAddress {
       name = displayName(value.name, what)
     }
   }
-  // One mailbox per item: a comma or whitespace here means two addresses were joined, which must not become one.
+  // One mailbox per item: a comma, semicolon, colon or whitespace here means two addresses were joined, and a
+  // bracketed display name may not hide a second address either (displayName rejects angle brackets).
   if (!mailbox) throw new TypeError(`${what} must have an address`)
-  if (!/^[^@\s,<>]+@[^@\s,<>]+$/.test(mailbox)) {
+  if (!/^[^@\s,<>;:]+@[^@\s,<>;:]+$/.test(mailbox)) {
     throw new TypeError(`${what} "${mailbox}" is not a mailbox; pass one address per item`)
   }
   const key = mailbox.toLowerCase()
@@ -304,7 +329,8 @@ function parseAttachment(value: unknown, what: string): MailAttachmentInfo {
   const content = value.content as string | Uint8Array | undefined
   const size = content !== undefined ? contentSize(content) : value.size as number | undefined
   // The bytes are the truth when they are present; a caller's digest describes an attachment it did not hand over.
-  const digest = content !== undefined ? contentDigest(content) : value.digest === undefined ? undefined : value.digest.toLowerCase()
+  const digest = content !== undefined ? contentDigest(content)
+    : value.digest === undefined ? undefined : value.digest.trim().toLowerCase()
   const info: MailAttachmentInfo = { name, inline: value.inline === true }
   if (typeof value.contentType === 'string') info.contentType = value.contentType.trim()
   if (size !== undefined) info.size = size
@@ -348,6 +374,7 @@ function normalizeDraft(value: MailDraft, what: string): NormalizedDraft {
   }
   const subject = value.subject === undefined ? '' : value.subject
   if (typeof subject !== 'string') throw new TypeError(`${what} subject must be a string`)
+  if (/[\r\n]/.test(subject)) throw new TypeError(`${what} subject must not contain a line break`)
   const body = value.body === undefined ? '' : value.body
   if (typeof body !== 'string') throw new TypeError(`${what} body must be a string`)
   return { fields, duplicates, subject, body, attachments: parseAttachments(value.attachments, what) }
@@ -388,10 +415,12 @@ function refsByKey(fields: Record<MailRecipientRole, MailRecipientRef[]>): Map<s
   return grouped
 }
 
-/** Whether two revisions put one address in the same fields with the same display names. */
+/** Whether two revisions put one address in the same fields with the same display names; mailbox case is not a change. */
 function sameRecipient(before: readonly MailRecipientRef[], after: readonly MailRecipientRef[]): boolean {
-  return before.length === after.length && before.every((ref, index) => ref.role === after[index]!.role
-    && ref.address.display === after[index]!.address.display && ref.address.key === after[index]!.address.key)
+  return before.length === after.length && before.every((ref, index) => {
+    const other = after[index]!
+    return ref.role === other.role && ref.address.key === other.address.key && ref.address.name === other.address.name
+  })
 }
 
 /** The recipient section: counts, one change per address and the explicit after audience. */
@@ -422,7 +451,7 @@ function compareRecipients(before: NormalizedDraft, after: NormalizedDraft): Mai
   const bcc = afterAudience.filter(entry => entry.bcc).map(entry => entry.address.key)
   if (bcc.length) {
     warnings.push({ code: 'bccHidden', addresses: bcc,
-      message: `${bcc.length} recipient(s) are in Bcc and are hidden from the other recipients.` })
+      message: `${bcc.length} recipient(s) have a Bcc copy; Bcc copies are not shown to the other recipients.` })
   }
   const movedToBcc = changes.filter(change => {
     const beforeRoles = new Set(change.before.map(ref => ref.role))
@@ -475,11 +504,18 @@ function positionalBodyOps(beforeCount: number, afterCount: number): BodyOp[] {
   return ops
 }
 
+/** The start and end of a long line, enough to score likeness without reading megabytes per pair. */
+function sampledLine(text: string): string {
+  if (text.length <= MAX_BODY_SIMILARITY_CHARS) return text
+  const half = Math.floor(MAX_BODY_SIMILARITY_CHARS / 2)
+  return text.slice(0, half) + text.slice(-half)
+}
+
 /** Dice similarity over character bigrams, enough to read an edited line as one changed line. */
 function lineSimilarity(before: string, after: string): number {
   if (before === after) return 1
-  const left = Array.from(before)
-  const right = Array.from(after)
+  const left = Array.from(sampledLine(before))
+  const right = Array.from(sampledLine(after))
   if (left.length < 2 || right.length < 2) return 0
   const counts = new Map<string, number>()
   for (let index = 0; index < left.length - 1; index++) {
@@ -531,10 +567,18 @@ function pairBodyRun(deletes: readonly number[], inserts: readonly number[], bef
   return ops
 }
 
-/** Align two bodies by their unchanged lines, pairing each changed gap rather than reporting every later line moved. */
-function alignBodyLines(before: readonly string[], after: readonly string[]): BodyOp[] {
+/** One alignment: the steps over body line indexes and whether an oversized middle had to pair by position. */
+interface AlignedBody {
+  ops: BodyOp[]
+  alignment: 'lines' | 'position'
+}
+
+/** Align a body middle by its unchanged lines, pairing each changed gap rather than reporting every later line moved. */
+function alignMiddle(before: readonly string[], after: readonly string[]): AlignedBody {
   const width = after.length + 1
-  if ((before.length + 1) * width > MAX_BODY_ALIGN_CELLS) return positionalBodyOps(before.length, after.length)
+  if ((before.length + 1) * width > MAX_BODY_ALIGN_CELLS) {
+    return { ops: positionalBodyOps(before.length, after.length), alignment: 'position' }
+  }
   const dp = new Uint32Array((before.length + 1) * width)
   for (let row = before.length - 1; row >= 0; row--) {
     for (let column = after.length - 1; column >= 0; column--) {
@@ -571,15 +615,42 @@ function alignBodyLines(before: readonly string[], after: readonly string[]): Bo
     const inserts = run.filter(step => step.kind === 'insert').map(step => step.after!)
     ops.push(...pairBodyRun(deletes, inserts, before, after))
   }
-  return ops
+  return { ops, alignment: 'lines' }
+}
+
+/**
+ * Align two bodies after trimming the common prefix and suffix. Trimming keeps a single insertion or removal from
+ * discarding every exact anchor and marking the rest of the body changed; only the remaining middle can still be
+ * oversized, and then it pairs by position with `alignment: 'position'`.
+ */
+function alignBodyLines(before: readonly string[], after: readonly string[]): AlignedBody {
+  let prefix = 0
+  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix++
+  let suffix = 0
+  while (suffix < before.length - prefix && suffix < after.length - prefix
+    && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]) suffix++
+  const middle = alignMiddle(before.slice(prefix, before.length - suffix), after.slice(prefix, after.length - suffix))
+  const ops: BodyOp[] = []
+  for (let index = 0; index < prefix; index++) ops.push({ kind: 'same', before: index, after: index })
+  for (const op of middle.ops) {
+    const mapped: BodyOp = { kind: op.kind }
+    if (op.before !== undefined) mapped.before = op.before + prefix
+    if (op.after !== undefined) mapped.after = op.after + prefix
+    ops.push(mapped)
+  }
+  for (let index = 0; index < suffix; index++) {
+    ops.push({ kind: 'same', before: before.length - suffix + index, after: after.length - suffix + index })
+  }
+  return { ops, alignment: middle.alignment }
 }
 
 /** The body section: added, removed and changed lines against the readable body. */
 function diffBody(before: string, after: string): MailBodyDiff {
   const beforeLines = bodyLines(before)
   const afterLines = bodyLines(after)
+  const aligned = alignBodyLines(beforeLines.map(line => line.text), afterLines.map(line => line.text))
   const changes: MailBodyChange[] = []
-  for (const op of alignBodyLines(beforeLines.map(line => line.text), afterLines.map(line => line.text))) {
+  for (const op of aligned.ops) {
     if (op.kind === 'delete') {
       changes.push({ kind: 'removed', before: beforeLines[op.before!] })
       continue
@@ -599,13 +670,20 @@ function diffBody(before: string, after: string): MailBodyDiff {
     changes,
     summary: { before: beforeLines.length, after: afterLines.length,
       added: count('added'), removed: count('removed'), changed: count('changed') },
+    alignment: aligned.alignment,
   }
 }
 
 /** The parts of an attachment that differ under the same name. */
 function attachmentFields(before: MailAttachmentInfo, after: MailAttachmentInfo): MailAttachmentField[] {
   const fields: MailAttachmentField[] = []
-  if (before.digest !== undefined && after.digest !== undefined && before.digest !== after.digest) fields.push('content')
+  // Compare content only when both revisions have a fingerprint. A one-sided fingerprint is a conservative content
+  // change: the preview cannot prove the bytes are equal, so it must not report the attachment as unchanged.
+  if (before.digest !== undefined && after.digest !== undefined) {
+    if (before.digest !== after.digest) fields.push('content')
+  } else if (before.digest !== undefined || after.digest !== undefined) {
+    fields.push('content')
+  }
   if (before.size !== undefined && after.size !== undefined && before.size !== after.size) fields.push('size')
   if ((before.contentType ?? '').toLowerCase() !== (after.contentType ?? '').toLowerCase()) fields.push('contentType')
   if (before.inline !== after.inline) fields.push('inline')
@@ -617,6 +695,7 @@ function diffAttachments(before: readonly MailAttachmentInfo[], after: readonly 
   const beforeByName = new Map(before.map(attachment => [attachment.name, attachment]))
   const afterByName = new Map(after.map(attachment => [attachment.name, attachment]))
   const changes: MailAttachmentChange[] = []
+  const unverified: string[] = []
   for (const attachment of after) {
     const was = beforeByName.get(attachment.name)
     if (!was) {
@@ -625,6 +704,8 @@ function diffAttachments(before: readonly MailAttachmentInfo[], after: readonly 
     }
     const fields = attachmentFields(was, attachment)
     if (fields.length) changes.push({ kind: 'changed', name: attachment.name, before: was, after: attachment, fields })
+    // Added attachments have nothing to compare; a pair is unverified when either revision has only metadata.
+    if (was.digest === undefined || attachment.digest === undefined) unverified.push(attachment.name)
   }
   for (const attachment of before) {
     if (!afterByName.has(attachment.name)) changes.push({ kind: 'removed', name: attachment.name, before: attachment })
@@ -634,6 +715,7 @@ function diffAttachments(before: readonly MailAttachmentInfo[], after: readonly 
     changes,
     summary: { before: before.length, after: after.length,
       added: count('added'), removed: count('removed'), changed: count('changed') },
+    unverified,
   }
 }
 
