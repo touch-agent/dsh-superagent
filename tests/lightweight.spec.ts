@@ -77,10 +77,10 @@ describe('a lightweight ticket', () => {
 
   it('records each action in the trace as it runs, takes the request up in the disposition, and ends with the result', () => {
     const h = harness()
+    const started = performance.now()
     const decision = h.accepts('lightweight')
     const id = decision.ticketId!
     const steps = [step('read', 1), step('draft', 2, { action: action('draft', 'r2') })]
-    const started = performance.now()
     for (const item of steps) h.engine.inlineAction(id, item)
     const finished = h.engine.inlineFinished(id, { outcome: 'completed', summary: 'Drafted the cell edit' })
     const elapsed = performance.now() - started
@@ -133,7 +133,15 @@ describe('a lightweight ticket', () => {
     expect(h.executor.start).not.toHaveBeenCalled()
   })
 
-  it('resumes a person\'s follow-up inline, still without an Assignment', () => {
+  it('refuses an inline result that names an Input the ticket does not own', () => {
+    const h = harness()
+    const id = h.accepts('lightweight').ticketId!
+    expect(() => h.engine.inlineFinished(id, { outcome: 'completed', summary: 'Impossible', read: ['not-an-input'] })).toThrow(TypeError)
+    expect(h.repo.tickets.get(id)!.ended).toBeUndefined()
+    expect(h.spans.filter(span => span.kind === 'report')).toEqual([])
+  })
+
+  it('resumes a person\'s follow-up inline, still without an Assignment, and takes the follow-up up', () => {
     const h = harness()
     const id = h.accepts('lightweight').ticketId!
     h.engine.inlineAction(id, step('draft', 1))
@@ -150,6 +158,15 @@ describe('a lightweight ticket', () => {
     expect(h.inlineStarts[1]).toMatchObject({ id, form: 'lightweight' })
     expect(h.inlineStarts[1]!.undelivered.length).toBeGreaterThan(0)
     expect(h.spans.filter(span => span.kind === 'dispatch').length).toBe(2)
+
+    // The resumed run read what it was handed, so the follow-up is taken up instead of going back to Eval as new work.
+    const read = h.inlineStarts[1]!.undelivered
+    h.engine.inlineAction(id, step('draft', 2))
+    h.engine.inlineFinished(id, { outcome: 'completed', summary: 'Follow-up done', read })
+    expect(h.repo.triggers.disposition('2')?.acked).toEqual([id])
+    expect(h.repo.threads.get('chat:t1')?.pending).toEqual([])
+    h.engine.evaluateDue()
+    expect(h.requests).toHaveLength(1)
   })
 })
 

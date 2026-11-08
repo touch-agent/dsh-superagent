@@ -105,6 +105,12 @@ export interface InlineResult {
   outcome: Extract<TicketOutcome, 'completed' | 'dropped'>
   /** A bounded, person-readable account of what it did, recorded as the ticket's end reason. */
   summary: string
+  /**
+   * The Inputs the run read, by Input id. A trigger Input's message counts as taken up, so ending the ticket does not hand it
+   * back to Eval; an Input the run did not name keeps waiting for the next run. An Input that is not the ticket's own is
+   * refused.
+   */
+  read?: readonly string[]
 }
 
 /**

@@ -86,19 +86,30 @@ export class Tickets extends EnginePart {
         level: step.action.level, actor: step.action.actor }, ok: step.ok, ...step.error === undefined ? {} : { error: step.error.slice(0, 300) } } })
   }
   /**
-   * Record that a lightweight ticket's inline run ended and end it: the disposition's take-up of the person's message it
-   * started from and a `report` stage with its outcome. Its actions are already recorded by `inlineAction`.
+   * Record that a lightweight ticket's inline run ended and end it: the trigger Inputs it read are taken up in their
+   * dispositions, the person's original message is taken up, and a `report` stage names the outcome. Its actions are
+   * already recorded by `inlineAction`.
    * @throws UserError when the ticket is unknown or has ended.
-   * @throws TypeError when the ticket is not lightweight or has an Assignment.
+   * @throws TypeError when the ticket is not lightweight, has an Assignment, or names an Input that is not its own.
    */
   inlineFinished(ticketId: string, result: InlineResult): Ticket {
     const ticket = this.require(ticketId)
     if (!liveTicket(ticket)) throw new UserError('ticketEnded')
     if (ticketForm(ticket) !== 'lightweight') throw new TypeError('Only a lightweight Ticket finishes inline')
     if (ticket.assignments.length) throw new TypeError('A lightweight Ticket runs without an Assignment')
+    const read = (result.read ?? []).map(id => {
+      const input = ticket.inputs.find(item => item.id === id)
+      if (!input) throw new TypeError('A lightweight Ticket can only read its own Inputs')
+      return input
+    })
     const at = this.now()
-    // The ticket did this person's message, so their disposition says it was taken up rather than left for Eval again.
+    for (const input of read) if (input.kind === 'trigger') input.readAt ??= at
+    ticket.undelivered = ticket.undelivered.filter(id => !read.some(input => input.id === id))
+    // A run that read a person's later message did that message too, so its disposition says so rather than handing it back.
+    for (const input of read) if (input.kind === 'trigger') this.takeUp(ticket.id, input.triggerId)
+    // The ticket did the person's original message, so its disposition says it was taken up rather than left for Eval again.
     this.takeUp(ticket.id, ticket.origin.triggerId)
+    this.repo.tickets.save(ticket)
     this.stageOf(ticket, 'report', { at, ref: `${at}:${result.outcome}`, data: { state: result.outcome, form: 'lightweight' } })
     this.end(ticketId, 'executor', result.outcome, at, result.summary)
     return this.require(ticketId)
