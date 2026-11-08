@@ -334,8 +334,8 @@ Engine：校验父任务存活、父 Mandate/maxActionLevel 原样继承、深�
 | --- | --- | --- |
 | `delegate_task` | 父 worker | Engine 创建 Subtask 与子 worker，写入父子关系 |
 | 子任务报告 | 子 worker | 进入父 worker 的输入；不直接产生人的注意力请求 |
-| `accept_subtask` | 父 worker | 子任务完成：state=`done`、`endedAt=now`，写 `resolution.kind='accepted'` + `acceptedReportAt=report.at`，交付物可被父合并；不等于父任务完成 |
-| `return_subtask` | 父 worker | 子任务带修改意见重开；清除整个 `resolution`、旧 `merge` 失效，state 回 `working`，子 worker 继续（不写 'returned'，否则会误判为已处置） |
+| `accept_subtask` | 父 worker | 子任务完成：state=`done`、`endedAt=now`，写 `resolution.kind='accepted'` + `acceptedReportAt=report.at`，并终止子 worker；之后迟到报告被拒绝（`subtaskClosed`）。交付物可被父合并；不等于父任务完成 |
+| `return_subtask` | 父 worker | 子任务带修改意见重开；清除整个 `resolution`、旧 `merge`/`endedAt` 失效，state 回 `working`，启动新的子 worker 会话（旧 worker 已终止，不复活旧会话）；不写 'returned'，否则会误判为已处置 |
 | `cancel_subtask` | 父 worker | 停止子树：state=`cancelled`、`endedAt=now`，写 `resolution.kind='cancelled'`；父任务记录原因 |
 | `ready` | 父 worker | 仅在无未结束子任务且 6.6 聚合可批准时允许；进入人工验收 |
 | `human_action` | 父 worker | 子任务问题被父汇总后，最多一个问题问人 |
@@ -349,7 +349,7 @@ Engine：校验父任务存活、父 Mandate/maxActionLevel 原样继承、深�
 
 结束路径与守卫（必须做在 `Tickets.end`/`unfinished`，不能只在 worker report 里判断）：
 
-- **未结束子任务（unresolved）** = 状态属于 `queued`/`working`/`waiting`/`review`/`blocked`/`failed`/`orphaned`，且没有**当前有效**的终态 `Subtask.resolution`。有效规则：`cancelled`/`failed` 始终有效；`accepted` 只在 `acceptedReportAt === report.at` 时有效（子任务再次报告会让旧接受失效）。`done`/`dropped`/`cancelled` 已结束；`failed`/`orphaned` 必须由父写有效 `resolution` 才算处置。`return_subtask` 会**清除** resolution 并把 state 回 `working`，因此不会把重新打开的子任务误算成已处置。`SubtaskSummary.unresolved` 必须用同一有效规则，不能只看字段是否存在。
+- **未结束子任务（unresolved）** = 状态属于 `queued`/`working`/`waiting`/`review`/`blocked`/`failed`/`orphaned`，且没有**当前有效**的终态 `Subtask.resolution`。有效规则：`cancelled`/`failed` 始终有效；`accepted` 只在 `acceptedReportAt === report.at` 时有效（接受前若已有更新报告，旧接受无效；接受后子任务已结束，迟到报告被拒绝，不会改变已经接受的 revision）。`done`/`dropped`/`cancelled` 已结束；`failed`/`orphaned` 必须由父写有效 `resolution` 才算处置。`return_subtask` 会**清除** resolution 并把 state 回 `working`，因此不会把重新打开的子任务误算成已处置。`SubtaskSummary.unresolved` 必须用同一有效规则，不能只看字段是否存在。
 - **所有结束路径共用一道门**：`Assignments.report` 的 `ready`/`dropped`、`Tickets.threadClosed`/`followsDone` 的 PR/线程合并、人停止父 Ticket，最终都经过 `Tickets.end`；父 `failed` 不是结束路径，见下。`Tickets.end` 检查 `unfinished(ticket)` 是否包含未结束子任务。不能只挡 `ready`。
 - **`ready`**：有未结束子任务时 **拒绝该 report**（`UserError` 代码 `unfinishedSubtasks`），不把 `ready` 写进 `Assignment.report`；父收到“还有 N 个子任务未结束”的清单，继续处理。`Assignments.review`/`reviewTicket` 也必须再查一次未结束子任务，不能只靠 `Tickets.end` 或报告阶段。父必须对每个失败/孤儿子任务写 `resolution`（accepted/cancelled/failed）后才能再次报 `ready`；`return_subtask` 是重开，不是终态处置。
 - **`dropped` / 人停止**：终态；Engine 取消所有子任务（写 `resolution.kind = cancelled`，原因记录），再结束父 Ticket；人停止的 outcome 是 `stopped`，不是 `failed`。
@@ -537,13 +537,13 @@ interface Subtask {
   report?: { state: ReportState; summary: string; at: string; review?: Review }
   // 父对子任务的唯一决策记录；是 canonical，不再另存 report.accepted。
   // accepted 只表示父 worker 接受工作交付，不等于人的 Review.confirmations 确认。
-  // accepted 记录 report.at；子任务再次报告会使旧 accepted 失效，必须重新接受。
+  // accepted 记录 report.at 并终止子 worker；接受后迟到报告被拒绝；接受前的新报告会使旧 accepted 失效。
   // 只记录终态处置；return_subtask 清除本字段，不写 'returned'。
   resolution?: {
     kind: 'accepted' | 'cancelled' | 'failed'
     by: ActorRef
     at: string
-    /** accepted 时必填，绑定被接受的那次报告；新报告/退回后失效。 */
+    /** accepted 时必填，绑定被接受的那次报告；接受前的新报告/退回后失效。 */
     acceptedReportAt?: string
     reason?: string
   }
@@ -563,6 +563,20 @@ interface ReviewConfirmationView {
   criterion: HumanCriterion
   /** 仅当当前 reviewRevision 已被批准时由投影填充；不是单独确认。 */
   coveredBy?: { by: ActorRef; at: string; reviewRevision: string }
+}
+
+type DeliverableSummary = {
+  /** 去重键：`<artifact.kind>:<artifact.ref>:<artifact.revision>`。 */
+  key: string
+  /** 至少一项；父报告与子报告产出同一 artifact/revision 时合并到同一行。 */
+  sources: ReviewSource[]
+  at: string                           // 最近一次 report 时间
+  artifact: Artifact
+  previewRef: PreviewRef
+  criteria: RuleCriterion[]            // 机器验收条件
+  confirmations: HumanCriterion[]      // 需人确认的条件
+  parentAccepted?: { by: ActorRef; at: string } // 子交付被父 worker 接受；不等于人确认
+  humanAccepted?: { by: ActorRef; at: string; reviewRevision: string } // 最终聚合被批准
 }
 
 // kernel-owned 聚合；Tickets.end/Assignments.review 只依赖这个，不依赖 app 视图。
@@ -590,7 +604,7 @@ interface PendingEnd {
 // 只是结束被未结束子任务挡住；不能与 ended 同时存在。
 ```
 
-`Subtask.report.review` 与 `Assignment.report.review` 必须由同一个 `enterReview(deliverable)` 生成，不能手拼；`DeliverableSummary` 只是它的投影，`previewRef.revision` 必须等于 `artifact.revision`，`criteria`/`confirmations` 直接来自 `Review`。这样父审阅和人工最终验收看到的是同一套验收条件。
+`Subtask.report.review` 与 `Assignment.report.review` 必须由同一个 `enterReview(deliverable)` 生成，不能手拼；`DeliverableSummary` 是 kernel 级只读投影，`previewRef.revision` 必须等于 `artifact.revision`，`criteria`/`confirmations` 直接来自 `Review`。这样父审阅和人工最终验收看到的是同一套验收条件。
 
 `ReviewAggregate` 是 Ticket 级聚合：父报告 + 所有已接受子任务的 `report.review` 按 6.3 的规则合并；`reviewRevision` 绑定当前聚合。app 的 `TaskReviewView` 只负责序列化/展示，`accepted` 由 `Assignment.report.accepted` 派生。人批准的是这个聚合，不是某一份父报告；子确认因此不会被父 worker 的接受吞掉。
 
@@ -657,23 +671,9 @@ interface TaskCategoryView {
     done: number
     failed: number
     dropped: number        // 含 lightweight dropped；按 terminal 计，不按 status=done 计
-    stopped: number        // terminal 优先于 status 计数；有 terminal 时不再计 failed/done
+    stopped: number        // status 仍按现有 activityStatusOf=failed；counts 用 terminal=stopped 兜底，不把已停止计入 failed
     reviews: number        // kind='review' 的子集；仅信息，不参与 tasks 求和
   } // 对账：tasks = unfinished + done + failed + dropped + stopped；tasks 含 review Ticket，reviews 是子集
-}
-
-type DeliverableSummary = {
-  /** 去重键：`<artifact.kind>:<artifact.ref>:<artifact.revision>`。 */
-  key: string
-  /** 至少一项；父报告与子报告产出同一 artifact/revision 时合并到同一行。 */
-  sources: ReviewSource[]
-  at: string                           // 最近一次 report 时间
-  artifact: Artifact
-  previewRef: PreviewRef
-  criteria: RuleCriterion[]            // 机器验收条件
-  confirmations: HumanCriterion[]      // 需人确认的条件
-  parentAccepted?: { by: ActorRef; at: string } // 子交付被父 worker 接受；不等于人确认
-  humanAccepted?: { by: ActorRef; at: string; reviewRevision: string } // 最终聚合被批准
 }
 
 interface TaskSourceView {
@@ -695,7 +695,7 @@ interface TaskView {
   form: 'tracked' | 'lightweight'      // 数据里 form 缺省按 tracked
   categoryId?: string
   status: ActivityStatus
-  terminal?: 'dropped' | 'stopped' // 结束原因；status 仍是 done，不能靠 idle 表达（cancelled 只属于 Subtask）
+  terminal?: 'dropped' | 'stopped' // dropped 的 status=done；stopped 沿用现有 activityStatusOf=failed。terminal 只用于展示/计数，不能靠 idle 表达（cancelled 只属于 Subtask）
   pendingEnd?: PendingEnd              // PR/线程已关闭但子任务未结束时的挂起结束
   attention?: boolean
   plan?: PlanRef                       // 计划标签，不再当层级
@@ -854,7 +854,7 @@ interface ExecutionUnitView {
 
 `Assignment.report.review` 仍然只描述**一次** Assignment 的交付；任务树需要的是 **Ticket 级聚合**。增加 kernel 级只读聚合 `ReviewAggregate`（app 的 `TaskReviewView` 是它的序列化；不是新存储，不改变现有 `Review` 契约）：
 
-1. **收集**：父 Ticket 最新 Assignment report 的 `review` + 每个 `Subtask.resolution.kind='accepted'` 且 `acceptedReportAt === report.at` 的 `Subtask.report.review`。`return_subtask`（清空 resolution）/`cancelled`/`failed`/新报告使旧接受失效，不进入聚合。
+1. **收集**：父 Ticket 最新 Assignment report 的 `review` + 每个 `Subtask.resolution.kind='accepted'` 且 `acceptedReportAt === report.at` 的 `Subtask.report.review`。`return_subtask`（清空 resolution）/`cancelled`/`failed` 不进入聚合；接受前的新报告使旧 accepted 失效，接受后的迟到报告被拒绝。
 2. **交付去重**：按 `DeliverableSummary.key = artifact.kind:artifact.ref:artifact.revision` 合并；同一 revision 的父子交付只保留一行，`sources` 记录 `{kind:'ticket',assignmentId}` 与 `{kind:'subtask',subtaskId}`。这样“父合并后最终交付只出现一次”有可执行键，不靠 UI 去重。
 3. **确认聚合**：每个来源的 `Review.confirmations` 保留为 `ReviewConfirmationView`，`ref` 用稳定下标（`ticket:<assignmentId>:<i>` / `subtask:<subtaskId>:<i>`），并带 `source`/`criterion`；人能看到每条确认来自哪个子交付。投影不把 `HumanCriterion` 改写成父 worker 的声明。
 4. **评审指纹**：`reviewRevision = sha256` over 排序后的 `(sourceKind, sourceId, report.at, artifact.key, criteria, confirmations)`。任何子报告、父报告或验收条件变化都会换 revision。
@@ -872,7 +872,7 @@ interface ExecutionUnitView {
 
 UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只读 `ticket.review` 的最新 Assignment；`TaskView.review` 是详情字段，列表只显示去重后的 `deliverables` 摘要。`GET tickets/:id` 的 review 视图同步改为聚合，避免两套验收口径。
 
-测试：子任务有 `HumanCriterion` → 父接受后仍出现在最终 review；人批准的 `reviewRevision` 覆盖该条；子任务再次报告后旧 revision 失效，必须重新批准；父子同一 artifact/revision 只出现一行；未结束子任务不能批准；父 worker 不能通过 `accept_subtask` 清掉人的确认。
+测试：子任务有 `HumanCriterion` → 父接受后仍出现在最终 review；人批准的 `reviewRevision` 覆盖该条；接受前子任务新报告使旧 revision 失效，必须重新批准；接受后报告被拒绝；父子同一 artifact/revision 只出现一行；未结束子任务不能批准；父 worker 不能通过 `accept_subtask` 清掉人的确认。
 
 ## 7. UI 形态与状态
 
@@ -949,7 +949,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 - **时间线**：沿用现有“每个类别一条时间轴、每个任务一条泳道”的画法；Ticket 泳道内显示子任务条与父 worker 的合并点，表达父子并行与汇合；没有依赖数据就不画依赖箭头。现有 `graphOf` 可按类别复用，但要把“里程碑”换成“类别”。
 - **类别管理**：分组行内联改名；多选任务后“移动到/合并到”；类别菜单“拆分/归档/恢复自动”；“已归档”开关显示归档类别与其任务。最近一次编辑可撤销。
 - **审查 Ticket 行**：`kind='review'` 的任务用“审查”标签，按 `reviewedTicketId` 缩进到被审 Ticket 下；被审 Ticket 不在当前类别时单独成行。类别计数把 review Ticket 计入 `tasks`，并另显示 `counts.reviews`；不要把审查关系塞进 `progress` 数字。
-- **结束原因**：dropped/cancelled/stopped 行显示“已放弃/已取消/已停止”，状态点仍按 done/terminal 表达，不能显示成 idle/进行中；`pendingEnd` 行显示“PR 已合并，N 个子任务待处置”。
+- **结束原因**：Ticket 的 dropped 行显示“已放弃”（done+terminal），stopped 行显示“已停止”（failed+terminal）；子任务的 cancelled 用 done+terminal 显示“已取消”。状态点不能显示成 idle/进行中；`pendingEnd` 行显示“PR 已合并，N 个子任务待处置”。
 - **建议**：未归类/批量归纳产生建议时，显示在“建议”区；采用后建类并写入归属，忽略则 30 天内不再提示。
 - **任务详情**：可由现有工单页扩展，也可新开 `?task=` 路由；建议先扩展工单页（见 7.4），避免第二套详情。
 
@@ -1122,7 +1122,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 - **回滚（类别）**：关闭 `taskView.categories` 后刷新回到旧计划树；重新打开后类别/归属仍在；读取失败不覆盖文档。
 - **回滚（子任务）**：schema 15 是前向迁移，旧二进制不能打开；验证 down migration 或备份恢复后，子任务表与 worker 状态一致，无孤儿子任务继续写。
 - **交付物**：有 `report.review` 的任务，详情首屏直接显示 artifact/revision/验收状态；没有时显示“暂无交付”，不显示空卡片。
-- **最终审查聚合**：父 + 已接受子任务的交付按 `artifact.kind:ref:revision` 去重；子任务有 `HumanCriterion` 时，父 `accept_subtask` 后仍出现在 `TaskReviewView`，人必须按当前 `reviewRevision` 批准；子任务再次报告后旧 revision 失效（`409 reviewStale`），旧批准不能复用。
+- **最终审查聚合**：父 + 已接受子任务的交付按 `artifact.kind:ref:revision` 去重；子任务有 `HumanCriterion` 时，父 `accept_subtask` 后仍出现在 `TaskReviewView`，人必须按当前 `reviewRevision` 批准；接受前子任务新报告使旧 revision 失效（`409 reviewStale`），旧批准不能复用；接受后报告被拒绝。
 - **审查关系**：`kind='review'` 的 Ticket 带 `reviewedTicketId`，类别计数 `tasks` 包含它、`reviews` 单独可对账；树里挂在被审 Ticket 下，不混成普通任务。
 - **终态**：`dropped`/`cancelled` 子任务显示 `done` + `terminal`，不出现在“进行中”；`waiting` 子任务显示 `idle`/“等待父”，但 attention 与父状态仍按 `state` 计算，不能把 waiting 算 blocked。
 - **pendingEnd**：PR/线程已关闭但有未结束子任务时，Ticket 不写 `ended`，显示 `pendingEnd`；父恢复后处理并应用 pending，父不可恢复则一次 attention，不能永久挂起。
@@ -1151,7 +1151,7 @@ UI：Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只
 - 父状态投影：未结束子任务存在时为 `working`/`blocked`，绝不因父报告 `waiting` 显示 `idle`。
 - `Subtask.state` 映射：`waiting→idle`、`dropped→done+terminal`、`cancelled→done+terminal`，且任何测试/代码不得用 `SubtaskView.status` 计算 attention。
 - `attention`/`counts.attention` 对未结束 Ticket 的 person-stage `review/answer/delivery/blocked/failed` 和未结束子任务 `blocked/failed/orphaned` 为 true；已结束 Ticket 一律 false；`waiting` 子任务不进入 attention。
-- 最终 review：子任务带 `HumanCriterion` 时，父接受后确认仍在 `TaskReviewView`；批准必须带当前 `reviewRevision`；子任务新报告使旧 revision 失效并返回 `reviewStale`；父子同一 artifact/revision 只出现一行。
+- 最终 review：子任务带 `HumanCriterion` 时，父接受后确认仍在 `TaskReviewView`；批准必须带当前 `reviewRevision`；接受前子任务新报告使旧 revision 失效并返回 `reviewStale`；接受后报告被拒绝；父子同一 artifact/revision 只出现一行。
 - `pendingEnd`：PR 关闭 + 未结束子任务时 Ticket 不 ended、发 `end-gate` 唤醒父；pending.outcome 原样保留 `merged`/`closed`；父处置后按 pending 结束；父不可恢复时一次 attention，不永久挂起。
 - 审批先于/后于关闭：PR 在父 `ready` 前已合并时，审批后按 `followsDone.outcome` 结束（`merged`/`closed`），不等待不会再来的一次 close；PR 未合并时审批等待 close。
 - 人 stop/`dropped` 遇到已有 `endPending`：清除 pending，分别以 `stopped`/`dropped` 结束，不能改写成 `merged`，也不能留下 ended+pending。
