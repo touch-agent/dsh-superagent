@@ -14,6 +14,22 @@ const shape = (changes: readonly DocChange[]) => changes.map(change => [change.k
 const inline = (segments: readonly DocInline[] = []): string => segments
   .map(segment => segment.kind === 'removed' ? `[-${segment.text}-]` : segment.kind === 'added' ? `{+${segment.text}+}` : segment.text)
   .join('')
+/** A ZIP whose one central-directory entry declares `size`, enough to test the bound without the content. */
+const declaredArchive = (size: number): Uint8Array => {
+  const name = Buffer.from('word/document.xml')
+  const central = Buffer.alloc(46 + name.length)
+  central.writeUInt32LE(0x02014b50, 0)
+  central.writeUInt16LE(8, 10)
+  central.writeUInt32LE(size, 24)
+  central.writeUInt16LE(name.length, 28)
+  name.copy(central, 46)
+  const eocd = Buffer.alloc(22)
+  eocd.writeUInt32LE(0x06054b50, 0)
+  eocd.writeUInt16LE(1, 8)
+  eocd.writeUInt16LE(1, 10)
+  eocd.writeUInt32LE(central.length, 12)
+  return new Uint8Array(Buffer.concat([central, eocd]))
+}
 
 describe('the doc previewer', () => {
   it('reads Markdown headings, prose, lists, quotes, tables and code as blocks', () => {
@@ -86,6 +102,18 @@ describe('the doc previewer', () => {
     expect(inline(preview.changes[0]!.inline)).toBe('The release train leaves on [-Thursday-]{+Friday+}.')
   })
 
+  it('reads an outline level and a style as headings, and leaves outline level 9 as body text', () => {
+    expect(parseDocx(bytes('outline.docx'))).toEqual([
+      { kind: 'paragraph', text: 'Body outline text' },
+      { kind: 'heading', level: 2, text: 'Second outline heading' },
+      { kind: 'heading', level: 2, text: 'Second styled heading' },
+    ])
+  })
+
+  it('keeps an unknown entity as text instead of reading an inherited object member', () => {
+    expect(parseDocx(bytes('entities.docx'))).toEqual([{ kind: 'paragraph', text: 'A & B &constructor; C < D' }])
+  })
+
   it('degrades an unreadable document to a line diff with the original link and the parse code', () => {
     const preview = previewDoc({ before: { format: 'docx', content: bytes('broken-before.docx') },
       after: { format: 'docx', content: bytes('broken-after.docx') }, link })
@@ -137,7 +165,7 @@ describe('the doc previewer', () => {
     expect(parseDocx(bytes('textbox.docx'))).toEqual([{ kind: 'paragraph', text: 'Before the box after it.' }])
   })
 
-  it('names a missing document entry, a document without a body and an unclosed document', () => {
+  it('names a missing document entry, a document without a body, an unclosed document and an unclosed paragraph', () => {
     const failure = (name: string): unknown => {
       try { parseDocx(bytes(name)) } catch (error) { return error }
       throw new Error(`${name} was expected to fail`)
@@ -145,10 +173,56 @@ describe('the doc previewer', () => {
     expect(failure('no-document.docx')).toMatchObject({ name: 'DocParseError', code: 'missingDocument' })
     expect(failure('no-body.docx')).toMatchObject({ name: 'DocParseError', code: 'invalidDocument' })
     expect(failure('malformed.docx')).toMatchObject({ name: 'DocParseError', code: 'invalidDocument' })
+    expect(failure('unbalanced.docx')).toMatchObject({ name: 'DocParseError', code: 'invalidDocument' })
     const preview = previewDoc({ before: { format: 'docx', content: bytes('no-document.docx') },
       after: { format: 'docx', content: bytes('notes-after.docx') }, link })
     expect(preview.degraded).toMatchObject({ code: 'missingDocument', side: 'before' })
     expect(preview.kind).toBe('text/diff')
+    // The side that parsed contributes its paragraph text, not the ZIP bytes it arrived as.
+    expect(preview.changes.some(change => change.after?.text === 'Release notes')).toBe(true)
+    const reversed = previewDoc({ before: { format: 'docx', content: bytes('notes-before.docx') },
+      after: { format: 'docx', content: bytes('no-document.docx') }, link })
+    expect(reversed.degraded).toMatchObject({ code: 'missingDocument', side: 'after' })
+    expect(reversed.changes.some(change => change.before?.text === 'Release notes')).toBe(true)
+  })
+
+  it('pairs a duplicate paragraph with the nearest copy', () => {
+    const block = (text: string) => ({ kind: 'paragraph' as const, text })
+    expect(diffDocBlocks(['A', 'B', 'A', 'C'].map(block), ['A', 'C', 'B', 'A'].map(block))).toEqual([
+      { kind: 'moved', before: { index: 3, kind: 'paragraph', text: 'C' }, after: { index: 1, kind: 'paragraph', text: 'C' } },
+    ])
+  })
+
+  it('leaves the inline comparison out of a paragraph too large to tokenize', () => {
+    const long = 'word '.repeat(5_000)
+    const preview = previewDoc({ before: { format: 'markdown', content: `${long}end` },
+      after: { format: 'markdown', content: `${long}finish` }, link })
+    expect(preview.changes).toHaveLength(1)
+    expect(preview.changes[0]?.kind).toBe('changed')
+    expect(preview.changes[0]?.inline).toBeUndefined()
+  })
+
+  it('bounds the similarity work a very large rewrite may spend', () => {
+    const before = Array.from({ length: 400 }, (_, index) => ({ kind: 'paragraph' as const, text: `Paragraph ${index} before` }))
+    const after = Array.from({ length: 400 }, (_, index) => ({ kind: 'paragraph' as const, text: `Paragraph ${index} after` }))
+    const started = Date.now()
+    const changes = diffDocBlocks(before, after)
+    expect(Date.now() - started).toBeLessThan(2_000)
+    // A paired edit turns two changes into one, so the list is smaller than 800 and never below 400.
+    expect(changes.length).toBeGreaterThanOrEqual(400)
+    expect(changes.length).toBeLessThan(800)
+    // The first removals pair with their edits, then the comparison budget runs out and the rest stay removed and added.
+    expect(changes.filter(change => change.kind === 'changed').length).toBeGreaterThan(0)
+    expect(changes.filter(change => change.kind === 'changed').length).toBeLessThan(400)
+    const removed = changes.filter(change => change.kind === 'removed').length
+    expect(removed).toBeGreaterThan(0)
+    expect(changes.filter(change => change.kind === 'added').length).toBe(removed)
+  })
+
+  it('refuses an entry whose declared size is beyond the preview bound', () => {
+    let failure: unknown
+    try { parseDocx(declaredArchive(33 * 1024 * 1024)) } catch (error) { failure = error }
+    expect(failure).toMatchObject({ name: 'DocParseError', code: 'tooLarge' })
   })
 
   it('refuses a caller error instead of degrading it', () => {

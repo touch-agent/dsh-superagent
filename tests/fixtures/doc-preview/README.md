@@ -10,7 +10,8 @@ updating the expected result with it.
 | `broken-before.docx`, `broken-after.docx` | Text files with a `.docx` name; the previewer cannot read them as a ZIP and degrades to a line diff of the decoded text |
 | `stored.docx` | A valid package whose `word/document.xml` is ZIP-stored rather than deflated |
 | `textbox.docx` | A paragraph with an embedded text box; the box is not read and the paragraph around it survives |
-| `no-document.docx`, `no-body.docx`, `malformed.docx` | A package without `word/document.xml`, a document with no body, and a document with an unclosed body; the structured parse failures |
+| `outline.docx`, `entities.docx` | Outline level 9 as body text and a style heading, and Word entities including an unknown one |
+| `no-document.docx`, `no-body.docx`, `malformed.docx`, `unbalanced.docx` | A package without `word/document.xml`, a document with no body, an unclosed body and an unclosed paragraph; the structured parse failures |
 
 The Word files were written by Python's `zipfile` with the minimal package parts a `.docx` needs
 (`[Content_Types].xml`, `_rels/.rels` and `word/document.xml`). They are committed as binaries so the parser is tested

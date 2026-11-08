@@ -308,7 +308,7 @@ graph LR
 - **交付**：`packages/dsh/src/app/preview/doc.ts`：解析 docx/markdown 的段落 diff，产出结构化 hint（增/删/改/移动）。
 - **验收**：固定 fixture 三份文档，diff 结果稳定；`tests/preview-doc.spec.ts`。
 - **回退**：解析失败降级为通用文本 diff + 原文链接（方案 D4）。
-- **状态**：实现完成（2026-11-08，PR #22 待审查合并）。`packages/dsh/src/app/preview/doc.ts` 把 Markdown 与 Word `.docx` 解析为段落块，按 LCS 对齐产出增/删/改/移动；改动的段落附带 token 级 inline redline，标题、列表、引用、代码与表格保留块类型。解析失败（非 ZIP、缺 `word/document.xml`、XML 损坏、过大）降级为 `text/diff`：对调用方给的纯文本或可解码字节做行 diff，保留原文链接与解析错误码及失败侧（D4）。`tests/preview-doc.spec.ts` 用三组固定 fixture（Markdown、真实 deflate 的 `.docx`、伪装成 `.docx` 的文本）断言精确变更列表、summary 与 inline redline。预览器注册表与 review 页仍属 T3-07。
+- **状态**：实现完成（2026-11-08，PR #22 待审查合并）。`packages/dsh/src/app/preview/doc.ts` 把 Markdown 与 Word `.docx` 解析为段落块，按 LCS 对齐产出增/删/改/移动；改动的段落附带 token 级 inline redline。Markdown 的标题、列表、引用、代码与表格保留块类型；docx 的标题、列表保留块类型，表格摊平为单元格段落，文本框不读取但保留其所在段落。解析失败（非 ZIP、缺 `word/document.xml`、文档或段落未闭合、过大）降级为 `text/diff`：对调用方给的纯文本、可解码字节或另一侧已解析的段落文本做行 diff，保留原文链接与解析错误码及失败侧（D4）。`tests/preview-doc.spec.ts` 用三组固定对照 fixture（Markdown、真实 deflate 的 `.docx`、伪装成 `.docx` 的文本）断言精确变更列表、summary 与 inline redline，另有 ZIP-stored、文本框、大纲、实体与结构损坏的包 fixture。预览器注册表与 review 页仍属 T3-07。
 
 ### T3-03 sheet previewer · Runtime · 6 人日
 

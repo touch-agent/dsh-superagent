@@ -123,10 +123,22 @@ export interface DocPreview {
 const MAX_ALIGN_CELLS = 8_000_000
 /** The token cells the inline comparison may fill before it is left out of a changed paragraph. */
 const MAX_INLINE_CELLS = 250_000
+/** The characters one changed paragraph may have before its inline comparison is left out. */
+const MAX_INLINE_CHARS = 8_000
+/** The tokens two changed paragraphs may have before their inline comparison is left out. */
+const MAX_INLINE_TOKENS = 4_000
 /** The most inline segments a changed paragraph keeps before the comparison is left out. */
 const MAX_INLINE_SEGMENTS = 400
+/** The similarity comparisons one run of removals and insertions may spend, so a huge rewrite cannot hang. */
+const MAX_PAIRING_COMPARISONS = 10_000
+/** The characters compared for similarity; longer paragraphs are sampled from both ends. */
+const MAX_SIMILARITY_CHARS = 4_000
 /** How alike two paragraphs must be for a removal and an insertion to be read as one changed paragraph. */
 const CHANGE_THRESHOLD = 0.5
+/** The paragraphs one document may have before it is too large to preview. */
+const MAX_PARAGRAPHS = 50_000
+/** The text boxes one document may have before the strip below is too expensive to run. */
+const MAX_TEXT_BOXES = 1_000
 /** The largest `word/document.xml` the previewer inflates, so one document cannot exhaust the process. */
 const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 /** The bytes decoded for a fallback line diff, so an unreadable binary cannot allocate without a bound. */
@@ -208,7 +220,9 @@ function xmlText(value: string): string {
     named: string | undefined) => {
     if (decimal) return codePoint(Number(decimal), whole)
     if (hex) return codePoint(Number.parseInt(hex, 16), whole)
-    return XML_ENTITIES[named!.toLowerCase()] ?? whole
+    const name = named!.toLowerCase()
+    // Own keys only: `&constructor;` must stay text, not become Object's inherited value.
+    return Object.hasOwn(XML_ENTITIES, name) ? XML_ENTITIES[name]! : whole
   })
 }
 
@@ -230,7 +244,10 @@ function headingLevel(paragraph: string): number {
     if (heading) return Number(heading[1])
   }
   const outline = /<(?:\w+:)?outlineLvl\b[^>]*\b(?:\w+:)?val="([0-9])"/.exec(paragraph)?.[1]
-  return outline === undefined ? 0 : Number(outline) + 1
+  if (outline === undefined) return 0
+  const level = Number(outline)
+  // 0 to 8 are outline levels 1 to 9; 9 means body text, and the UI has no heading above 6.
+  return level <= 8 ? Math.min(level + 1, 6) : 0
 }
 
 /** Parse the text and paragraph properties of one `w:p` element. */
@@ -262,7 +279,43 @@ export function parseDocx(bytes: Uint8Array): DocBlock[] {
   const document = /<(?:\w+:)?document\b[^>]*>[\s\S]*<\/(?:\w+:)?document>/.test(xml)
   const body = /<(?:\w+:)?body\b[^>]*>[\s\S]*<\/(?:\w+:)?body>/.test(xml)
   if (!document || !body) throw new DocParseError('invalidDocument', 'the document has no body or is not closed')
-  const content = xml.replace(/<(?:\w+:)?txbxContent\b[^>]*>[\s\S]*?<\/(?:\w+:)?txbxContent>/g, '')
+  // Drop each text box by index, so a malformed one cannot make the strip scan to the end once per start.
+  const textBox = /<(?:\w+:)?txbxContent\b[^>]*>|<\/(?:\w+:)?txbxContent>/g
+  let content = ''
+  let cursor = 0
+  let boxes = 0
+  let textDepth = 0
+  let box: RegExpExecArray | null
+  while ((box = textBox.exec(xml))) {
+    if (box[0].endsWith('/>')) continue
+    if (box[0].startsWith('</')) {
+      if (textDepth === 0) throw new DocParseError('invalidDocument', 'a text box is not closed')
+      textDepth--
+      if (textDepth === 0) cursor = box.index + box[0].length
+      continue
+    }
+    if (++boxes > MAX_TEXT_BOXES) throw new DocParseError('tooLarge', 'the document has too many text boxes')
+    if (textDepth === 0) { content += xml.slice(cursor, box.index); cursor = box.index }
+    textDepth++
+  }
+  if (textDepth !== 0) throw new DocParseError('invalidDocument', 'a text box is not closed')
+  content += xml.slice(cursor)
+  // Paragraphs do not nest once text boxes are gone; checking that keeps the read below linear and bounded.
+  const tag = /<(?:\w+:)?p(?:\s[^>]*)?>|<\/(?:\w+:)?p>/g
+  let depth = 0
+  let paragraphs = 0
+  let match: RegExpExecArray | null
+  while ((match = tag.exec(content))) {
+    if (match[0].startsWith('</')) {
+      if (depth === 0) throw new DocParseError('invalidDocument', 'a paragraph is not closed')
+      depth--
+      continue
+    }
+    if (depth > 0) throw new DocParseError('invalidDocument', 'a paragraph contains another paragraph')
+    if (++paragraphs > MAX_PARAGRAPHS) throw new DocParseError('tooLarge', 'the document has too many paragraphs')
+    depth++
+  }
+  if (depth !== 0) throw new DocParseError('invalidDocument', 'a paragraph is not closed')
   const blocks: DocBlock[] = []
   for (const match of content.matchAll(/<(?:\w+:)?p(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?p>/g)) {
     const block = docxParagraph(match[1]!)
@@ -438,9 +491,15 @@ function markMoves(ops: readonly Op[], before: readonly DocBlock[], after: reado
 /** Dice similarity over character bigrams: enough to tell an edited paragraph from an unrelated one in any script. */
 function similarity(before: string, after: string): number {
   if (before === after) return 1
-  const left = Array.from(before)
-  const right = Array.from(after)
-  if (left.length < 2 || right.length < 2) return before === after ? 1 : 0
+  const sample = (text: string): string => text.length <= MAX_SIMILARITY_CHARS ? text
+    : text.slice(0, MAX_SIMILARITY_CHARS / 2) + text.slice(-MAX_SIMILARITY_CHARS / 2)
+  const leftText = sample(before)
+  const rightText = sample(after)
+  // A difference outside the sampled ends says nothing about similarity; do not pair on the sample alone.
+  if (leftText === rightText) return 0
+  const left = Array.from(leftText)
+  const right = Array.from(rightText)
+  if (left.length < 2 || right.length < 2) return 0
   const counts = new Map<string, number>()
   for (let index = 0; index < left.length - 1; index++) {
     const gram = left[index]! + left[index + 1]!
@@ -462,9 +521,11 @@ const INLINE_TOKEN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Sc
 /** Compare two changed paragraphs token by token, coalescing adjacent segments; undefined when too large or identical. */
 function inlineDiff(before: string, after: string): DocInline[] | undefined {
   if (before === after) return undefined
+  if (before.length > MAX_INLINE_CHARS || after.length > MAX_INLINE_CHARS) return undefined
   const left = before.match(INLINE_TOKEN) ?? []
   const right = after.match(INLINE_TOKEN) ?? []
   if (!left.length || !right.length) return undefined
+  if (left.length + right.length > MAX_INLINE_TOKENS) return undefined
   let start = 0
   while (start < left.length && start < right.length && left[start] === right[start]) start++
   let endLeft = left.length
@@ -530,13 +591,17 @@ function runChanges(run: readonly (DeleteOp | InsertOp)[], before: readonly DocB
   const insertions = run.filter((op): op is InsertOp => op.kind === 'insert')
   const paired = new Map<DeleteOp, InsertOp>()
   const used = new Set<InsertOp>()
+  let comparisons = 0
   for (const removal of removals) {
+    if (comparisons >= MAX_PAIRING_COMPARISONS) break
     let best: InsertOp | undefined
-    let score = CHANGE_THRESHOLD
+    let score = -1
     for (const insertion of insertions) {
       if (used.has(insertion)) continue
+      if (comparisons >= MAX_PAIRING_COMPARISONS) break
+      comparisons++
       const candidate = similarity(before[removal.before]!.text, after[insertion.after]!.text)
-      if (candidate > score) { score = candidate; best = insertion }
+      if (candidate >= CHANGE_THRESHOLD && candidate > score) { score = candidate; best = insertion }
     }
     if (best) { paired.set(removal, best); used.add(best) }
   }
@@ -556,7 +621,7 @@ function runChanges(run: readonly (DeleteOp | InsertOp)[], before: readonly DocB
   return changes
 }
 
-/** Diff two block lists into added, removed, changed and moved changes, in reading order. */
+/** Diff two block lists into added, removed, changed and moved changes, in the order the alignment reaches them. */
 export function diffDocBlocks(before: readonly DocBlock[], after: readonly DocBlock[]): DocChange[] {
   const ops = align(before, after)
   markMoves(ops, before, after)
@@ -662,8 +727,15 @@ export function previewDoc(input: DocPreviewInput): DocPreview {
 /** The D4 fallback: a line diff of both sides' best text, the original link and the coded parse failure. */
 function degradedPreview(before: DocSource, after: DocSource, link: string, side: 'before' | 'after',
   error: DocParseError): DocPreview {
-  const beforeBlocks = fallbackBlocks(before)
-  const afterBlocks = fallbackBlocks(after)
+  // The side that parsed contributes its paragraph text, not the ZIP bytes it happens to arrive as.
+  const readable = (source: DocSource): DocBlock[] => {
+    try { return parseSide(source) } catch (failure) {
+      if (failure instanceof DocParseError) return fallbackBlocks(source)
+      throw failure
+    }
+  }
+  const beforeBlocks = side === 'before' ? fallbackBlocks(before) : readable(before)
+  const afterBlocks = side === 'after' ? fallbackBlocks(after) : readable(after)
   const changes = diffDocBlocks(beforeBlocks, afterBlocks)
   return {
     kind: 'text/diff',
