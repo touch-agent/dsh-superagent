@@ -98,6 +98,18 @@ describe('the approval state machine', () => {
     expect(revoked).not.toHaveProperty('decidedBy')
   })
 
+  it('grants a lower level than the Action requested, never a higher one', () => {
+    // The Action was prepared as a `send`; approving it as requested keeps one record without a separate granted level.
+    expect(approve(requested(), decided())).not.toHaveProperty('grantedLevel')
+    expect(approve(requested(), { ...decided(), level: 'send' })).not.toHaveProperty('grantedLevel')
+    expect(approve(requested(), { ...decided(), level: 'draft' })).toMatchObject({ state: 'approved', grantedLevel: 'draft' })
+    expect(approve(requested(), { ...decided(), level: 'commit' })).toMatchObject({ state: 'approved', grantedLevel: 'commit' })
+    expect(() => approve(requested(), { ...decided(), level: 'spend' })).toThrow(/cannot grant spend/)
+    // A repeated approval keeps the first decision, including its granted level.
+    const approved = approve(requested(), { ...decided(), level: 'draft' })
+    expect(approve(approved, { ...decided('2026-11-07T10:20:00.000Z'), level: 'commit' })).toEqual(approved)
+  })
+
   it('refuses a decision before the request, an expiry that is not later, and an action that no longer matches its key', () => {
     expect(() => createApproval(request({ expiresAt: times.requestedAt }))).toThrow(/expire after it was requested/)
     expect(() => createApproval(request({ expiresAt: '2026-11-07T09:00:00.000Z' }))).toThrow(/expire after it was requested/)
@@ -127,9 +139,10 @@ describe('the approval repository', () => {
         expect(repo.approvals.get(one.id)).toEqual(one)
         expect(repo.approvals.byTicket('t1').map(approval => approval.id)).toEqual([one.id, two.id])
         expect(repo.approvals.pending().map(approval => approval.id)).toEqual([one.id, two.id, other.id])
-        const approved = approve(one, decided())
+        const approved = approve(one, { ...decided(), level: 'draft' })
         repo.approvals.save(approved)
         expect(repo.approvals.get(one.id)).toEqual(approved)
+        expect(repo.approvals.get(one.id)).toMatchObject({ grantedLevel: 'draft' })
         expect(repo.approvals.pending().map(approval => approval.id)).toEqual([two.id, other.id])
         // A repeated approval of the stored record keeps the first decision; it does not add another row.
         repo.approvals.save(approve(repo.approvals.get(one.id)!, { by: { source: 'feishu', id: 'ou_bob' }, at: '2026-11-07T12:00:00.000Z' }))

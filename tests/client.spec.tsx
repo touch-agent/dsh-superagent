@@ -46,7 +46,7 @@ const openMaster = async (container: HTMLElement) => {
 }
 const serve = () => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
   const path = new URL(url, 'http://127.0.0.1').pathname.replace('/orchestrator/api/', '')
-  if (path === 'overview') return Response.json({ problems: [], person: [], executor: { running: 0, queued: 0, maxWorkers: 3, idle: 0 }, flow: { triggers: 0, filtered: 0, judged: 0, accepted: 0, evaluating: 0 }, metrics: { window: { since: '', hours: 24 }, ttfa: { samples: 0, medianSeconds: null, p90Seconds: null }, duplicates: { sends: 0, repeated: 0 }, recovery: { interrupted: 0, recovered: 0, medianSeconds: null }, throughput: { decisions: 0, perHour: 0 } }, policyVersion: 'v' })
+  if (path === 'overview') return Response.json({ approvals: [], problems: [], person: [], executor: { running: 0, queued: 0, maxWorkers: 3, idle: 0 }, flow: { triggers: 0, filtered: 0, judged: 0, accepted: 0, evaluating: 0 }, metrics: { window: { since: '', hours: 24 }, ttfa: { samples: 0, medianSeconds: null, p90Seconds: null }, duplicates: { sends: 0, repeated: 0 }, recovery: { interrupted: 0, recovered: 0, medianSeconds: null }, throughput: { decisions: 0, perHour: 0 }, approval: { samples: 0, medianSeconds: null, p90Seconds: null } }, policyVersion: 'v' })
   if (path === 'tickets') return Response.json({ items: [], total: 0, offset: 0, limit: 20 })
   if (path === 'activity') {
     const level = new URL(url, 'http://127.0.0.1').searchParams.get('level')

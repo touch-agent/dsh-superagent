@@ -42,6 +42,9 @@ export interface Api {
   'GET tickets/:id': { response: TicketPageView }
   'POST tickets/:id/retry': { response: { retried: true } }
   'POST tickets/:id/stop': { response: { stopped: true } }
+  'POST approvals/:id/approve': { body: { level?: ApprovalRow['action']['level'] };
+    response: { state: 'approved'; level: ApprovalRow['action']['level'] } }
+  'POST approvals/:id/deny': { response: { state: 'denied' } }
   'POST executor/pause': { body: { paused: boolean }; response: { paused: boolean } }
   'PUT settings/:block': { body: { value: unknown; revision: number }; response: { revision: number; restarting: boolean } }
   'GET policy/history': { response: HistoryView }
@@ -58,3 +61,5 @@ type Params<P> = P extends `${string}:${infer Name}/${infer Rest}` ? Record<Name
 export type RouteParams<K extends keyof Api> = Params<Path<K>>
 export type ApiRequest<K extends keyof Api> = RouteParams<K> & Omit<Api[K], 'response'>
 export type ApiResponse<K extends keyof Api> = Api[K]['response']
+/** One Approval waiting for a person, as `GET overview` returns it. */
+export type ApprovalRow = ApiResponse<'GET overview'>['approvals'][number]

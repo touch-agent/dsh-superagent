@@ -1,10 +1,11 @@
-/** Overview view: active system problems, tickets awaiting human action, executor load, and 24-hour trigger flow. */
+/** Overview view: approvals waiting for a person, active system problems, tickets awaiting human action, executor load, and 24-hour trigger flow. */
 import { reasonText, ticketStage, type Decision, type Thread } from '@superagent/kernel'
 import type { Health } from '../../sources/host.ts'
 import type { SetupProblem } from '../../setup.ts'
 import { anyoneAllowed } from '../../policy.ts'
 import { metrics } from '../metrics.ts'
 import type { Store } from '../store.ts'
+import { approvalQueue } from './approvals.ts'
 import { awaitingEval, dayAgo, newestFirst, ownersOf, snapshot, threadSummary, type ViewHost } from './records.ts'
 import { sourceHealth, type HealthMap } from './sources.ts'
 import { ticketRow, type ExecutorLoad } from './tickets.ts'
@@ -70,6 +71,7 @@ export function overview(host: ViewHost, health: HealthMap, policyVersionValue: 
   const received = stats.reduce((sum, item) => sum + item.received, 0), filtered = stats.reduce((sum, item) => sum + item.filtered, 0)
   const judgement = store.read.flow(since)
   return {
+    approvals: approvalQueue(store),
     problems,
     person: open.filter(ticket => ticketStage(ticket).stage === 'person').map(ticket => ticketRow(view, ticket)),
     executor: { ...load, maxWorkers: settings.executor.maxWorkers, idle: open.filter(ticket => ticketStage(ticket).stage === 'idle').length },

@@ -177,6 +177,7 @@ Agents may rely on these routes and fields. The other routes in `packages/dsh/sr
 | `POST policy-sync/<source id>` | Syncs that Source's allowed list now: `policy`, the Source's part as saved |
 | `GET prompts`, `PUT prompts` with `{"config", "baseRevision"}` | Reads the prompt configuration: `current`, with its `revision` and `config`, `defaults`, `sections`, the team sections in the order Sessions read them, `skillName`, the pattern of a team skill's name, `builtin`, the names a team skill cannot take, and `skillPrefix`, which Sessions load a skill's name under. Or saves it: the new `revision` |
 | `POST tickets/<id>/retry`, `POST tickets/<id>/stop` | Retries or stops a Ticket, as the panel does |
+| `POST approvals/<id>/approve` with `{"level": "draft"}` or `{}`, and `POST approvals/<id>/deny` | Records the panel's decision on one requested Approval, as the panel does. The level is optional and may only lower the requested Action's level; the answer is `state` and, for an approval, the granted `level` |
 
 Health entries are grouped by responsibility:
 

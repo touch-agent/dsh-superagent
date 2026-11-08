@@ -11,13 +11,14 @@ import { PromptConflict, SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, b
 import { policyVersion } from '../policy.ts'
 import { SettingsConflict, type Settings } from './settings.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
-import { UserError, type EngineForPeople, type Ticket } from '@superagent/kernel'
+import { ACTION_LEVELS, UserError, type EngineForPeople, type Ticket } from '@superagent/kernel'
 import type { Deployment, Machine } from '../deployment.ts'
 import type { DshExecutor } from '../executor/dsh.ts'
 import type { Health } from '../sources/host.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import type { Sessions } from './sessions.ts'
 import { metrics } from './metrics.ts'
+import { decideApproval } from './approvals.ts'
 import type { Store } from './store.ts'
 import type { TextCache } from './cache.ts'
 import type { LinkTarget, ViewHost } from './views/records.ts'
@@ -152,6 +153,7 @@ const SourceBlock = z.templateLiteral(['source:', z.string().regex(/^[a-z][a-z0-
 const SettingsBlockSchema = z.union([z.enum(['policy', 'eval', 'executor']), SourceBlock])
 const SaveRequest = z.object({ value: z.unknown(), revision: z.number().int().nonnegative() })
 const ActivityQuery = z.object({ after: offset, limit: limit(50, 200), level: z.enum(['quiet', 'feed', 'notice']).optional().catch(undefined) })
+const ApprovalDecision = z.object({ level: z.enum(ACTION_LEVELS).optional() })
 
 function routes(runtime: HttpHost): Routes {
   const { store } = runtime
@@ -203,6 +205,17 @@ function routes(runtime: HttpHost): Routes {
     'GET tickets/:id': ({ params }) => ticketPage(runtime, params.id),
     'POST tickets/:id/retry': ({ params }) => { const id = ticket(params.id); runtime.engine.retryTicket(id); return { retried: true } },
     'POST tickets/:id/stop': ({ params }) => { const id = ticket(params.id); runtime.engine.stopTicket(id); return { stopped: true } },
+    'POST approvals/:id/approve': async ({ params, body }) => {
+      const { level } = ApprovalDecision.parse(await body())
+      const approval = decideApproval(store, params.id, 'approved', new Date().toISOString(), level)
+      if (!approval) throw new RouteError(404, 'Approval not found')
+      return { state: 'approved' as const, level: approval.grantedLevel ?? approval.action.level }
+    },
+    'POST approvals/:id/deny': ({ params }) => {
+      const approval = decideApproval(store, params.id, 'denied', new Date().toISOString())
+      if (!approval) throw new RouteError(404, 'Approval not found')
+      return { state: 'denied' as const }
+    },
     'POST executor/pause': async ({ body }) => runtime.settings.pause(z.object({ paused: z.boolean() }).parse(await body()).paused, 'panel'),
     'PUT settings/:block': async ({ params, body }) => {
       const block = SettingsBlockSchema.parse(params.block)

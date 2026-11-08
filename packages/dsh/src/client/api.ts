@@ -130,6 +130,7 @@ export type TriggerTraceView = ApiResponse<'GET triggers/:id/trace'>
 export type TriggerRow = ThreadPageView['timeline'][number]
 export type DecisionRow = ApiResponse<'GET decisions'>['items'][number]
 export type Problem = ApiResponse<'GET overview'>['problems'][number]
+export type ApprovalRow = ApiResponse<'GET overview'>['approvals'][number]
 export type DroppedReply = SourceStatusRow['dropped'][number]
 export type SearchView = ApiResponse<'GET search'>
 export type TicketSummary = SearchView['tickets'][number]

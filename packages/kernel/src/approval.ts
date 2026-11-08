@@ -1,5 +1,5 @@
 /** Approvals: a person's explicit consent to one Action, and the state machine that keeps the record auditable. */
-import { actionKey, isActionLevel, type Action } from './action.ts'
+import { actionKey, isActionLevel, withinActionLevel, type Action, type ActionLevel } from './action.ts'
 import { UserError } from './errors.ts'
 import { key } from './ids.ts'
 import { isoTime, type ActorRef } from './model.ts'
@@ -30,6 +30,8 @@ export interface Approval {
   decidedBy?: ActorRef
   /** Why it was approved, denied or revoked, in the caller's words. */
   reason?: string
+  /** The lower level a person granted instead of the Action's, when they approved less than was requested. */
+  grantedLevel?: ActionLevel
 }
 
 /** What a caller supplies to ask for an Approval; its id is derived from the Ticket and the Action's idempotency key. */
@@ -41,11 +43,13 @@ export interface ApprovalRequest {
   requestedBy?: ActorRef
 }
 
-/** A person's decision on an Approval: who decided, when, and optionally why. */
+/** A person's decision on an Approval: who decided, when, optionally why, and the lower level they grant instead. */
 export interface ApprovalDecision {
   by: ActorRef
   at: string
   reason?: string
+  /** A level no higher than the requested Action's, to grant instead of it; kept as `grantedLevel` when lower. */
+  level?: ActionLevel
 }
 
 /** A withdrawal before a decision, by whoever no longer needs the action; `by` is optional for an automatic withdrawal. */
@@ -128,8 +132,24 @@ function decide(approval: Approval, state: 'approved' | 'denied', decision: Appr
   return { ...approval, state, decidedAt: at, decidedBy: by, ...(decision.reason ? { reason: decision.reason } : {}) }
 }
 
-/** Approve the Action. Approving an already approved Approval returns it unchanged; any other final state refuses the change. */
-export const approve = (approval: Approval, decision: ApprovalDecision): Approval => decide(approval, 'approved', decision)
+/** The level to record for a grant, or `undefined` when the person approves the Action at the level requested. */
+function grantedLevel(approval: Approval, level: ActionLevel | undefined): ActionLevel | undefined {
+  if (level === undefined) return undefined
+  if (!isActionLevel(level)) throw new TypeError(`Unknown action level: ${String(level)}`)
+  if (!withinActionLevel(level, approval.action.level)) throw new UserError('approvalLevelExceeded', { level, max: approval.action.level })
+  return level === approval.action.level ? undefined : level
+}
+
+/**
+ * Approve the Action, optionally at a lower level than the one requested: a person may grant `draft` for an Action
+ * prepared as `send`, and the record keeps that choice as `grantedLevel`. A higher level is refused. Approving an already
+ * approved Approval returns it unchanged; any other final state refuses the change.
+ */
+export function approve(approval: Approval, decision: ApprovalDecision): Approval {
+  const level = grantedLevel(approval, decision.level)
+  const next = decide(approval, 'approved', decision)
+  return next === approval || level === undefined ? next : { ...next, grantedLevel: level }
+}
 
 /** Deny the Action. Denying an already denied Approval returns it unchanged; any other final state refuses the change. */
 export const deny = (approval: Approval, decision: ApprovalDecision): Approval => decide(approval, 'denied', decision)

@@ -16,12 +16,16 @@ The tabs follow the workflow: **Overview**, **Source**, **Trigger**, **Eval**, *
 
 | Tab | Shows |
 | --- | --- |
-| Overview | Tickets needing action, system problems, activity counts and health figures for the last 24 hours, and Executor load. Each block links to its detailed page |
+| Overview | Approvals waiting for a person, Tickets needing action, system problems, activity counts and health figures for the last 24 hours, and Executor load. Each block links to its detailed page |
 | Source | Source state, setup problems and non-zero counts. Filtered Triggers and dropped messages cover the same 24-hour window as Overview |
 | Trigger | Threads filtered by Subscribed, Evaluating, New Triggers in 24 h, or All Threads. Each Thread shows its Triggers newest first, Decisions and Subscriptions |
 | Eval | Decisions with their reason and matched rules |
 | Execution | Executor state, Pause processing, and Tickets filtered by Open, Pending, Working, Waiting for a Trigger or Ended. Ticket details show actions, authorization, waiting Inputs, Subscriptions and Assignments |
 | Settings | Sources, Eval, Execution, Prompts and Deployment. Each group includes its save history |
+
+### Approvals
+
+An Action can wait for a person before it runs. Overview opens with **Waiting for my approval** when any Approval is still decidable: one row per request, in the order requested, showing its Ticket, Action and object, the consequence of the requested level, and when it expires. **Approve** runs the Action at the requested level; choosing a lower level in the selector grants only that smaller action. **Deny** refuses it. The panel records itself as the decider, and the wait from request to decision feeds the approval figure below. The section takes no space when the queue is empty, and a request past its expiry is not shown.
 
 ### Reading individual records
 
@@ -62,7 +66,7 @@ Captured on DSH `0.2.1-rc.5`, same 1440×900 viewport and light theme. For the e
 
 ### Health figures
 
-Overview ends with four read-only figures, each derived from the Store: the time from a Trigger to the first Decision about it (median and p90), outbound messages that repeated the same words to one conversation for one ticket, how long work stayed stalled after a restart (median), and judgements per hour. A figure with no samples reads `—` rather than `0`, so an empty Store never looks healthy. `GET metrics` returns the same figures as JSON.
+Overview ends with five read-only figures, each derived from the Store: the time from a Trigger to the first Decision about it (median and p90), outbound messages that repeated the same words to one conversation for one ticket, how long work stayed stalled after a restart (median), judgements per hour, and how long approvals waited from request to decision (median and p90), counting approvals, denials and expiries but not withdrawals. A figure with no samples reads `—` rather than `0`, so an empty Store never looks healthy. `GET metrics` returns the same figures as JSON.
 
 ## Settings groups
 

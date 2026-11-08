@@ -335,7 +335,8 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/store.ts` | The Store, and `Receipt`, a message of the outbox |
 | `packages/dsh/src/app/store-read.ts` | `storeReads`: the Store's read queries for the views, the tools and the Sources' polls, which never write |
 | `packages/dsh/src/app/trace.ts` | `SqliteTraceSink`: the Engine's `TraceSink`, keeping each stage in the Store's `span` table and reading a trace back for the panel |
-| `packages/dsh/src/app/metrics.ts` | The health figures: time from a Trigger to its first Decision, repeated sends, restart recovery and judgements per hour, read from the Store for the panel and `GET metrics` |
+| `packages/dsh/src/app/metrics.ts` | The health figures: time from a Trigger to its first Decision, repeated sends, restart recovery, judgements per hour and approval latency, read from the Store for the panel and `GET metrics` |
+| `packages/dsh/src/app/approvals.ts` | `decideApproval`: records the panel's approval or denial of one requested Approval in one transaction, as the local panel actor |
 | `packages/dsh/src/app/migration.ts` | The schema migrations: one record-rewriting step from schema 10 to schema 11; schema 12 added only the `span` table, schema 13 only the `activity` table and schema 14 only the `approval` table |
 | `packages/dsh/src/app/effects.ts` | Effects |
 | `packages/dsh/src/app/versions.ts` | `Versions`: a record kept as numbered snapshots with a pointer to the current one, for the settings and the prompts |
@@ -359,15 +360,16 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/tools/tool.ts` | The `Tool` type, `readTool`, the `orchestrator_read` of both roles, and `AcknowledgementSchema` |
 | `packages/dsh/src/app/tools/main.ts` | The main Session's tools, including `orchestrator_dispatch` for work the person assigned in the conversation |
 | `packages/dsh/src/app/tools/executor.ts` | An Executor Session's tools |
-| `packages/dsh/src/app/http.ts` | The `/orchestrator/api` routes: the same-origin check, request limits and one status per kind of failure |
-| `packages/dsh/src/app/api.ts` | `Api`, every route with its parameters, query, body and response, and the filters of the lists; it imports only types, so the panel bundles it |
+| `packages/dsh/src/app/http.ts` | The `/orchestrator/api` routes, including approval and denial, the same-origin check, request limits and one status per kind of failure |
+| `packages/dsh/src/app/api.ts` | `Api`, every route with its parameters, query, body and response, including the optional lower level an approval grants, and the filters of the lists; it imports only types, so the panel bundles it |
 | `packages/dsh/src/app/views/text.ts` | The two forms of a view's text: `preview`, plain text on one line, and `markdown` without HTML; `plain` and `readable` |
 | `packages/dsh/src/app/views/records.ts` | The rows the views share: Triggers, Tickets, Threads, Decisions and Channel links, and `ownersOf`, the owners of follow-ups as one request reads them |
 | `packages/dsh/src/app/views/tickets.ts` | The Ticket lists by stage, a Ticket's page, the Mandate basis facts and the Executor's load |
 | `packages/dsh/src/app/views/threads.ts` | The Thread lists, a Thread's timeline, the search and the Decision list |
 | `packages/dsh/src/app/views/sources.ts` | The Source status: each Source instance's state, its last day's counts, and what it filtered and dropped in that day |
 | `packages/dsh/src/app/views/settings.ts` | The settings page's view: each block with its revision, each Source's settings with its kind's form, and the execution environment |
-| `packages/dsh/src/app/views/overview.ts` | The overview: Tickets that need a person, problems, the last day's flow and the Executor's load |
+| `packages/dsh/src/app/views/approvals.ts` | The approval queue: each requested Approval still decidable now, with its Ticket, Action, object, requested level and the levels a person may grant |
+| `packages/dsh/src/app/views/overview.ts` | The overview: Approvals waiting for a person, Tickets that need a person, problems, the last day's flow and the Executor's load |
 | `packages/dsh/src/app/views/trace.ts` | One Trigger's trace as a person reads it: the stages in the order they ran, where it stopped, and the gate's reason when it refused |
 | `packages/dsh/src/executor/dsh.ts` | The DshExecutor, `WorkerSlots`, `ticketExecution`, `inputMessage` and `mandateInstructions` |
 | `packages/dsh/src/executor/background.ts` | A worker's background work in DeepSeek Harness, the shell jobs its Session owns (`ctx.jobs`) and its subagents (`ctx.subagents`): `runningJobs`, `untilQuiet`, `killJobs`, `collectJobs`, `stopSubagents`, `stopBackground`, `until`, and `cancelled`, the workers whose turn a stop of their subagents cancelled |
@@ -471,16 +473,16 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/runtime.spec.ts` | The whole application on a simulated DeepSeek Harness host, through tools and HTTP |
 | `tests/tools.spec.ts` | The Sessions' tools: what `orchestrator_read` reads for each role, and the shapes and checks of the other main Session tools, including the one notice a ready report and its ending cost |
 | `tests/runtime-concurrency.spec.ts` | Work that overlaps: Triggers during a pass, Tickets that change during deliveries and launches |
-| `tests/http.spec.ts` | The same-origin and loopback checks, the status of each kind of failure, the body limit, path parameters and queries |
+| `tests/http.spec.ts` | The same-origin and loopback checks, the status of each kind of failure, the body limit, path parameters and queries, and the panel's approval decisions at the requested or a lower level |
 | `tests/settings.spec.ts` | Settings saves that race a model or account check, a Policy sync that a save outran, and the refusals of the pause, a sync and a block |
-| `tests/views.spec.ts` | What the management views derive from the Store, such as the Thread a dropped message belongs to, and the settings card and health entries a Source that supplies only a manifest produces |
+| `tests/views.spec.ts` | What the management views derive from the Store, such as the Thread a dropped message belongs to, the settings card and health entries a Source that supplies only a manifest produces, and the approvals queue leaving a due request out |
 | `tests/timeline.spec.ts` | A Thread's pages and a Trigger's neighbours by time and then id, with every received Trigger's time in one form |
 | `tests/migration.spec.ts` | The schema 10→11 record rewrite, the refusal of older schemas, and opening a database written before an additive table at the current schema |
 | `tests/trace-stages.spec.ts` | The stages the Engine records for one Trigger, in order: the whole journey of an accepted Trigger from intake to its first report, the stages a duplicate, an unheard Thread and a refused gate stop at, one row per happening, and that a Trigger still works when no sink is configured |
 | `tests/trace-view.spec.ts` | The panel's trace view: an unknown Trigger answers with an empty trace, the stages come back in order with their facts, and a refusal stops at the gate |
 | `tests/trace.spec.ts` | Trace and stage ids derived from their inputs, and the Store's `span` table: stages read back in recorded order, a repeated stage kept once, and a schema-11 database opened at the current schema with its Triggers and no spans |
 | `tests/activity.spec.ts` | The activity grader and its Store: levels per event, the one-notification budget for a Ticket's end, the level-aware incremental cursor, and records that survive reopen |
-| `tests/metrics.spec.ts` | The health figures: an empty Store reports no samples rather than zeros, each Trigger is measured once to its first Decision, the 24-hour window applies, repeated sends are counted, restart recovery spans the interrupted Assignment and the next, and throughput is per hour |
+| `tests/metrics.spec.ts` | The health figures: an empty Store reports no samples rather than zeros, each Trigger is measured once to its first Decision, the 24-hour window applies, repeated sends are counted, restart recovery spans the interrupted Assignment and the next, throughput is per hour, and approval latency leaves withdrawals out |
 | `tests/store.spec.ts` | Repositories and their working sets, in SQLite as in memory, the kv area, with every key of `KV` spelled only in `packages/dsh/src/kv.ts` and the migration, settings history and queries |
 | `tests/prompts.spec.ts` | Prompt validation, assembly and versions |
 | `tests/cards.spec.ts` | The rules the built-in text must state, file by file |
@@ -490,6 +492,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/client.spec.tsx`, `tests/navigation.spec.ts`, `tests/controls.spec.tsx` | The client plugin's registration, main-Session surfaces and slot guards, polling, Session navigation and route memory, the local controls, and the panel's imports, which have no cycle |
 | `tests/activity-feed.spec.ts` | The activity reader: first page and unread baseline, sequence dedupe and notice listeners, SSE failure to polling, and polling without `EventSource` |
 | `tests/panel-overview.spec.tsx`, `panel-source.spec.tsx`, `panel-trigger.spec.tsx`, `panel-eval.spec.tsx`, `panel-execution.spec.tsx` | Each page of the panel, against a fake management API answered by route; the Source card of a fixture that supplies only a manifest, including its sign-in, health entries and polling default |
+| `tests/panel-approval.spec.tsx` | The overview's approval queue: the action, object and consequence each row shows, a lower-level grant, deny, the quiet empty state and the latency figure |
 | `tests/panel-settings.spec.tsx`, `panel-prompts.spec.tsx`, `panel-deployment.spec.tsx`, `panel-panel.spec.tsx` | The settings groups, drafts and history, the prompts, the Deployment page, and the panel's search, glossary and route memory |
 | `tests/draft.spec.ts`, `tests/prompt-config.spec.ts`, `tests/markdown.spec.ts`, `tests/marks.spec.ts` | Draft states, merges and the save bar's line; the prompt configuration by section and the line diff; the Markdown subset and its links; the mark of every state the views classify |
 | `tests/locales.spec.ts`, `tests/styles.spec.ts` | The copy in both languages, the stylesheet |
