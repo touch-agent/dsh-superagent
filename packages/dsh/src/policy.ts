@@ -77,6 +77,38 @@ export const AdmissionRowSchema: z.ZodType<AdmissionRow> = z.object({ listedUnad
 export const AdmissionTableSchema = z.record(z.string(), AdmissionRowSchema)
 export const SourcePolicySchema = z.object({ allowed: z.array(AllowedSchema).default([]), admission: AdmissionTableSchema.default({}) }).catchall(z.unknown())
 export type SourcePolicy = z.infer<typeof SourcePolicySchema>
+/** A domain an Action's target may belong to: one or more labels, lower-cased for comparison. */
+export const DomainSchema = z.string().trim().toLowerCase().regex(
+  /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/,
+  'A domain name such as corp.example')
+const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'A local time as HH:MM')
+/** A local working-hours window: the whole days it covers and a start and end time in its own zone. */
+export const WorkHoursSchema = z.object({
+  /** Days of the week the window covers, 0 for Sunday through 6 for Saturday. */
+  days: z.array(z.number().int().min(0).max(6)).min(1).refine(days => new Set(days).size === days.length, 'Each day at most once'),
+  start: TimeOfDaySchema,
+  end: TimeOfDaySchema,
+  timeZone: z.string().trim().min(1).refine(zone => {
+    try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); return true } catch { return false }
+  }, 'An IANA time zone such as Asia/Shanghai'),
+}).strict().refine(window => window.end > window.start, { path: ['end'], message: 'The end must be after the start' })
+export type WorkHours = z.infer<typeof WorkHoursSchema>
+/** The internal-domain whitelist for one scope: targets whose domain matches, and when it applies. */
+export const AutoApproveRuleSchema = z.object({
+  /** Internal domains; a target domain matches one of them or any of its subdomains. Empty disables approval. */
+  domains: z.array(DomainSchema).default([]),
+  /** The local window in which the rule applies; omitted means any time. */
+  hours: WorkHoursSchema.optional(),
+}).strict()
+export type AutoApproveRule = z.infer<typeof AutoApproveRuleSchema>
+/** Auto-approval at the tenant level, and per Source overriding it, as TASK-PLAN T2-08 describes. */
+export const ApprovalPolicySchema = z.object({
+  /** The rule for every Source without one of its own. */
+  tenant: AutoApproveRuleSchema.optional(),
+  /** Per-Source rules; a Source's own rule replaces the tenant rule instead of adding to it. */
+  sources: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), AutoApproveRuleSchema).default({}),
+}).strict()
+export type ApprovalPolicy = z.infer<typeof ApprovalPolicySchema>
 export const PolicyConfigSchema = z.object({
   rules: z.array(RuleSchema).refine(rules => new Set(rules.map(rule => rule.id)).size === rules.length, 'Duplicate rule IDs').default(DEFAULT_RULES),
   /**
@@ -91,8 +123,14 @@ export const PolicyConfigSchema = z.object({
    * 30 seconds for mail-like actions, while IM tenants normally set 0 to avoid delaying replies.
    */
   undoWindowSeconds: z.number().int().min(LIMITS.undoWindowSeconds.min).max(LIMITS.undoWindowSeconds.max).default(30),
+  /**
+   * When an Approval may be decided by this Policy instead of a person: an Action whose target is on the internal-domain
+   * whitelist during the configured local working hours. Empty, the default, leaves every decision to a person.
+   */
+  approval: ApprovalPolicySchema.default(() => ApprovalPolicySchema.parse({})),
   sources: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), SourcePolicySchema).default({}),
 }).strict()
+export type PolicyConfig = z.infer<typeof PolicyConfigSchema>
 export const EvalConfigSchema = z.object({
   mode: z.enum(['off', 'observe', 'auto']).default('observe'),
   timeoutSeconds: z.number().int().min(LIMITS.evalTimeoutSeconds.min).max(LIMITS.evalTimeoutSeconds.max).default(120),

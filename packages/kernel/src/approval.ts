@@ -22,6 +22,11 @@ export interface Approval {
   requestedAt: string
   /** The moment the request stops being decidable; a decision at or after it is refused. */
   expiresAt: string
+  /**
+   * Where the Action reaches, when that is more specific than the object it acts on, such as a mail recipient or a
+   * document address. Auto-approval matches its domain against the Policy's internal-domain whitelist.
+   */
+  target?: string
   /** Who asked for the approval, when the caller recorded it; the Action already names the actor who would act. */
   requestedBy?: ActorRef
   /** When the Approval left `requested`; an expiry records `expiresAt`, when it stopped being decidable. */
@@ -40,6 +45,8 @@ export interface ApprovalRequest {
   action: Action
   requestedAt: string
   expiresAt: string
+  /** Where the Action reaches, when the caller knows a place more specific than the Action's object. */
+  target?: string
   requestedBy?: ActorRef
 }
 
@@ -110,9 +117,10 @@ export function createApproval(input: ApprovalRequest): Approval {
   const requestedAt = requireTime(input.requestedAt, 'The Approval request time')
   const expiresAt = requireTime(input.expiresAt, 'The Approval expiry')
   if (Date.parse(expiresAt) <= Date.parse(requestedAt)) throw new TypeError('An Approval must expire after it was requested')
+  const target = input.target === undefined ? undefined : requireText(input.target, 'The Approval target')
   const requestedBy = input.requestedBy === undefined ? undefined : requireActor(input.requestedBy, 'The Approval requester')
   return { id: approvalId(ticketId, action.idempotencyKey), ticketId, action, state: 'requested', requestedAt, expiresAt,
-    ...(requestedBy ? { requestedBy } : {}) }
+    ...(target ? { target } : {}), ...(requestedBy ? { requestedBy } : {}) }
 }
 
 /** Whether a decision time is not before the request and the Approval has not expired at it. */

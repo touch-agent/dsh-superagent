@@ -146,7 +146,7 @@ Trigger and Thread `meta` belong to the Source. The core does not interpret them
 
 `assessmentOutcome(assessment, settings, strength)` converts the model's assessment to an Engine outcome. It requires a judgement for every enabled rule, settled direction, a matching rule and evidence of intent. Outside auto mode, an inferred accept becomes a “would accept” record.
 
-`policyEffects(tickets, old, now, at, scope)` identifies which open Tickets a change affects and how. `Engine.policyChanged` notifies only those Tickets. `policyVersion` hashes rules, accept mode, the action ceiling and Mandate lifetime, and the Sources' Policy parts, including bot lists.
+`policyEffects(tickets, old, now, at, scope)` identifies which open Tickets a change affects and how. `Engine.policyChanged` notifies only those Tickets. `policyVersion` hashes rules, accept mode, the action ceiling and Mandate lifetime, and the Sources' Policy parts, including bot lists. The `approval` block's tenant and per-Source auto-approval rules are settings for later approval requests, not part of that hash, as the undo window is not.
 
 ### Store
 
@@ -318,7 +318,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/kernel/src/replies.ts` | `Replies`: the Engine's Channel writes |
 | `packages/kernel/src/stage.ts` | `ticketStage` and `canRetry`: the Ticket stages of [003 Execution](003-execution.md) |
 | `packages/kernel/src/action.ts` | `Action` and the five `ActionLevel`s, the `ActionCost` a spend carries, `actionKey` and `createAction`, which derives the idempotency key and refuses a spend without a money or time cost; `OUTBOUND_KINDS`, `OUTBOX_ACTOR`, `outboundAction` for a `send` write and `acknowledgementAction` for an acknowledgement |
-| `packages/kernel/src/approval.ts` | `Approval`, one person's consent to one Action and revision, with its five states, `createApproval`, and `approve` (which may keep a lower granted level as `grantedLevel`), `deny`, `revoke` and `expire`: no jump out of a final state, a repeated decision kept idempotent, a higher level refused, and a decision at or after the expiry refused. An Approval's id is keyed by its Ticket and the Action's idempotency key, the same key an outbox receipt and its effect use |
+| `packages/kernel/src/approval.ts` | `Approval`, one person's consent to one Action and revision, with its five states, `createApproval`, and `approve` (which may keep a lower granted level as `grantedLevel`), `deny`, `revoke` and `expire`: no jump out of a final state, a repeated decision kept idempotent, a higher level refused, and a decision at or after the expiry refused. An optional `target` names where the Action reaches, which auto-approval matches against the internal-domain whitelist. An Approval's id is keyed by its Ticket and the Action's idempotency key, the same key an outbox receipt and its effect use |
 | `packages/kernel/src/errors.ts` | `UserError` and `USER_ERRORS` |
 | `packages/kernel/src/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
 | `packages/kernel/src/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
@@ -338,7 +338,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/store-read.ts` | `storeReads`: the Store's read queries for the views, the tools and the Sources' polls, which never write |
 | `packages/dsh/src/app/trace.ts` | `SqliteTraceSink`: the Engine's `TraceSink`, keeping each stage in the Store's `span` table and reading a trace back for the panel |
 | `packages/dsh/src/app/metrics.ts` | The health figures: time from a Trigger to its first Decision, repeated sends, restart recovery, judgements per hour and approval latency, read from the Store for the panel and `GET metrics` |
-| `packages/dsh/src/app/approvals.ts` | `decideApproval`: records the panel's approval or denial of one requested Approval in one transaction, as the local panel actor |
+| `packages/dsh/src/app/approvals.ts` | The approval commands: `requestApproval` records one Approval request, `evaluateAutoApproval` decides it under the Policy's tenant or source internal-domain whitelist and working-hours window (never a `spend` Action), and `decideApproval` records the panel's approval or denial, as the local panel actor |
 | `packages/dsh/src/app/migration.ts` | The schema migrations: one record-rewriting step from schema 10 to schema 11; schema 12 added only the `span` table, schema 13 only the `activity` table and schema 14 only the `approval` table |
 | `packages/dsh/src/app/effects.ts` | Effects |
 | `packages/dsh/src/app/versions.ts` | `Versions`: a record kept as numbered snapshots with a pointer to the current one, for the settings and the prompts |
@@ -446,6 +446,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/stage.spec.ts` | The Ticket stages, row by row |
 | `tests/action.spec.ts` | The five action levels and their distinct idempotency keys, the key moving with every part of an action's identity, a spend requiring a money or time cost, and outbound `send` actions naming their kind, object and revision |
 | `tests/approval.spec.ts` | The Approval state machine: one record per Ticket and Action, each transition out of `requested`, no jump out of a final state, a decision at or after the expiry refused, a repeated decision idempotent, and the Store's per-Ticket and pending queues in SQLite as in memory |
+| `tests/approval-policy.spec.ts` | Auto-approval: a tenant or source internal-domain rule during its working hours records an ordinary approved Approval, a target outside the whitelist or window stays for a person, a `spend` Action is never automatic, the source rule replaces the tenant rule, domains match case-insensitively and through subdomains, a repeated request keeps the first record, and the settings refuse an impossible window |
 | `tests/policy.spec.ts` | Source scope, the gate, the admission table, Mandate revalidation, the Policy version, settings migrations and assessment outcomes |
 | `tests/dispatch.spec.ts` | Conversation dispatch: the latest person message becomes a task, a repeated dispatch is not accepted twice, a disabled Source and a non-person or non-text message are refused, and older requests are not revived |
 | `tests/conversation.spec.ts` | The conversation Source: a dispatched message names its task thread and channel, its trigger id is stable per message, replies resolve to the request, the adapter needs no configuration, delivery reaches the main Session, and the trusted gate admits and revalidates the local user |

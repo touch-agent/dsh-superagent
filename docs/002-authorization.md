@@ -161,6 +161,19 @@ A running Ticket revalidates its Mandate at each action point, with the action's
 
 A Policy that lowers its maximum therefore stops the next higher-level action of every running Ticket; the refusal carries the reason the caller records with that action. A Mandate with a recorded ceiling never widens when the Policy raises its maximum; a legacy Mandate without one follows the current Policy, and work under a wider ceiling needs a new accept. Policy changes do not withdraw Mandates by themselves, and this revalidation does not end the Ticket: its remaining actions at allowed levels continue.
 
+## Approval and auto-approval
+
+An Approval records one person's consent to one Action and revision, and its request can name a `target` such as a mail recipient. The Policy's `approval` block may let itself decide requests instead of a person:
+
+- a **tenant rule** applies to every Source without a rule of its own, and a **source rule** replaces it for that Source;
+- the rule lists **internal domains**. A target domain matches one of them or any of its subdomains, and comparison ignores case; a target without a readable domain never matches;
+- the rule may add a **working-hours window**: the days of the week (`0` for Sunday through `6` for Saturday), a local `start` and `end` as `HH:MM`, and an IANA `timeZone`. The start is inclusive and the end exclusive; omitting the window allows any time;
+- a **`spend` Action is never automatic**, whatever the rule says.
+
+A match records an ordinary Approval in `approved` state, with `decidedAt` at the request, the decision actor `policy/auto-approval`, and a `reason` naming the domain and window that matched. The window is checked at the request time; a later execution moment does not re-check it. Nothing is skipped: the record stays readable by Ticket, never enters the pending queue, and counts in approval latency. A request that does not match stays `requested` for a person. Asking for the same Ticket and Action again returns the first record unchanged, so it never reopens or re-decides an Approval.
+
+Auto-approval settings are not part of the Policy version, like the undo window: changing them affects later requests and does not discard running Evals, notify Tickets or withdraw Mandates.
+
 - **A person saying "stop" in a Thread is an ordinary Trigger,** and Eval decides stop. An Executor cannot declare that a person asked it to stop.
 - **Stop in the panel is a command.** It acts on the Ticket directly and is recorded as a manual stop.
 - **Waiting conditions belong to Sources.** A condition such as "no assignee for N hours" would be a Source that waits and checks again itself; Eval never waits.
