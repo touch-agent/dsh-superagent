@@ -127,6 +127,8 @@ describe('child ticket delegation', () => {
     expect(returned.delegation?.attempt).toBe(2)
     expect(returned.assignments).toHaveLength(2)
     expect(returned.assignments[0]!.state).toBe('ended')
+    expect(returned.delegation?.lastDisposition).toMatchObject({ decision: 'returned', attempt: 1,
+      reportAt: '2026-09-23T00:00:01.000Z' })
     expect(h.stops).toContain(child.id)
     expect(() => h.engine.report(child.id, { state: 'ready', summary: 'too late', assignmentId: old })).toThrow(UserError)
     try { h.engine.report(child.id, { state: 'ready', summary: 'too late', assignmentId: old }) } catch (error) {

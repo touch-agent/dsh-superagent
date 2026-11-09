@@ -246,14 +246,14 @@ export class Tickets extends EnginePart {
     const root = this.repo.tickets.get(rootTicketIdOf(child))
     if (root?.assignments.some(assignment => assignment.report?.accepted)) throw new UserError('childClosed')
     const previous = latestAssignment(child)
+    delete delegation.orphaned
+    delete child.attention
+    // Record the judgement against the attempt and report it judges, before the next attempt begins.
+    const disposition = this.dispose(parent, child, 'returned', by, at, reason)
     delegation.attempt += 1
     delete delegation.resolution
     delete delegation.merge
-    delete delegation.orphaned
     delete delegation.endedAt
-    delete child.attention
-    delegation.lastReportAt = at
-    const disposition = this.dispose(parent, child, 'returned', by, at, reason)
     // A returned child is open work again, not an ended-without-resolution state.
     delete child.ended
     child.updatedAt = at
