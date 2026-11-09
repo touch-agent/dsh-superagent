@@ -207,7 +207,7 @@ The design and evolution layer and the plan set are Chinese working documents, a
 
 Design proposals (unnumbered, not implemented):
 
-- [任务视图架构设计](docs/tasks-view-architecture.zh.md): the right-pane task view, event-induced categories, multi-level subtasks and per-node tracked workers, and the data model behind them
+- [任务视图架构设计](docs/tasks-view-architecture.zh.md): the right-pane task view, event-induced categories, self-referencing child Tickets with per-node owners/workers and the parent-owner review chain, and the data model behind them
 
 ## Development
 

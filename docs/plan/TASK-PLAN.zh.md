@@ -66,8 +66,8 @@ M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上�
 | 任务 | 补什么 | 里程碑 |
 | --- | --- | --- |
 | T3-09 | 任务视图 Phase 1：右栏只读任务视图（tracked；lightweight 前向兼容） | M3.5 |
-| T3-10 | 任务树 Phase 2a：Subtask 运行时、父 worker 委派与父子契约 | M3.5 |
-| T3-11 | 任务树 Phase 2b：树视图、父审阅与交付聚合 | M3.5 |
+| T3-10 | 任务树 Phase 2a：子 Ticket 运行时、父 owner 审查链与结束门 | M3.5 |
+| T3-11 | 任务树 Phase 2b：子 Ticket 树视图、父审阅与交付聚合 | M3.5 |
 | T5-01 | 目标层建模：Goal 只读投影（不新增授权聚合） | M5 |
 | T5-02 | E0–E3 暴露级别与默认面清理（B） | M5 |
 | T5-03 | 群组派生：从 Channel/Thread/Subscription 派生群组维度（不建 Membership） | M5 |
@@ -81,7 +81,7 @@ M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上�
 ### 0.0.1.4 重排后的顺序与依赖
 
 1. **M3 收尾**：T3-05（Phase 0）→ T3-04（mail previewer）→ T3-08（时间线）；T3-06 后移。T3-04 必须先于任何「review 必有 preview」的对外声称，否则邮件类交付没有预览。
-2. **M3.5 任务视图**：T3-09 → T3-10 → T3-11。任务视图 Phase 1 是纯读、可先落地；Phase 2a 是本轮评论要求的核心（子任务 + 每个 tracked 节点 worker）；Phase 2b 把父审阅与交付聚合接到界面。类别归纳（Phase 3）不在本轮，等目标层与使用数据。
+2. **M3.5 任务视图**：T3-09 → T3-10 → T3-11。任务视图 Phase 1 是纯读、可先落地；Phase 2a 是本轮评论要求的核心（子 Ticket + 每个 tracked 节点 owner/worker + 父 owner 审查链）；Phase 2b 把父审阅与交付聚合接到界面。类别归纳（Phase 3）不在本轮，等目标层与使用数据。
 3. **M5 原则落地**：T5-01 → T5-02 → T5-03 → T5-04 → T5-05 → T5-06。先有目标层，才能定义 E0 默认面；先有 E0–E3，群组/上下文装配才知道什么能进 prompt；先有观测与边界，进化闭环才不会变成拍脑袋；最后做替换演练，验证 D。
 4. **M4 多租户**：M5 之后，最后启动；不改变单租户语义。
 5. **X 优先级**：X-13（跟踪自动化）立即；X-03（E2E golden path）在 M3.5 前，给任务视图与父审阅一条端到端证据；X-09（入口三区）在 T5-02 前；X-10（宿主矩阵）在 M4 前；X-01/02/04 并行维护；X-06 继续守领域测试 <2s。
@@ -91,7 +91,7 @@ M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上�
 
 ### 0.0.1.5 重评估引入的风险
 
-新增风险已并入 §11 的风险登记册（R8–R13）：任务膨胀、Goal 变成第二授权聚合、Subtask 越权、清理默认面误删诊断、连接器后置错过窗口、M5 范围拖住 M4。回退动作与触发信号见 §11。
+新增风险已并入 §11 的风险登记册（R8–R13）：任务膨胀、Goal 变成第二授权聚合、子 Ticket 变成第二授权路径、清理默认面误删诊断、连接器后置错过窗口、M5 范围拖住 M4。回退动作与触发信号见 §11。
 
 
 ---
@@ -176,7 +176,7 @@ graph LR
 | M1.6 入口 | 主会话=体系入口，页内看体系、右侧看事件；目录分级 | S-01…08 | 14.5 人日 | M1.5 | 主会话单例；目录根 `<stateDir>/system`；一个结果一条通知 | §10.2、`SESSION-ENTRY.zh.md` |
 | M2 闸门 | 不可逆动作有审批与撤销窗口 | T2-01…10 | 25 人日 | M0（与 M1 并行） | 断电注入 100 次重复发送 0；可撤回源 100% | §6.2、§6.3 |
 | M3 交付 | review 真可审；小活不付 Session 冷启动 | T3-01…08 | 36 人日 | M1、M2 | 小活 p50 < 10s；review 页必有 preview | §6.4–6.6 |
-| M3.5 任务视图 | 右栏任务视图；Subtask 树与父子契约（任务视图 Phase 1/2） | T3-09…11 | 16 人日 | M3 | tracked 任务在右栏可读；父 worker 可拆/审/停子任务；不产生子 Ticket | 任务视图 §9 |
+| M3.5 任务视图 | 右栏任务视图；子 Ticket 树与父 owner 审查链（任务视图 Phase 1/2） | T3-09…11 | 16 人日 | M3 | tracked 任务在右栏可读；父 owner 可拆/审/停子 Ticket；子 Ticket 不是授权主体 | 任务视图 §9 |
 | M5 原则落地 | 目标层、E0–E3、群组/六层上下文、进化闭环、替换演练 | T5-01…06 | 25 人日 | M3.5 | E0 只给目标/状态/决定/结果；装配快照可审查；进化只提案；替换演练等价 | 原则 §8 |
 | M4 多租户 | 能卖团队版/私有化 | T4-01…06 | 22 人日 | M5 | 单租户故障不影响他人；删除演练可验证 | §6.7 |
 
@@ -443,25 +443,27 @@ graph LR
 ### T3-09 任务视图 Phase 1：右栏只读任务视图 · Runtime · 3 人日
 
 - **目标**：让人从任务视角看到跨源事件最终归到哪些任务、执行者/交付/状态是什么，同时不新增写路径。
-- **交付**：`sidebarRightTabs.register` 的「任务」tab + body/title 槽；`app/tasks.ts` 投影补 `form`/`kind`/`reviewedTicketId`/`review`/`deliverables`/`inline`（加法）；`GET tasks` 与状态页共用；`client/tasks.tsx` 紧凑列表；`EventsTab` 支持按任务筛选并共享选中；计划树保留为回退。tracked 显示父 worker 角色，lightweight 显示「轻量」但不伪造 worker/交付。
+- **交付**：`sidebarRightTabs.register` 的「任务」tab + body/title 槽；`app/tasks.ts` 投影补 `form`/`kind`/`reviewedTicketId`/`review`/`deliverables`/`inline`（加法）；`GET tasks` 与状态页共用；`client/tasks.tsx` 紧凑列表；`EventsTab` 支持按任务筛选并共享选中；计划树保留为回退。tracked 显示 owner 角色（根/子 Ticket owner；不再用“父 worker”旧术语），lightweight 显示「轻量」但不伪造 worker/交付。
 - **验收**：360px 右栏无横向滚动；列表与状态页/事件筛选状态一致；无新增写接口；无 preview 的交付不显示空卡片；`tests/tasks-view.spec.ts`、`tests/panel-tasks.spec.tsx` 覆盖 form、空态与错误态。
 - **估时**：3 人日。**依赖**：T3-01、T3-07（均已完成）、M3 的 review 表面。**回退**：feature flag `taskView.v1`，关闭回旧计划树。
 - **泳道**：Runtime。
 
-### T3-10 任务树 Phase 2a：Subtask 运行时与父子契约 · Kernel + Runtime · 8 人日
+### T3-10 任务树 Phase 2a：子 Ticket 运行时、父 owner 审查链与结束门 · Kernel + Runtime · 8 人日
 
-- **目标**：每个 tracked 任务节点有自己的 worker；父 worker 能动态创建子任务并负责最终目标、子交付审查、合并与冲突解决；子任务不另开授权。
-- **交付**：`Subtask` 类型 + `subtask` 表（schema 15 前向迁移）；`delegate_task` / `accept_subtask` / `return_subtask` / `cancel_subtask`；Engine 校验父存活、同 Mandate/maxActionLevel、深度 ≤5、单节点 ≤8、单 Ticket 活跃 ≤32；子 worker 用 `subtask-<id>-<attempt>` 独立 Session 与受限执行配置；父结束门覆盖 ready/dropped/人停止/PR 合并；失败/孤儿写 `resolution`；重启恢复与停止级联；activity subject 聚合到父 Ticket。
-- **验收**：`tests/subtask.spec.ts` 与 `tests/subtask-contract.spec.ts` 覆盖 PR #26 §9.2：父能建 2 个子任务且 Session 不同；未结束子任务时父 `ready` 被拒（`unfinishedSubtasks`）；停止级联 5 秒内；深度/宽度/活跃上限报错；子 worker 不能建 Ticket、直接找人、提动作等级或外发；重启恢复先父后子，孤儿子任务交人一次；迟到 attempt 被拒；`pendingEnd` 语义。
-- **估时**：8 人日。**依赖**：T3-09（共享投影）、T3-01、T2（均已完成）。**回退**：feature flag `taskView.subtasks`；schema 15 为前向迁移，回滚需 down migration/备份（PR #26 §10）。
+> 设计修订（2026-11-09）：任务树节点统一为 `Ticket` 自引用，不再建独立 `Subtask` 类型/表。子 Ticket 只有 `parentTicketId`/`rootTicketId`/`delegation`，没有自己的 Mandate/Decision；授权根唯一，对外动作只走根 Approval/outbox。设计见 `../tasks-view-architecture.zh.md` §3.4、§4.3、§4.6、§6、§9.2、§10。
+
+- **目标**：每个 tracked Ticket 节点有自己的 owner/worker；父 owner 能动态创建子 Ticket，负责最终目标、子交付审查、合并与冲突解决，并把结论逐层上报；子 Ticket 不另开授权，父接受不等于人确认。
+- **交付**：`Ticket` 加 `parentTicketId`/`rootTicketId`/`delegation`（根/子 union；根才有 Mandate/Decision；子复用生命周期字段但 channels/answers 为空、follows/attention 缺省，undelivered 只承载 child-report/end-gate，共享路径按 parentTicketId 分支）；schema 15 只加 `ticket.parent`/`ticket.root` 生成列与索引，**不建 `subtask` 表**；`tickets.list/open/active()` 默认根过滤，新增 `childrenOf`/`subtree`/内部 `allActive`，并让 WorkerSlots/shutdown/session cleanup 用不过滤的 `allOpen`/`allList`/`allActive`（子 worker 占 slot、关停时取消子 session）。Engine 的 `delegate_ticket`（父/根存活、同 root、根 `maxActionLevel`、深度 ≤5、单节点 ≤8、单根活跃子 Ticket ≤32、无环、`parentTicketId` 不可改）；子 owner 复用 `worker-<ticketId>` + 受限执行配置（网络/remote/gh、bash 策略、cwd jail、无 subagent、state 目录/SQLite 不可写（host sandbox/OS 路径权限或专用 preset）、无根 Ticket）；**子 Ticket 的 `Assignments.report` ready/dropped 只写 child-report，不调用 `Tickets.end`**，只有 `accept_child`/`cancel_child`/祖先停止能结束子；父 owner 的 `accept_child`/`return_child`/`cancel_child`、`TicketInput.kind='child-report'`、`ChildReportDisposition`/`Delegation.dispositions`、逐层上报与 trace（`delegation.report/review/delegate/self-work/report-up`）；父结束门覆盖 ready/dropped/人停止/PR 合并，`ready` 未结束子 Ticket 返回 `unfinishedChildTickets` 且不写报告，PR/线程关闭写 `endPending` + `end-gate`；`POST /tickets/:id/retry|stop` 只接受根；停止级联、失败/孤儿/重启恢复、迟到 attempt；`ActivityRecord.subject` 不新增 `subtask`，子事件按根聚合；Approval/outbox `ticketId` 为根并记录 `requestedForTicketId`/`originTicketId`。
+- **验收**：`tests/delegation.spec.ts` 与 `tests/delegation-contract.spec.ts` 覆盖 `../tasks-view-architecture.zh.md` §9.2：父 owner 能建 2 个子 Ticket 且 owner/worker 不同；子报告回到父 owner，父能接受/退回/自干/再委派并逐层上报；未结束子 Ticket 时父 `ready` 被拒（`unfinishedChildTickets`）；停止级联 5 秒内；深度/宽度/配额报错；子 owner 不能创建授权根 Ticket、直接找人、提动作等级、写 state DB 或外发，但可请求同根下级子 Ticket；根/子 Approval 与 outbox 归属测试；子 `ready`/`dropped` 不自行结束、子 stop/retry 被拒、子 worker 占 slot 且关停时取消；重启恢复先父后子，孤儿子 Ticket 交人一次；迟到 attempt 被拒；`pendingEnd`/`endPending` 语义；旧库行当根、旧二进制拒绝 schema 15；独立 review 核对「子节点不成为授权主体」并写成 PR review 评论。
+- **估时**：8 人日。**依赖**：T3-09（共享投影）、T3-01、T2（均已完成）。**回退**：feature flag `taskView.childTickets`；schema 15 为前向迁移，回滚需 down migration/备份（`../tasks-view-architecture.zh.md` §10）。
 - **泳道**：Kernel + Runtime。
-- **限制**：子 worker 的受限执行配置是运行时要求；若平台无法强制，只能降级为父审阅提示，不能保留「子 worker 不能外部动作」的承诺。
+- **限制**：子 owner 的受限执行配置是运行时要求；若平台无法强制，只能降级为父审阅提示，不能保留「子 owner 不能外部动作」的承诺。
 
-### T3-11 任务树 Phase 2b：树视图、父审阅与交付聚合 · Runtime · 5 人日
+### T3-11 任务树 Phase 2b：子 Ticket 树视图、父审阅与交付聚合 · Runtime · 5 人日
 
-- **目标**：把 Phase 2a 的父子契约接到任务视图与 review 面：树默认一层、父审阅可见、子确认不丢、终态不冒充 live。
-- **交付**：列表/树（默认一层，L4+ 折叠）；`TaskReviewView` 按 `artifact.kind:ref:revision` 去重父与已接受子交付，聚合 `confirmations` 并以 `reviewRevision` 绑定最终批准；`pendingEnd` 展示；`Subtask.state` 映射 `waiting→idle`、`dropped/cancelled→done+terminal`；attention 只从 `state` 计算；右栏只显示一层子任务。
-- **验收**：父创建 2 个子任务在树中可见；父接受/退回后交付聚合不重复；子任务 `HumanCriterion` 在最终 review 中仍出现；`dropped`/`cancelled` 不出现在「进行中」；`waiting` 不算 blocked；500 Ticket/2000 子任务投影 p95 ≤400ms 且无 N+1；360px 右栏不展开深层。
+- **目标**：把 Phase 2a 的父子契约接到任务视图与 review 面：树默认一层、父 owner 审查/上报可见、子确认不丢、终态不冒充 live。
+- **交付**：列表/树（默认一层，L4+ 折叠）；`TaskView` 加 `parentTicketId`/`rootTicketId`/`depth`/`owner`/`worker`/`parentOwner`/`delegation`/`children`/`childSummary`，不新增 `SubtaskView`；选中统一 `{kind:'ticket', id}`，没有 subtask 选中类型；根详情用 `TaskReviewView` 按 `artifact.kind:ref:revision` 去重根与已接受子 Ticket 交付，聚合 `confirmations` 并以 `reviewRevision` 绑定最终批准；`pendingEnd` 展示；子 Ticket 状态直接用 `activityStatusOf`（`waiting→idle` 展示、`dropped/stopped→done/failed+terminal`、取消用 `Delegation.resolution`），attention 只从根 person-stage 与子 failed/orphaned/blocked（父不可用）计算，待父审阅不计入人的 attention；右栏只显示一层子 Ticket。
+- **验收**：父 owner 创建 2 个子 Ticket 在树中可见且各有 owner；父接受/退回/自干/再委派与逐层上报在详情可见（父目标完成时才上报，只接受一个子不得提前上报）；父接受/退回后交付聚合不重复；子 Ticket `HumanCriterion` 在最终根 review 中仍出现；`dropped`/`stopped`/取消不出现在「进行中」；`waiting` 不算 blocked；`待父审阅` 不计入人的“需处理”；500 根 Ticket/2000 子 Ticket 投影 p95 ≤400ms 且无 N+1；360px 右栏不展开深层。
 - **估时**：5 人日。**依赖**：T3-10。**回退**：同 T3-10。
 - **泳道**：Runtime。
 
@@ -497,8 +499,8 @@ graph LR
 
 - **目标**：把原则 C.3 的六层从文档落成装配器：按存在过滤、条目级合并、约束优先、缺席不装配、组合不产生授权、私有默认不上升、fail closed。
 - **交付**：`packages/dsh/src/app/context-assembly.ts`（宿主侧装配器，不改 kernel 授权）；条目字段 `key/source/scope/strength/inheritance/truncation`；Assignment 开始时生成只读快照，manifest 与缺席维度写入 trace；约束冲突/必需维度缺席/来源不可读生成 attention；轻量 Ticket 只有任务维度；注入路径与 Mandate/Action 闸门分离。
-- **验收**：`tests/context-assembly.spec.ts` 覆盖无群组、无子任务、离开群组、轻量 Ticket、约束 > 默认、同强度比 scope、约束冲突升级、worker 读不到别 Ticket；快照可审查；C3.3/C3.7。
-- **估时**：6 人日。**依赖**：T5-03、T5-01、T3-10（子任务维度）。**回退**：装配层 feature flag，关闭回现有 prompt。
+- **验收**：`tests/context-assembly.spec.ts` 覆盖无群组、无子 Ticket、离开群组、轻量 Ticket、约束 > 默认、同强度比 scope、约束冲突升级、worker 读不到别 Ticket；快照可审查；C3.3/C3.7。
+- **估时**：6 人日。**依赖**：T5-03、T5-01、T3-10（子 Ticket 维度）。**回退**：装配层 feature flag，关闭回现有 prompt。
 - **泳道**：Runtime。
 
 ### T5-05 观察→总结→进化→验证闭环（离线）· Platform · 5 人日
@@ -512,9 +514,9 @@ graph LR
 ### T5-06 组织观测与替换演练 · Platform · 3 人日
 
 - **目标**：在删除/折叠任何组织层之前，先能看见「替换有没有改变结果」（原则 D.3/D.4）。
-- **交付**：组织成本指标（层级深度、活跃子任务、父审阅时长、孤儿子任务）、注意力成本指标（每结果通知数、自动打开关闭率、默认面点击深度）、替换证据演练（同一任务隐藏任务视图/压平组织，比较结果/审计/通知）；记录进 `../runbooks/`。
-- **验收**：指标可从 trace/activity/metrics 独立读取，不依赖被替换 UI；C4.2/C4.3/C4.4；演练报告含任务、前后结果、通知数、验收；删除类别/子任务后 Ticket 仍可解释。
-- **估时**：3 人日。**依赖**：T3-10（子任务数据）、T5-02。**回退**：只读指标与演练，不改代码。
+- **交付**：组织成本指标（层级深度、活跃子 Ticket、父审阅时长、孤儿子 Ticket）、注意力成本指标（每结果通知数、自动打开关闭率、默认面点击深度）、替换证据演练（同一任务隐藏任务视图/压平组织，比较结果/审计/通知）；记录进 `../runbooks/`。
+- **验收**：指标可从 trace/activity/metrics 独立读取，不依赖被替换 UI；C4.2/C4.3/C4.4；演练报告含任务、前后结果、通知数、验收；删除类别/子 Ticket 后 Ticket 仍可解释。
+- **估时**：3 人日。**依赖**：T3-10（子 Ticket 数据）、T5-02。**回退**：只读指标与演练，不改代码。
 - **泳道**：Platform。
 
 ---
@@ -689,7 +691,7 @@ graph LR
 | R7 | 真宿主（DSH alpha）行为变化 | 契约测试红 | `packages/dsh/src/app` 的适配层隔离 `^0.2.x-alpha`；X-03 先 fake host |
 | R8 | 任务膨胀：新增 10 个任务，计划本身变成负担 | 任务数继续增长、每个任务没有单行退出证据 | 每个任务 ≤1 个 PR（≤400 行，沿用 M1-KICKOFF）；没有验收证据不开新任务 |
 | R9 | Goal 变成第二套 Task/Ticket 授权聚合 | 出现 `Goal` 写路径、Goal 能创建工单或授权 | Goal 只读；新增写路径须独立 ADR；删除投影不影响 Ticket |
-| R10 | Subtask 变成绕过 Eval 的第二授权路径 | 子 worker 能建 Ticket、直接找人、提高动作等级 | 子任务继承父 Mandate；只有 Engine 写；PR #26 §9.2 契约测试先行 |
+| R10 | 子 Ticket 变成绕过 Eval 的第二授权路径 | 子 owner 能建授权根 Ticket、直接找人、提高动作等级 | 子 Ticket 没有 Mandate/Decision，继承根授权；只有 Engine delegation 写；任务视图修订版 §9.2 契约测试与独立 review 先行 |
 | R11 | 清理默认面时误删诊断能力 | E2 入口被移除、排障需要翻日志 | 只改默认可见性，不删入口与记录；保留 E2 折叠入口 |
 | R12 | 连接器后置错过真实接入窗口 | 真实用户提出 Gmail/日历需求 | 按需求插队，仍排在 M2 之后；不为了「凑三个源」提前做 |
 | R13 | M5 范围过大，拖住 M4 | T5-01…06 连续两个里程碑没有合并证据 | 拆成独立 PR；T5-05/T5-06 可以离线/演练先行，不阻塞 T5-01–04 |
