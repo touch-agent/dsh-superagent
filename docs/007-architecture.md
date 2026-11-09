@@ -520,6 +520,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/locales.spec.ts`, `tests/styles.spec.ts` | The copy in both languages, the stylesheet |
 | `tests/class-docs.spec.ts` | Every class in `src` has a JSDoc block before it |
 | `tests/docs.spec.ts` | Numbered documents link only to earlier ones, every local link resolves, no document has merge conflict markers, the README lists every numbered document once and in order, and this document's tables list every module and every test |
+| `tests/tracking.spec.ts` | X-13: the tracking check rejects a plan task with no row, a row with no plan task, a duplicate row, an invalid status, a non-canonical or missing PR, a completed row whose PR is open, a bad date, empty evidence, an in-progress row without a PR, and stale or malformed exemptions; it accepts the repository's own table offline and queries PR states through a fake GitHub API |
 
 `tests/fixtures/` holds what several tests share: `host.ts`, a simulated DeepSeek Harness host; `panel-server.ts` and `panel.tsx`, the fake management API and the panel around a page; `deployment.ts`, a resolved deployment; `git.ts`, the environment of every git the tests start, which names no repository; and `async.ts`.
 

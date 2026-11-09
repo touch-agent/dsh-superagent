@@ -26,6 +26,22 @@ jobs:
       - run: npm install -g --no-audit --no-fund --ignore-scripts @deepseek-ai/dsh@0.2.1-rc.5
       - run: pnpm check
 
+  # X-13: the plan, the tracking table and the pull requests they name must agree. The other jobs run the offline half
+  # through `pnpm check`; this job has the token that turns a dead link or a still-open PR on a completed row red.
+  tracking:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/check-tracking.mjs --check-prs
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   # Malformed changesets fail here rather than in a release, so a package change always says which package it bumps.
   changesets:
     runs-on: ubuntu-latest
