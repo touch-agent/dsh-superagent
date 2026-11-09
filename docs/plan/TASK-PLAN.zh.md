@@ -177,6 +177,7 @@ graph LR
 | M2 闸门 | 不可逆动作有审批与撤销窗口 | T2-01…10 | 25 人日 | M0（与 M1 并行） | 断电注入 100 次重复发送 0；可撤回源 100% | §6.2、§6.3 |
 | M3 交付 | review 真可审；小活不付 Session 冷启动 | T3-01…08 | 36 人日 | M1、M2 | 小活 p50 < 10s；review 页必有 preview | §6.4–6.6 |
 | M3.5 任务视图 | 右栏任务视图；子 Ticket 树与父 owner 审查链（任务视图 Phase 1/2） | T3-09…11 | 16 人日 | M3 | tracked 任务在右栏可读；父 owner 可拆/审/停子 Ticket；子 Ticket 不是授权主体 | 任务视图 §9 |
+| M3.6 工作空间 | 空间可观测；同一空间写者唯一；子 Ticket 独立空间 | T3-12…13 | 11 人日 | M3.5 | 空间投影/E2 视图可用；两个 Ticket 不并发写同一空间；旧 worktree 可收养 | 013 §8 |
 | M5 原则落地 | 目标层、E0–E3、群组/六层上下文、进化闭环、替换演练 | T5-01…06 | 25 人日 | M3.5 | E0 只给目标/状态/决定/结果；装配快照可审查；进化只提案；替换演练等价 | 原则 §8 |
 | M4 多租户 | 能卖团队版/私有化 | T4-01…06 | 22 人日 | M5 | 单租户故障不影响他人；删除演练可验证 | §6.7 |
 
@@ -435,22 +436,6 @@ graph LR
 - **交付**：按 trace + disposition + approval 合成一条人类可读时间线。
 - **验收**：任意工单的每个动作都能回答「谁、凭什么、改了什么」。
 
-### T3-12 工作空间模型 Phase 1：空间只读投影与 E2 视图 · Runtime · 4 人日
-
-- **目标**：把现有 `execution.directory` 事实投影为可观测的空间引用，回答「哪个空间、谁在用、是否旧布局」；不改变执行路径、不新增 schema、不引入租约写行为。
-- **交付**：`Execution` 的只读投影 `workspace`（`kind`/`name`/`locator`/`branch`/`state`/`holder`/`legacy`，从 execution、Assignment 与 Session 派生，lightweight 不伪造）；`GET spaces` 只读端点（管理 API）；E1 任务详情「空间」区块与 E2 管理面板「空间」只读列表（筛选、按空间分组）；feature flag `workspace.view`；`docs/003`、`docs/006` 补「目录即空间 locator」与配置说明；`tests/spaces.spec.ts`、`tests/panel-spaces.spec.tsx`。
-- **验收**：根/子/旧嵌套/lightweight 四类投影正确；E0 不出现空间，360px 右栏不出现空间视图；无 schema 变化、无写接口、无租约行为；`pnpm check`；实现 UI 时 PR 附同场景 Before/After。
-- **估时**：4 人日。**依赖**：T3-09、T3-10（均已完成）、[docs/013](../013-workspace-model.zh.md) 的 Phase 1。**回退**：feature flag `workspace.view`，关闭即回旧界面。
-- **泳道**：Runtime。
-
-### T3-13 工作空间模型 Phase 2：写租约与子 Ticket 独立空间 · Kernel + Runtime · 7 人日
-
-- **目标**：同一空间同一时刻只有一个写者；子 Ticket 默认拥有与父分离的检出；冲突可解释、重启可恢复、旧布局可兼容。
-- **交付**：additive `space`/`space_lease` 表（只加表与索引，不改旧记录）；执行器在 prepare 后获取写租约、Ticket 结束时释放；`spaceLeaseHeld` 排队与 stale/epoch 恢复；子 Ticket 新空间放执行根兄弟目录（旧嵌套按 legacy 收养，不搬迁）；prepare 后置校验（分支、脏状态、无其他写者、`verifyDirectory`）；E2 释放/回收/复用（需确认、审计）；`docs/003`、`docs/006` 更新；`tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`、`tests/panel-spaces.spec.tsx`。
-- **验收**：两个 Ticket 指向同一空间时第二个排队、不覆盖；同一 Ticket 重入；父子默认不同目录且父清理不删子空间；重启后 stale 恢复且父先于子；子 Ticket 仍不能推送/开 PR；旧库/旧 worktree 迁移演练无重复 prepare；`pnpm check`。
-- **估时**：7 人日。**依赖**：T3-12、[docs/013](../013-workspace-model.zh.md) 的 Phase 2。**回退**：flag `workspace.lease` 关闭回到路径模式；additive 表保留，不影响旧读。
-- **泳道**：Kernel + Runtime。
-
 ---
 
 ## 6.1 M3.5 任务视图（T3-09…11）
@@ -484,6 +469,27 @@ graph LR
 - **估时**：5 人日。**依赖**：T3-10。**回退**：同 T3-10。
 - **泳道**：Runtime。
 - **实现状态（2026-11-09，PR #42）**：Phase 2b 已落地。`TaskView` 增加父子/delegation/childSummary/pendingEnd，`GET tasks` 一次读取全部 Ticket 并在内存建父子索引（触发器、activity 也批量读取），`GET tasks/:id?depth=1..5` 按需加载；`TaskReviewView`/`ReviewAggregate` 按 `artifact.kind:ref:revision` 去重根与已接受子交付，`POST tickets/:id/approve` 带 `reviewRevision`，过期返回 409 `reviewStale`；子 `waiting` 显示为 idle，`dropped`/`stopped` 保持终态，父接受不写入人的确认；右栏一层子工单、360px 不横向滚动，状态页树 L4+ 默认折叠。测试见 `tests/review-aggregate.spec.ts`、`tests/tasks-children.spec.ts`、`tests/panel-tasks.spec.tsx`（500 根/2000 子投影 p95 ≤400ms，且无逐行 Ticket 查询）。同场景 Before/After（1280×900、同一临时状态库、359px 右栏）见 `docs/images/tasks-view/phase2b-before-tasks-360.png` 与 `phase2b-after-tasks-360.png`、`phase2b-before-review.png` 与 `phase2b-after-review.png`。独立 review 核对 `docs/011` E1 与本节并写在 PR review 评论。
+
+
+## 6.1.1 工作空间（T3-12…13）
+
+> 依据 [docs/013](../013-workspace-model.zh.md)。只做 Phase 1 只读投影与 Phase 2 写租约/独立子空间；Phase 3 复用/回收与 warm 池随 T3-06，Phase 4 provider 不排期。
+
+### T3-12 工作空间模型 Phase 1：空间只读投影与 E2 视图 · Runtime · 4 人日
+
+- **目标**：把现有 `execution.directory` 事实投影为可观测的空间引用，回答「哪个空间、谁在用、是否旧布局」；不改变执行路径、不新增 schema、不引入租约写行为。
+- **交付**：`Execution` 的只读投影 `workspace`（`kind`/`name`/`locator`/`branch`/`state`/`holder`/`legacy`，从 execution、Assignment 与 Session 派生，lightweight 不伪造）；`GET spaces` 只读端点（管理 API）；E1 任务详情「空间」区块与 E2 管理面板「空间」只读列表（筛选、按空间分组）；feature flag `workspace.view`；`docs/003`、`docs/006` 补「目录即空间 locator」与配置说明；`tests/spaces.spec.ts`、`tests/panel-spaces.spec.tsx`。
+- **验收**：根/子/旧嵌套/lightweight 四类投影正确；E0 不出现空间，360px 右栏不出现空间视图；无 schema 变化、无写接口、无租约行为；`pnpm check`；实现 UI 时 PR 附同场景 Before/After。
+- **估时**：4 人日。**依赖**：T3-09、T3-10（均已完成）、[docs/013](../013-workspace-model.zh.md) 的 Phase 1。**回退**：feature flag `workspace.view`，关闭即回旧界面。
+- **泳道**：Runtime。
+
+### T3-13 工作空间模型 Phase 2：写租约与子 Ticket 独立空间 · Kernel + Runtime · 7 人日
+
+- **目标**：同一空间同一时刻只有一个写者；子 Ticket 默认拥有与父分离的检出；冲突可解释、重启可恢复、旧布局可兼容。
+- **交付**：additive `space`/`space_lease` 表（只加表与索引，不改旧记录）；执行器在 prepare 后获取写租约、Ticket 结束时释放；`spaceLeaseHeld` 排队与 stale/epoch 恢复；子 Ticket 新空间放执行根兄弟目录（旧嵌套按 legacy 收养，不搬迁）；prepare 后置校验（分支、脏状态、无其他写者、`verifyDirectory`）；E2 释放/回收/复用（需确认、审计）；`docs/003`、`docs/006` 更新；`tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`、`tests/panel-spaces.spec.tsx`。
+- **验收**：两个 Ticket 指向同一空间时第二个排队、不覆盖；同一 Ticket 重入；父子默认不同目录且父清理不删子空间；重启后 stale 恢复且父先于子；子 Ticket 仍不能推送/开 PR；旧库/旧 worktree 迁移演练无重复 prepare；`pnpm check`。
+- **估时**：7 人日。**依赖**：T3-12、[docs/013](../013-workspace-model.zh.md) 的 Phase 2。**回退**：flag `workspace.lease` 关闭回到路径模式；additive 表保留，不影响旧读。
+- **泳道**：Kernel + Runtime。
 
 ## 6.2 M5 原则落地（T5-01…06）
 
