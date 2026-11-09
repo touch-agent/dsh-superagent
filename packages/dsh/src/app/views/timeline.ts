@@ -1,5 +1,6 @@
 /** A Ticket's audit timeline: the Trigger's trace, where it went, and every Approval, read as who, on what basis, and what changed. */
 import { z } from 'zod'
+import type { Span } from '@superagent/kernel'
 import { ACTION_LEVELS, actionKey, traceId, type ActionCost, type ActionLevel, type ActorRef, type Approval,
   type AssignmentState, type ChannelRef, type DecisionKind, type PolicyEffect, type Reason, type ReportState, type Review,
   type Strength, type Ticket, type TicketInput, type TicketOutcome } from '@superagent/kernel'
@@ -162,6 +163,13 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
   const decision = store.decisions.get(ticket.decisionId)
   const shown = decision ? decisionView(view, decision) : undefined
   const spans = origin ? store.spans.trace(traceId(origin.id)) : []
+  // An action can run under a follow-up Trigger's trace, not only the origin's; read every trace the Ticket knows.
+  const actionSpans = new Map<string, Span>()
+  const traces = new Set<string>(origin ? [traceId(origin.id)] : [])
+  for (const item of ticket.inputs) if (item.kind === 'trigger' || item.kind === 'resumed') traces.add(traceId(item.triggerId))
+  for (const triggerId of decision?.triggerIds ?? []) traces.add(traceId(triggerId))
+  for (const id of traces) for (const span of store.spans.trace(id)) if (span.kind === 'action' && span.data?.ticketId === ticket.id)
+    actionSpans.set(span.id, span)
   const mandateFacts = basisFacts(ticket.mandate.basis, view.rule).facts
   const authority = (): TimelineBasis => ({ strength: ticket.mandate.strength, facts: mandateFacts,
     policyVersion: ticket.mandate.policyVersion })
@@ -218,8 +226,7 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
     }
   }
   // A lightweight Ticket's action ledger: one entry per Action its inline run performed, with ok/error.
-  for (const span of spans) {
-    if (span.kind !== 'action' || span.data?.ticketId !== ticket.id) continue
+  for (const span of actionSpans.values()) {
     const parsed = InlineAction.safeParse(span.data)
     if (!parsed.success) continue
     const action = parsed.data.action

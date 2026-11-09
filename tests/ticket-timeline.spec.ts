@@ -95,10 +95,18 @@ it('reads a lightweight Ticket\'s inline action ledger, keeping a failure and it
   const inline = createAction({ kind: 'doc.edit', source: 'feishu', objectId: 'doc_1', revision: 'rev-3', level: 'draft', actor: alice })
   store.spans.record({ id: spanId(trace, 'action', 'run-1:1'), traceId: trace, kind: 'action', at: '2026-11-08T00:00:12.000Z',
     data: { ticketId: 't1', action: inline, ok: false, error: 'the document is locked' } })
-  store.tickets.save(ticket({ form: 'lightweight', createdAt: '2026-11-08T00:00:11.000Z' }))
+  // A follow-up Trigger gets its own trace; its action still belongs to this Ticket.
+  store.triggers.save(trigger('tr2', '2026-11-08T00:00:13.000Z', 'Also fix the title'))
+  const followup = createAction({ kind: 'doc.edit', source: 'feishu', objectId: 'doc_2', revision: 'rev-4', level: 'draft', actor: alice })
+  store.spans.record({ id: spanId(traceId('tr2'), 'action', 'run-2:1'), traceId: traceId('tr2'), kind: 'action',
+    at: '2026-11-08T00:00:14.000Z', data: { ticketId: 't1', action: followup, ok: true } })
+  store.tickets.save(ticket({ form: 'lightweight', createdAt: '2026-11-08T00:00:11.000Z',
+    inputs: [{ id: 'i2', kind: 'trigger', triggerId: 'tr2', at: '2026-11-08T00:00:13.000Z' }] }))
   store.approvals.save(approve(createApproval({ ticketId: 't1', action: inline, requestedAt: '2026-11-08T00:00:10.000Z',
     expiresAt: '2030-11-08T00:00:10.000Z' }), { by: { source: 'panel', id: 'local' }, at: '2026-11-08T00:00:11.000Z' }))
-  const action = ticketTimeline(host(), 't1')!.entries.find(entry => entry.kind === 'action')!
+  const actions = ticketTimeline(host(), 't1')!.entries.filter(entry => entry.kind === 'action')
+  expect(actions.map(entry => entry.change.kind === 'action' ? entry.change.action.objectId : '')).toEqual(['doc_1', 'doc_2'])
+  const action = actions[0]!
   expect(action).toMatchObject({ source: 'trace', trigger: 'tr1',
     who: { actor: { source: 'feishu', id: 'ou_alice', name: { zh: 'Alice', en: 'Alice' } } },
     basis: { strength: 'explicit', policyVersion: 'policy-v1', approval: { state: 'approved', level: 'draft' } },
