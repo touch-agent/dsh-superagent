@@ -336,6 +336,11 @@ div.dt-preview-head { color: var(--dsw-alias-label-secondary); }
 /* Pass pointer events through action containers to the row link, keeping only child controls interactive. */
 .dt-ticket-actions, .dt-row-buttons, .dt-row-actions { pointer-events: none; }
 .dt-ticket-actions > *, .dt-row-buttons > *, .dt-row-actions > * { pointer-events: auto; }
+.dt-timeline-entry { align-items: flex-start; }
+.dt-timeline-actor { font-weight: 500; }
+.dt-timeline-kind { font-size: 12px; color: var(--dsw-alias-label-caption); }
+.dt-timeline-change { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
+.dt-timeline-basis { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .dt-line { min-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dt-row-meta.dt-line { flex-wrap: nowrap; }
 .dt-line-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

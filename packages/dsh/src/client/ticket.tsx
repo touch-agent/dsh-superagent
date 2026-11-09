@@ -1,12 +1,12 @@
 /** Ticket detail page: stage and actions, Mandate details, undelivered/delivered Inputs, subscribed Threads, and Assignments. */
 import { useState, type ReactNode } from 'react'
-import { ApiError, usePoll, type TicketPageView } from './api.ts'
+import { ApiError, usePoll, type TicketPageView, type TicketTimelineView } from './api.ts'
 import { Button, DisclosureRow, Dot, Icon, Tag, type IconName } from './controls.tsx'
 import { decisionMark, reportDot, ticketMark } from './marks.ts'
 import { useAction, usePanel } from './provider.tsx'
 import { settingsRoute } from './route.ts'
 import { Earlier, ThreadLine, automatedRuns } from './rows.tsx'
-import { actorName, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
+import { actorName, localized, readableMarkers, reasonLabel, valueLabel, when, type T } from './text.ts'
 import { ActionLink, ConfirmButton, ExternalLink, Hint, KeyValues, LabelValue, LoadState, MarkdownLite, PageHead, Section, SessionButton,
   StageMark, When } from './widgets.tsx'
 
@@ -103,16 +103,127 @@ function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChange
   </Section>
 }
 
+/** One Mandate-basis fact in the words the panel already uses for it. */
+function basisFactLabel(t: T, item: TicketPageView['basis']['facts'][number]): string {
+  if (item.name === 'legacyAuthority') return valueLabel(t, 'legacy', item.value)
+  if (item.name === 'mode' || item.name === 'addressed') return valueLabel(t, item.name, item.value)
+  if (item.name === 'admission') return valueLabel(t, 'admissionCell', item.value)
+  if (item.name === 'rules') return item.value.map(rule => rule.name).join(t('listSeparator'))
+  return item.name === 'sender' ? item.value : t('yes')
+}
+/** What one timeline step changed: an Action, a Report, an Input, an Assignment, a Decision, a Policy change or an end. */
+function TimelineChangeView({ change }: { change: TicketTimelineView['entries'][number]['change'] }) {
+  const { t } = usePanel()
+  switch (change.kind) {
+    case 'action': {
+      const { action } = change
+      const cost = action.cost?.kind === 'money' ? `${action.cost.amount} ${action.cost.currency}`
+        : action.cost?.kind === 'time' ? t('approvalCostTime', { minutes: action.cost.minutes }) : undefined
+      return <>
+        <span className="dt-mono">{action.kind} · {action.source}:{action.objectId}</span>
+        <span className="dt-mono">{action.revision}</span>
+        <Tag tone="neutral">{valueLabel(t, 'level', action.level)}</Tag>
+        {cost && <span className="dt-mono">{cost}</span>}
+        {change.ok === false ? <Tag tone="danger">{t('timelineActionFailed')}</Tag>
+          : change.ok === true ? <Tag tone="success">{t('timelineActionOk')}</Tag> : null}
+        {change.error && <span className="dt-mono dt-clamp">{change.error}</span>}
+      </>
+    }
+    case 'report': return <>
+      <Tag tone={change.state === 'ready' ? 'success' : change.state === 'blocked' || change.state === 'failed' ? 'danger' : 'neutral'}>
+        {valueLabel(t, 'report', change.state)}</Tag>
+      {change.summary && <div className="dt-row-quote"><MarkdownLite text={change.summary} /></div>}
+      {change.review?.deliverable && <span>{t('timelineReportArtifact', { kind: valueLabel(t, 'artifact',
+        change.review.deliverable.artifact.kind), revision: change.review.deliverable.artifact.revision })}</span>}
+    </>
+    case 'input':
+      return change.input.kind === 'trigger'
+        ? <span>{readableMarkers(t, change.input.preview ?? '') || t('empty')}</span>
+        : <div className="dt-row-quote"><MarkdownLite text={change.input.text ?? t('empty')} /></div>
+    case 'decision': return <span>{decisionMark(t, change.outcome).label}</span>
+    case 'ticket': return <span>{change.title}</span>
+    case 'assignment': return <span className="dt-mono">{change.id} · {valueLabel(t, 'assignment', change.state)}</span>
+    case 'end': return <>{valueLabel(t, 'outcome', change.outcome)}{change.reason && <span> · {reasonLabel(t, change.reason)}</span>}</>
+    case 'policy': return <>
+      <span className="dt-mono">{change.from.slice(0, 8)} → {change.to.slice(0, 8)}</span>
+      {!!change.effect?.rules?.length && <span>{t('timelinePolicyRules', { rules: change.effect.rules.map(rule => rule.name).join(t('listSeparator')) })}</span>}
+    </>
+    case 'resume': return <span>{t('timelineResumed')}</span>
+    case 'reopen': return <span>{t('timelineReopened')}</span>
+    case 'binding': return <span className="dt-mono">{valueLabel(t, 'source', change.channel.source)} · {change.channel.thread}</span>
+  }
+}
+/** 凭什么: the Decision, Mandate, Policy, Approval and disposition a timeline step rests on. */
+function TimelineBasisView({ basis }: { basis: TicketTimelineView['entries'][number]['basis'] }) {
+  const { t } = usePanel()
+  const parts: ReactNode[] = []
+  if (basis.strength) parts.push(<LabelValue key="strength" label={t('timelineBasisStrength')}
+    value={valueLabel(t, 'strength', basis.strength)} />)
+  if (basis.policyVersion) parts.push(<LabelValue key="policy" label={t('policyVersion')}
+    value={<span className="dt-mono">{basis.policyVersion.slice(0, 8)}</span>} />)
+  if (basis.decision) parts.push(<LabelValue key="decision" label={t('timelineBasisDecision')}
+    value={valueLabel(t, 'decision', basis.decision.kind)} />)
+  const facts = (basis.facts ?? []).filter(item => item.name !== 'sender')
+  if (facts.length) parts.push(<LabelValue key="facts" label={t('timelineBasisFacts')}
+    value={facts.map(item => basisFactLabel(t, item)).join(t('listSeparator'))} />)
+  if (basis.rules?.length) parts.push(<LabelValue key="rules" label={t('timelineBasisRules')}
+    value={basis.rules.map(rule => rule.name).join(t('listSeparator'))} />)
+  if (basis.reason?.length) parts.push(<LabelValue key="reason" label={t('timelineBasisReason')}
+    value={reasonLabel(t, basis.reason)} />)
+  if (basis.approval) {
+    const { approval } = basis
+    const by = approval.decidedBy ? actorName(t, approval.decidedBy) : approval.requestedBy ? actorName(t, approval.requestedBy) : undefined
+    parts.push(<LabelValue key="approval" label={t('timelineBasisApproval')} value={`${valueLabel(t, 'approvalState', approval.state)}
+      · ${valueLabel(t, 'level', approval.grantedLevel ?? approval.level)}${by ? ` · ${by}` : ''}`} />)
+    if (approval.reason) parts.push(<LabelValue key="approval-reason" label={t('timelineBasisApprovalReason')} value={approval.reason} />)
+  }
+  if (basis.disposition) {
+    const { disposition } = basis
+    const shown: string[] = []
+    if (disposition.filtered) shown.push(reasonLabel(t, disposition.filtered))
+    if (disposition.delivered) shown.push(t('timelineDispositionDelivered'))
+    if (disposition.context) shown.push(t('timelineDispositionContext'))
+    if (disposition.acked) shown.push(t('timelineDispositionAcked'))
+    if (disposition.requeued) shown.push(t('timelineDispositionRequeued'))
+    for (const handback of disposition.handbacks) shown.push(t('timelineDispositionHandback', { reason: handback.reason }))
+    if (shown.length) parts.push(<LabelValue key="disposition" label={t('timelineBasisDisposition')} value={shown.join(t('listSeparator'))} />)
+  }
+  return <>{parts}</>
+}
+/** One readable step: who acted, on what basis, and what changed, with a gap stated when the records cannot name the actor. */
+function TimelineRow({ entry }: { entry: TicketTimelineView['entries'][number] }) {
+  const { t } = usePanel()
+  const who = entry.who.actor ? actorName(t, entry.who.actor) : t(`timelineSystem.${entry.who.system ?? 'system'}` as never)
+  return <li className="dt-timeline-entry">
+    <Dot state={entry.gap ? 'warning' : 'idle'} label={t(`timelineKind.${entry.kind}` as never)} />
+    <div className="dt-row-main">
+      <div className="dt-row-title"><strong className="dt-timeline-actor">{who}</strong>
+        <span className="dt-timeline-kind">{t(`timelineKind.${entry.kind}` as never)}</span><When at={entry.at} /></div>
+      <div className="dt-timeline-change"><TimelineChangeView change={entry.change} /></div>
+      <div className="dt-timeline-basis"><TimelineBasisView basis={entry.basis} /></div>
+      {entry.gap && <Hint>{t(`timelineGap.${entry.gap}` as never)}</Hint>}
+    </div>
+  </li>
+}
+/** The Ticket's read-only audit timeline; it fetches on its own so the rest of the page does not wait for it. */
+function TimelineSection({ ticketId }: { ticketId: string }) {
+  const { t, call } = usePanel()
+  const { data, error } = usePoll(() => call('GET tickets/:id/timeline', { id: ticketId }), [ticketId])
+  if (error instanceof ApiError && error.missing) return null
+  return <Section title={t('timelineTitle')} icon="history" count={data?.entries.length} hint={t('timelineHint')}>
+    {!data ? <LoadState error={error} loading={!error} /> : <>
+      {!!data.gaps?.length && <Hint>{t('timelineGaps', { gaps: data.gaps.map(gap => t(`timelineGap.${gap}` as never))
+        .join(t('listSeparator')) })}</Hint>}
+      {data.entries.length ? <ul className="dt-list dt-timeline">{data.entries.map(entry => <TimelineRow key={entry.id}
+        entry={entry} />)}</ul> : <Hint>{t('timelineEmpty')}</Hint>}
+    </>}
+  </Section>
+}
+
 function MandateDetails({ ticket, actor }: { ticket: TicketPageView; actor: string }) {
   const { t, navigate } = usePanel()
   const { mandate, decision } = ticket
-  const fact = (item: TicketPageView['basis']['facts'][number]): string => {
-    if (item.name === 'legacyAuthority') return valueLabel(t, 'legacy', item.value)
-    if (item.name === 'mode' || item.name === 'addressed') return valueLabel(t, item.name, item.value)
-    if (item.name === 'admission') return valueLabel(t, 'admissionCell', item.value)
-    if (item.name === 'rules') return item.value.map(rule => rule.name).join(t('listSeparator'))
-    return item.name === 'sender' ? item.value : t('yes')
-  }
+  const fact = (item: TicketPageView['basis']['facts'][number]): string => basisFactLabel(t, item)
   const { legacy } = ticket.basis
   // Omit `sender` when it matches `actor`, which is already shown on the status line.
   const facts = ticket.basis.facts.filter(item => !(item.name === 'sender' && item.value === actor))
@@ -195,6 +306,7 @@ export function TicketPage({ id }: { id: string }) {
     </p>}
     <ReviewSection ticket={data} onChanged={reload} />
     <MandateDetails ticket={data} actor={actor} />
+    <TimelineSection ticketId={data.id} />
     {undelivered.length > 0 && <Section title={t('undeliveredInputs')} count={undelivered.length}>
       <Hint>{data.deliveryError ? t('inputRetryHint') : data.paused ? t('inputPausedHint') : t('inputWaitingHint')}</Hint>
       <InputList inputs={undelivered} />

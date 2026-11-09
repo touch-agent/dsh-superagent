@@ -9,7 +9,7 @@ import type { Api, ApiResponse, RouteParams } from '@superagent/dsh/app/api.ts'
 import { SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInPart, builtInParts, composePrompt, composeSkill, defaultPrompts,
   environmentSection, policySection, promptParts } from '@superagent/dsh/app/prompts.ts'
 import type { ApprovalRow, DroppedReply, HistoryView, Problem, PromptsView, SetupView, SourceStatusRow, SourceView, StateView,
-  ThreadPageView, ThreadRow, TicketPageView, TicketRow, TicketStage, TriggerRow } from '@superagent/dsh/client/api.ts'
+  ThreadPageView, ThreadRow, TicketPageView, TicketRow, TicketStage, TicketTimelineView, TriggerRow } from '@superagent/dsh/client/api.ts'
 import type { TaskBoardView } from '@superagent/dsh/app/tasks.ts'
 import { SETUP_FIELDS } from '@superagent/dsh/deployment.ts'
 import { DispatchConfigSchema, EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSchema } from '@superagent/dsh/policy.ts'
@@ -99,6 +99,7 @@ export interface PanelServer {
   settings: Settings; revisions: Record<string, number>
   prompts: PromptsView
   tickets: { open: TicketRow[]; ended: TicketRow[] }; ticketDetails: Record<string, TicketPageView>
+  ticketTimelines: Record<string, TicketTimelineView>
   threads: ThreadRow[]
   threadPages: (key: string, query: { before?: string; around?: string }) => ThreadPageView | undefined
   person: TicketRow[]; search: Pick<ApiResponse<'GET search'>, 'items' | 'threads'>; history: HistoryView
@@ -246,6 +247,37 @@ const ticketDetail = (): TicketPageView => ({
     trigger: { id: 'e2', actor: actor('feishu', MEMBER), human: true, preview: '顺便改标题', thread: 'feishu:oc_1:om_root' } },
   { id: 'i2', kind: 'policy-changed', at: '2026-09-22T00:04:00Z', delivered: true, from: 'aaaaaaaaaaaaaaaa', to: 'bbbbbbbbbbbbbbbb' }],
 })
+/** A small audit timeline for the default Ticket: request, decision, dispatch, an approved action and a report. */
+export const ticketTimeline = (): TicketTimelineView => ({
+  ticket: { id: 't1', title: '修复回归' },
+  entries: [
+    { id: 'request:e2', at: '2026-09-22T00:00:00Z', kind: 'request', source: 'disposition',
+      who: { actor: actor('feishu', MEMBER) },
+      basis: { policyVersion: 'abcdef1234567890', disposition: { delivered: true, handbacks: [] } },
+      change: { kind: 'input', input: { kind: 'trigger', preview: '修复登录页回归', delivered: true } }, trigger: 'e2' },
+    { id: 'decision:d1', at: '2026-09-22T00:00:30Z', kind: 'decision', source: 'trace',
+      who: { actor: actor('feishu', MEMBER) },
+      basis: { strength: 'explicit', facts: [{ name: 'addressed', value: 'mention' }], policyVersion: 'abcdef1234567890',
+        decision: { id: 'd1', kind: 'accept', at: '2026-09-22T00:00:30Z' } },
+      change: { kind: 'decision', outcome: 'accept' }, trigger: 'e2' },
+    { id: 'create:t1', at: '2026-09-22T00:00:31Z', kind: 'create', source: 'trace',
+      who: { actor: actor('feishu', MEMBER) }, basis: { strength: 'explicit', policyVersion: 'abcdef1234567890' },
+      change: { kind: 'ticket', id: 't1', title: '修复回归' } },
+    { id: 'dispatch:a1', at: '2026-09-22T00:01:00Z', kind: 'dispatch', source: 'trace', who: { system: 'executor' },
+      basis: { strength: 'explicit', policyVersion: 'abcdef1234567890' },
+      change: { kind: 'assignment', id: 'a1', state: 'running' } },
+    { id: 'approval:ap1', at: '2026-09-22T00:02:00Z', kind: 'approval', source: 'approval',
+      who: { actor: { source: 'panel', id: 'local', name: { zh: '管理页', en: 'Panel' } } },
+      basis: { strength: 'explicit', policyVersion: 'abcdef1234567890', approval: { id: 'ap1', state: 'approved',
+        requestedAt: '2026-09-22T00:01:30Z', expiresAt: '2030-09-23T00:00:00Z', level: 'send',
+        decidedBy: { source: 'panel', id: 'local', name: { zh: '管理页', en: 'Panel' } }, decidedAt: '2026-09-22T00:02:00Z' } },
+      change: { kind: 'action', action: { kind: 'mail.reply', source: 'feishu', objectId: 'om_reply_1', revision: 'rev-1', level: 'send',
+        actor: { source: 'dsh-superagent', id: 'outbox', name: { zh: '外发通道', en: 'Outbox' } } } } },
+    { id: 'report:a1', at: '2026-09-22T00:03:00Z', kind: 'report', source: 'ticket', who: { system: 'executor' },
+      basis: { strength: 'explicit', policyVersion: 'abcdef1234567890' },
+      change: { kind: 'report', state: 'progress', summary: 'working' } },
+  ],
+})
 function threadPage(key: string, { before, around }: { before?: string; around?: string }): ThreadPageView | undefined {
   if (key !== threadSummary().key) return undefined
   const base = { ...threadSummary(), tickets: [ticketSummary()], correlated: [{ key: 'github:42', title: 'PR 42' }], decisions: [],
@@ -307,7 +339,8 @@ function initial(): PanelServer {
       skillPrefix: SKILL_PREFIX, revision: 0, current: { ...defaults, config: defaultPrompts() },
       defaults: defaultPrompts(), parts: Object.entries(builtInParts()).map(([key, part]) => ({ key, ...part, base: builtInBase(part.text) })),
       defaultChanged: [], revisions: [{ ...defaults, changed: [] }], sessions: [], notificationPending: false, next_offset: null },
-    tickets: { open: [ticketSummary()], ended: [ended] }, ticketDetails: { t1: ticketDetail() }, tasks: taskBoardView(),
+    tickets: { open: [ticketSummary()], ended: [ended] }, ticketDetails: { t1: ticketDetail() },
+    ticketTimelines: { t1: ticketTimeline() }, tasks: taskBoardView(),
     threads: [threadSummary()], threadPages: threadPage,
     person: [ticketSummary({ attention: { id: 'q1', question: '需要确认按钮颜色' }, note: { text: '需要确认按钮颜色', error: false }, reply },
       { stage: 'person', action: 'answer' }),
@@ -389,6 +422,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     return page(query.origin ? items.filter(ticket => ticket.origin === query.origin) : items)
   } },
   'GET tickets/:id': { answer: ({ params }) => server.ticketDetails[params.id] ?? refuse(404, 'Ticket not found') },
+  'GET tickets/:id/timeline': { answer: ({ params }) => server.ticketTimelines[params.id] ?? refuse(404, 'Ticket not found') },
   'POST tickets/:id/retry': { answer: ({ params }) => {
     const ticket = ticketOf(params.id)
     if (!ticket) return refuse(404, 'Ticket not found')

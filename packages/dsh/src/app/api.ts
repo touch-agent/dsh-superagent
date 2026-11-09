@@ -10,6 +10,7 @@ import type { SettingsView } from './views/settings.ts'
 import type { SourceStatusView } from './views/sources.ts'
 import type { DecisionListView, SearchView, ThreadDetailView, ThreadListView } from './views/threads.ts'
 import type { TicketListView } from './views/tickets.ts'
+import type { TicketTimelineView } from './views/timeline.ts'
 import type { TriggerTraceView } from './views/trace.ts'
 import type { ActivityFeed, ActivityLevel } from './activity.ts'
 import type { TaskBoardView } from './tasks.ts'
@@ -43,6 +44,7 @@ export interface Api {
   'POST decisions/:id/dismiss': { response: { dismissed: true } }
   'GET tickets': { query?: Paged & { state?: TicketFilter; origin?: TicketOrigin }; response: TicketListView }
   'GET tickets/:id': { response: TicketPageView }
+  'GET tickets/:id/timeline': { response: TicketTimelineView }
   'POST tickets/:id/retry': { response: { retried: true } }
   'POST tickets/:id/stop': { response: { stopped: true } }
   'POST tickets/:id/approve': { response: { approved: true } }

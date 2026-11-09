@@ -30,6 +30,7 @@ import { settingsView } from './views/settings.ts'
 import { sourcesStatus, type SetupState } from './views/sources.ts'
 import { decisionList, search, threadDetail, threadList } from './views/threads.ts'
 import { executorLoad, ticketDetail, ticketList } from './views/tickets.ts'
+import { ticketTimeline } from './views/timeline.ts'
 import { triggerTrace } from './views/trace.ts'
 import { activityFeed, activityLookup } from './activity.ts'
 import { taskBoard } from './tasks.ts'
@@ -207,6 +208,11 @@ function routes(runtime: HttpHost): Routes {
       return ticketList(views(runtime), state, offset, limit, origin)
     },
     'GET tickets/:id': ({ params }) => ticketPage(runtime, params.id),
+    'GET tickets/:id/timeline': ({ params }) => {
+      const timeline = ticketTimeline(views(runtime), params.id)
+      if (!timeline) throw new RouteError(404, 'Ticket not found')
+      return timeline
+    },
     'POST tickets/:id/retry': ({ params }) => { const id = ticket(params.id); runtime.engine.retryTicket(id); return { retried: true } },
     'POST tickets/:id/stop': ({ params }) => { const id = ticket(params.id); runtime.engine.stopTicket(id); return { stopped: true } },
     'POST tickets/:id/approve': ({ params }) => { const id = ticket(params.id); runtime.engine.reviewTicket(id, PANEL_ACTOR); return { approved: true } },
