@@ -154,7 +154,7 @@ function policyMessage(effect?: PolicyEffect): string {
 export const inputResource = (ticketId: string, inputId: string): string => `ticket/${ticketId}/input/${key(inputId)}`
 /**
  * Formats a ticket input for worker delivery: a `trigger` rendered via `trigger` (or by its ID and read path when absent),
- * a `policy-changed` notice, a `resumed` notice, an orchestrator `note`, or a `text` input as written.
+ * a `policy-changed` notice, a `resumed` notice, an orchestrator `note`, a child report or an end gate, or a `text` input as written.
  * Returns `undefined` for legacy `reopen` inputs, which are historical only because the schema 11 migration converted pending reopen inputs into text inputs.
  */
 export function inputMessage(input: TicketInput, trigger?: object): string | undefined {
@@ -164,6 +164,12 @@ export function inputMessage(input: TicketInput, trigger?: object): string | und
   if (input.kind === 'policy-changed') return policyMessage(input.effect)
   if (input.kind === 'resumed') return RESUMED
   if (input.kind === 'note') return `Note from the orchestrator, for context only: ${input.text}`
+  if (input.kind === 'child-report') return JSON.stringify({ kind: 'child_report', child_ticket_id: input.childTicketId,
+    attempt: input.attempt, assignment_id: input.assignmentId, state: input.state, summary: input.summary, report_at: input.reportAt,
+    ...input.humanAction ? { human_action: input.humanAction } : {}, read: `ticket/${input.childTicketId}/result`,
+    instruction: 'Judge this child report with orchestrator_child: accept it, return it for another attempt, cancel it, record self-work, escalate, or reassign it. Only your own completed goal is reported upward.' })
+  if (input.kind === 'end-gate') return JSON.stringify({ kind: 'end_gate', pending: input.pending,
+    instruction: 'A thread close waits for this Ticket to end. Resolve every child Ticket, then report ready; the pending end is applied then.' })
   return input.kind === 'text' ? input.text : undefined
 }
 /**

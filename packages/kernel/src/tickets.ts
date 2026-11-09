@@ -239,7 +239,10 @@ export class Tickets extends EnginePart {
     const { parent, child } = this.childPair(parentId, childId)
     if (!liveTicket(parent)) throw new UserError('parentUnavailable', { parent: parentId })
     const delegation = child.delegation!
-    if (child.ended || delegation.resolution) throw new UserError('childClosed')
+    // An accepted child may be reopened until the root's aggregate gets a person's review acceptance; any other
+    // terminal resolution (cancel/fail) stays closed.
+    const accepted = delegation.resolution?.kind === 'accepted' && child.ended?.outcome === 'completed'
+    if ((child.ended || delegation.resolution) && !accepted) throw new UserError('childClosed')
     const root = this.repo.tickets.get(rootTicketIdOf(child))
     if (root?.assignments.some(assignment => assignment.report?.accepted)) throw new UserError('childClosed')
     const previous = latestAssignment(child)
@@ -247,6 +250,7 @@ export class Tickets extends EnginePart {
     delete delegation.resolution
     delete delegation.merge
     delete delegation.orphaned
+    delete delegation.endedAt
     delete child.attention
     delegation.lastReportAt = at
     const disposition = this.dispose(parent, child, 'returned', by, at, reason)

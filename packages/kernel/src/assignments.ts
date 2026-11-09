@@ -111,6 +111,11 @@ export class Assignments extends EnginePart {
     if (child) {
       // A child owner has no person path: its attention goes to the parent owner, who decides whether a person must act.
       if (report.askedBy || report.answers) throw new UserError('notAuthorizationRoot')
+      if (report.state === 'ready') {
+        const unresolved = this.tickets.unresolvedChildren(ticketId)
+        if (unresolved.length) throw new UserError('unfinishedChildTickets', { count: String(unresolved.length),
+          tickets: unresolved.map(item => item.id).join(', ') })
+      }
       const assignment = runningAssignment(ticket) ?? latestAssignment(ticket)
       if (!assignment) throw new UserError('unknownAssignment')
       if (report.assignmentId && report.assignmentId !== assignment.id) {

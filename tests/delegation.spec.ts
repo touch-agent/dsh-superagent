@@ -86,6 +86,26 @@ describe('child ticket delegation', () => {
     expect(accepted.ended).toMatchObject({ outcome: 'completed' })
     expect(accepted.delegation?.resolution).toMatchObject({ kind: 'accepted', acceptedAttempt: 1, by: owner })
     expect(h.repo.tickets.get('root')!.ended).toBeUndefined()
+
+    const returned = h.engine.returnChild('root', child.id, owner, 'reopen the accepted work')
+    expect(returned.ended).toBeUndefined()
+    expect(returned.delegation?.resolution).toBeUndefined()
+    expect(returned.delegation?.attempt).toBe(2)
+    expect(returned.delegation?.endedAt).toBeUndefined()
+    expect(returned.assignments.at(-1)).toMatchObject({ attempt: 2, state: 'pending' })
+  })
+
+  it('refuses a child ready report while its own descendants are unresolved', () => {
+    const h = harness()
+    const child = h.delegate('root', 'child A')
+    const grandchild = h.delegate(child.id, 'grandchild')
+    expect(() => h.engine.report(child.id, { state: 'ready', summary: 'child done' })).toThrow(UserError)
+    try { h.engine.report(child.id, { state: 'ready', summary: 'child done' }) } catch (error) {
+      expect((error as UserError).code).toBe('unfinishedChildTickets')
+    }
+    h.engine.report(grandchild.id, { state: 'ready', summary: 'grandchild done' })
+    h.engine.acceptChild(child.id, grandchild.id, owner)
+    expect(h.engine.report(child.id, { state: 'ready', summary: 'child done' }).ended).toBeUndefined()
   })
 
   it('refuses a root ready report while a direct child is unresolved', () => {

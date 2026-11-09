@@ -4,6 +4,8 @@ import { Engine, MemoryRepositories, UserError, outboundAction, type Policy, typ
 import { requestActionApproval } from '@superagent/dsh/app/action-gate.ts'
 import { ApprovalPolicySchema } from '@superagent/dsh/policy.ts'
 import { childShellReason } from '@superagent/dsh/app/sessions.ts'
+import { inputMessage } from '@superagent/dsh/executor/dsh.ts'
+import type { TicketInput } from '@superagent/kernel'
 
 const actor = { source: 'chat', id: 'alice' }
 const root: Ticket = {
@@ -75,5 +77,18 @@ describe('a child shell is restricted at the tool level', () => {
     for (const command of ['pnpm vitest run', 'git diff --stat', 'git commit -m "work"', 'ls -la', 'rg TODO src']) {
       expect(childShellReason(command), command).toBeUndefined()
     }
+  })
+})
+
+describe('child reports and end gates reach the parent worker with content', () => {
+  it('renders both new input kinds instead of marking them delivered silently', () => {
+    const report: TicketInput = { id: 'i1', kind: 'child-report', childTicketId: 'child', attempt: 2,
+      assignmentId: 'a2', reportAt: '2026-09-23T00:00:02.000Z', state: 'ready', summary: 'child done',
+      humanAction: 'Decide the merge', at: '2026-09-23T00:00:02.000Z' }
+    expect(JSON.parse(inputMessage(report)!)).toMatchObject({ kind: 'child_report', child_ticket_id: 'child', attempt: 2,
+      state: 'ready', summary: 'child done', human_action: 'Decide the merge', read: 'ticket/child/result' })
+    const gate: TicketInput = { id: 'i2', kind: 'end-gate', pending: { by: 'thread', outcome: 'merged',
+      at: '2026-09-23T00:00:03.000Z', ref: 'github:40' }, at: '2026-09-23T00:00:03.000Z' }
+    expect(JSON.parse(inputMessage(gate)!)).toMatchObject({ kind: 'end_gate', pending: { outcome: 'merged', ref: 'github:40' } })
   })
 })
