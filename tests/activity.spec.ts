@@ -248,7 +248,7 @@ it('completes a feed page only when the reader provides the domain lookup', () =
 it('groups a review Ticket under the Ticket it reviews through the Store-backed lookup', () => {
   const impl = { ...ticket(undefined), id: 'impl', title: '修复登录（T2-03）', createdAt: '2026-01-01T00:00:00Z' }
   const review = { ...ticket(undefined), id: 'review', title: 'review PR #8：修复登录', createdAt: '2026-01-01T01:00:00Z',
-    mandate: { ...ticket(undefined).mandate, scope: '对 PR #8（T2-03）做独立 review' } }
+    mandate: { ...ticket(undefined).mandate!, scope: '对 PR #8（T2-03）做独立 review' } }
   const record = { seq: 20, at: '2026-01-01T02:00:00Z', event: 'ticket.ended' as const, level: 'notice' as const,
     summary: 'Ticket review ended', ticket: 'review' }
   const wired = activityLookup({
@@ -258,4 +258,17 @@ it('groups a review Ticket under the Ticket it reviews through the Store-backed 
   const presented = presentActivity(record, wired)
   expect(presented.task).toMatchObject({ id: 'impl', title: '修复登录（T2-03）' })
   expect(presented.sinceStartMs).toBe(2 * 3_600_000)
+})
+
+it('aggregates a child ticket event to its root and keeps the child end quiet', () => {
+  const root = { ...ticket(undefined), id: 'root' }
+  const child = { ...ticket(undefined), id: 'child', parentTicketId: 'root', rootTicketId: 'root' }
+  expect(gradeEvent(event('ticket.ended', { ticketId: 'child', by: 'executor', outcome: 'completed' }), child))
+    .toMatchObject({ level: 'quiet', ticket: 'root', detail: { childTicketId: 'child' } })
+  expect(gradeEvent(event('ticket.child.reported', { parentTicketId: 'root', ticketId: 'child', attempt: 1, state: 'ready' }), root))
+    .toMatchObject({ level: 'quiet', ticket: 'root', detail: { childTicketId: 'child' } })
+  expect(gradeEvent(event('ticket.delegated', { parentTicketId: 'root', ticketId: 'child', rootTicketId: 'root', attempt: 1, depth: 1 }), child))
+    .toMatchObject({ level: 'feed', ticket: 'root' })
+  expect(gradeEvent(event('ticket.child.orphaned', { parentTicketId: 'root', ticketId: 'child', reason: 'parent-ended' }), root))
+    .toMatchObject({ level: 'notice', ticket: 'root' })
 })

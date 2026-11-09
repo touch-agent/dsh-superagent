@@ -247,7 +247,7 @@ function MandateDetails({ ticket, actor }: { ticket: TicketPageView; actor: stri
     </div>],
   ] : []
   const version = <button type="button" className="dt-textlink dt-mono" onClick={() => navigate(settingsRoute('eval',
-    { version: mandate.policyVersion }))}>{mandate.policyVersion.slice(0, 8)}</button>
+    { version: mandate.policyVersion }))}>{mandate.policyVersion?.slice(0, 8)}</button>
   return <Section title={t('mandateDetails')} icon="shield">
     <KeyValues rows={[...rows, [t('term.scope'), legacy ? t('legacyScopeShort') : mandate.scope || t('empty')],
       ...facts.map((item): [string, string] => [valueLabel(t, 'basis', item.name), fact(item)]),

@@ -262,3 +262,40 @@ it('reads `%` and `_` in a key prefix and a search query as written, not as patt
   expect([store.read.search('50%').map(item => item.id), store.read.search('a_b').map(item => item.id)]).toEqual([['p'], ['r']])
   store.close()
 })
+
+it('stores the task tree as generated parent and root columns with partial indexes at schema 15', () => {
+  const path = join(directory, 'tree.sqlite')
+  const store = new Store(path)
+  expect(store.get(KV.store.schema)).toBe(15)
+  store.close()
+  const db = new DatabaseSync(path)
+  const columns = db.prepare('PRAGMA table_xinfo(ticket)').all().map(row => (row as { name: string }).name)
+  expect(columns).toEqual(expect.arrayContaining(['parent', 'root']))
+  const indexes = db.prepare('PRAGMA index_list(ticket)').all().map(row => (row as { name: string }).name)
+  expect(indexes).toEqual(expect.arrayContaining(['ticket_parent', 'ticket_root']))
+  const root = ticket('root', 'open', [{ state: 'running' }])
+  const child: Ticket = { ...ticket('child', 'open', [{ state: 'running' }]), parentTicketId: 'root', rootTicketId: 'root' }
+  db.prepare('INSERT INTO ticket VALUES (?,?)').run('root', JSON.stringify(root))
+  db.prepare('INSERT INTO ticket VALUES (?,?)').run('child', JSON.stringify(child))
+  expect(db.prepare('SELECT id, parent, root FROM ticket ORDER BY id').all()).toEqual([
+    { id: 'child', parent: 'root', root: 'root' },
+    { id: 'root', parent: null, root: 'root' },
+  ])
+  db.close()
+})
+
+it('filters root working sets in SQLite and reads children separately', () => {
+  const store = new Store(join(directory, 'children.sqlite'))
+  const root = ticket('root', 'open', [{ state: 'running' }])
+  const child: Ticket = { ...ticket('child', 'open', [{ state: 'running' }]), parentTicketId: 'root', rootTicketId: 'root',
+    delegation: { parentTicketId: 'root', rootTicketId: 'root', goal: 'child', requestedBy: { ticketId: 'root', sessionId: 'worker-root' },
+      attempt: 1, createdAt: '' } }
+  store.tickets.save(root); store.tickets.save(child)
+  expect(ids(store.tickets.open())).toEqual(['root'])
+  expect(ids(store.tickets.active())).toEqual(['root'])
+  expect(ids(store.tickets.allOpen())).toEqual(['child', 'root'])
+  expect(ids(store.tickets.allActive())).toEqual(['child', 'root'])
+  expect(ids(store.tickets.childrenOf('root'))).toEqual(['child'])
+  expect(ids(store.tickets.subtree('root'))).toEqual(['child', 'root'])
+  store.close()
+})

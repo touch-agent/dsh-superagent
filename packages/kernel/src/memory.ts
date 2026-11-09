@@ -40,9 +40,15 @@ export class MemoryRepositories implements Repositories {
     get: (id: string) => clone(this.ticketRows.get(id)),
     save: (ticket: Ticket) => { this.ticketRows.set(ticket.id, clone(ticket)) },
     /** Newest first, matching the SQLite Store's order. */
-    list: () => [...this.ticketRows.values()].reverse().map(clone),
+    allList: () => [...this.ticketRows.values()].reverse().map(clone),
+    allOpen: () => this.tickets.allList().filter(ticket => !ticket.ended),
+    allActive: () => this.tickets.allList().filter(ticket => ticket.undelivered.length > 0 || ['pending', 'running'].includes(latestAssignment(ticket)?.state ?? '')),
+    /** Root Tickets only, matching the SQLite Store's order. */
+    list: () => this.tickets.allList().filter(ticket => ticket.parentTicketId === undefined),
     open: () => this.tickets.list().filter(ticket => !ticket.ended),
     active: () => this.tickets.list().filter(ticket => ticket.undelivered.length > 0 || ['pending', 'running'].includes(latestAssignment(ticket)?.state ?? '')),
+    childrenOf: (ticketId: string) => this.tickets.allList().filter(ticket => ticket.parentTicketId === ticketId),
+    subtree: (rootTicketId: string) => this.tickets.allList().filter(ticket => ticket.rootTicketId === rootTicketId),
   }
   readonly decisions = {
     get: (id: string) => clone(this.decisionRows.get(id)),

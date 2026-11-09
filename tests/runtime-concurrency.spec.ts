@@ -897,7 +897,7 @@ describe('the Executor\'s parts', () => {
       { kind: 'accept', title: 'Fix', scope: 'Fix', reason: 'r', name: 'fix-login', note: 'the login page' } as never, settings, '/state').assignment)
       .toBe('Routing note (not the source request): the login page')
     // The worker's system prompt holds the limits an inferred Mandate sets, so the assignment does not repeat them.
-    expect(execution.assignment).not.toContain(mandateInstructions(ticket.mandate))
+    expect(execution.assignment).not.toContain(mandateInstructions(ticket.mandate!))
     expect(execution.assignment).toContain('- Copy fixes (copy): Fix typos only.')
     expect(mandateInstructions({ strength: 'explicit' })).toBe('')
   })
@@ -940,4 +940,34 @@ describe('the Executor\'s parts', () => {
     expect(ready.id).toMatch(/^report:/)
     expect(JSON.parse(ready.text)).toMatchObject({ kind: 'worker_report', ticket: { ticket_id: 't1' }, trigger_id: 'tr1', state: 'ready', answer_to: 'tr9', summary: 'Done' })
   })
+})
+
+it('runs a child in its own worker session with restricted tools, counts both slots, and stops it with the root', async () => {
+  const { ticket } = await h.acceptedTicket(feishu('1', '@bot 做根任务'))
+  const child = h.runtime.engine.delegate(ticket.id, { goal: 'child work', assignment: 'do the child work' })
+  await h.runtime.idle()
+  await waitUntil(() => h.tools.has(`worker-${child.id}`))
+  const childTools = h.tools.get(`worker-${child.id}`)!
+  expect(childTools.has('orchestrator_child')).toBe(true)
+  expect(childTools.has('subagent')).toBe(false)
+  expect(childTools.has('send_message')).toBe(false)
+  expect(childTools.has('list_agents')).toBe(false)
+  expect(h.runtime.executor.activeCount()).toBe(2)
+  await h.runtime.engine.stopTicket(ticket.id)
+  await h.runtime.idle()
+  expect(h.runtime.store.tickets.get(child.id)?.ended).toMatchObject({ outcome: 'stopped' })
+  expect(h.runtime.executor.activeCount()).toBe(0)
+})
+
+it('resumes parents first and orphans a child whose parent ended instead of restarting it', async () => {
+  const { ticket } = await h.acceptedTicket(feishu('1', '@bot 做根任务'))
+  const child = h.runtime.engine.delegate(ticket.id, { goal: 'child work' })
+  await h.runtime.idle()
+  h.runtime.store.tickets.save({ ...h.runtime.store.tickets.get(ticket.id)!, ended: { at: new Date().toISOString(), by: 'executor', outcome: 'dropped' } })
+  h.runtime.executor.resume()
+  await h.runtime.idle()
+  const stored = h.runtime.store.tickets.get(child.id)!
+  expect(stored.delegation?.orphaned).toBeDefined()
+  expect(stored.ended).toBeUndefined()
+  expect(stored.attention?.question).toContain(child.id)
 })

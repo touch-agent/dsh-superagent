@@ -236,6 +236,8 @@ export type ReportState = 'progress' | 'waiting' | 'ready' | 'blocked' | 'failed
 export interface Assignment {
   id: string
   state: AssignmentState
+  /** For a child ticket, the delegation attempt this Assignment belongs to; absent means attempt 1. */
+  attempt?: number
   createdAt: string
   startedAt?: string
   endedAt?: string
@@ -276,6 +278,11 @@ export type TicketInput =
   | { id: string; kind: 'note'; text: string; at: string }
   /** An external Channel the ticket gained, recorded for audit; it asks for nothing and grants nothing. */
   | { id: string; kind: 'binding'; channel: ChannelRef; at: string }
+  /** A child ticket's report, which reaches only its parent owner; it is not a Trigger and never asks a person directly. */
+  | { id: string; kind: 'child-report'; childTicketId: string; attempt: number; assignmentId: string; reportAt: string
+    state: ReportState; summary: string; review?: Review; humanAction?: string; at: string; deliveredAt?: string; readAt?: string }
+  /** A pull request or followed thread closed while child tickets are unresolved; the parent owner must apply it. */
+  | { id: string; kind: 'end-gate'; pending: PendingEnd; at: string; deliveredAt?: string; readAt?: string }
 
 /**
  * How a Policy change bears on a ticket: the rules it was accepted under that changed, with their instruction now, or no
@@ -300,12 +307,73 @@ export type TicketOutcome = 'completed' | 'merged' | 'closed' | 'dropped' | 'sto
 export type TicketForm = 'tracked' | 'lightweight'
 /** A question for a person; `triggerId` is the human message that raised it, whose conversation it goes back to. */
 export interface Attention { id: string; question: string; triggerId?: string }
+/** How a tracked ticket's pull request or followed thread closed while child tickets are still unresolved. */
+export interface PendingEnd {
+  by: 'thread' | 'follows'
+  outcome: 'merged' | 'closed'
+  at: string
+  reason?: string
+  ref?: string
+}
+/** One judgement a parent owner recorded about a child ticket's report. */
+export interface ChildReportDisposition {
+  reportId?: string
+  childTicketId: string
+  attempt: number
+  assignmentId?: string
+  reportAt?: string
+  decision: 'accepted' | 'returned' | 'reassigned' | 'self-work' | 'escalated' | 'cancelled' | 'failed'
+  by: ActorRef
+  at: string
+  reason?: string
+  traceId: string
+  replacementTicketId?: string
+}
+/**
+ * A child ticket's delegation record: the parent owner's goal and scope, the attempt whose report alone counts, the
+ * parent's judgements, and the terminal resolution that must pair with the child ticket's end.
+ */
+export interface Delegation {
+  parentTicketId: string
+  rootTicketId: string
+  /** The child's goal; the parent owner writes it and the child owner cannot change it. */
+  goal: string
+  /** An execution hint, not authorization; it cannot widen the root mandate's action level. */
+  scope?: string
+  requestedBy: { ticketId: string; sessionId: string }
+  /** 1-based; `return_child` increments it and invalidates the previous attempt. */
+  attempt: number
+  createdAt: string
+  startedAt?: string
+  endedAt?: string
+  reportCount?: number
+  lastReportAt?: string
+  lastDisposition?: ChildReportDisposition
+  /** Append-only history of the parent owner's judgements. */
+  dispositions?: ChildReportDisposition[]
+  /** The parent or root is unavailable; the child waits for the nearest living ancestor or a person. */
+  orphaned?: { reason: string; at: string; by?: ActorRef }
+  /** Terminal judgement; `accepted` must pair with a completed end, `cancelled` with stopped, `failed` with dropped. */
+  resolution?: {
+    kind: 'accepted' | 'cancelled' | 'failed'
+    by: ActorRef
+    at: string
+    acceptedReportAt?: string
+    acceptedAttempt?: number
+    reason?: string
+    traceId?: string
+  }
+  merge?: { at: string; by: ActorRef; into?: string; childRevisions: string[]; conflicts: string[]; resolution: 'merged' | 'escalated' | 'none'; reason?: string }
+  workspace?: { kind: 'worktree' | 'branch' | 'directory'; ref: string }
+}
 /** Ticket aggregate: an authorized work item with its assignments, channels, thread bindings, and inputs. */
 export interface Ticket {
   id: string
   title: string
-  decisionId: string
-  mandate: Mandate
+  /** The accept Decision that authorized a root ticket; absent on a child ticket, which has no Decision of its own. */
+  decisionId?: string
+  /** A root ticket's authorization; absent on a child ticket, which inherits its root's mandate. */
+  mandate?: Mandate
   /**
    * How it runs. A ticket created before forms existed has none and is tracked. A lightweight ticket has no Assignment and
    * runs its actions inline (see `InlineExecutor`); a tracked ticket gets an Assignment and a worker Session.
@@ -337,6 +405,85 @@ export interface Ticket {
   execution?: Execution
   /** The latest failed delivery of an Input to its worker, until a delivery succeeds. */
   delivery?: { error: string; at: string }
+  /** A child ticket's parent; absent on a root ticket. It never changes after creation. */
+  parentTicketId?: string
+  /** The authorization root: absent on a root ticket (it is its own root), required on a child. */
+  rootTicketId?: string
+  /** The parent owner's delegation and judgements; present on a child ticket only. */
+  delegation?: Delegation
+  /**
+   * A pull request or followed thread closed while child tickets were unresolved; the ticket stays live until its parent
+   * owner applies the pending end. It never coexists with `ended`.
+   */
+  endPending?: PendingEnd
+}
+/** A root ticket: the only node that carries authorization (a Decision and a Mandate). */
+export type RootTicket = Ticket & { parentTicketId?: never; rootTicketId?: never; delegation?: never; decisionId: string; mandate: Mandate }
+/** A child ticket: an execution node under a root, with no Decision or Mandate of its own. */
+export type ChildTicket = Ticket & { parentTicketId: string; rootTicketId: string; delegation: Delegation; decisionId?: never; mandate?: never }
+/** Whether `ticket` is a child ticket. */
+export const isChildTicket = (ticket: Pick<Ticket, 'parentTicketId'>): boolean => ticket.parentTicketId !== undefined
+/** The authorization root's id: a root ticket's own id, or a child's `rootTicketId`. */
+export const rootTicketIdOf = (ticket: Pick<Ticket, 'id' | 'rootTicketId'>): string => ticket.rootTicketId ?? ticket.id
+/** The authorization root, when it exists, resolved through `get`. */
+export function rootTicketOf(ticket: Pick<Ticket, 'id' | 'rootTicketId'>, get: (id: string) => Ticket | undefined): Ticket | undefined {
+  return get(rootTicketIdOf(ticket))
+}
+/**
+ * The mandate every action gate, Approval and outbox writes under: the root's, never a child's. A child never stores one,
+ * and a dangling root is a corruption, not a reason to borrow the child's own fields.
+ */
+export function rootMandateOf(ticket: Pick<Ticket, 'id' | 'rootTicketId'>, get: (id: string) => Ticket | undefined): Mandate | undefined {
+  return rootTicketOf(ticket, get)?.mandate
+}
+/** The depth of a ticket below its root: a root is 0, a direct child 1, and so on. */
+export function depthOf(ticket: Pick<Ticket, 'id' | 'parentTicketId' | 'rootTicketId'>, get: (id: string) => Ticket | undefined): number {
+  let depth = 0, cursor: Ticket | undefined = ticket as Ticket, seen = new Set<string>()
+  while (cursor?.parentTicketId !== undefined && depth < 64) {
+    if (seen.has(cursor.id)) return Number.POSITIVE_INFINITY
+    seen.add(cursor.id)
+    cursor = get(cursor.parentTicketId)
+    depth += 1
+  }
+  return depth
+}
+/** Whether a child's `rootTicketId` agrees with its parent's root (or the parent itself when the parent is a root). */
+export function rootConsistent(child: Pick<Ticket, 'parentTicketId' | 'rootTicketId'>, parent: Ticket | undefined): boolean {
+  if (!child.parentTicketId || !parent || parent.id !== child.parentTicketId) return false
+  return child.rootTicketId === (parent.rootTicketId ?? parent.id)
+}
+/**
+ * Whether a child ticket is unresolved: still live, and without a current terminal delegation resolution. A resolution
+ * without an end, an end without a resolution, or a resolution whose accepted report is stale counts as unresolved
+ * (or corrupt), so a parent never ends silently over it.
+ */
+export function childUnresolved(child: Ticket): boolean {
+  if (!isChildTicket(child)) return false
+  if (!liveTicket(child)) return false
+  const resolution = child.delegation?.resolution
+  if (!resolution) return true
+  if (resolution.kind !== 'accepted') return false
+  const report = currentChildReport(child)
+  return !report || resolution.acceptedReportAt !== report.at || resolution.acceptedAttempt !== child.delegation?.attempt
+}
+/** The latest report of the child ticket's current delegation attempt, ignoring reports from an earlier attempt. */
+export function currentChildReport(child: Ticket): Assignment['report'] {
+  const attempt = child.delegation?.attempt ?? 1
+  return child.assignments.findLast(assignment => assignment.report && (assignment.attempt ?? 1) === attempt)?.report
+}
+/** Whether a terminal resolution pairs with the child ticket's end as one valid state. */
+export function childResolutionValid(child: Ticket): boolean {
+  if (!isChildTicket(child) || !child.ended) return false
+  const resolution = child.delegation?.resolution
+  if (!resolution) return false
+  if (resolution.kind === 'accepted') return child.ended.outcome === 'completed' && childUnresolvedResolutionValid(child)
+  if (resolution.kind === 'cancelled') return child.ended.outcome === 'stopped'
+  return child.ended.outcome === 'dropped'
+}
+function childUnresolvedResolutionValid(child: Ticket): boolean {
+  const resolution = child.delegation!.resolution!
+  const report = currentChildReport(child)
+  return !!report && resolution.acceptedReportAt === report.at && resolution.acceptedAttempt === child.delegation?.attempt
 }
 /**
  * A Thread a ticket follows, by its key: `own` when the ticket opened it, such as its own pull request, and when and how it

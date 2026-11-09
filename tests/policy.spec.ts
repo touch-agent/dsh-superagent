@@ -447,12 +447,12 @@ describe('policy effects', () => {
       basis: { via: 'followup', source: 'feishu', scope: { chatId: 'oc_team' }, rules: ['copy'] } })
     const mode = (value: 'auto' | 'observe' | 'off') => ({ ...base, eval: { ...base.eval, mode: value } })
     const disabled = { ...mode('auto'), policy: { ...base.policy, rules: base.policy.rules.map(rule => ({ ...rule, enabled: rule.id !== 'copy' })) } }
-    expect(settingsPolicy(mode('auto'), scope()).revalidate(followup.mandate, NOW).ok).toBe(true)
-    for (const settings of [mode('observe'), mode('off'), disabled]) expect(settingsPolicy(settings, scope()).revalidate(followup.mandate, NOW).ok).toBe(false)
+    expect(settingsPolicy(mode('auto'), scope()).revalidate(followup.mandate!, NOW).ok).toBe(true)
+    for (const settings of [mode('observe'), mode('off'), disabled]) expect(settingsPolicy(settings, scope()).revalidate(followup.mandate!, NOW).ok).toBe(false)
     expect(policyEffects([followup], mode('auto'), mode('observe'), NOW, scope).get('t5')).toEqual({ proactive: false })
     // An explicit follow-up holds whatever the mode.
-    const explicitFollowup = ticket('t6', { ...followup.mandate, strength: 'explicit', actor: { source: 'feishu', id: 'ou_alice' } })
-    expect(settingsPolicy(mode('off'), scope()).revalidate(explicitFollowup.mandate, NOW).ok).toBe(true)
+    const explicitFollowup = ticket('t6', { ...followup.mandate!, strength: 'explicit', actor: { source: 'feishu', id: 'ou_alice' } })
+    expect(settingsPolicy(mode('off'), scope()).revalidate(explicitFollowup.mandate!, NOW).ok).toBe(true)
   })
   it('revokes an inferred ticket whose cell weakens or whose candidates no longer become work, and reports a deleted rule disabled', () => {
     const chat = 'oc_1111111111111111111111111111'

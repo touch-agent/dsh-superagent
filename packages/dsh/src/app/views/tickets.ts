@@ -62,7 +62,7 @@ export function ticketDetail(host: ViewHost, id: string) {
   const view = snapshot(host)
   const current = ticketStage(ticket)
   const { stage } = current
-  const decision = store.decisions.get(ticket.decisionId)
+  const decision = ticket.decisionId ? store.decisions.get(ticket.decisionId) : undefined
   const input = (value: Ticket['inputs'][number]) => {
     const trigger = value.kind === 'trigger' ? store.triggers.get(value.triggerId) : undefined
     const handback = trigger && store.triggers.disposition(trigger.id)?.handbacks?.find(item => item.ticketId === id)
@@ -72,8 +72,13 @@ export function ticketDetail(host: ViewHost, id: string) {
     const text = (value.kind === 'text' || value.kind === 'note') && value.text ? { text: markdown(value.text) } : {}
     return { ...value, ...text, delivered: !ticket.undelivered.includes(value.id), ...shown ? { trigger: shown } : {} }
   }
+  // A child Ticket shows its root's authorization; it has no Mandate or Decision of its own. A missing root is corrupt and
+  // has no detail page rather than a page that invents authority.
+  const root = ticket.parentTicketId ? store.tickets.get(ticket.rootTicketId ?? ticket.parentTicketId) : ticket
+  const mandate = root?.mandate
+  if (!mandate) return undefined
   // Pass `human = false` for bot-originated mandates so the Source kind still labels the actor as a bot if removed from the policy list.
-  const human = ticket.mandate.basis.via !== 'bot'
+  const human = mandate.basis.via !== 'bot'
   // A conversation task can be read in the main Session it came from; its Trigger records that Session.
   const origin = store.triggers.get(ticket.origin.triggerId)
   const report = latestReport(ticket)
@@ -85,8 +90,11 @@ export function ticketDetail(host: ViewHost, id: string) {
       summary: markdown(report?.summary ?? ''), ...report?.accepted ? { accepted: { ...report.accepted, by: view.actor(report.accepted.by) } } : {} } : {},
   } } : {}
   return { ...ticketLine(view, ticket), ...reviewView, ...origin?.source === 'conversation' && typeof origin.meta.sessionId === 'string'
-    ? { conversationSession: origin.meta.sessionId } : {}, mandate: { ...ticket.mandate, actor: view.actor(ticket.mandate.actor, human) },
-    basis: basisFacts(ticket.mandate.basis, view.rule), paused: store.settings().paused,
+    ? { conversationSession: origin.meta.sessionId } : {},
+    mandate: { ...mandate, actor: view.actor(mandate.actor, human) }, basis: basisFacts(mandate.basis, view.rule),
+    ...ticket.parentTicketId ? { parentTicketId: ticket.parentTicketId, rootTicketId: ticket.rootTicketId ?? ticket.parentTicketId,
+      ...(ticket.delegation ? { delegation: ticket.delegation } : {}) } : {},
+    paused: store.settings().paused,
     channels: ticket.channels.map(channel => channelLink(view, channel)),
     decision: decision ? decisionView(view, decision) : undefined,
     // Every started Assignment ran in the ticket's one worker Session. A running assignment whose worker reported a non-progress state has finished its turn unless a human response resumed the ticket.

@@ -100,8 +100,8 @@ describe('explicit dispatch mode', () => {
     expect(result.items).toBeUndefined()
     const [ticket] = openTickets(h.repo)
     expect(openTickets(h.repo)).toHaveLength(1)
-    expect(ticket?.mandate.scope).toContain('A 改动')
-    expect(ticket?.mandate.scope).toContain('C 改动')
+    expect(ticket?.mandate!.scope).toContain('A 改动')
+    expect(ticket?.mandate!.scope).toContain('C 改动')
   })
 })
 
@@ -161,7 +161,7 @@ describe('dispatch fallbacks that must not lose work', () => {
     expect(openTickets(h.repo)).toHaveLength(2)
     const combined = openTickets(h.repo).find(ticket => ticket.id !== existing.id)!
     expect(combined.title).toBe('A')
-    expect(combined.mandate.scope).toBe('Do A.\nDo B.\nDo C.')
+    expect(combined.mandate!.scope).toBe('Do A.\nDo B.\nDo C.')
     expect(h.repo.tickets.get(existing.id)!.inputs.some(input => input.kind === 'trigger')).toBe(true)
   })
 
@@ -267,7 +267,7 @@ describe('explicit parsing stays conservative', () => {
     if ('refused' in result) throw new Error(result.refused)
     const ticket = openTickets(h.repo)[0]!
     expect(openTickets(h.repo)).toHaveLength(1)
-    expect(ticket.mandate.scope).toContain('B')
+    expect(ticket.mandate!.scope).toContain('B')
   })
 
   it('keeps every new item in an over-wide fallback even when the caller supplied a scope', () => {
@@ -276,7 +276,7 @@ describe('explicit parsing stays conservative', () => {
       { title: 'B', scope: 'Do B.' }, { title: 'C', scope: 'Do C.' }] }, 'A, B and C')
     if ('refused' in result) throw new Error(result.refused)
     const ticket = openTickets(h.repo)[0]!
-    expect(ticket.mandate.scope).toContain('Do C.')
+    expect(ticket.mandate!.scope).toContain('Do C.')
   })
 })
 
@@ -349,7 +349,7 @@ describe('more status questions', () => {
     const h = harness('auto')
     const result = h.dispatch({ items: [{ title: 'C', scope: 'Do C.' }] }, '拆成以下任务：\n1、A\n2、B')
     if ('refused' in result) throw new Error(result.refused)
-    const scope = openTickets(h.repo)[0]!.mandate.scope
+    const scope = openTickets(h.repo)[0]!.mandate!.scope
     expect(scope).toContain('A')
     expect(scope).toContain('B')
     expect(scope).toContain('Do C.')

@@ -132,7 +132,7 @@ it('shows a trigger and a ticket as cards with a short preview and references to
     preview: expect.stringMatching(/^Please inspect the failing check\. Additional context\./), chars: trigger.text.length, read: 'trigger/request-1',
     disposition: { decision_id: 'd1', delivered_to: ['ticket-1'] } })
   expect(card.preview).toHaveLength(160)
-  const { policyVersion: _version, ...mandate } = ticket.mandate
+  const { policyVersion: _version, ...mandate } = ticket.mandate!
   const threads = [{ thread: 'github:42', bound: true as const }]
   const batch = [{ ...trigger, id: 'request-2', text: 'Also the flaky one.' }]
   expect(ticketDetails(ticket, threads, batch)).toEqual({ ticket_id: 'ticket-1', title: 'Inspect failing check',

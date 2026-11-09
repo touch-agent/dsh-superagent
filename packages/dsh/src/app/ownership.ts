@@ -43,7 +43,7 @@ const stripPlanTag = (title: string): string => title.replace(PLAN_TITLE, '').re
 /** The task-plan reference a Ticket's own title or Mandate scope names. */
 export function planOf(ticket: Ticket): PlanRef | undefined {
   const titled = PLAN_TITLE.exec(ticket.title)
-  const scoped = titled ? undefined : PLAN_SCOPE.exec(ticket.mandate.scope ?? '')
+  const scoped = titled ? undefined : PLAN_SCOPE.exec(ticket.mandate?.scope ?? '')
   const match = titled ?? scoped
   if (!match) return undefined
   const [, milestone, task] = match
@@ -66,7 +66,7 @@ export const isReviewTicket = (ticket: Pick<Ticket, 'title'>): boolean => review
  */
 function publishedPrs(ticket: Ticket): number[] {
   const reports = ticket.assignments.flatMap(assignment => assignment.report ? [assignment.report.summary] : []).join('\n')
-  const sources = `${reports}\n${ticket.mandate.scope ?? ''}`
+  const sources = `${reports}\n${ticket.mandate?.scope ?? ''}`
   const numbers = new Set<number>()
   for (const match of sources.matchAll(PR_URL)) numbers.add(Number(match[1]))
   return [...numbers]

@@ -1,7 +1,7 @@
 /** The domain Engine: the single entry point of the core, and the role interfaces its callers receive. */
 import { UserError } from './errors.ts'
 import { isoTime, liveTicket } from './model.ts'
-import type { ActorRef, ChannelRef, Decision, PolicyEffect, ThreadRef, Ticket, Trigger } from './model.ts'
+import type { ActorRef, ChannelRef, ChildReportDisposition, Decision, PolicyEffect, ThreadRef, Ticket, Trigger } from './model.ts'
 import type { Candidate, InlineResult, InlineStep, Repositories } from './ports.ts'
 import type { EngineOptions } from './part.ts'
 import { Assignments, type WorkerReport } from './assignments.ts'
@@ -147,6 +147,46 @@ export class Engine {
 
   /** The assessor delivered an Eval's candidate to its Session: the Eval's deadline counts from now. */
   candidateDelivered(evalId: string): void { this.repo.atomic(() => { this.evals.delivered(evalId, this.options.policy()) }) }
+  /**
+   * A parent owner requests a child Ticket under the same authorization root: the child gets its own tracked worker and
+   * inherits the root's Mandate and `maxActionLevel`; it creates no Decision or approval root of its own.
+   * @throws UserError when the parent or root is unavailable, the parent is lightweight, the root link is inconsistent, or the
+   * depth, direct-child width or live-child quota would be exceeded.
+   */
+  delegate(parentId: string, request: { goal: string; scope?: string; title?: string; name?: string; assignment?: string; replaces?: string }): Ticket {
+    return this.repo.atomic(() => this.tickets.delegate(parentId, request))
+  }
+  /**
+   * A parent owner accepts a child's current ready report. The child ends completed and its resolution pairs with that end;
+   * this is not a person's Review confirmation and never writes one.
+   * @throws UserError when the child is not the parent's, has unresolved descendants, or has no current ready report.
+   */
+  acceptChild(parentId: string, childId: string, by: ActorRef,
+    merge?: { into?: string; childRevisions?: string[]; conflicts?: string[]; resolution?: 'merged' | 'escalated' | 'none'; reason?: string }): Ticket {
+    return this.repo.atomic(() => this.tickets.acceptChild(parentId, childId, by, merge))
+  }
+  /**
+   * A parent owner returns a child's work for another attempt: the old Assignment ends, the attempt increments so old reports
+   * are refused, and a new worker Assignment starts.
+   * @throws UserError when the child is not the parent's, is terminally judged, or the root is already person-approved.
+   */
+  returnChild(parentId: string, childId: string, by: ActorRef, reason: string): Ticket {
+    return this.repo.atomic(() => this.tickets.returnChild(parentId, childId, by, reason))
+  }
+  /**
+   * A parent owner cancels a child and its subtree, or fails it as dropped after a failure it will not retry.
+   * @throws UserError when the child is not the parent's or is already judged.
+   */
+  cancelChild(parentId: string, childId: string, by: ActorRef, reason: string, kind: 'cancelled' | 'failed' = 'cancelled'): Ticket {
+    return this.repo.atomic(() => this.tickets.cancelChild(parentId, childId, by, reason, kind))
+  }
+  /** Mark a child Ticket orphaned because its parent or root is gone; a person decides it rather than the child running on. */
+  orphanChild(childId: string, reason: string): void { this.repo.atomic(() => this.tickets.orphan(childId, reason)) }
+  /** A parent owner records that it does the work itself, escalates, or replaces the child after a report. */
+  childDecision(parentId: string, childId: string, by: ActorRef, decision: 'self-work' | 'escalated' | 'reassigned', reason: string,
+    replacementTicketId?: string): ChildReportDisposition {
+    return this.repo.atomic(() => this.tickets.childDecision(parentId, childId, by, decision, reason, replacementTicketId))
+  }
   /**
    * Queue a stored Trigger for a fresh Eval, such as a person's replay; returns false while an Eval holds it.
    * @throws UserError when the trigger is unknown.
@@ -301,6 +341,7 @@ export type EngineForPeople = Pick<Engine, 'stopTicket' | 'retryTicket' | 'revie
 export type EngineForSettings = Pick<Engine, 'policyChanged'>
 /** What the Executor tells the Engine, and what its workers ask of it. */
 export type EngineForExecutor = Pick<Engine, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed'
-  | 'assignmentInterrupted' | 'report' | 'markUnrelated' | 'handback' | 'followForContext' | 'reply'>
+  | 'assignmentInterrupted' | 'report' | 'markUnrelated' | 'handback' | 'followForContext' | 'reply'
+  | 'delegate' | 'acceptChild' | 'returnChild' | 'cancelChild' | 'childDecision' | 'orphanChild'>
 /** What the inline executor tells the Engine: each action a lightweight ticket ran, and how its run ended. */
 export type EngineForInline = Pick<Engine, 'inlineAction' | 'inlineFinished'>

@@ -2,7 +2,7 @@
 import { acknowledgementAction, outboundAction, type OutboundKind } from './action.ts'
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
-import { latestAssignment, liveTicket, ticketOutcome } from './model.ts'
+import { isChildTicket, latestAssignment, liveTicket, ticketOutcome } from './model.ts'
 import type { Attention, ChannelRef, Ticket, Trigger } from './model.ts'
 import type { OutboundSend, ReplyStatus } from './ports.ts'
 import { EnginePart } from './part.ts'
@@ -66,6 +66,7 @@ export class Replies extends EnginePart {
   }
   private acknowledge(request: Extract<ReplyRequest, { purpose: 'acknowledgement' }>): Reply {
     const ticket = this.require(request.ticketId)
+    if (isChildTicket(ticket)) throw new UserError('notAuthorizationRoot')
     if (!liveTicket(ticket)) throw new UserError('ackEnded')
     const trigger = this.repo.triggers.get(request.triggerId)
     if (!trigger) throw new UserError('unknownTrigger')
@@ -93,6 +94,8 @@ export class Replies extends EnginePart {
     if (request.triggerId && !trigger) throw new UserError('unknownTrigger')
     const ticket = request.ticketId ? this.require(request.ticketId)
       : trigger ? this.repo.tickets.list().find(item => this.reaches(item, trigger)) : undefined
+    // Only a root Ticket speaks to people; a child reports to its parent owner.
+    if (ticket && isChildTicket(ticket)) throw new UserError('notAuthorizationRoot')
     if (request.purpose === 'result') {
       const outcome = ticket && ticketOutcome(ticket)
       const reported = !!ticket && liveTicket(ticket) && latestAssignment(ticket)?.report?.state === 'ready'

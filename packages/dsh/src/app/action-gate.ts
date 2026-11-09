@@ -45,11 +45,17 @@ export function requestActionApproval(store: Pick<Repositories, 'atomic' | 'appr
   }
   const now = request.now ?? (() => new Date().toISOString())
   const at = now()
-  const revalidation = request.policy.revalidate(request.ticket.mandate, at, { level: request.action.level })
+  // Only a root Ticket carries a Mandate; a child's action must be requested under its root by the root owner instead.
+  const mandate = request.ticket.mandate
+  if (!mandate) return { kind: 'refused', reason: { code: 'notAuthorizationRoot' } }
+  const revalidation = request.policy.revalidate(mandate, at, { level: request.action.level })
   if (!revalidation.ok) return { kind: 'refused', reason: revalidation.reason }
   try {
+    const rootTicketId = request.ticket.rootTicketId ?? request.ticket.id
     const approval = requestApproval(store, {
-      ticketId: request.ticket.id,
+      ticketId: rootTicketId,
+      originTicketId: rootTicketId,
+      ...(request.ticket.parentTicketId ? { requestedForTicketId: request.ticket.id } : {}),
       action: request.action,
       expiresAt: new Date(Date.parse(at) + APPROVAL_TTL_MS).toISOString(),
       ...request.target === undefined ? {} : { target: request.target },

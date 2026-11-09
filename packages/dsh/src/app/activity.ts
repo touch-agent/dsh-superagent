@@ -61,7 +61,7 @@ export interface ActivityRecord {
   /** The object the event is about, graded with the event; an older row derives it when the feed is read. */
   subject?: ActivitySubject
   /** Immutable facts of the event, graded with it; an older row derives what it can when the feed is read. */
-  detail?: ActivityDetail
+  detail?: ActivityDetail & { childTicketId?: string }
   /** The task the event belongs to and its current state, resolved by the feed reader. */
   task?: ActivityTask
   /** The state this event itself recorded, which can trail the task's current state. */
@@ -172,6 +172,10 @@ function statusOf(event: ActivityRecord['event'], decision: Decision | undefined
     case 'trigger.requeued': return 'blocked'
     case 'trigger.followup': return 'done'
     case 'policy.changed': return 'done'
+    case 'ticket.delegated': return 'working'
+    case 'ticket.child.reported': case 'ticket.child.reviewed': return ticket ? activityStatusOf(ticket) : 'working'
+    case 'ticket.end.pending': return 'working'
+    case 'ticket.child.orphaned': return 'blocked'
   }
 }
 
@@ -186,6 +190,10 @@ function subjectOf(event: DomainEvent): ActivitySubject | undefined {
     case 'thread.subscribed': case 'thread.unsubscribed': return { kind: 'thread', id: event.data.threadKey }
     case 'trigger.requeued': case 'trigger.followup': return { kind: 'trigger', id: event.data.triggerId }
     case 'policy.changed': return { kind: 'policy', id: event.data.to }
+    case 'ticket.delegated': return { kind: 'ticket', id: event.data.ticketId }
+    case 'ticket.child.reported': case 'ticket.child.reviewed': return { kind: 'ticket', id: event.data.ticketId }
+    case 'ticket.end.pending': return { kind: 'ticket', id: event.data.ticketId }
+    case 'ticket.child.orphaned': return { kind: 'ticket', id: event.data.ticketId }
   }
 }
 
@@ -208,7 +216,12 @@ function triggerDetail(trigger: Trigger | undefined): Pick<ActivityRecord, 'thre
 export function gradeEvent(event: DomainEvent, ticket: Ticket | undefined, trigger?: Trigger): Omit<ActivityRecord, 'seq'> {
   const at = event.at
   const subject = subjectOf(event)
-  const base = { at, event: event.type, ...subject ? { subject } : {} }
+  // A child's events aggregate to its authorization root; the child id stays in the detail for the tree view.
+  const childTicketId = ticket?.parentTicketId
+  const childId = childTicketId ? ticket?.id : undefined
+  const rootTicketId = childTicketId ? ticket?.rootTicketId ?? ticket?.id : undefined
+  const taskTicket = (id: string) => rootTicketId ?? id
+  const base = { at, event: event.type, ...subject ? { subject } : {}, ...childId ? { detail: { childTicketId: childId } } : {} }
   switch (event.type) {
     case 'trigger.received':
       return { ...base, level: 'feed', summary: `Trigger ${event.data.triggerId} received`, ...triggerDetail(trigger),
@@ -225,8 +238,10 @@ export function gradeEvent(event: DomainEvent, ticket: Ticket | undefined, trigg
     case 'ticket.ended': {
       const { ticketId, outcome, reason } = event.data
       const suppression = ticket ? endCoveredBy(ticket) : undefined
-      return { ...base, level: suppression ? 'feed' : 'notice', ticket: ticketId, summary: `Ticket ${ticketId} ended (${reason ?? outcome})`,
-        detail: { outcome, ...reason ? { reason } : {} }, ...suppression ? { suppressed: suppression } : {} }
+      // A child ticket's end is a parent-owner event, never a person's notification; only root ends reach the budget.
+      const level = childTicketId ? 'quiet' : suppression ? 'feed' : 'notice'
+      return { ...base, level, ticket: taskTicket(ticketId), summary: `Ticket ${ticketId} ended (${reason ?? outcome})`,
+        detail: { childTicketId: childId, outcome, ...reason ? { reason } : {} }, ...suppression ? { suppressed: suppression } : {} }
     }
     case 'assignment.started':
       return { ...base, level: 'quiet', ticket: event.data.ticketId, summary: `Assignment ${event.data.assignmentId} started on ${event.data.ticketId}` }
@@ -244,6 +259,20 @@ export function gradeEvent(event: DomainEvent, ticket: Ticket | undefined, trigg
       return { ...base, level: 'quiet', summary: `Trigger ${event.data.triggerId} left the follow-up queue`, ...triggerDetail(trigger) }
     case 'policy.changed':
       return { ...base, level: 'quiet', summary: `Policy changed from ${event.data.from} to ${event.data.to}` }
+    case 'ticket.delegated':
+      return { ...base, level: 'feed', ticket: taskTicket(event.data.parentTicketId), summary: `Child Ticket ${event.data.ticketId} delegated by ${event.data.parentTicketId}`,
+        detail: { childTicketId: event.data.ticketId } }
+    case 'ticket.child.reported':
+      return { ...base, level: 'quiet', ticket: taskTicket(event.data.parentTicketId), summary: `Child Ticket ${event.data.ticketId} reported ${event.data.state}`,
+        detail: { childTicketId: event.data.ticketId } }
+    case 'ticket.child.reviewed':
+      return { ...base, level: 'quiet', ticket: taskTicket(event.data.parentTicketId), summary: `Child Ticket ${event.data.ticketId} ${event.data.decision} by its parent owner`,
+        detail: { childTicketId: event.data.ticketId } }
+    case 'ticket.end.pending':
+      return { ...base, level: 'feed', ticket: event.data.ticketId, summary: `Ticket ${event.data.ticketId} waits to end (${event.data.outcome})` }
+    case 'ticket.child.orphaned':
+      return { ...base, level: 'notice', ticket: taskTicket(event.data.parentTicketId), summary: `Child Ticket ${event.data.ticketId} orphaned: ${event.data.reason}`,
+        detail: { childTicketId: event.data.ticketId, reason: event.data.reason } }
   }
 }
 
@@ -423,9 +452,10 @@ export class ActivityLog {
 
   /** Grades `event` and records it in the current transaction, returning the stored record. */
   record(event: DomainEvent): ActivityRecord {
-    const ticketId = 'ticketId' in event.data ? String(event.data.ticketId) : undefined
+    const ticketId = 'ticketId' in event.data ? String(event.data.ticketId)
+      : 'parentTicketId' in event.data ? String(event.data.parentTicketId) : undefined
+    const ticket = ticketId === undefined ? undefined : this.store.tickets.get(ticketId)
     const triggerId = event.type.startsWith('trigger.') && 'triggerId' in event.data ? String(event.data.triggerId) : undefined
-    return this.store.activity.record(gradeEvent(event, ticketId === undefined ? undefined : this.store.tickets.get(ticketId),
-      triggerId === undefined ? undefined : this.store.triggers.get(triggerId)))
+    return this.store.activity.record(gradeEvent(event, ticket, triggerId === undefined ? undefined : this.store.triggers.get(triggerId)))
   }
 }
