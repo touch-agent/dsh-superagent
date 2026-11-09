@@ -122,6 +122,8 @@ export class Assignments extends EnginePart {
       const at = this.now()
       assignment.report = { state: report.state, summary: report.summary, at, ...(review ? { review } : {}) }
       this.stageOf(ticket, 'report', { ref: `${at}:${report.state}`, data: { state: report.state, childTicketId: ticketId } })
+      if (report.state === 'ready') this.stageOf(ticket, 'delegation.report-up', { ref: `${at}:ready`,
+        data: { childTicketId: ticketId, parentTicketId: ticket.parentTicketId } })
       ticket.updatedAt = at
       if (report.state === 'blocked' || report.state === 'failed') {
         ticket.undelivered = ticket.undelivered.filter(id => !automatic(ticket.inputs.find(input => input.id === id)))
