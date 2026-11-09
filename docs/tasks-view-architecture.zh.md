@@ -6,7 +6,7 @@
 >
 > 参考：本地原型 `~/.dsh/bot/workspace/prototype/tasks.html`、`task.html`、`task-chat.html`、`activity.html`，以及同目录的《任务地图与交付模型设计》《对话与任务融合设计》。参考的是信息结构，不照抄视觉。
 >
-> 修订（2026-11-09）：用户决定把任务树从「独立 `Subtask` 类型」改为 **`Ticket` 自引用**。每个节点都是 `Ticket`；子节点用 `parentTicketId` 指向父节点，每个 tracked 节点有自己的 owner/worker，父 owner 负责审查、再委派或自己执行，并向自己的上级报告。子 Ticket **不创建新 Mandate**，不是授权主体；它继承根 Ticket 的授权与 `maxActionLevel`，对外动作仍经根 Ticket 的 `Approval` 与 outbox。子节点受限执行：不能创建授权根 Ticket、不能直接找人、不能提级、不能外发。本文档的 §3.4、§4.3、§4.6、§6、§7、§9、§10 随之改写，并替代 PR #26 中「`Subtask` 是独立持久化类型」的部分；实现（T3-10 Phase 2a 代码）另开工单。本修订同时吸收 2026-11-09 的人类补充要求：子工单完成后先向父工单 owner 报告，父 owner 判断后再向自己的上级报告，根节点向人给出结论；每次「报告—判断—再委派/自干—上报」都留痕（trace/disposition/approval），并定义父 owner 缺位或已结束时的处理。
+> 修订（2026-11-09）：用户决定把任务树从「独立 `Subtask` 类型」改为 **`Ticket` 自引用**。每个节点都是 `Ticket`；子节点用 `parentTicketId` 指向父节点，每个 tracked 节点有自己的 owner/worker，父 owner 负责审查、再委派或自己执行，并在该节点目标完成时向自己的上级报告。子 Ticket **不创建新 Mandate**，不是授权主体；它继承根 Ticket 的授权与 `maxActionLevel`，对外动作仍经根 Ticket 的 `Approval` 与 outbox。子节点受限执行：不能创建授权根 Ticket、不能直接找人、不能提级、不能外发。本文档的 §3.4、§4.3、§4.6、§6、§7、§9、§10 随之改写，并替代 PR #26 中「`Subtask` 是独立持久化类型」的部分；实现（T3-10 Phase 2a 代码）另开工单。本修订同时吸收 2026-11-09 的人类补充要求：子工单完成后先向父工单 owner 报告，父 owner 判断后，在该节点目标完成时才向自己的上级报告，根节点向人给出结论；每次「报告—判断—再委派/自干—上报」都留痕（trace/disposition/approval），并定义父 owner 缺位或已结束时的处理。
 
 ## 0. 结论摘要
 
