@@ -166,7 +166,7 @@ export function inputMessage(input: TicketInput, trigger?: object): string | und
   if (input.kind === 'note') return `Note from the orchestrator, for context only: ${input.text}`
   if (input.kind === 'child-report') return JSON.stringify({ kind: 'child_report', child_ticket_id: input.childTicketId,
     attempt: input.attempt, assignment_id: input.assignmentId, state: input.state, summary: input.summary, report_at: input.reportAt,
-    ...input.humanAction ? { human_action: input.humanAction } : {}, read: `ticket/${input.childTicketId}/result`,
+    ...input.humanAction ? { human_action: input.humanAction } : {},
     instruction: 'Judge this child report with orchestrator_child: accept it, return it for another attempt, cancel it, record self-work, escalate, or reassign it. Only your own completed goal is reported upward.' })
   if (input.kind === 'end-gate') return JSON.stringify({ kind: 'end_gate', pending: input.pending,
     instruction: 'A thread close waits for this Ticket to end. Resolve every child Ticket, then report ready; the pending end is applied then.' })

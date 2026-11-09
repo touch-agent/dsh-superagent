@@ -318,7 +318,7 @@ export class Tickets extends EnginePart {
     const delegation = child.delegation!
     const report = currentChildReport(child)
     const assignment = latestAssignment(child)
-    const reportId = delegation.lastReportAt ? key('child-report', child.id, String(delegation.attempt), delegation.lastReportAt) : undefined
+    const reportId = report && delegation.lastReportAt ? key('child-report', child.id, String(delegation.attempt), delegation.lastReportAt) : undefined
     const disposition: ChildReportDisposition = { childTicketId: child.id, attempt: delegation.attempt, decision, by, at,
       traceId: key('disposition', child.id, String(delegation.attempt), at, decision),
       ...(reportId ? { reportId } : {}), ...(assignment ? { assignmentId: assignment.id } : {}),

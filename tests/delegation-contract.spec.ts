@@ -86,7 +86,7 @@ describe('child reports and end gates reach the parent worker with content', () 
       assignmentId: 'a2', reportAt: '2026-09-23T00:00:02.000Z', state: 'ready', summary: 'child done',
       humanAction: 'Decide the merge', at: '2026-09-23T00:00:02.000Z' }
     expect(JSON.parse(inputMessage(report)!)).toMatchObject({ kind: 'child_report', child_ticket_id: 'child', attempt: 2,
-      state: 'ready', summary: 'child done', human_action: 'Decide the merge', read: 'ticket/child/result' })
+      state: 'ready', summary: 'child done', human_action: 'Decide the merge' })
     const gate: TicketInput = { id: 'i2', kind: 'end-gate', pending: { by: 'thread', outcome: 'merged',
       at: '2026-09-23T00:00:03.000Z', ref: 'github:40' }, at: '2026-09-23T00:00:03.000Z' }
     expect(JSON.parse(inputMessage(gate)!)).toMatchObject({ kind: 'end_gate', pending: { outcome: 'merged', ref: 'github:40' } })
