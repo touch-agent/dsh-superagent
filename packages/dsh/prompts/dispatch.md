@@ -43,6 +43,8 @@ Do not translate worker questions into your own technical decisions.
 
 Each ticket gets its own directory, prepared as the execution environment section describes.
 
+For a request that reads named repository files, pass `form: "lightweight"`; omit it otherwise.
+
 An accept or attach takes an optional routing note of at most 30 words, counted with Chinese word segmentation for mixed text.
 Use it only for routing background or explicit human constraints, not implementation instructions.
 The original trigger reference is always included.

@@ -277,7 +277,7 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 | [docs/005](005-panel.md) | 七 tab 管理面板；聚焦、安静、诚实；Tasks 是计划树 | 支持 A；与 B 部分冲突 | 默认面板暴露 Trigger/Eval/Execution；Tasks 树把计划编号当层级 | 面板定位为 E2 信任控制台，不是产品主界面；默认面按 E0；计划树在任务视图里降为标签/回退 |
 | [docs/007](007-architecture.md) | kernel 零宿主依赖；依赖规则；worker 只读自己的 Ticket；读资源分页与上限 | 支持 C、D | 上下文规则分散在装配、prompt、读资源中，没有统一装配表 | 收敛成 C.3 的装配表；不改代码；用测试固定隔离 |
 | [docs/009](009-conversation-tasks.md) | 对话可派活但 chat 不是 Trigger；主会话只协调；Ticket 仍是任务聚合，拒绝第二套 Task 实体 | 支持 A、B | 隐式派活会让每句话变成工作；状态问答与任务边界易混；PR #26 的 `Subtask` 是新执行子节点，不是第二 Task 聚合 | 保持显式 dispatch；默认面只给确认与结果；A 约束「不确认不派活」的文案；Subtask 仍由父 Ticket 授权，类别只是展示覆盖层（PR #26 §3.3–3.4） |
-| [012-platform-evolution.zh.md](012-platform-evolution.zh.md) | P1–P7 机制原则；M0 观测；N5 不做通用长期记忆；§5.3 的 WorkItem/Authority/Acceptance 与 lightweight 仍是目标模型 | 支持 A/D；与 C 有张力 | 目标模型与当前 kernel 的 Ticket/Mandate/Assignment/Review 不同；lightweight 目前只有 kernel 契约（#29），没有生产 `InlineExecutor`/Eval form；ADR-05 的外部 Acceptance 尚未实现 | P1–P7 继续管机制；本文管产品/组织；C.5 明确六层是装配不是记忆库；§8 单独记录这些实现边界，不把目标模型写成现状 |
+| [012-platform-evolution.zh.md](012-platform-evolution.zh.md) | P1–P7 机制原则；M0 观测；N5 不做通用长期记忆；§5.3 的 WorkItem/Authority/Acceptance 与 lightweight 仍是目标模型 | 支持 A/D；与 C 有张力 | 目标模型与当前 kernel 的 Ticket/Mandate/Assignment/Review 不同；lightweight 的 kernel 契约（#29）已接上生产 `InlineWork` 与 Eval/route/dispatch 的 `form`，但能力只限一次只读仓库查文件；ADR-05 的外部 Acceptance 尚未实现 | P1–P7 继续管机制；本文管产品/组织；C.5 明确六层是装配不是记忆库；§8 单独记录这些实现边界，不把目标模型写成现状 |
 | 任务视图提案（`docs/tasks-view-architecture.zh.md`，PR #26） | 8 条视图原则；类别→Ticket→Subtask；全页树默认 L1–L3、右栏默认列表；每个 tracked 节点有 worker，lightweight 叶子无 worker；子问题先回父 | 支持 B/C/D 的大部分 | 执行细节/内部 id 可能抢注意力；Subtask/类别实体需防越权；归纳无验证闭环；右栏与树的默认值不同 | 接受树默认 L1–L3 与父子契约；右栏默认列表；执行单元放详情、L4+ 折叠、右栏不自动开；E1 不显示内部 id；Subtask 不另开授权；类别是可删覆盖层；新类别/合并/拆分类别先进提案/未归类，已有类别归属可按阈值自动应用并审计（PR #26 §5.5） |
 | [M1-KICKOFF.zh.md](plan/M1-KICKOFF.zh.md) | M1 排期、决策、交接、PR ≤ 400 行 | 无直接冲突 | 不讲产品/组织原则；排期可能挤掉进化闭环 | 不要求 M1 改；C 的闭环可先离线/文档化，不等 M1；本文控制 diff 规模 |
 | [SESSION-ENTRY.zh.md](plan/SESSION-ENTRY.zh.md) | 事件分级、单一通知预算、主会话状态页（§3.3）、事件栏首次自动打开（§3.4） | 支持 A；与 B 部分冲突 | 事件栏首次自动打开是明确决策，但会把 E2 推到默认面；状态页仅主会话且复用完整面板是已定案，不是冲突 | 保留 §3.3 与通知预算；自动打开作为信任期例外并可关闭，稳定期默认关闭——这是修订提案，需产品确认；不删事件记录 |
@@ -315,9 +315,9 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 | C 自我进化 + 六层上下文 | 待验证 | docs/007 的读资源/隔离；PR #26 的父子契约（提案） | 写闭环规格；做上下文装配表；离线跑一轮提案；补隔离用例 | 暂缓自动应用**进化**提案、通用记忆、本文自行新增领域实体 |
 | D 可替换边界 | 待验证 | kernel-boundary/layers 测试；Executor 端口；现有 Tasks/Events 计划视图是读模型；Subtask/类别仍是 PR #26 提案 | 做一次替换演练；补组织观测指标；PR #26 落地后验证类别/子任务可移除 | 暂缓移除现有任务树，等信任与使用数据 |
 
-**当前实现边界（2026-11-08，校正状态表）**：
+**当前实现边界（2026-11-09，校正状态表）**：
 
-- **lightweight（#29）**：只有 kernel 契约（`TicketForm`、`ticketForm()`、`InlineExecutor` 端口与测试）；`assembly.ts` 没有注入 `inline`，没有生产 `InlineExecutor` 实现，Eval 也不写 `form`，产品今天仍只创建 tracked Ticket。PR #26 的 lightweight 行是前向兼容，不是 Phase 1 验收；Phase 0 要把运行时接通后才能验收。
+- **lightweight（#29 + T3-05 Phase 0）**：kernel 契约（`TicketForm`、`ticketForm()`、`InlineExecutor` 端口与测试）已接上生产 `InlineWork`：`assembly.ts` 注入 `inline`，Eval、`orchestrator_route` 与 `orchestrator_dispatch` 可写 `form: lightweight`，`executor.lightweight` 默认开启、设为 false 即回退 tracked。能力仍只限一次只读仓库查文件（最多 4 个路径），不建 Assignment/worker Session/workspace，不 commit/send/spend；端到端测试与 <10s 实测见 `docs/plan/TASK-PLAN.zh.md` 的 T3-05 行。PR #26 的 lightweight 行仍是前向兼容。
 - **审批（#7/#10/#18）**：Approval 对象/状态机、出站动作生产方与面板待批队列已合入并被测试覆盖；这加强了 A/B 的现有证据，但不改变 C/D 的待验证状态，也不把 PLATFORM 的目标 Authority 模型写成现状。
 - **任务树（#26）**：`TaskCategory`、`TaskPlacement`、`Subtask`、`ReviewAggregate` 都没有 schema/代码；任务页仍是计划树读模型。本文对 #26 的「接受」是设计层接受，不是实现批准；PR #26 仍需独立落地与验收。
 

@@ -329,6 +329,8 @@ graph TD
 | 验收 | Acceptance（人/规则） | 规则自动验收（如「已发送且无回退」） |
 | 面板 | 出现在工单列表 | 折叠在「今日已完成」 |
 
+Phase 0 的 inline 实现是运行时的 `InlineWork`（一次只读仓库查文件，最多 4 个路径），不是主 Session 直接执行；主 Session 仍只负责路由与选择 `form`。R5 仍禁止 inline 执行 `commit`/`send`/`spend`，需要这些动作的小活仍是 tracked。
+
 ### 5.4 生命周期 v2
 
 ```

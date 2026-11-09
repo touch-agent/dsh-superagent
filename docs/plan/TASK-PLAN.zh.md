@@ -42,7 +42,7 @@ M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上�
 | M1.5 会话派活 | 完成 | T1-13…17 |
 | M1.6 入口 | 完成 | S-01…08 |
 | M2 闸门 | 完成 | T2-01…10；PR #18 补上了审批生产方，T2-08 的「策略已有、生产者未接」缺口已关 |
-| M3 交付 | 进行中（4/8） | T3-01/02/03/07 完成；T3-05 进行中；T3-04/06/08 未开始 |
+| M3 交付 | 进行中（5/8） | T3-01/02/03/07 完成；T3-05 Phase 0 完成；T3-04/06/08 未开始 |
 | M3.5 任务视图 | 未开始（新增） | PR #26 Phase 1/2 尚无实现 |
 | M5 原则落地 | 未开始（新增） | 原则 B/C/D 的检查点尚无任务 |
 | M4 多租户 | 未开始 | — |
@@ -414,7 +414,9 @@ graph LR
 - **交付**：`packages/dsh/src/core/tickets.ts` 增 `tracked / lightweight` 两种形态；lightweight 不进 Session，走 inline 执行器；审计粒度 = action 序列。
 - **验收**：小活（改一个单元格、发一封草稿）端到端 < 10s；`tests/lightweight.spec.ts` 保证也写 disposition 与 trace。
 - **依赖**：T0-01（trace 是轻量工单唯一的审计来源）。
-- **状态与重评估（2026-11-08）**：kernel 契约已由 PR #29 合入（`TicketForm`/`ticketForm`/`InlineExecutor` 端口）；本任务剩余的是 Phase 0：生产 `InlineExecutor` 注入 `assembly.ts`、Eval 显式选择 `form`、缺 `inline` 时拒收、<10s 端到端验收。Phase 0 未完成前，任务视图的 lightweight 行只做前向兼容，不声称产品可受理。
+- **状态（2026-11-09，Phase 0 完成）**：kernel 契约先由 PR #29 合入（`TicketForm`/`ticketForm`/`InlineExecutor` 端口）；Phase 0 由 PR #36 收尾：`packages/dsh/src/executor/inline.ts` 的 `InlineWork` 注入 `assembly.ts` 的 `EngineOptions.inline`，从 origin 与未读 follow-up 中取最多 4 个仓库路径，逐个 `repository.read`，以有界摘录结束 `completed`；无路径或全部读取失败则 `dropped`。Eval（`orchestrator_eval_decide`）、`orchestrator_route` 的 accept 和 `orchestrator_dispatch` 的 item 都可写 `form: lightweight`；不写即 tracked，`executor.lightweight`（默认 true）可全局回退 tracked。lightweight 仍不建 Assignment/worker Session/workspace，也不能 commit/send/spend。
+- **Phase 0 能力边界**：inline 小活限定为一次只读仓库查文件；验收示例里的“改一个单元格、发一封草稿”仍走 tracked，因为 R5 不允许 lightweight 执行 `commit`/`send`/`spend`。生产 session 重启不恢复进行中的 inline run；结束后新到的 follow-up 会以同一 Mandate 再启动一次 inline run。
+- **验收证据**：`tests/inline-work.spec.ts` 覆盖路径提取、读取、失败、停止、follow-up 与 SQLite trace；`tests/runtime.spec.ts` 走真实 Store/Engine/`InlineWork`/`Commands` 装配并在 accept 后断言无 worker、无 workspace、有 action/report、`< 10_000 ms`。真实小活实测（`docs/003-execution.md`，真实 `gh api` 读取 `touch-agent/dsh-superagent`）：943 ms，复测 918 ms 与 928 ms，均 < 10 s。
 
 ### T3-06 workspace handle 与 warm session 复用 · Runtime · 5 人日
 

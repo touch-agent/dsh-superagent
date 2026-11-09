@@ -1,0 +1,5 @@
+---
+'@superagent/dsh': minor
+---
+
+Wire the runtime's lightweight path: `InlineWork` is injected as the Engine's inline executor and handles one decidable small job, a read-only repository lookup. It takes up to four repository paths from the request, or only from an unread follow-up on a resume, records one `repository.read` Action per file, and ends `completed` with a bounded excerpt, or `dropped` when no file is named, more than four are named, or nothing could be read. It creates no Assignment, worker Session or workspace and cannot commit, send or spend. The assessment behind `orchestrator_eval_decide`, an `orchestrator_route` accept, and an `orchestrator_dispatch` item may choose `form: lightweight`; omitting it keeps the ticket tracked, still the default. `executor.lightweight` (default `true`) is the deployment-wide fallback that keeps every accept tracked when set to `false`. Tests cover the executor, the runtime wiring, the form through all three accept paths, the fallback, and an end-to-end accept below 10 s.

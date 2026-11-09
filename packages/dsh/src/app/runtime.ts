@@ -21,6 +21,7 @@ import type { Deployment, Machine } from '../deployment.ts'
 import { systemRoot, ticketEnvironment, type Variable } from './execution-environment.ts'
 import { sourceTrigger, workerSessionId } from '../executor/dsh.ts'
 import type { DshExecutor } from '../executor/dsh.ts'
+import type { InlineWork } from '../executor/inline.ts'
 import type { MasterAssessor } from './assessment.ts'
 import { Store } from './store.ts'
 import type { Effects } from './effects.ts'
@@ -94,6 +95,8 @@ export class Runtime extends Service implements SourceHost {
   get sessions(): Sessions { return this.assembled.sessions }
   get settings(): Settings { return this.assembled.settings }
   get executor(): DshExecutor { return this.assembled.executor }
+  /** The inline executor a lightweight ticket runs through; it has no worker Session or workspace. */
+  get inline(): InlineWork { return this.assembled.inline }
   get assessor(): MasterAssessor { return this.assembled.assessor }
   get outbox(): Outbox { return this.assembled.outbox }
   get engine(): Engine { return this.assembled.engine }
@@ -121,7 +124,8 @@ export class Runtime extends Service implements SourceHost {
   }
   checkSetup(): void { this.setup.check() }
   receive(trigger: Trigger): ReceiveResult { return this.passes.receive(trigger) }
-  idle(): Promise<void> { return this.passes.idle() }
+  /** Wait until no pass, effect or inline run that can start now is running. */
+  async idle(): Promise<void> { await Promise.all([this.passes.idle(), this.inline.idle()]) }
   pump(): Promise<void> { return this.passes.pump() }
   sendReplies(): Promise<void> { return this.outbox.sent() }
   private closing(): boolean { return this.closingFlag }
@@ -161,13 +165,13 @@ export class Runtime extends Service implements SourceHost {
   /** Idempotent stop; concurrent or repeated calls share the same shutdown promise. */
   stop(): Promise<void> { return this.stopping ??= this.shutdown() }
   private async shutdown(): Promise<void> {
-    this.closingFlag = true; const passes = this.passes.stop(); this.stopped.abort()
+    this.closingFlag = true; const passes = this.passes.stop(); this.stopped.abort(); this.inline.stopAll()
     try {
       this.assessor.stop()
       const ids = [this.masterId, ...this.store.tickets.list().map(ticket => workerSessionId(ticket.id))]
       const agents = ids.map(id => this.ctx.agents.get(id as SessionId)).filter((agent): agent is Agent => agent !== undefined)
       for (const agent of agents) agent.cancel({ kind: 'user' }, { keepInbox: true })
-      await Promise.allSettled([passes, this.effects.drain(), ...agents.map(agent => agent.whenIdle())])
+      await Promise.allSettled([passes, this.effects.drain(), this.inline.idle(), ...agents.map(agent => agent.whenIdle())])
       // The workers' jobs and subagents stop too: their ends would start worker turns without the tool limits released below.
       await this.executor.shutdown()
       this.executor.dispose()
