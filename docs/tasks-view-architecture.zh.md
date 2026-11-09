@@ -282,7 +282,7 @@
 - **子 Ticket 的问题先回父 owner**。子 owner 的 `blocked`/`failed`/`ready` 报告给父 owner；父 owner 决定自己答、退回子 Ticket、换一个子 Ticket、自己接管，或汇总成一个 `human_action` 问人。默认不让每个子 owner 直接打扰用户。
 - **父 owner 的审查与上报**：子完成后必须向父工单 owner 报告；父 owner 判断“未完成”则 `return_child`（重开 attempt，旧 attempt 作废）或自己执行/再委派；“完成”则 `accept_child`，然后向自己的上级（父的父；根节点则向人给出结论）报告。具体动作、留痕与缺位处理见 4.6。
 - **父 owner 的结束门**：`ready`/`dropped`/人停止/PR 合并都经过 `Tickets.end`；父 Ticket 在结束前必须没有未结束子 Ticket。未结束（无当前有效 `Delegation.resolution`）= 子 Ticket 仍 live 且处于 queued/working/waiting/review/blocked/failed/orphaned；`failed`/`orphaned` 必须有当前有效的 `resolution`（接受/取消/失败；退回是重开，不是终态处置）才放行；子 Ticket 失败不自动结束父任务，父 owner 决定重试、拆新子 Ticket 或报失败。详见 4.6。
-- **停止级联**：人停止根 Ticket → 所有子 Ticket 停止；父 owner 停止一个子 Ticket 只停该子树，不影响父任务和其他分支。父/根 Ticket 结束或失败后，子 worker 不能继续写。
+- **停止级联**：人停止根 Ticket → 所有子 Ticket 停止；父 owner 停止一个子 Ticket 只停该子树，不影响父任务和其他分支。父/根 Ticket 结束或失败后，子 worker 不能继续写（失败时只读/等待父恢复，结束/停止时级联停止）。
 - **合并与冲突**：子 Ticket 默认把交付物交给父 owner，不直接交给最终用户；父 owner 审查、接受或退回，合并子结果（代码合并分支/文档合并修订）。父 owner 解决不了冲突时，才升级为一个人问题。**父的接受只代表工作交付被接受，不代替 `Review.confirmations` 的人确认**；子 Ticket 里需要人确认的验收条件通过 6.6 的 `TaskReviewView` 聚合进根 Ticket review，仍由人按 `reviewRevision` 确认；不能靠父 owner 在最终报告里重写一遍。
 - **执行步骤不是子 Ticket**：subagent 仍是节点详情里的执行单元；不要为了“看起来像树”把 subagent 伪装成子 Ticket。
 - **更深的子 Ticket** 受最大深度 5、单节点 8 个直接子 Ticket、单根 32 个活跃子 Ticket 约束；超限返回明确错误，不静默截断。
@@ -329,7 +329,7 @@
 
 ### 4.6 父子执行契约：报告—判断—再委派/自干—上报
 
-每个 Ticket 节点有 owner（对该节点负责的 worker）与 worker（执行该节点 Assignment 的 Session）；tracked 节点的 owner 就是 `worker-<ticketId>`。lightweight 没有 owner/worker。**子 Ticket 的 owner 向父 Ticket 的 owner 报告；父 owner 判断后再向自己的上级报告；根 owner 向人给出结论。** 这条链是执行责任链，不是授权链：任何节点都不能因此获得新的 Mandate、Approval 或 outbox 权限。
+每个 Ticket 节点有 owner（对该节点负责的 worker）与 worker（执行该节点 Assignment 的 Session）；tracked 节点的 owner 就是 `worker-<ticketId>`。lightweight 没有 owner/worker。**子 Ticket 的 owner 向父 Ticket 的 owner 报告；父 owner 判断后，在该节点目标完成时再向自己的上级报告；根 owner 向人给出结论。** 这条链是执行责任链，不是授权链：任何节点都不能因此获得新的 Mandate、Approval 或 outbox 权限。
 
 ```text
 根 Ticket owner（worker-<rootTicketId>）
@@ -1235,7 +1235,7 @@ UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不�
 - **类型/访问器**：`RootTicket`/`ChildTicket` union；根才有 `mandate`/`decisionId`；`rootTicket()`/`rootMandate()` 统一解析；子 Ticket 的 `origin` 复制根 Trigger 以保持 trace 连续，不产生新 Decision。`parentTicketId` 创建后不可改；拒绝自引用/祖先环。
 - **委派**：`delegate_ticket`（只对 Ticket owner 开放）：Engine 校验父/根 Ticket 存活、父 owner 在运行、同一 `rootTicketId`、根 Mandate/`maxActionLevel` 原样继承、深度 ≤5、单节点 ≤8、单根活跃子 Ticket ≤32；创建子 Ticket + `worker-<childTicketId>`。子 owner 只能请求同根的下级子 Ticket，不能创建授权根 Ticket/Eval，不能直接写表。
 - **子 owner**：普通 `worker-<ticketId>`，不引入 `subtask-<id>-<attempt>` 前缀/注册表；`ticketOfSession`/`decorate`/`ticketOf` 复用；子 owner 只用受限执行配置（网络关闭、无 git remote/gh、`bash` 命令策略、cwd jail、无 `subagent`、无 delegation 到根）；不注册直接找人/commit/send/spend/merge/审批工具。做不到就明确降级为父审阅提示，不声称“子不能外部动作”。
-- **父 owner 审阅链**：子报告进入父 `TicketInput.kind='child-report'`；父在 `waiting`/空闲时被唤醒（不经过 Eval、不创建 Ticket、不产生人的注意力请求）；父 owner 用 `accept_child`/`return_child`/`cancel_child` 写 `ChildReportDisposition` 与 `Delegation.resolution`/`merge`；`accept_child` 结束子 Ticket 并终止子 worker，父继续向自己的上级报告。每步写 trace（`delegation.report/review/delegate/self-work/report-up`）。
+- **父 owner 审阅链**：子报告进入父 `TicketInput.kind='child-report'`；父在 `waiting`/空闲时被唤醒（不经过 Eval、不创建 Ticket、不产生人的注意力请求）；父 owner 用 `accept_child`/`return_child`/`cancel_child` 写 `ChildReportDisposition` 与 `Delegation.resolution`/`merge`；`accept_child` 结束子 Ticket 并终止子 worker；父目标完成后再向自己的上级报告，未完成则继续处理剩余子 Ticket/自干。每步写 trace（`delegation.report/review/delegate/self-work/report-up`）。
 - **结束门**：`ready`/`dropped`/人停止/`follows` PR 合并都经过 `Tickets.end`，不能只挡 `ready`；`ready` 有未结束子 Ticket 时拒绝（`unfinishedChildTickets`）且不写报告；`Assignments.review`/`reviewTicket` 也复查。PR/线程关闭有未结束子 Ticket 时写 `endPending` + `end-gate`，父处置后应用；父不可恢复时一次 attention，不永久挂起。
 - **级联与恢复**：人停止根/父取消子 Ticket 级联停止子树；父 `failed` 不是终态，子 Ticket 保持工作/只读，父可重试；父结束/记录缺失时子 Ticket 取消或 orphaned；重启先父后子，父可用后子恢复，只有父记录缺失/已结束才 `orphaned`；迟到 attempt 被拒。
 - **活动/审计**：子 Ticket 事件按根聚合；`ActivityRecord.subject` 不新增 `subtask` kind；Approval/outbox 的 `ticketId` 必须是根，新增 `requestedForTicketId`/`originTicketId` 记录子来源；父接受不写人的确认。
