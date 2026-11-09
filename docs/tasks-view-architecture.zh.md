@@ -219,7 +219,7 @@
 
 #### 3.5.5 分期影响
 
-- 第 1 期：只读视图只验收 tracked；lightweight 行/详情作为前向兼容形状，只有在 Phase 0 接通生产 `InlineExecutor` + Eval form selection 后才验收。若尚未接通，`TaskView.form` 字段仍可存在，但产品不会产生 lightweight Ticket；测试用 kernel fixture，不写“受理后”验收。
+- 第 1 期：只读视图的 tracked 部分先验收；lightweight 行/详情按 Phase 0 已接通的真实边界验收（生产 `InlineWork` + Eval/route/dispatch 的 `form`），不能把“任意小活都能 inline”或“产品不会产生 lightweight”写成现状。
 - 第 2 期：子 Ticket 只允许 tracked 父；`delegate_ticket` 只对 tracked owner 开放；lightweight 没有父完成门。
 - 第 3 期：类别分类覆盖两种 form 的根 Ticket；lightweight 的输入少，允许人工纠正；不要用 inline action 当类别证据；子 Ticket 只继承类别、不单独分类。
 - 第 4 期：交付/审批/看板只对 tracked 展示；lightweight 的看板卡片只显示状态和 brief，不显示“待验收”。
@@ -1308,7 +1308,7 @@ UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不�
 - **恢复**：运行中重启，先恢复根/父再恢复子；父可用后子从 `blocked(restart)` 恢复；父记录缺失/已结束才 `orphaned`；不静默重跑、不静默标完成。
 - **授权不变量**：子 Ticket 没有 `mandate`/`decisionId`；`rootMandate()` 解析根；动作闸门/Approval/outbox 的 `ticketId` 是根；子 Ticket 直接 `approve`、创建根 Ticket、直接找人、提高 `maxActionLevel`、直接外发都必须失败；只有 Eval 创建根、只有 Engine delegation 创建子；子 owner 可以请求更深子 Ticket，但仍同根。
 - **pendingEnd**：PR/线程已关闭但有未结束子 Ticket 时，Ticket 不写 `ended`，显示 `pendingEnd`；父恢复后处理并应用 pending，父不可恢复则一次 attention，不能永久挂起；人 stop/`dropped` 清除 pending 并用 `stopped`/`dropped` 结束。
-- **轻量/ tracked 共存**：Phase 0 接通后，lightweight 受理后无 Assignment/owner/workspace；任务视图不显示 owner/交付/子 Ticket，不进入 review/attention；tracked 行仍正常；类别同时计数；lightweight 不能 `delegate_ticket`；升级后出现新 tracked 节点、旧 lightweight 不被改写。Phase 0 未接通时，此项改为 kernel fixture 测试，不声称产品可受理。
+- **轻量/ tracked 共存**：Phase 0 已接通，lightweight 受理后无 Assignment/owner/workspace；任务视图不显示 owner/交付/子 Ticket，不进入 review/attention；tracked 行仍正常；类别同时计数；lightweight 不能 `delegate_ticket`；升级后出现新 tracked 节点、旧 lightweight 不被改写。测试按真实受理边界，不再用 kernel fixture 冒充产品验收。
 - **子 Ticket 投影**：500 个根 Ticket、2000 个子 Ticket 时 `GET tasks` 只返回根与 `childSummary`，不返回子数组；展开一层按需取；禁止 N+1；`tasks` 类别计数不含子 Ticket；`totals.children` 另算。
 - **查询/旧数据**：旧库无 `parentTicketId` 的行全部当根；`tickets.list/open/active()` 默认不含子；`childrenOf`/`subtree` 正确；没有 `subtask` 表；旧二进制打开 schema 15 被拒绝。
 
