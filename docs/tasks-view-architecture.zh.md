@@ -287,7 +287,7 @@
 - **执行步骤不是子 Ticket**：subagent 仍是节点详情里的执行单元；不要为了“看起来像树”把 subagent 伪装成子 Ticket。
 - **更深的子 Ticket** 受最大深度 5、单节点 8 个直接子 Ticket、单根 32 个活跃子 Ticket 约束；超限返回明确错误，不静默截断。
 - **子 owner 的工具与目录**：只注册执行工具；不注册创建根 Ticket/Eval、`send_message`、向人提问、orchestrator 类工具，也不注册 commit/send/spend/merge/审批请求工具；子→父只走 Engine 的报告通道；cwd 限制在父任务目录的子目录或独立工作树，不能写父任务受保护文件。`delegate_ticket` 只对 Ticket owner 开放，主会话没有；子 owner 只能请求同根的下级子 Ticket。
-- **仅“不注册工具”挡不住外部动作**：`WORK_TOOLS` 含 `bash`，且 `Sessions.ensure` 当前给所有 session `danger-full-access`；子 owner 可以用 `git push`/`gh pr create`/`curl` 绕过工具列表。第 2 期必须给子 owner 一个**受限执行配置**（网络关闭、无 git remote/gh、`bash` 命令策略、cwd jail、无 `subagent`、无 delegation 到根，**且 state 目录与 SQLite 数据库只读/不可写**），并由 `Sessions.ensure`/`limitSubagent` 强制；做不到就明确降级为“只能靠父审阅提示”，不能声称子 owner 不能做外部动作或不能改表。
+- **仅“不注册工具”挡不住外部动作**：`WORK_TOOLS` 含 `bash`，且 `Sessions.ensure` 当前给所有 session `danger-full-access`；子 owner 可以用 `git push`/`gh pr create`/`curl` 绕过工具列表。第 2 期必须给子 owner 一个**受限执行配置**（网络关闭、无 git remote/gh、`bash` 命令策略、cwd jail、无 `subagent`、无 delegation 到根，**且 state 目录与 SQLite 数据库只读/不可写**），并由 host sandbox/OS 路径权限或专用受限 preset 强制；`Sessions.ensure`/`limitSubagent` 目前只给全局 preset/收窄工具，不能单独提供路径级拒绝。做不到就明确降级为“只能靠父审阅提示”，不能声称子 owner 不能做外部动作或不能改表。
 - **需要独立授权才升级为根 Ticket**：不同来源/人、独立动作级别、独立结束条件或独立 Channel；走 Eval，不能用子 Ticket 绕过。子 Ticket 不能有自己的 Approval 或 outbox；对外动作仍由根 Ticket 的 Approval 与 outbox 执行。
 
 当前运行时只有 subagent Session 的基础，没有 `Ticket.parentTicketId`、`delegate_ticket`、子 owner 生命周期或父 owner 审查门；这些是第 2 期的主要工程。
@@ -417,7 +417,7 @@ Engine：校验父/根 Ticket 存活、同一 root、根 Mandate/maxActionLevel�
   - 根 owner 缺位/根已结束：人收到一次结论/缺口；根保持 live 或按现有结束路径处理，子 Ticket 不自动外发、不自动完成。
 - **迟到 attempt**：`Delegation.attempt` 从 1 开始；`return_child` 递增并换新 Assignment/worker。Engine 只接受 `report.attempt === delegation.attempt` 且 `assignmentId` 属于当前 Assignment 的报告；旧 attempt 的 session 已终止，迟到报告被拒（`staleChildAttempt`/`childClosed`），不能推进父状态或 `reviewRevision`。`accept_child` 记录 `acceptedReportAt`/`acceptedAttempt`，接受后迟到报告被拒；接受前若子有新报告，旧接受失效。由于子 Ticket 用普通 `worker-<ticketId>` 命名，`ticketOfSession` 不需要新前缀，但 `agent/status`、`agent/error`、`session/event` 处理器必须校验 assignment/attempt，不能把旧 attempt 的事件写到新尝试或父状态上。
 - **合并记录**：父 `accept_child` 时写 `Delegation.merge`（子 revision、冲突列表、`merged`/`escalated`/`none`、解决人/时间）；父解决不了冲突时升级为一个人问题。没有合并记录的“已接受”不算可审计的合并。之后 `return_child` 必须清除/标记该 `merge` 失效；重新接受时写新的合并记录，不能沿用旧 revision 的合并。
-- **子 owner 不做外部动作**：子 owner 只做 read/draft/local write；commit、send、spend、开 PR、合并 PR 由父/根 owner 执行或经根发起 Approval。**但工具列表本身不够**：子 owner 的 `bash` 必须走 4.3 的受限执行配置（无网络/remote/gh、命令策略、cwd jail、无 `subagent`、state 目录/SQLite 不可写），否则本条的“不能”不成立，只能降级为父审阅提示。`Review.confirmations` 仍由人在最终根 Ticket 确认。
+- **子 owner 不做外部动作**：子 owner 只做 read/draft/local write；commit、send、spend、开 PR、合并 PR 由父/根 owner 执行或经根发起 Approval。**但工具列表本身不够**：子 owner 的 `bash` 必须走 4.3 的受限执行配置（无网络/remote/gh、命令策略、cwd jail、无 `subagent`、state 目录/SQLite 不可写；路径级保护由 host sandbox/OS 权限或专用 preset 提供，`Sessions.ensure`/`limitSubagent` 本身不够），否则本条的“不能”不成立，只能降级为父审阅提示。`Review.confirmations` 仍由人在最终根 Ticket 确认。
 - **报告唤醒**：子报告通过 `TicketInput` 的 `child-report` 变体进入父 owner；每个子 Ticket 最多一条待处理报告；父在 `waiting`/空闲时由 Engine 启动/恢复父 Assignment（不触发 Eval、不创建 Ticket、不产生人的注意力请求）。父不可恢复时才走 orphaned 升级。
 
 ## 5. 第一级类别：归纳与人工修改
@@ -614,7 +614,7 @@ interface RootTicket extends TicketBase {
   delegation?: never
 }
 
-interface ChildTicket extends Omit<TicketBase, 'channels' | 'follows' | 'attention' | 'answers' | 'undelivered'> {
+interface ChildTicket extends TicketBase {
   parentTicketId: string
   rootTicketId: string
   /** 子 Ticket 不创建新的 Mandate/Decision，字段必须缺省。 */
@@ -622,12 +622,11 @@ interface ChildTicket extends Omit<TicketBase, 'channels' | 'follows' | 'attenti
   mandate?: never
   delegation: Delegation
   form?: 'tracked'                 // 子 Ticket 永远 tracked
-  /** 子 Ticket 不是订阅/通知主体；这些字段只属于根 Ticket。 */
-  channels?: never
-  follows?: never
-  attention?: never
-  answers?: never
-  undelivered?: never
+  /**
+   * 子 Ticket 复用 TicketBase 的 channels/undelivered/answers/attention 以便共享生命周期，
+   * 但 Engine 创建/更新子 Ticket 时强制 channels=[]、undelivered=[]、answers=[]，
+   * follows/attention 缺省；共享路径必须按 parentTicketId 分支，不能把这些字段变成子订阅/找人路径。
+   */
 }
 
 type Ticket = RootTicket | ChildTicket
@@ -684,7 +683,7 @@ interface ChildReportDisposition {
 
 **授权字段的边界**：`RootTicket` 才有 `decisionId`/`mandate`；`ChildTicket` 只有 `rootTicketId`。运行时提供 `rootTicket(ticket)` / `rootMandate(ticket)` 访问器，所有动作闸门、Approval、outbox 都从根解析；不能用子 Ticket 自己的字段兜底，也不能给子 Ticket 复制一份 Mandate。子 Ticket 的 `origin` 复制根 Trigger 仅用于 trace 连续，**不表示新的接受/Decision**；实际委派记录在 `delegation.requestedBy`。
 
-**子 Ticket 不是订阅/通知主体**：`ChildTicket` 从基类 Omit 掉 `channels`/`follows`/`attention`/`answers`/`undelivered`，这些字段只属于根 Ticket。子报告里的 `attention`/`human_action` 进入父 `child-report`，不写子 Ticket 的 `attention`，也不订阅渠道/线程；因此 `Tickets.threadClosed`/`followsDone` 不能通过子的 `follows` 直接写 `endPending` 或结束子。
+**子 Ticket 不是订阅/通知主体**：`ChildTicket` 仍复用 `TicketBase` 的 `channels`/`undelivered`/`answers`/`attention` 字段，否则共享的 `Assignments.started`/`Assignments.report`/`Tickets.end` 生命周期（读取 `undelivered`、清理 `attention` 等）无法安全运行；但 Engine 创建/更新子 Ticket 时必须保持 `channels=[]`、`undelivered=[]`、`answers=[]`、`follows`/`attention` 缺省，并在共享路径按 `parentTicketId` 分支，不能把这些字段变成子订阅/找人路径。子报告里的 `attention`/`human_action` 进入父 `child-report`，不写子 Ticket 的 `attention`，也不订阅渠道/线程；因此 `Tickets.threadClosed`/`followsDone` 不能通过子的 `follows` 直接写 `endPending` 或结束子。
 
 最终审查聚合仍是 Ticket 级只读投影，来源改为 Ticket：
 
@@ -1317,7 +1316,7 @@ UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不�
 **授权不变量**
 
 - 子 Ticket 是 Ticket：`parentTicketId`/`rootTicketId` 正确，`mandate`/`decisionId` 缺省；`rootTicket()` 解析到根；旧代码/投影不得把子 Ticket 当根。
-- 子 Ticket 不是订阅/通知主体：`channels`/`follows`/`attention`/`answers`/`undelivered` 缺省；不能通过子 `follows` 触发 `threadClosed`/`endPending`；子报告里的 attention 只进父 `child-report`；线程订阅只属于根。
+- 子 Ticket 不是订阅/通知主体：`channels`/`undelivered`/`answers` 为空，`follows`/`attention` 缺省；不能通过子 `follows` 触发 `threadClosed`/`endPending`；子报告里的 attention 只进父 `child-report`；线程订阅只属于根。子 Assignment 启动、子 blocked/failed 报告、`accept_child` 结束子都复用共享生命周期且不因空字段崩溃；共享路径按 `parentTicketId` 分支，不给子写 attention/answers。
 - 只有 Eval 创建根 Ticket；只有 Engine 的 `delegate_ticket` 创建子 Ticket；worker 不能直接写表/触发 Eval；子 owner 不能创建授权根或独立 Ticket，但可以请求同根的下级子 Ticket；没有 `subtask` 表/类型残留。
 - 动作闸门、`Approval.ticketId`、`OutboundSend.ticketId` 都是根；子发起时 `requestedForTicketId`/`originTicketId` 记录子来源；子 Ticket 直接 `approve` 返回 `notAuthorizationRoot`；子 `POST /retry`、`/stop` 返回 `childRequiresParent`；子不能提高 `maxActionLevel`，不能直接找人，不能 commit/send/spend/merge，不能经 outbox 外发。
 - 子 owner 的 `bash` 受限：`git push`、`gh pr create`、`curl` 外网、写父受保护路径、`subagent`、写 state 目录/SQLite 都失败；子 owner 的 subagent 不能借 `limitSubagent` 重新拿到父/子执行工具；受限配置缺失时必须显式降级，不能声称“子不能外部动作”。
