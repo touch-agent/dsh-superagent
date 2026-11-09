@@ -20,8 +20,8 @@
 | 6 | 视图：右栏只做列表/紧凑树；完整页做列表、树、看板、时间线图。图不伪造依赖关系。 | 窄栏不塞看板与图，避免信息不可读。 |
 | 7 | **子 Ticket 复用 `ticket` 表，只加 JSON 字段 `parentTicketId`/`rootTicketId`/`delegation` 与两个生成列/索引（schema 15，加法）**；不建 `subtask` 表。旧 Ticket 没有 `parentTicketId`，读作根 Ticket。 | 老数据照常读；schema 15 是前向迁移，旧二进制**必须**被拒绝，否则会把子 Ticket 误当授权根；回滚需 down migration/备份。 |
 | 8 | **授权根唯一**：只有根 Ticket 有 `Mandate`/`Decision`，是 Approval/outbox 的 `ticketId`；子 Ticket 只带 `rootTicketId`，没有 Mandate/Decision，不是授权主体。子节点不能创建授权根 Ticket、不能直接找人、不能提高动作级别、不能外发；对外动作仍由根 Ticket 的 `Approval` 与 outbox 执行。 | 授权不变量不变；子 Ticket 的“完成”只是父 owner 接受工作交付，不等于人的验收。 |
-| 9 | **父 owner 审查链**：子 Ticket 完成后向父工单 owner 报告；父 owner 判断，未完成则 `return_child`（重开 attempt）或自己执行/再委派，完成则 `accept_child` 并向自己的上级报告；根 owner 向人给出最终结论。每次报告、判断、再委派/自干、上报都写 trace/disposition；对外动作只走根 Approval/outbox。父 owner 缺位/已结束时，报告不得丢失：先恢复父，再升级到最近的在世祖先 owner/人一次，不静默重跑或完成。 | 组织分工清晰；父接受不等于人确认；每个节点仍可解释；注意力只在根/最近可用上级聚合。 |
-| 10 | 分五期落地：右栏只读任务视图 → **子 Ticket 树 + 每节点 owner/worker + 父 owner 审查与结束门** → 类别归纳（只读）→ 人工编辑/看板/交付详情 → 硬化；lightweight 的运行时前置单列 Phase 0。 | 子 Ticket 是核心执行能力，单独一期；类别与视图随后；lightweight 不做 owner/子 Ticket，且在 Phase 0 接通前不作为 Phase 1 验收。 |
+| 9 | **父 owner 审查链**：子 Ticket 完成后向父工单 owner 报告；父 owner 判断，未完成则 `return_child`（重开 attempt）或自己执行/再委派，完成则 `accept_child`；**该节点自己的目标完成时**才向自己的上级报告，未完成则继续处理剩余子 Ticket/自干，不提前报告完成。根 owner 向人给出最终结论。每次报告、判断、再委派/自干、上报都写 trace/disposition；对外动作只走根 Approval/outbox。父 owner 缺位/已结束时，报告不得丢失：先恢复父，再升级到最近的在世祖先 owner/人一次，不静默重跑或完成。 | 组织分工清晰；父接受不等于人确认；每个节点仍可解释；注意力只在根/最近可用上级聚合。 |
+| 10 | 分五期落地：右栏只读任务视图 → **子 Ticket 树 + 每节点 owner/worker + 父 owner 审查与结束门** → 类别归纳（只读）→ 人工编辑/看板/交付详情 → 硬化；lightweight 的运行时前置单列 Phase 0。 | 子 Ticket 是核心执行能力，单独一期；类别与视图随后；lightweight 不做 owner/子 Ticket，Phase 0 已接通，按真实 lightweight 边界验收。 |
 
 ## 1. 现状
 
@@ -63,7 +63,7 @@
 | 视图 | 树、时间线图 | 列表、树、看板、时间线图 | 新看板；图重新定位 |
 | 信息 | 状态/进度/耗时 | 加来源、执行者、会话、交付物、最近事件 | 投影扩展 |
 | 执行者 | tracked：通用 worker Session；lightweight：inline，无 worker（生产已接通 `InlineWork`） | 每个 tracked Ticket 节点有自己的 owner/worker；lightweight 明示无 owner/worker/审批 | 默认展示 owner 角色（根 owner / 子 Ticket owner / “轻量”），不显示 `worker-` 或 Session id；内部 id 只在折叠的技术详情（E2）出现 |
-| 拆分 | 只有 subagent 会话 | 父 owner 动态委派子 Ticket、审交付、合并、解冲突，并向上报告 | 新 `delegate_ticket` 工具 + `Ticket.parentTicketId` + 父 owner 审查链 |
+| 拆分 | 只有 subagent 会话 | 父 owner 动态委派子 Ticket、审交付、合并、解冲突，并在父目标完成时向上报告 | 新 `delegate_ticket` 工具 + `Ticket.parentTicketId` + 父 owner 审查链 |
 | 规划 | 只有工单标题/范围里的计划编号；worker 的执行计划不落库 | 已受理任务与执行单元可见；未受理的计划不伪造 | 结构化 plan 是另一个模型，不在本设计里硬造 |
 | 身份 | 标题里的计划编号 | 稳定类别 id + 工单 id | 新 id 与别名 |
 | 兼容 | 计划树 | 计划树保留为回退/计划维度 | 双读、开关 |
@@ -78,7 +78,7 @@
 6. **树默认三层，右栏默认列表**。全页树视图默认展开类别 + 根 Ticket + 一级子 Ticket；更深子 Ticket 与执行细节按需展开，避免树把默认视图撑爆。右栏仍是列表，点开 Ticket 才显示一级子 Ticket，不默认画树（§7.2–§7.3）。
 7. **来源是锚点，不是层级**。任务不按 GitHub/飞书/对话分组；来源作为根 Ticket 上的 chip 与锚点列表，避免“多源任务”被拆成多条。子 Ticket 继承根 Ticket 的来源锚点，不单独建来源。
 8. **不伪造结构**。没有依赖数据就不画依赖边；没有交付物就不显示空的“交付”区块；没有子 Ticket 就不编造子节点；subagent 不冒充子 Ticket。
-9. **父 owner 审查与上报**。每个 tracked Ticket 节点有 owner；子 Ticket 的 owner 向父 Ticket 的 owner 报告，父 owner 判断后选择退回/再委派/自己执行/向上报告。根 owner 向人给出结论。父 owner 的接受只表示工作交付被接受，不代替人的 `Review.confirmations`；父 owner 不决定根 Ticket 的最终验收。
+9. **父 owner 审查与上报**。每个 tracked Ticket 节点有 owner；子 Ticket 的 owner 向父 Ticket 的 owner 报告，父 owner 判断后选择退回/再委派/自己执行；只有该节点自己的目标完成时才向上报告。根 owner 向人给出结论。父 owner 的接受只表示工作交付被接受，不代替人的 `Review.confirmations`；父 owner 不决定根 Ticket 的最终验收。
 10. **先只读，再可编辑**。先把任务视角跑通并验证归纳质量，再开放写操作；写操作前先把冲突与审计做好。
 
 ## 3. 概念模型
@@ -243,7 +243,7 @@
 - 每个 **tracked Ticket 节点**最多一个自己的 owner/worker；worker Session 是 `worker-<ticketId>`，根和子 Ticket 用同一个命名规则，**不再引入 `subtask-<id>-<attempt>` 前缀**。owner 与 worker 当前是同一个 Session；`TaskView` 仍分开呈现，便于以后出现“负责人 ≠ 执行者”。子 Ticket 的 owner 对父 Ticket 的 owner 负责，见 4.6。
 - lightweight Ticket 没有 owner/worker（3.5）；子 Ticket **永远是 tracked**，不能是 lightweight。不要把子 Session（subagent）当 worker，也不要把旧 `Subtask` 记录当节点。
 - 子 Ticket **没有自己的 `Mandate`/`Decision`**，只存 `rootTicketId`；任务视图、详情、授权检查都必须把它解析到根 Ticket。任何代码不得用子 Ticket 自己的 `mandate` 做动作闸门或审批。
-- 子 Ticket 只能由父 owner 通过 `delegate_ticket` 请求 Engine 创建；Engine 校验父/根 Ticket 存活、父 owner 在运行、同一 `rootTicketId`、根 `maxActionLevel` 原样继承、深度/宽度/配额未超限。worker 不能直接写表、不能触发 Eval、不能创建授权根 Ticket。子 Ticket 的 owner 可以请求更深子 Ticket，但仍受同一 root 与上限约束。
+- 子 Ticket 只能由父 owner 通过 `delegate_ticket` 请求 Engine 创建；Engine 校验父/根 Ticket 存活、父 owner 在运行、同一 `rootTicketId`（等于 `parent.rootTicketId ?? parent.id`）、根 `maxActionLevel` 原样继承、深度/宽度/配额未超限。worker 不能直接写表、不能触发 Eval、不能创建授权根 Ticket。子 Ticket 的 owner 可以请求更深子 Ticket，但仍受同一 root 与上限约束。
 - **`parentTicketId` 创建后不可改**；不支持把节点移到另一个父、把子 Ticket 提升为根。需要另一条授权线时，由人/来源经 Eval 新建根 Ticket，不能改父字段绕过。
 - 子 Ticket 默认继承根 Ticket 的类别，**不单独跑分类器、不计入类别任务数**；类别是根 Ticket 的组织方式。
 - 最大深度默认 5（根下最多 5 层子 Ticket），单节点最多 8 个直接子 Ticket、单根同时活跃子 Ticket 最多 32；可配置，超限返回明确错误。Engine 还要拒绝自引用、祖先环与重复父链。
@@ -277,10 +277,10 @@
 
 规则：
 
-- **父 owner 可以动态创建子 Ticket，但只能在 Engine 的 delegation 操作里创建**。owner 调 `delegate_ticket(goal, scope?)`；Engine 校验父 Ticket 存活、父 owner 在运行、同一 `rootTicketId`、根 Mandate/`maxActionLevel` 原样继承、深度/宽度/配额未超限，然后创建子 Ticket 与子 worker。worker 不能直接写表、不能直接创建授权根 Ticket、不能触发 Eval。`Mandate.scope` 是自由文本，运行时不计算“文本子集”；不要把它当授权边界。
+- **父 owner 可以动态创建子 Ticket，但只能在 Engine 的 delegation 操作里创建**。owner 调 `delegate_ticket(goal, scope?)`；Engine 校验父 Ticket 存活、父 owner 在运行、`rootTicketId === (parent.rootTicketId ?? parent.id)`（同一授权根）、根 Mandate/`maxActionLevel` 原样继承、深度/宽度/配额未超限，然后创建子 Ticket 与子 worker；不一致时拒绝，不能按子 Ticket 自带 root 兜底。worker 不能直接写表、不能直接创建授权根 Ticket、不能触发 Eval。`Mandate.scope` 是自由文本，运行时不计算“文本子集”；不要把它当授权边界。
 - **子 Ticket 继承授权，不继承“结束父任务”的权力**。子 owner 只对子目标负责；父 owner 对最终目标、交付审查、合并与冲突解决负责。子 owner 不能把父/根 Ticket 标为完成，也不能修改自己的 `parentTicketId`/`rootTicketId`/`maxActionLevel`。
 - **子 Ticket 的问题先回父 owner**。子 owner 的 `blocked`/`failed`/`ready` 报告给父 owner；父 owner 决定自己答、退回子 Ticket、换一个子 Ticket、自己接管，或汇总成一个 `human_action` 问人。默认不让每个子 owner 直接打扰用户。
-- **父 owner 的审查与上报**：子完成后必须向父工单 owner 报告；父 owner 判断“未完成”则 `return_child`（重开 attempt，旧 attempt 作废）或自己执行/再委派；“完成”则 `accept_child`，然后向自己的上级（父的父；根节点则向人给出结论）报告。具体动作、留痕与缺位处理见 4.6。
+- **父 owner 的审查与上报**：子完成后必须向父工单 owner 报告；父 owner 判断“未完成”则 `return_child`（重开 attempt，旧 attempt 作废）或自己执行/再委派；“完成”则 `accept_child`；**父自己的目标完成时**才向自己的上级（父的父；根节点则向人给出结论）报告，未完成则继续剩余子 Ticket/自干，不提前报告完成。具体动作、留痕与缺位处理见 4.6。
 - **父 owner 的结束门**：`ready`/`dropped`/人停止/PR 合并都经过 `Tickets.end`；父 Ticket 在结束前必须没有未结束子 Ticket。未结束（无当前有效 `Delegation.resolution`）= 子 Ticket 仍 live 且处于 queued/working/waiting/review/blocked/failed/orphaned；`failed`/`orphaned` 必须有当前有效的 `resolution`（接受/取消/失败；退回是重开，不是终态处置）才放行；子 Ticket 失败不自动结束父任务，父 owner 决定重试、拆新子 Ticket 或报失败。详见 4.6。
 - **停止级联**：人停止根 Ticket → 所有子 Ticket 停止；父 owner 停止一个子 Ticket 只停该子树，不影响父任务和其他分支。父/根 Ticket 结束或失败后，子 worker 不能继续写（失败时只读/等待父恢复，结束/停止时级联停止）。
 - **合并与冲突**：子 Ticket 默认把交付物交给父 owner，不直接交给最终用户；父 owner 审查、接受或退回，合并子结果（代码合并分支/文档合并修订）。父 owner 解决不了冲突时，才升级为一个人问题。**父的接受只代表工作交付被接受，不代替 `Review.confirmations` 的人确认**；子 Ticket 里需要人确认的验收条件通过 6.6 的 `TaskReviewView` 聚合进根 Ticket review，仍由人按 `reviewRevision` 确认；不能靠父 owner 在最终报告里重写一遍。
@@ -365,11 +365,11 @@ Engine：校验父/根 Ticket 存活、同一 root、根 Mandate/maxActionLevel�
 | 判断 | 动作 | 结果 |
 | --- | --- | --- |
 | 完成且交付可接受 | `accept_child(childTicketId, merge?)` | 子 Ticket `ended { by:'executor', outcome:'completed', reason:'accepted-by-parent' }`，写 `Delegation.resolution.kind='accepted'`、`acceptedReportAt`、`acceptedAttempt`；终止子 worker；延迟报告被拒；父继续，父目标完成后再向上报告。**子 Ticket 自己还有 live 后代时不能接受**（返回 `unfinishedChildTickets`），先由其父/祖先处置子树。 |
-| 未完成、需子 owner 补充 | `return_child(childTicketId, reason)` | 子 Ticket 重开：`attempt += 1`，清除旧 `resolution`/旧 merge/旧 report 的接受效力，启动新 Assignment/worker；旧 attempt 的 session/报告全部作废。不写 `returned` 终态。子 Ticket 已被接受但根尚未最终批准时也可退回；必须同时清除 accepted/merge 并让根的 `reviewRevision` 失效；根已最终批准后，父 owner 不得单方面退回。 |
+| 未完成、需子 owner 补充 | `return_child(childTicketId, reason)` | 子 Ticket 重开：`attempt += 1`，清除旧 `resolution`/旧 merge/旧 report 的接受效力，启动新 Assignment/worker；旧 attempt 的 session/报告全部作废。不写 `returned` 终态。子 Ticket 已被接受但根尚未最终批准时也可退回；必须同时清除 `Ticket.ended`、accepted/merge 并让根的 `reviewRevision` 失效；否则会形成“ended 但无 resolution”的损坏状态；根已最终批准后，父 owner 不得单方面退回。 |
 | 父 owner 自己接管剩余工作 | 继续自己的 Assignment，写 `ChildReportDisposition.decision='self-work'` | 子 Ticket 可 `cancel_child` 或保留待补充；父的交付负责到底；不得把子的未完成工作算成已完成。 |
 | 换一个子 Ticket/重新委派 | `cancel_child` 旧子并 `delegate_ticket` 新子，或 `return_child` 后改 goal | 写 `reassigned` 与替换 id；旧子不再被接受，交付按新子重做。 |
-| 父 owner 取消子 Ticket（不再重试） | `cancel_child(childTicketId, reason)` | **先递归取消该子 Ticket 的整个子树**（每个后代写 cancelled/ended），再结束子 Ticket：`ended { by:'executor', outcome:'stopped', reason }`，写 `Delegation.resolution.kind='cancelled'`；终止子 worker；父继续/上报。取消级联是显式递归，不能被普通父结束门“有未结束子 Ticket”反挡。 |
-| 子 Ticket 已失败且不再重试 | `cancel_child(childTicketId, reason, disposition='failed')` | 子 Ticket `ended { by:'executor', outcome:'dropped', reason:'child-failed' }`，写 `Delegation.resolution.kind='failed'`；终止子 worker；父继续/上报；不得留下 live 的“已失败”子 Ticket。 |
+| 父 owner 取消子 Ticket（不再重试） | `cancel_child(childTicketId, reason)` | **先递归取消该子 Ticket 的整个子树**（每个后代写 cancelled/ended），再结束子 Ticket：`ended { by:'executor', outcome:'stopped', reason }`，写 `Delegation.resolution.kind='cancelled'`；终止子 worker；父继续（父目标完成后再上报）。取消级联是显式递归，不能被普通父结束门“有未结束子 Ticket”反挡。 |
+| 子 Ticket 已失败且不再重试 | `cancel_child(childTicketId, reason, disposition='failed')` | 子 Ticket `ended { by:'executor', outcome:'dropped', reason:'child-failed' }`，写 `Delegation.resolution.kind='failed'`；终止子 worker；父继续（父目标完成后再上报）；不得留下 live 的“已失败”子 Ticket。 |
 | 冲突/需要人的决定 | 根 owner 汇总成一个 `human_action` | 不重复打扰；不把冲突藏进父报告。 |
 
 父 owner 的接受只表示子 Ticket 的工作交付被接受，**不写人的 `Review.confirmations`，不结束根 Ticket，不替代最终人工验收**。根 Ticket 的最终验收仍由人按 `reviewRevision` 批准（6.6）。
@@ -395,7 +395,7 @@ Engine：校验父/根 Ticket 存活、同一 root、根 Mandate/maxActionLevel�
 
 #### 4.6.4 结束门、`pendingEnd` 与停止级联
 
-- **未结束子 Ticket（unresolved）** = 子 Ticket 仍 live，且没有**当前有效**的终态 `Delegation.resolution`。终态必须与 `Ticket.ended` 成对：`accepted`→completed、`cancelled`→stopped、`failed`→dropped；**只有 resolution 没有 ended，或只有 ended 没有 resolution，按未处置/损坏处理**（写 attention，不静默放行父结束）。有效规则：`cancelled`/`failed` 始终有效；`accepted` 只在 `acceptedReportAt === report.at` 且 `acceptedAttempt === attempt` 时有效（接受前若已有更新报告，旧接受无效；接受后子 Ticket 已结束，迟到报告被拒绝）。`ended` 的子 Ticket 已结束；`orphaned` 不是终态 resolution，仍按 unresolved 处理，直到最近在世祖先/人接受/退回/取消。`return_child` 清除 resolution 并把子 Ticket 回 `working`，因此不会把重新打开的子 Ticket 误算成已处置。
+- **未结束子 Ticket（unresolved）** = 子 Ticket 仍 live，且没有**当前有效**的终态 `Delegation.resolution`。终态必须与 `Ticket.ended` 成对：`accepted`→completed、`cancelled`→stopped、`failed`→dropped；**只有 resolution 没有 ended，或只有 ended 没有 resolution，按未处置/损坏处理**（写 attention，不静默放行父结束）。有效规则：`cancelled`/`failed` 始终有效；`accepted` 只在 `acceptedReportAt === report.at` 且 `acceptedAttempt === attempt` 时有效（接受前若已有更新报告，旧接受无效；接受后子 Ticket 已结束，迟到报告被拒绝）。`ended` 的子 Ticket 已结束；`orphaned` 不是终态 resolution，仍按 unresolved 处理，直到最近在世祖先/人接受/退回/取消。`return_child` 清除 resolution、`Ticket.ended`（若已接受）并把子 Ticket 回 `working`，同时清除旧 accepted report/merge/根 reviewRevision 效力，因此不会把重新打开的子 Ticket 误算成已处置或 ended-without-resolution 损坏。
 - **所有结束路径共用一道门**：**根 Ticket** 的 `Assignments.report` 的 `ready`/`dropped`、`Tickets.threadClosed`/`followsDone` 的 PR/线程合并、人停止父/根 Ticket，最终都经过 `Tickets.end`；父 `failed` 不是结束路径，见下。**子 Ticket 的 `ready`/`dropped` 是报告，不是结束**，只写 `child-report`；子 Ticket 的结束只能由父 owner 的 `accept_child`/`cancel_child`、祖先/根停止级联或结束路径调用 `Tickets.end`。`Tickets.end` 检查直接子 Ticket 的 unresolved 集合（每个子自己也受同一道门约束，所以直接子全部结束即子树结束）。不能只挡 `ready`，也不能让子 Ticket 复用根的 ready→end 分支。
 - **`ready`**：**父/根 Ticket** 有未结束子 Ticket 时 **拒绝该 report**（`UserError` 代码 `unfinishedChildTickets`），不把 `ready` 写进 `Assignment.report`；父 owner 收到“还有 N 个子 Ticket 未结束”的清单，继续处理。`Assignments.review`/`reviewTicket` 也必须再查一次未结束子 Ticket，不能只靠 `Tickets.end` 或报告阶段。父 owner 必须对每个失败/孤儿子 Ticket 写 `resolution`（accepted/cancelled/failed）后才能再次报 `ready`；`return_child` 是重开，不是终态处置。**子 Ticket 的 `ready` 不触发这道父结束门**：它是交给父 owner 审阅的 child-report。
 - **`dropped` / 人停止**：终态；Engine 取消所有子 Ticket（写 `Delegation.resolution.kind='cancelled'`，原因记录），再结束父/根 Ticket；人停止的 outcome 是 `stopped`，不是 `failed`。子 Ticket 被级联停止时写 `ended { by:'human', outcome:'stopped', reason:'parent-stopped' }`。
@@ -624,8 +624,9 @@ interface ChildTicket extends TicketBase {
   form?: 'tracked'                 // 子 Ticket 永远 tracked
   /**
    * 子 Ticket 复用 TicketBase 的 channels/undelivered/answers/attention 以便共享生命周期，
-   * 但 Engine 创建/更新子 Ticket 时强制 channels=[]、undelivered=[]、answers=[]，
-   * follows/attention 缺省；共享路径必须按 parentTicketId 分支，不能把这些字段变成子订阅/找人路径。
+   * 但 Engine 创建/更新子 Ticket 时强制 channels=[]、answers=[]、follows/attention 缺省；
+   * undelivered 只承载 child-report/end-gate 等内部输入，不能放人向 trigger/回复；
+   * 共享路径必须按 parentTicketId 分支，不能把这些字段变成子订阅/找人路径。
    */
 }
 
@@ -683,7 +684,7 @@ interface ChildReportDisposition {
 
 **授权字段的边界**：`RootTicket` 才有 `decisionId`/`mandate`；`ChildTicket` 只有 `rootTicketId`。运行时提供 `rootTicket(ticket)` / `rootMandate(ticket)` 访问器，所有动作闸门、Approval、outbox 都从根解析；不能用子 Ticket 自己的字段兜底，也不能给子 Ticket 复制一份 Mandate。子 Ticket 的 `origin` 复制根 Trigger 仅用于 trace 连续，**不表示新的接受/Decision**；实际委派记录在 `delegation.requestedBy`。
 
-**子 Ticket 不是订阅/通知主体**：`ChildTicket` 仍复用 `TicketBase` 的 `channels`/`undelivered`/`answers`/`attention` 字段，否则共享的 `Assignments.started`/`Assignments.report`/`Tickets.end` 生命周期（读取 `undelivered`、清理 `attention` 等）无法安全运行；但 Engine 创建/更新子 Ticket 时必须保持 `channels=[]`、`undelivered=[]`、`answers=[]`、`follows`/`attention` 缺省，并在共享路径按 `parentTicketId` 分支，不能把这些字段变成子订阅/找人路径。子报告里的 `attention`/`human_action` 进入父 `child-report`，不写子 Ticket 的 `attention`，也不订阅渠道/线程；因此 `Tickets.threadClosed`/`followsDone` 不能通过子的 `follows` 直接写 `endPending` 或结束子。
+**子 Ticket 不是订阅/通知主体**：`ChildTicket` 仍复用 `TicketBase` 的 `channels`/`undelivered`/`answers`/`attention` 字段，否则共享的 `Assignments.started`/`Assignments.report`/`Tickets.end` 生命周期（读取 `undelivered`、清理 `attention` 等）无法安全运行；但 Engine 创建/更新子 Ticket 时必须保持 `channels=[]`、`answers=[]`、`follows`/`attention` 缺省；`undelivered` 只承载 `child-report`/`end-gate` 等内部输入，不能放人向 trigger/回复。共享路径按 `parentTicketId` 分支，不能把这些字段变成子订阅/找人路径。子报告里的 `attention`/`human_action` 进入父 `child-report`，不写子 Ticket 的 `attention`，也不订阅渠道/线程；因此 `Tickets.threadClosed`/`followsDone` 不能通过子的 `follows` 直接写 `endPending` 或结束子。
 
 最终审查聚合仍是 Ticket 级只读投影，来源改为 Ticket：
 
@@ -775,7 +776,7 @@ interface PendingEnd {
 
 **兼容**：没有 `task-catalogue.v1` 时，任务页按现有计划树渲染；首次归纳/人工编辑时创建文档。类别 KV 不需要迁移；schema 15 由 Store 自动迁移，旧库迁移后子 Ticket 为空，这是前向迁移，不是“无需迁移”。
 
-**损坏处理**：文档解析失败时不覆盖、不写回；任务页回退旧树并提示，保留原始 JSON 供诊断。发现子 Ticket 的 `rootTicketId` 缺失/指向不存在/成环时，投影拒绝把它当任务节点，写一条 attention 并只读展示，不能猜一个根。
+**损坏处理**：文档解析失败时不覆盖、不写回；任务页回退旧树并提示，保留原始 JSON 供诊断。发现子 Ticket 的 `rootTicketId` 缺失/指向不存在/成环，或 `rootTicketId !== (parent.rootTicketId ?? parent.id)`、父记录缺失时，投影拒绝把它当任务节点，写一条 attention 并只读展示，不能猜一个根；否则子节点可能借用另一个根的 `maxActionLevel`。
 
 ### 6.3 投影
 
@@ -880,6 +881,7 @@ interface TaskView {
     scope?: string
     attempt: number
     lastDisposition?: ChildReportDisposition
+    dispositions?: ChildReportDisposition[]   // 详情历史；列表只用 lastDisposition
     resolution?: Delegation['resolution']
     merge?: Delegation['merge']
     orphaned?: { reason: string; at: string } // 父/根不可用，等待最近在世祖先/人
@@ -958,7 +960,7 @@ interface ExecutionUnitView {
 
 类别汇总/`status` 按根 Ticket 的这个父状态计算；`counts.attention` 与右栏“需处理”按下面的 attention 规则计算，不能只看父状态，否则会漏掉普通 `review`/`answer`/`delivery`。
 
-**`attention` 只表示“需要人”，不能由 `TaskView.status` 计算**：沿用现有 `matchesActivityFilter('attention')` 的 person-stage 集合 `{review, answer, delivery, blocked, failed}`，对每个 **未结束的根 Ticket** 计算；再加上未结束子 Ticket 的 `failed`/`orphaned`/`blocked` 且无有效 `resolution`，以及 `pendingEnd`/父 owner 缺位的升级项。**子 Ticket 的 `ready`/“待父审阅”不计入人的 attention**：它是父 owner 的工作队列；只有父 owner 不可用并升级到人时才计一次。lightweight 没有 review/answer/delivery，也没有子 Ticket，默认 `attention = false`。所以根状态为 `working` 但子 Ticket 失败时，`attention` 仍为 true；已结束 Ticket（含 closed/stopped 结束态）一律 `attention = false`，不能把已结束工作算进“需处理”。
+**`attention` 只表示“需要人”，不能由 `TaskView.status` 计算**：沿用现有 `matchesActivityFilter('attention')` 的 person-stage 集合 `{review, answer, delivery, blocked, failed}`，对每个 **未结束的根 Ticket** 计算；再加上未结束子 Ticket 的 `failed`/`orphaned`/`blocked` 且无有效 `resolution`，**并且父 owner 不可用**（无 live 可恢复 Assignment，或已升级到最近在世祖先/人）的项，以及 `pendingEnd`/父 owner 缺位的升级项。**子 Ticket 的 `ready`/“待父审阅”不计入人的 attention**：它是父 owner 的工作队列；只有父 owner 不可用并升级到人时才计一次。父 owner 可用时，子 Ticket 失败/阻塞只让父状态是 `blocked`/`working`，**不 page 人、不计入 `counts.attention`**。lightweight 没有 review/answer/delivery，也没有子 Ticket，默认 `attention = false`；已结束 Ticket（含 closed/stopped 结束态）一律 `attention = false`，不能把已结束工作算进“需处理”。
 
 ### 6.4 API（提案）
 
@@ -1316,7 +1318,8 @@ UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不�
 **授权不变量**
 
 - 子 Ticket 是 Ticket：`parentTicketId`/`rootTicketId` 正确，`mandate`/`decisionId` 缺省；`rootTicket()` 解析到根；旧代码/投影不得把子 Ticket 当根。
-- 子 Ticket 不是订阅/通知主体：`channels`/`undelivered`/`answers` 为空，`follows`/`attention` 缺省；不能通过子 `follows` 触发 `threadClosed`/`endPending`；子报告里的 attention 只进父 `child-report`；线程订阅只属于根。子 Assignment 启动、子 blocked/failed 报告、`accept_child` 结束子都复用共享生命周期且不因空字段崩溃；共享路径按 `parentTicketId` 分支，不给子写 attention/answers。
+- 子 Ticket 不是订阅/通知主体：`channels`/`answers` 为空，`follows`/`attention` 缺省，`undelivered` 只承载 `child-report`/`end-gate` 等内部输入（不得含人向 trigger/回复）；不能通过子 `follows` 触发 `threadClosed`/`endPending`；子报告里的 attention 只进父 `child-report`；线程订阅只属于根。子 Assignment 启动、子 blocked/failed 报告、`accept_child` 结束子都复用共享生命周期且不因内部队列/空字段崩溃；共享路径按 `parentTicketId` 分支，不给子写 attention/answers。
+- 子 Ticket 作为父（更深委派）时，子报告进入它的 `undelivered`/未读队列并唤醒/重启其 Assignment；`undelivered` 只含内部 child-report/end-gate id，不含人向 trigger/回复；等待/重启后报告不丢。
 - 只有 Eval 创建根 Ticket；只有 Engine 的 `delegate_ticket` 创建子 Ticket；worker 不能直接写表/触发 Eval；子 owner 不能创建授权根或独立 Ticket，但可以请求同根的下级子 Ticket；没有 `subtask` 表/类型残留。
 - 动作闸门、`Approval.ticketId`、`OutboundSend.ticketId` 都是根；子发起时 `requestedForTicketId`/`originTicketId` 记录子来源；子 Ticket 直接 `approve` 返回 `notAuthorizationRoot`；子 `POST /retry`、`/stop` 返回 `childRequiresParent`；子不能提高 `maxActionLevel`，不能直接找人，不能 commit/send/spend/merge，不能经 outbox 外发。
 - 子 owner 的 `bash` 受限：`git push`、`gh pr create`、`curl` 外网、写父受保护路径、`subagent`、写 state 目录/SQLite 都失败；子 owner 的 subagent 不能借 `limitSubagent` 重新拿到父/子执行工具；受限配置缺失时必须显式降级，不能声称“子不能外部动作”。
@@ -1329,15 +1332,17 @@ UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不�
 - 子 Ticket 的 `Assignments.report` `ready`/`dropped` 不调用 `Tickets.end`：子仍 live，父收到 child-report；只有 `accept_child`/`cancel_child` 或祖先停止能结束子；根 Ticket 的同类报告仍按原路径结束。
 - 取消级联：`cancel_child`/祖先 stop 对带 live 后代的子 Ticket 先递归取消子树，再结束子，不被普通父结束门反挡；`accept_child` 遇到子 Ticket 仍有 live 后代时返回 `unfinishedChildTickets`。
 - 父 `accept_child` 写 `ChildReportDisposition.decision='accepted'` 与 `Delegation.resolution.kind='accepted'`/`acceptedReportAt`/`acceptedAttempt`/`merge`；子 Ticket `ended`（completed），子 worker 终止；父接受不写人的 `Review.confirmations`。
-- 父 `return_child` 后 attempt 递增，旧 report/disposition/merge/resolution 失效；新 attempt 的 worker 报告才被接受；重新接受写新 revision 的合并记录，不能复用旧合并；子详情不显示旧 attempt 的交付/时长。已接受子 Ticket 在根最终批准前被 `return_child` 时，accepted/merge 清除、根 `reviewRevision` 失效；根已最终批准后不得单方面退回。
+- 父 `return_child` 后 attempt 递增，旧 report/disposition/merge/resolution 失效；新 attempt 的 worker 报告才被接受；重新接受写新 revision 的合并记录，不能复用旧合并；子详情不显示旧 attempt 的交付/时长。已接受子 Ticket 在根最终批准前被 `return_child` 时，`Ticket.ended`、accepted/merge 清除、根 `reviewRevision` 失效，子回到 working 而不是 ended-without-resolution；根已最终批准后不得单方面退回。
 - 终态 integrity：`accepted`/`cancelled`/`failed` 必须分别与子 Ticket `ended` 的 completed/stopped/dropped 成对；只有 resolution 没有 ended、只有 ended 没有 resolution、或 live 子 Ticket 带 failed resolution 时，父结束门必须报错/生成 attention，不能放行；`cancel_child(disposition='failed')` 必须终止子 worker 并写 dropped 结束。
 - 父“自干”写 `decision='self-work'` 与 trace，不把子的未完成工作算成已完成；“再委派”写 `reassigned` 与替换 id；升级给人只产生一个 `human_action`，不重复记账。
 - 父（作为子）在完成自己的子 Ticket 后向祖父 owner 报告；根 owner 向人给出结论；每步有 `delegation.report/review/delegate/self-work/report-up` trace；`ChildReportDisposition` 与 `TicketInput` 投递/读取状态可查；未判断的报告显示“待父 owner 审阅”，不能显示成已接受。
+- 负向 report-up：父有 2 个未结束子 Ticket，只接受第 1 个时不得向祖父/人报告“完成”；必须等父自己的目标完成（剩余子 Ticket 处理完或自干完成）才 report-up。
 - 父 `ready`/`dropped`、人停止、`follows`/PR 合并四条结束路径：有未结束子 Ticket 时都不能静默结束；`ready` 返回 `unfinishedChildTickets` 且不写报告；`Assignments.review`/`reviewTicket` 同样拒绝；`dropped`/人停止取消子树；PR 合并先 `pendingEnd` + 一次 attention；父 `failed` 不取消子 Ticket（子保持只读/`blocked`，父 Ticket 保持 live、可重试），与 4.6.4 的恢复语义一致。
 - 父在 `waiting`/空闲时子报告能唤醒父并得到新 turn；父 `failed` 后子 owner 写入被拒绝、按设计只读/恢复；父 `blocked` 时子 owner 只有只读/草稿权限；父 `waiting`（正常轮末）时子 owner 继续工作，不能被降为只读。
 - 重啟恢复先父后子，不因父 session 尚未加载而误标 orphaned；父记录缺失/已结束才 `orphaned`，交人一次；父 owner 不可恢复时升级到最近在世祖先/人；父已结束时报告不补写到已结束父。
 - 父 `waiting` 时父状态投影为 `working`/`blocked`，绝不因父报告 `waiting` 显示 `idle`；子 `dropped`/`stopped` 用 `done`/`failed` + `terminal`，取消由 resolution 表达；任何测试/代码不得用 `TaskView.status` 计算 attention。
 - `attention`/`counts.attention` 只对未结束根 Ticket 的 person-stage `review/answer/delivery/blocked/failed` 与子 Ticket `blocked/failed/orphaned`（父 owner 不可用）为 true；`待父审阅` 不计入人的 attention；已结束 Ticket 一律 false；`waiting` 子 Ticket 不进入 attention；子报告自带 `attention`/`human_action` 时不直接送人，只作为父 owner 的 `child-report`，父不可用时才升级一次。
+- 负向 attention：父 owner 可用时子 Ticket `failed`/`blocked`/`orphaned` 只进父队列，`counts.attention=false`，不得 page 人；父 owner 不可用并升级后才为 true。
 - 最终 review：子 Ticket 带 `HumanCriterion` 时，父接受后确认仍在根 `TaskReviewView`；批准必须带当前 `reviewRevision`；接受前子新报告使旧 revision 失效并返回 `reviewStale`；接受后报告被拒绝；根/子同一 artifact/revision 只出现一行；子 Ticket 直接 approve 被拒。
 - `pendingEnd`：PR 关闭 + 未结束子 Ticket 时 Ticket 不 ended、发 `end-gate` 唤醒父；pending.outcome 原样保留 `merged`/`closed`；父处置后按 pending 结束；父不可恢复时一次 attention，不永久挂起。
 - 审批先于/后于关闭：PR 在父 `ready` 前已合并时，审批后按 `followsDone.outcome` 结束（`merged`/`closed`），不等待不会再来的一次 close；PR 未合并时审批等待 close。
@@ -1346,6 +1351,7 @@ UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不�
 - 类别继承：review Ticket 的 `inherited` placement 是读时解析，被审 Ticket 移动后自动跟随；不产生需要级联的持久化 placement；子 Ticket 不进入分类器、不计入类别任务数、不产生类别建议。
 - form 选择：未注入 `inline`、需要 review/workspace/子 Ticket/外部写时，accept 不得选 lightweight；review Ticket 永远 tracked；子 Ticket 永远 tracked。
 - 查询：`tickets.list/open/active()` 只返回根；`childrenOf` 只返回直接子；`subtree` 用 root 索引；旧行当根；没有 `subtask` 表；schema 15 旧二进制拒绝。
+- 根一致性：子 `rootTicketId` 必须等于父的 root（`parent.rootTicketId ?? parent.id`），父必须存在；创建时不一致拒绝，投影时按损坏只读 + attention，不得回退到子自己的 root 或借用别的根 `maxActionLevel`。
 - 生命周期：子 worker 计入 `executor.maxWorkers`（WorkerSlots 用 allOpen）；shutdown/session cleanup/restart 用 allList/allActive，子 Session 会被取消并恢复；视图/线程/回复需要子数据时显式不过滤，不能因默认根过滤漏清理。
 
 ## 10. 迁移与兼容
@@ -1370,7 +1376,7 @@ UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不�
 - `tickets.get(id)` 根/子都可读；`Tickets.list/open/active()` 默认根过滤，新增 `childrenOf`/`subtree`/内部 `allActive`；Eval、派发、类别计数、指标、右栏列表不得看到子 Ticket。
 - `ticket_open`/`ticket_active` 仍按每行；根级“活跃子 Ticket ≤32”用 `WHERE root=? AND parent IS NOT NULL AND value -> '$.ended' IS NULL`（`ticket_root` 索引）；一层展开用 `ticket_parent`。
 - `activity`/`ownership`/`views/tickets.ts` 对子 Ticket 事件按根聚合；子 Ticket 不参与计划归属推导；`ownership` 只对根跑。
-- 旧数据无需回填；生成列由 SQLite 从 JSON 计算。若某行 `rootTicketId` 缺失/指向不存在/成环，投影只读报错并写 attention，不猜根。
+- 旧数据无需回填；生成列由 SQLite 从 JSON 计算。若某行 `rootTicketId` 缺失/指向不存在/成环，或与父记录的 root（`parent.rootTicketId ?? parent.id`）不一致、父记录缺失，投影只读报错并写 attention，不猜根、不回退到子自己的 root。
 
 **不做的事**：不迁移历史工单标题、不改 `Mandate.scope`、不把类别写进工单、不在读取时写库、不把历史 subagent 追溯成子 Ticket、不让 worker 直接建授权根 Ticket、不建 `subtask` 表。
 
