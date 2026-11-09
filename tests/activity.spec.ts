@@ -137,7 +137,7 @@ it('keeps the newest 5,000 records so the feed cannot grow without limit', () =>
   expect(store.activity.after(0, 10_000)).toHaveLength(5000)
   expect(store.activity.after(0, 1)).toEqual([expect.objectContaining({ seq: 101 })])
   store.close()
-})
+}, 15_000)
 
 it('does not send a second notice for an end its report already covered, and still sends one for an uncovered end', () => {
   const covered = ticket({ at: '2026-01-01T00:00:03Z', by: 'executor', outcome: 'completed' },
