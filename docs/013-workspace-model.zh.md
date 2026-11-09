@@ -385,7 +385,7 @@ failed → preparing（重试）或 reclaimed（人工清理）
 
 | 级别 | 含义 | 现状/计划 |
 | --- | --- | --- |
-| `exclusive` | 一个写者，其他只读或等待 | 默认 `checkout`/`scratch` |
+| `exclusive` | 一个写者；checkout 上其他等待，基线只读可共存 | 默认 `checkout`/`scratch` |
 | `shared-read` | 多读者，无写者（或只读快照） | `project` 基线、已结束的交付分支 |
 | `ephemeral` | 用完即弃，短保留 | `scratch` |
 | `sandbox` | OS/容器级隔离 | **不在本设计**；属于部署/多租户（docs/012 M4） |
