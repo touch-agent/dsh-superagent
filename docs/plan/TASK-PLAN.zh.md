@@ -407,6 +407,7 @@ graph LR
 
 - **交付**：`preview/mail.ts`：收件人/主题/正文/附件四段 diff + 「将发给谁」的显式清单。
 - **验收**：抄送/密送差异必须显式显示（这是最容易出事故的地方）。
+- **状态**：实现完成（2026-11-09，PR #35 待审查合并）。`packages/dsh/src/app/preview/mail.ts` 对两个结构化草稿做收件人/主题/正文/附件四段 diff：收件人按地址归并，To/Cc/Bcc 之间的移动记一条 `changed`（含最危险的移入 Bcc），`recipients.audience` 逐条列出 after 修订将送达的地址（含 Bcc）并标记角色，`bccHidden`/`movedToBcc`/`duplicateRecipient`/`noRecipients` 警告标出事故高发情形；把多个带名地址拼成一项的输入直接拒绝，主题含换行也按调用方错误拒绝。正文按可读文本做行 diff，先裁掉公共前后缀，只有超大中段才按位置配对并用 `alignment: 'position'` 明示；附件按名称比较内容指纹（SHA-256）、大小、类型与内联标记，只有一侧有指纹时保守记为 `content`，无法比较内容的附件列入 `unverified`。`tests/preview-mail.spec.ts` 覆盖固定 fixture 的四段结果、双向 Cc/Bcc 移动、仅 Bcc 的新增与删除、地址解析、重复与空收件人、正文 CRLF/行配对/大正文退化，以及附件内容哈希与调用方错误；fixture 见 `tests/fixtures/mail-preview/`。预览器注册表与 review 表面接线仍属于后续任务。
 
 ### T3-05 inline 执行层（无 Assignment 的轻量工单）· Runtime · 6 人日
 
