@@ -3,7 +3,7 @@
 > 唯一状态源。格式与「合并即更新」约定见 [README.md](README.md)。
 > 初始建表 2026-11-08：历史任务按当日仓库、PR 与计划文档中能复核的证据回填；没有完成证据的任务记为 `未开始`，发现不符时先修表。`最后更新` 是这一行最后一次改动日期。
 > 2026-11-08 重评估：新增 T3-09…11、T5-01…06、X-13（均未开始）；X-12 随 PR #31 合并改为已完成；T3-05 的验收口径改为 Phase 0 剩余项。
-> 2026-11-09 设计修订：T3-10/T3-11 从独立 `Subtask` 类型改为 `Ticket` 自引用（子 Ticket + 父 owner 审查链 + 根授权唯一），状态仍为 `未开始`，范围见 TASK-PLAN；实现另开工单。
+> 2026-11-09 设计修订：T3-10/T3-11 从独立 `Subtask` 类型改为 `Ticket` 自引用（子 Ticket + 父 owner 审查链 + 根授权唯一），范围见 TASK-PLAN；实现见 PR #40。
 
 ## 任务跟踪表
 
@@ -51,7 +51,7 @@
 | T3-07 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/24 | `tests/panel-approval.spec.tsx`；review 必须有 preview | 2026-11-08 |
 | T3-08 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/37 | `tests/ticket-timeline.spec.ts`；`tests/panel-timeline.spec.tsx`；`GET tickets/:id/timeline` 只读合成 trace、disposition 与 approval；Before/After 截图 | 2026-11-09 |
 | T3-09 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/38 | `tests/tasks-view.spec.ts`、`tests/panel-tasks.spec.tsx`、`tests/client.spec.tsx`；同场景 Before/After 见 `docs/images/tasks-view/`；359px 右栏 `scrollWidth=clientWidth`；`pnpm check` 1653 测试通过 | 2026-11-09 |
-| T3-10 | 未开始 | — | — | 2026-11-09 |
+| T3-10 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/40 | Phase 2a 子 Ticket 运行时、父 owner 审阅链、结束门与 schema 15；`tests/delegation*.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/store.spec.ts`、`tests/migration.spec.ts` 通过，typecheck/build/check:size 通过 | 2026-11-09 |
 | T3-11 | 未开始 | — | — | 2026-11-09 |
 | T4-01 | 未开始 | — | — | 2026-11-08 |
 | T4-02 | 未开始 | — | — | 2026-11-08 |

@@ -19,7 +19,7 @@ import type { SettingsVersion, Store } from './store.ts'
 import { Versions } from './versions.ts'
 import { KV, type Key } from '../kv.ts'
 
-export const SCHEMA_VERSION = 14
+export const SCHEMA_VERSION = 15
 /** The oldest database schema version this build can open and migrate directly. */
 export const OLDEST_SCHEMA = 10
 /** Returns an error message explaining why `version` cannot be opened: older schemas need a new state directory. */
@@ -383,6 +383,8 @@ export function ticketOf(old: Stored, answers = new Map<string, string[]>(), hum
       note: 'This ticket ended earlier and a follow-up resumed it under the same mandate. Inspect the worktree, git history and PR state before continuing; do not repeat completed external operations.' }) })
   const reported = [...new Set([...ticket.answers ?? [], ...answers.get(ticket.id) ?? []])]
   const ended = ticket.ended && { ...ticket.ended, outcome: ticket.ended.outcome ?? outcomeOf(ticket.ended) }
+  // A schema 10 ticket predates the self-referencing tree and is always a root, so it must carry its Mandate.
+  if (!ticket.mandate) throw new Error(`Ticket ${ticket.id} has no mandate`)
   const mandate = { ...ticket.mandate, basis: basisOf(ticket.mandate.basis as unknown) }
   const delivery = ticket.delivery ?? (text(meta.deliveryError) ? { error: meta.deliveryError as string, at: ticket.updatedAt } : undefined)
   const kept = execution ?? ticket.execution

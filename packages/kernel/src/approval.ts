@@ -16,7 +16,12 @@ export type ApprovalState = typeof APPROVAL_STATES[number]
  */
 export interface Approval {
   id: string
+  /** The authorization root a child Ticket's Approval is attributed to. */
   ticketId: string
+  /** The root Ticket whose Mandate authorizes this Action; equal to `ticketId` unless a child requested it. */
+  originTicketId?: string
+  /** The Ticket that requested the Action when it is a child of `ticketId`; omitted for a root request. */
+  requestedForTicketId?: string
   action: Action
   state: ApprovalState
   requestedAt: string
@@ -42,6 +47,10 @@ export interface Approval {
 /** What a caller supplies to ask for an Approval; its id is derived from the Ticket and the Action's idempotency key. */
 export interface ApprovalRequest {
   ticketId: string
+  /** The root Ticket whose Mandate authorizes the Action; defaults to `ticketId`. */
+  originTicketId?: string
+  /** The child Ticket that asked for the Action, when it is not the root itself. */
+  requestedForTicketId?: string
   action: Action
   requestedAt: string
   expiresAt: string
@@ -119,8 +128,10 @@ export function createApproval(input: ApprovalRequest): Approval {
   if (Date.parse(expiresAt) <= Date.parse(requestedAt)) throw new TypeError('An Approval must expire after it was requested')
   const target = input.target === undefined ? undefined : requireText(input.target, 'The Approval target').trim()
   const requestedBy = input.requestedBy === undefined ? undefined : requireActor(input.requestedBy, 'The Approval requester')
-  return { id: approvalId(ticketId, action.idempotencyKey), ticketId, action, state: 'requested', requestedAt, expiresAt,
-    ...(target ? { target } : {}), ...(requestedBy ? { requestedBy } : {}) }
+  const originTicketId = input.originTicketId === undefined ? ticketId : requireText(input.originTicketId, 'The Approval origin ticket')
+  const requestedForTicketId = input.requestedForTicketId === undefined ? undefined : requireText(input.requestedForTicketId, 'The Approval requester ticket')
+  return { id: approvalId(ticketId, action.idempotencyKey), ticketId, originTicketId, action, state: 'requested', requestedAt, expiresAt,
+    ...(requestedForTicketId ? { requestedForTicketId } : {}), ...(target ? { target } : {}), ...(requestedBy ? { requestedBy } : {}) }
 }
 
 /** Whether a decision time is not before the request and the Approval has not expired at it. */

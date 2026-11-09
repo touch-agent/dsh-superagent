@@ -33,7 +33,8 @@ function cardState(ticket: Ticket): TicketCardState {
 export function ticketCard(ticket: Ticket) {
   const ended = ticket.ended && { at: ticket.ended.at, by: ticket.ended.by, reason: ticket.ended.reason ?? ticket.ended.outcome }
   const { attention } = ticket
-  return { ticket_id: ticket.id, title: ticket.title, state: cardState(ticket), strength: ticket.mandate.strength,
+  return { ticket_id: ticket.id, title: ticket.title, state: cardState(ticket), ...(ticket.mandate ? { strength: ticket.mandate.strength } : {}),
+    ...(ticket.parentTicketId ? { parent_ticket_id: ticket.parentTicketId } : {}),
     ...(pullOf(ticket) ? { pr_number: pullOf(ticket) } : {}), ...(ended ? { ended } : {}),
     ...(attention ? { attention: { question: attention.question, ...attention.triggerId ? { trigger_id: attention.triggerId } : {} } } : {}),
     preview: preview(latestReport(ticket)?.summary ?? ''), read: `ticket/${ticket.id}` }
@@ -68,8 +69,12 @@ export function ticketDetails(ticket: Ticket, threads: TicketThread[], batch: re
   // Drop card preview because the latest report's preview is already shown on the first assignment entry.
   const { preview: _preview, ...card } = ticketCard(ticket)
   return { ...card, trigger_id: ticket.origin.triggerId, ...conversationSource(origin), ...batch.length ? { batch: batch.map(batchLine) } : {},
-    ...worker ? {} : { decision_id: ticket.decisionId }, threads, directory: ticket.execution?.directory,
-    scope: ticket.mandate.scope, requested_by: ticket.mandate.actor.id,
+    ...worker || !ticket.decisionId ? {} : { decision_id: ticket.decisionId }, threads, directory: ticket.execution?.directory,
+    ...ticket.mandate ? { scope: ticket.mandate.scope, requested_by: ticket.mandate.actor.id } : {},
+    ...ticket.parentTicketId ? { root_ticket_id: ticket.rootTicketId ?? ticket.parentTicketId,
+      ...(ticket.delegation ? { delegation: { goal: ticket.delegation.goal, scope: ticket.delegation.scope, attempt: ticket.delegation.attempt,
+        last_disposition: ticket.delegation.lastDisposition?.decision, resolution: ticket.delegation.resolution?.kind,
+        orphaned: ticket.delegation.orphaned?.reason } } : {}) } : {},
     assignments: newestPage(ticket.assignments, 0, ASSIGNMENTS, item => assignmentLine(ticket, item), `ticket/${ticket.id}/assignments`),
     inputs: newestPage(ticket.inputs, 0, INPUTS, input => inputLine(ticket, input, worker), `ticket/${ticket.id}/inputs`),
     assignment: `ticket/${ticket.id}/assignment`, result: `ticket/${ticket.id}/result`, transcript: `ticket/${ticket.id}/transcript` }

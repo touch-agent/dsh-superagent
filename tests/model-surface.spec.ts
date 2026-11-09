@@ -37,7 +37,7 @@ interface Skill { name: string; description: string; content: string }
  * Maximum combined character count of system prompt and tool definitions per role (~5% above baseline).
  * Lower this limit when shrinking model-facing text; raise it only intentionally and explain why in the commit message.
  */
-const BUDGET: Record<Role, number> = { orchestrator: 61_000, worker: 40_500 }
+const BUDGET: Record<Role, number> = { orchestrator: 61_000, worker: 41_600 }
 const PROMPTS = 'packages/dsh/prompts/, packages/dsh/skills/', TOOLS = 'packages/dsh/src/app/tools/', SESSIONS = 'packages/dsh/src/app/sessions.ts'
 const NOTICES = 'packages/dsh/src/app/notices.ts', LINKS = 'packages/dsh/src/app/links.ts', ASSESSMENT = 'packages/dsh/src/app/assessment.ts'
 const EXECUTOR = 'packages/dsh/src/executor/dsh.ts', ERRORS = 'packages/kernel/src/errors.ts'
@@ -270,7 +270,7 @@ function collect(host: Host, { a, b, workerA, workerB, refusal }: Awaited<Return
   for (const [id, sessionId] of [[a, workerA], [b, workerB]] as const) {
     const ticket = runtime.store.tickets.get(id)!
     const assignment = ticket.execution!.assignment
-    surfaces.push({ where: `worker input assignment (${ticket.mandate.strength})`, owner: EXECUTOR, role: 'worker', text: assignment })
+    surfaces.push({ where: `worker input assignment (${ticket.mandate!.strength})`, owner: EXECUTOR, role: 'worker', text: assignment })
     const card = (text: string) => { try { return JSON.parse(text) as Record<string, unknown> } catch { return undefined } }
     for (const { text } of host.inputs.filter(input => input.sessionId === sessionId)) {
       const input = ticket.inputs.find(item => item.kind === 'trigger' ? card(text)?.trigger_id === item.triggerId
@@ -348,9 +348,8 @@ function failures(): Map<string, string> {
 }
 
 it('collects both roles\' tools, prompts, skills and inputs', () => {
-  expect([...toolsOf('worker').keys()].sort()).toEqual(['orchestrator_ack', 'orchestrator_read', 'orchestrator_report',
-    'orchestrator_thread_follow',
-    'orchestrator_thread_unrelated', 'orchestrator_trigger_handback'])
+  expect([...toolsOf('worker').keys()].sort()).toEqual(['orchestrator_ack', 'orchestrator_child', 'orchestrator_read', 'orchestrator_report',
+    'orchestrator_thread_follow', 'orchestrator_thread_unrelated', 'orchestrator_trigger_handback'])
   expect([...toolsOf('orchestrator').keys()]).toEqual(expect.arrayContaining(['orchestrator_route', 'orchestrator_eval_decide', 'orchestrator_reply']))
   // The one routing tool takes the place of four.
   for (const name of ['orchestrator_ticket_accept', 'orchestrator_ticket_attach', 'orchestrator_ticket_stop', 'orchestrator_trigger_ignore']) {

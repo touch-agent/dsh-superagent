@@ -5,6 +5,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { mkdir, rmdir, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { key, latestAssignment, latestReport, liveTicket, runningAssignment, threadKey, waitsForPerson } from '@superagent/kernel'
+import { depthOf } from '@superagent/kernel'
 import type { AssessmentOutcome, Assignment, EngineForExecutor, Execution, Executor, Mandate, PolicyEffect, Ticket, TicketInput, Trigger }
   from '@superagent/kernel'
 import type { Machine } from '../deployment.ts'
@@ -61,7 +62,7 @@ export interface ExecutorHost {
   readonly context: Context
   /** Where the Executor reports what happened to Assignments and Inputs. */
   readonly engine: Pick<EngineForExecutor, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed' | 'report'
-    | 'assignmentInterrupted'>
+    | 'assignmentInterrupted' | 'orphanChild'>
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'set' | 'settings' | 'atomic' | 'afterCommit'>
   /** Durable effect queue through which launches and input deliveries run. */
   readonly effects: Pick<Effects, 'enqueue' | 'handle'>
@@ -99,12 +100,15 @@ export function ticketExecution(ticket: Ticket, outcome: Extract<AssessmentOutco
   const name = ticketWorktreeName(outcome.name ?? '', ticket.id)
   const source = ticket.origin.triggerId
   const note = outcome.note ? `\nRouting note (not the source request): ${outcome.note}` : ''
-  const ruleIds = ticket.mandate.basis.rules
+  // Only a root Ticket is accepted and prepared here; a child is created by delegation with its execution already set.
+  const mandate = ticket.mandate
+  if (!mandate) throw new TypeError('A root Ticket needs a Mandate to prepare its execution')
+  const ruleIds = mandate.basis.rules
   const rules = settings.policy.rules.filter(rule => ruleIds?.includes(rule.id))
     .map(rule => `\n- ${rule.name} (${rule.id}): ${rule.instruction}`).join('')
   const precedence = rules ? `\nMatched rules; their procedure and communication instructions take precedence over the default acknowledgement and messaging policy for this ticket:${rules}` : ''
   // The origin trigger is delivered alongside the assignment, so `assignment` omits the trigger text.
-  const assignment = ticket.mandate.strength === 'inferred' && ruleIds
+  const assignment = mandate.strength === 'inferred' && ruleIds
     ? `Proactively accepted under ${ruleIds.join(', ')}. Scope: ${outcome.scope}.${precedence}${note}`
     : note.trim()
   return { name, directory: join(executionRoot(settings, stateDir), name), assignment }
@@ -150,7 +154,7 @@ function policyMessage(effect?: PolicyEffect): string {
 export const inputResource = (ticketId: string, inputId: string): string => `ticket/${ticketId}/input/${key(inputId)}`
 /**
  * Formats a ticket input for worker delivery: a `trigger` rendered via `trigger` (or by its ID and read path when absent),
- * a `policy-changed` notice, a `resumed` notice, an orchestrator `note`, or a `text` input as written.
+ * a `policy-changed` notice, a `resumed` notice, an orchestrator `note`, a child report or an end gate, or a `text` input as written.
  * Returns `undefined` for legacy `reopen` inputs, which are historical only because the schema 11 migration converted pending reopen inputs into text inputs.
  */
 export function inputMessage(input: TicketInput, trigger?: object): string | undefined {
@@ -160,6 +164,12 @@ export function inputMessage(input: TicketInput, trigger?: object): string | und
   if (input.kind === 'policy-changed') return policyMessage(input.effect)
   if (input.kind === 'resumed') return RESUMED
   if (input.kind === 'note') return `Note from the orchestrator, for context only: ${input.text}`
+  if (input.kind === 'child-report') return JSON.stringify({ kind: 'child_report', child_ticket_id: input.childTicketId,
+    attempt: input.attempt, assignment_id: input.assignmentId, state: input.state, summary: input.summary, report_at: input.reportAt,
+    ...input.humanAction ? { human_action: input.humanAction } : {},
+    instruction: 'Judge this child report with orchestrator_child: accept it, return it for another attempt, cancel it, record self-work, escalate, or reassign it. Only your own completed goal is reported upward.' })
+  if (input.kind === 'end-gate') return JSON.stringify({ kind: 'end_gate', pending: input.pending,
+    instruction: 'A thread close waits for this Ticket to end. Resolve every child Ticket, then report ready; the pending end is applied then.' })
   return input.kind === 'text' ? input.text : undefined
 }
 /**
@@ -226,7 +236,7 @@ export class DshExecutor implements Executor {
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
   /** Registers the `launch` and `delivery` effect handlers; both are held (concurrency limit 0) while processing is paused. */
   constructor(private readonly host: ExecutorHost) {
-    this.slots = new WorkerSlots(() => host.store.tickets.open().filter(ticket => this.running(ticket)).map(ticket => ticket.id),
+    this.slots = new WorkerSlots(() => host.store.tickets.allOpen().filter(ticket => this.running(ticket)).map(ticket => ticket.id),
       () => host.store.settings().executor.maxWorkers)
     // Each launch reserves a worker slot so launches run concurrently while slots are free.
     host.effects.handle('launch', payload => this.launchQueued(payload), { limit: () => host.paused() ? 0 : this.slots.launches(),
@@ -389,7 +399,7 @@ export class DshExecutor implements Executor {
    * of the jobs left to a person, which were killed, and cancel a worker turn that started meanwhile, keeping its inbox.
    */
   async shutdown(): Promise<void> {
-    const agents = this.host.store.tickets.list().map(ticket => this.host.context.agents.get(workerSessionId(ticket.id) as SessionId))
+    const agents = this.host.store.tickets.allList().map(ticket => this.host.context.agents.get(workerSessionId(ticket.id) as SessionId))
       .filter((agent): agent is Agent => agent !== undefined)
     const stop = async () => {
       await Promise.allSettled(agents.map(agent => stopBackground(this.host.context, agent.id, 'dsh-superagent stopped', true)))
@@ -401,7 +411,7 @@ export class DshExecutor implements Executor {
     await until(stop(), undefined, SHUTDOWN_STOP_MS)
   }
   /** Number of open tickets whose worker holds a worker slot: its turn runs, or its shell jobs or subagents still run after its turn ended. */
-  activeCount(): number { return this.host.store.tickets.open().filter(ticket => this.running(ticket)).length }
+  activeCount(): number { return this.host.store.tickets.allOpen().filter(ticket => this.running(ticket)).length }
   /** Whether a ticket's worker holds a worker slot: its turn runs, or its shell jobs or subagents do after its turn ended. */
   private running(ticket: Ticket): boolean {
     if (!runningAssignment(ticket)) return false
@@ -522,8 +532,16 @@ export class DshExecutor implements Executor {
    * while failed launches (`waitsForPerson`) wait for a person's message or a retry.
    */
   resume(): void {
-    // Launch pending tickets oldest first (in acceptance order).
-    for (const ticket of this.host.store.tickets.open().sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+    // Launch pending tickets parents first: a child resumes only when its parent and root are live; otherwise it waits as orphaned.
+    const depth = (ticket: Ticket) => depthOf(ticket, id => this.host.store.tickets.get(id))
+    const parentsFirst = this.host.store.tickets.allOpen().sort((a, b) => depth(a) - depth(b)
+      || a.createdAt.localeCompare(b.createdAt))
+    for (const ticket of parentsFirst) {
+      if (ticket.parentTicketId) {
+        const parent = this.host.store.tickets.get(ticket.parentTicketId)
+        const root = this.host.store.tickets.get(ticket.rootTicketId ?? ticket.parentTicketId)
+        if (!parent || !root || parent.ended || root.ended) { this.host.engine.orphanChild(ticket.id, !parent ? 'parent-missing' : !root ? 'root-missing' : 'parent-ended'); continue }
+      }
       const running = runningAssignment(ticket), latest = latestAssignment(ticket)
       if (running) {
         // A restart within this process left DSH's Sessions, jobs and subagents running: they stop first. The inbox keeps an

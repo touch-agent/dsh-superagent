@@ -58,6 +58,9 @@ export interface SettingsVersion {
 const SETS: Record<string, Record<string, string>> = {
   ticket: {
     open: "INTEGER AS (CASE WHEN value -> '$.ended' IS NULL THEN 1 END)",
+    // Schema 15: the self-referencing task tree. A root has no parent and is its own root; old rows read as roots.
+    parent: "TEXT AS (value ->> '$.parentTicketId')",
+    root: "TEXT AS (COALESCE(value ->> '$.rootTicketId', id))",
     // Only the latest assignment can be pending or running because the Engine closes one before adding the next.
     active: `INTEGER AS (CASE WHEN json_array_length(value, '$.undelivered') > 0
       OR value ->> '$.assignments[#-1].state' IN ('pending', 'running') THEN 1 END)`,
@@ -90,7 +93,7 @@ export class Store implements Repositories {
   /**
    * Opens or creates the SQLite database at `path`, rewriting schema 10 records to their current shapes in a single transaction.
    * @param report - Receives errors thrown by `afterCommit` callbacks without failing the committed transaction.
-   * @throws When the database schema is older than `OLDEST_SCHEMA` (10), newer than `SCHEMA_VERSION` (14), or when migration fails; in every case the database file is left unchanged and the SQLite handle is closed so a later attempt in the same process can open it.
+   * @throws When the database schema is older than `OLDEST_SCHEMA` (10), newer than `SCHEMA_VERSION` (15), or when migration fails; in every case the database file is left unchanged and the SQLite handle is closed so a later attempt in the same process can open it.
    */
   constructor(path: string, private readonly report: (error: unknown) => void = () => {}) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
@@ -128,9 +131,9 @@ export class Store implements Repositories {
             CREATE INDEX IF NOT EXISTS span_at ON span(at);
           `)
           this.addColumns()
-          // Schema 12, 13 and 14 only add the `span`, `activity` and `approval` tables, which the schema block above creates
-          // for every database it opens; their records need no conversion, so only a database older than schema 11 runs the
-          // record-rewriting migration.
+          // Schema 12–15 only add the `span`, `activity` and `approval` tables and the ticket tree's generated `parent`/`root`
+          // columns and indexes, which the schema block and `addColumns` create for every database they open; their records
+          // need no conversion, so only a database older than schema 11 runs the record-rewriting migration.
           if (version !== undefined && version < 11) migrateTo11(this)
           if (version !== SCHEMA_VERSION) this.set(KV.store.schema, SCHEMA_VERSION)
         })
@@ -279,18 +282,28 @@ export class Store implements Repositories {
     get: (id: string): Ticket | undefined => { const row = this.db.prepare('SELECT value FROM ticket WHERE id=?').get(id); return row ? JSON.parse(String(row.value)) as Ticket : undefined },
     /** The Ticket a Trigger created, so an Events row can join the task its intake became. */
     byTrigger: (triggerId: string): Ticket | undefined => {
-      const row = this.db.prepare(`SELECT value FROM ticket WHERE value ->> '$.origin.triggerId' = ?
-        OR EXISTS (SELECT 1 FROM json_each(json_extract(value, '$.origin.triggerIds')) j WHERE j.value = ?) ORDER BY rowid LIMIT 1`)
+      const row = this.db.prepare(`SELECT value FROM ticket WHERE parent IS NULL AND (value ->> '$.origin.triggerId' = ?
+        OR EXISTS (SELECT 1 FROM json_each(json_extract(value, '$.origin.triggerIds')) j WHERE j.value = ?)) ORDER BY rowid LIMIT 1`)
         .get(triggerId, triggerId)
       return row ? JSON.parse(String(row.value)) as Ticket : undefined
     },
     save: (ticket: Ticket): void => { this.db.prepare('INSERT INTO ticket VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value').run(ticket.id, JSON.stringify(ticket)) },
-    /** Newest first. */
-    list: (): Ticket[] => this.values('SELECT value FROM ticket ORDER BY rowid DESC'),
-    /** Newest first. */
-    open: (): Ticket[] => this.values('SELECT value FROM ticket WHERE open = 1 ORDER BY rowid DESC'),
-    /** Newest first. */
-    active: (): Ticket[] => this.values('SELECT value FROM ticket WHERE active = 1 ORDER BY rowid DESC'),
+    /** Root Tickets only, newest first: a child is an execution node, never independent work. */
+    list: (): Ticket[] => this.values('SELECT value FROM ticket WHERE parent IS NULL ORDER BY rowid DESC'),
+    /** Open root Tickets only, newest first. */
+    open: (): Ticket[] => this.values('SELECT value FROM ticket WHERE open = 1 AND parent IS NULL ORDER BY rowid DESC'),
+    /** Root Tickets with pending work, newest first. */
+    active: (): Ticket[] => this.values('SELECT value FROM ticket WHERE active = 1 AND parent IS NULL ORDER BY rowid DESC'),
+    /** Every Ticket, root or child, newest first. */
+    allList: (): Ticket[] => this.values('SELECT value FROM ticket ORDER BY rowid DESC'),
+    /** Every open Ticket, newest first; lifecycle scans must not miss a child. */
+    allOpen: (): Ticket[] => this.values('SELECT value FROM ticket WHERE open = 1 ORDER BY rowid DESC'),
+    /** Every active Ticket, newest first. */
+    allActive: (): Ticket[] => this.values('SELECT value FROM ticket WHERE active = 1 ORDER BY rowid DESC'),
+    /** Direct child Tickets, newest first. */
+    childrenOf: (ticketId: string): Ticket[] => this.values('SELECT value FROM ticket WHERE parent = ? ORDER BY rowid DESC', ticketId),
+    /** Every Ticket under one root, the root included, newest first. */
+    subtree: (rootTicketId: string): Ticket[] => this.values('SELECT value FROM ticket WHERE root = ? ORDER BY rowid DESC', rootTicketId),
   }
   readonly decisions = {
     get: (id: string): Decision | undefined => { const row = this.db.prepare('SELECT value FROM decision WHERE id=?').get(id); return row ? JSON.parse(String(row.value)) as Decision : undefined },

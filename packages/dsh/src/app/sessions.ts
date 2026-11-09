@@ -60,6 +60,23 @@ declare module '@deepseek-ai/cordis' {
  */
 const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
   'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent']
+/** A child Ticket's owner may not start or message other Sessions: it reports only to its parent owner through the Engine. */
+const CHILD_DENIED = new Set(['subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent'])
+/**
+ * A child's shell may not leave the authorization root: no GitHub write/API calls, no git network writes, no direct
+ * network tools and no SQLite/state access. This is a tool-level denial, not an OS sandbox (the deployment's preset is
+ * still `danger-full-access`), so the restricted-execution promise remains a parent-review guarantee for adversarial
+ * commands; a dedicated OS account or preset is deployment work.
+ */
+export function childShellReason(command: string): string | undefined {
+  if (/(?:^|[;&|]\s*)(?:gh\s+(?:pr|issue|api|repo|release|workflow|auth)|git\s+(?:push|remote|fetch|clone)|curl|wget|ssh|scp|sftp|nc|ncat|telnet|osascript)\b/i.test(command)) {
+    return 'A child Ticket cannot use the network, GitHub or git remotes; report to your parent owner'
+  }
+  if (/sqlite3|\b\S+\.(?:sqlite|db)\b|DSH_SUPERAGENT_DIR|\.dsh[\/]state[\/]superagent/i.test(command)) {
+    return 'A child Ticket cannot read or write the orchestrator state or database'
+  }
+  return undefined
+}
 /** What the main Session is told when it would wait: what it waits for comes to it, and a waiting step holds back the next. */
 const NO_WAIT = 'Reports, follow_up notices, new candidates and a background job\'s end with its output arrive by themselves as messages; '
   + 'end the turn instead of waiting for them.'
@@ -244,8 +261,15 @@ export class Sessions {
     binding.disposers.push(agent.ctx.systemPrompt.section({ name: 'dsh-superagent-policy', order: 9999, interpolate: false, text: context => {
       const version = this.promptFor(agent, context.signal !== undefined)
       const current = ticket && host.store.tickets.get(ticket.id)
+      // A child Ticket inherits its root's Mandate; it never carries one of its own.
+      const root = current?.parentTicketId ? host.store.tickets.get(current.rootTicketId ?? current.parentTicketId) : current
+      const mandate = root?.mandate
       const composed = host.prompts.compose(version.config, master ? 'orchestrator' : 'worker', current ? host.environment(current) : undefined)
-      return `[dsh-superagent prompt revision ${version.revision}]\n${composed}\n${current ? mandateInstructions(current.mandate) : ''}`
+      const child = current?.parentTicketId
+        ? 'This is a child Ticket. Do the delegated work and report ready, blocked, failed or dropped with orchestrator_report; never reply '
+          + 'to a person, message another Session, page people, escalate or open an authorization root. Your parent owner judges the report.'
+        : ''
+      return `[dsh-superagent prompt revision ${version.revision}]\n${composed}\n${mandate ? mandateInstructions(mandate) : ''}${child ? `\n${child}` : ''}`
     }, ...(master ? { complete: true } : {}) }))
     // A recreated skill scope (e.g. after the skills service restarts) starts empty, so reset `binding.skills` before rebinding.
     const skillScope = agent.ctx.inject(['skills'], scope => {
@@ -289,11 +313,18 @@ export class Sessions {
   private workOnly(agent: Agent, ticketId: string): (() => void)[] {
     const store = this.host.store
     const parent = scopeParentOf(agent)
-    const allow = WORK_TOOLS.filter(name => agent.ctx.tools.get(name, parent))
-    return [agent.ctx.tools.restrict({ allow }), agent.ctx.tools.guard(() => {
+    const child = !!store.tickets.get(ticketId)?.parentTicketId
+    const allow = WORK_TOOLS.filter(name => !child || !CHILD_DENIED.has(name)).filter(name => agent.ctx.tools.get(name, parent))
+    const guards = [agent.ctx.tools.guard(() => {
       const current = store.tickets.get(ticketId)
       return !current || !liveTicket(current) ? 'Ticket ended; new work needs a new authorized ticket' : undefined
     })]
+    if (child) guards.push(agent.ctx.tools.guard(execution => {
+      if (execution.name !== 'bash' && execution.name !== 'pwsh') return undefined
+      const command = (execution.arguments as { command?: unknown } | undefined)?.command
+      return typeof command === 'string' ? childShellReason(command) : undefined
+    }))
+    return [agent.ctx.tools.restrict({ allow }), ...guards]
   }
   /**
    * A subagent of an Executor Session, or of one of its subagents, which runs under DSH's `standard` preset with the worker's

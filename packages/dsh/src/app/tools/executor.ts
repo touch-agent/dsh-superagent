@@ -1,6 +1,6 @@
 /** Executor Session tools for reading ticket context, acknowledging requests, managing threads, handing back out-of-scope triggers, and reporting status. */
 import { z } from 'zod'
-import { ARTIFACT_KINDS, PREVIEW_KINDS, liveTicket, type EngineForExecutor, type Ticket } from '@superagent/kernel'
+import { ARTIFACT_KINDS, PREVIEW_KINDS, liveTicket, runningAssignment, type EngineForExecutor, type Ticket } from '@superagent/kernel'
 import { IM_WORDS } from '../../infra/text.ts'
 import { claimPull, readPull } from '../../sources/github-pull.ts'
 import type { SourceContext } from '../../sources/host.ts'
@@ -26,7 +26,8 @@ const DeliverableSchema = z.object({
 }).strict()
 
 export interface ExecutorToolsHost {
-  readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'>
+  readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'
+    | 'delegate' | 'acceptChild' | 'returnChild' | 'cancelChild' | 'childDecision'>
   readonly store: Pick<Store, 'tickets' | 'replyStatus' | 'atomic'>
   readonly sessions: Pick<Sessions, 'relay' | 'notify'>
   readonly resources: ResourceHost
@@ -37,6 +38,8 @@ export interface ExecutorToolsHost {
 
 export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
   const ticketId = ticket.id
+  // A parent owner is this ticket's worker; the domain records that worker as the reviewer in every disposition.
+  const actor = { source: 'dsh-superagent', id: `worker-${ticketId}` }
   return [
     readTool('Read one page of a resource of this ticket that the resource parameter lists. Follow next_offset, and next_resource where a page names one.',
       true, (resource, offset, limit, signal) => readResource(host.resources, resource, offset, limit, ticketId, signal)),
@@ -110,12 +113,53 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
             ...(args.question_for_trigger_id ? { askedBy: args.question_for_trigger_id } : {}),
             ...(args.reply_to_trigger_id ? { answers: args.reply_to_trigger_id } : {}),
             ...(args.deliverable ? { deliverable: args.deliverable } : {}) }
-          const updated = host.engine.report(ticketId, report)
-          const relay = reportRelay(updated, report)
+          const assignment = runningAssignment(current)
+          const updated = host.engine.report(ticketId, { ...report, ...(assignment ? { assignmentId: assignment.id } : {}) })
+          // A child reports to its parent owner; only a root reaches the main Session.
+          const relay = updated.parentTicketId ? undefined : reportRelay(updated, report)
           if (relay) host.sessions.relay(relay.id, relay.text)
           const notification = relay ? 'orchestrator' : 'internal_only'
           return { reported: true, notification, ...(updated.attention ? { attention: updated.attention } : {}) }
         })
+      },
+    }),
+    tool({
+      name: 'orchestrator_child',
+      description: 'Delegate a child Ticket, or accept, return or cancel one; a child inherits the root Mandate and reports to you.',
+      schema: z.object({
+        operation: z.enum(['delegate', 'accept', 'return', 'cancel', 'self-work', 'escalated', 'reassigned']),
+        child_ticket_id: z.string().optional(),
+        goal: z.string().trim().min(1).max(2000).optional(),
+        assignment: z.string().trim().min(1).max(2000).optional(),
+        reason: z.string().trim().min(1).max(500).optional(),
+        replacement_ticket_id: z.string().optional(),
+        failed: z.boolean().optional(),
+      }).strict(),
+      execute: async args => {
+        const child = () => args.child_ticket_id ?? (() => { throw new Error('child_ticket_id is required') })()
+        switch (args.operation) {
+          case 'delegate': {
+            if (!args.goal) throw new Error('goal is required to delegate')
+            const created = host.engine.delegate(ticketId, { goal: args.goal, ...(args.assignment ? { assignment: args.assignment } : {}) })
+            return { delegated: true, ticket_id: created.id, parent_ticket_id: ticketId, root_ticket_id: created.rootTicketId,
+              attempt: created.delegation?.attempt }
+          }
+          case 'accept': {
+            const accepted = host.engine.acceptChild(ticketId, child(), actor)
+            return { accepted: true, ticket_id: accepted.id, state: 'completed', resolution: accepted.delegation?.resolution?.kind }
+          }
+          case 'return':
+            if (!args.reason) throw new Error('reason is required to return')
+            return { returned: true, ticket_id: host.engine.returnChild(ticketId, child(), actor, args.reason).id }
+          case 'cancel':
+            if (!args.reason) throw new Error('reason is required to cancel')
+            return { cancelled: !args.failed, failed: !!args.failed, ticket_id: host.engine.cancelChild(ticketId, child(), actor, args.reason, args.failed ? 'failed' : 'cancelled').id }
+          default: {
+            if (!args.reason) throw new Error('reason is required to record a child decision')
+            const disposition = host.engine.childDecision(ticketId, child(), actor, args.operation, args.reason, args.replacement_ticket_id)
+            return { recorded: true, decision: disposition.decision, at: disposition.at, trace_id: disposition.traceId }
+          }
+        }
       },
     }),
   ]

@@ -120,8 +120,9 @@ export class Outbox implements OutboxPort {
       if (approval.state === 'approved' && withinActionLevel(receipt.action.level, granted)) {
         // The grant may be older than a Policy or Mandate change: revalidate at the moment the held message would run.
         const ticket = receipt.ticketId === undefined ? undefined : store.tickets.get(receipt.ticketId)
-        if (!ticket) { store.atomic(() => { store.receipts.settle(receipt, 'ticketMissing', { at }) }); continue }
-        const revalidation = this.host.policy().revalidate(ticket.mandate, at, { level: receipt.action.level })
+        const mandate = ticket?.mandate ?? (ticket ? store.tickets.get(ticket.rootTicketId ?? ticket.id)?.mandate : undefined)
+        if (!ticket || !mandate) { store.atomic(() => { store.receipts.settle(receipt, 'ticketMissing', { at }) }); continue }
+        const revalidation = this.host.policy().revalidate(mandate, at, { level: receipt.action.level })
         if (!revalidation.ok) {
           store.atomic(() => { store.receipts.settle(receipt, dropReason(revalidation.reason.code), { at, values: revalidation.reason.values }) })
           continue

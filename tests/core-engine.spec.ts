@@ -314,7 +314,7 @@ describe('resume and stop', () => {
     h.pump()
     const ticket = h.repo.tickets.get(ticketId)!
     expect(ticket.assignments).toHaveLength(2)
-    expect(ticket.mandate.policyVersion).toBe('v1')
+    expect(ticket.mandate!.policyVersion).toBe('v1')
     expect(ticket.inputs.map(input => input.kind)).toEqual(['trigger', 'resumed'])
     expect(h.executor.start).toHaveBeenCalledTimes(2)
     // The message still reaches Eval as a follow-up, but no reopen Decision is needed or possible.

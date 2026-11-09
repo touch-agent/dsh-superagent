@@ -77,6 +77,18 @@ export function activityTitle(t: T, record: ActivityRecord): string {
       return t('activityEvent.triggerFollowup')
     case 'policy.changed':
       return t('activityEvent.policyChanged')
+    case 'ticket.delegated':
+      return t('activityEvent.ticketDelegated', { child: shortId(detail?.childTicketId ?? record.subject?.id ?? '') })
+    case 'ticket.child.reported':
+      return t('activityEvent.childReported', { child: shortId(detail?.childTicketId ?? record.subject?.id ?? '') })
+    case 'ticket.child.reviewed':
+      return t('activityEvent.childReviewed', { child: shortId(detail?.childTicketId ?? record.subject?.id ?? '') })
+    case 'ticket.end.pending':
+      return record.summary
+    case 'ticket.child.orphaned':
+      return t('activityEvent.childOrphaned', { child: shortId(detail?.childTicketId ?? record.subject?.id ?? '') })
+    default:
+      return record.summary
   }
 }
 

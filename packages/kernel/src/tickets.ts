@@ -2,10 +2,10 @@
 import { acknowledgementAction, withinActionLevel } from './action.ts'
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
-import { channelThread, latestAssignment, latestReport, liveTicket, readUntil, runningAssignment, settled, threadKey, ticketForm, waitsForPerson }
-  from './model.ts'
-import type { Assignment, ChannelRef, Evaluation, Follow, Mandate, PolicyEffect, ThreadRef, Ticket, TicketEndBy, TicketInput, TicketOutcome,
-  Trigger, TriggerDisposition } from './model.ts'
+import { channelThread, childResolutionValid, childUnresolved, currentChildReport, depthOf, isChildTicket, latestAssignment, latestReport,
+  liveTicket, readUntil, rootConsistent, rootTicketIdOf, runningAssignment, settled, threadKey, ticketForm, waitsForPerson } from './model.ts'
+import type { ActorRef, Assignment, ChannelRef, ChildReportDisposition, Delegation, Evaluation, Follow, Mandate, PendingEnd, PolicyEffect,
+  ReportState, ThreadRef, Ticket, TicketEndBy, TicketInput, TicketOutcome, Trigger, TriggerDisposition } from './model.ts'
 import type { AssessmentOutcome, InlineResult, InlineStep } from './ports.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
@@ -69,6 +69,312 @@ export class Tickets extends EnginePart {
     else this.options.executor.start(created, assignment!)
     this.emit('ticket.created', { ticketId: id, decisionId, strength: mandate.strength })
   }
+  /** The default caps on a task tree: depth below the root, direct children of one node, and live children of one root. */
+  static readonly MAX_DEPTH = 5
+  static readonly MAX_DIRECT_CHILDREN = 8
+  static readonly MAX_ROOT_CHILDREN = 32
+
+  /**
+   * Create a child ticket under `parentId` in the same authorization root, and start its own tracked worker.
+   * The child has no Decision or Mandate of its own: every action gate resolves the root's. The parent owner may create it
+   * only while the parent and root are live, the parent is tracked, the root is consistent, and the depth, width and live
+   * quota limits hold; `parentTicketId` never changes afterwards.
+   * @throws UserError when the parent or root is unavailable, the request would exceed a limit, or the parent is lightweight.
+   */
+  delegate(parentId: string, request: { goal: string; scope?: string; title?: string; name?: string; assignment?: string; replaces?: string },
+    at = this.now()): Ticket {
+    const parent = this.require(parentId)
+    const sessionId = `worker-${parentId}`
+    if (!liveTicket(parent)) throw new UserError('parentUnavailable', { parent: parentId })
+    if (ticketForm(parent) === 'lightweight') throw new UserError('lightweightCannotDelegate')
+    const rootId = rootTicketIdOf(parent)
+    const root = this.repo.tickets.get(rootId)
+    if (!root || !liveTicket(root)) throw new UserError('parentUnavailable', { parent: parentId })
+    if (isChildTicket(parent) && !rootConsistent(parent, this.repo.tickets.get(parent.parentTicketId!))) {
+      throw new UserError('rootInconsistent')
+    }
+    const depth = depthOf(parent, id => this.repo.tickets.get(id)) + 1
+    if (depth > Tickets.MAX_DEPTH) throw new UserError('delegationDepthExceeded', { max: String(Tickets.MAX_DEPTH), depth: String(depth) })
+    const siblings = this.repo.tickets.childrenOf(parentId)
+    const liveSiblings = siblings.filter(child => !child.ended || !childResolutionValid(child))
+    if (liveSiblings.length >= Tickets.MAX_DIRECT_CHILDREN) {
+      throw new UserError('delegationWidthExceeded', { max: String(Tickets.MAX_DIRECT_CHILDREN), count: String(liveSiblings.length) })
+    }
+    const live = this.repo.tickets.subtree(rootId).filter(ticket => ticket.id !== rootId && (childUnresolved(ticket) || !childResolutionValid(ticket)))
+    if (live.length >= Tickets.MAX_ROOT_CHILDREN) {
+      throw new UserError('delegationQuotaExceeded', { max: String(Tickets.MAX_ROOT_CHILDREN), count: String(live.length) })
+    }
+    // A replacement's creation and its predecessor's reassignment happen in the caller's transaction.
+    const id = key('ticket', parentId, 'child', String(siblings.length + 1), at)
+    if (this.repo.tickets.get(id)) throw new UserError('delegationCycle')
+    const goal = request.goal.trim()
+    if (!goal) throw new TypeError('A child Ticket needs a goal')
+    const title = (request.title ?? goal.split('\n')[0] ?? goal).slice(0, 200)
+    const childExecution = parent.execution
+      ? { name: `${parent.execution.name}-child-${siblings.length + 1}`,
+          directory: `${parent.execution.directory}/child-${siblings.length + 1}`,
+          assignment: [goal, request.scope ? `Scope: ${request.scope}` : ''].filter(Boolean).join('\n') }
+      : request.name ? { name: request.name, directory: request.name, assignment: [goal, request.scope ? `Scope: ${request.scope}` : ''].filter(Boolean).join('\n') } : undefined
+    const delegation: Delegation = { parentTicketId: parentId, rootTicketId: rootId, goal,
+      ...(request.scope?.trim() ? { scope: request.scope.trim() } : {}), requestedBy: { ticketId: parentId, sessionId }, attempt: 1, createdAt: at }
+    const child: Ticket = { id, title, form: 'tracked', channels: [], assignments: [], inputs: [], undelivered: [],
+      createdAt: at, updatedAt: at, origin: { ...parent.origin }, parentTicketId: parentId, rootTicketId: rootId, delegation,
+      ...(childExecution ? { execution: childExecution } : {}) }
+    if (request.assignment) child.execution = { ...(childExecution ?? { name: request.name ?? id, directory: request.name ?? id }), assignment: request.assignment }
+    const assignment = this.newAssignment(child, 1)
+    this.repo.tickets.save(child)
+    this.options.executor.start(child, assignment)
+    this.stageOf(parent, 'delegation.delegate', { ref: id, at, data: { parentTicketId: parentId, childTicketId: id, attempt: 1, depth } })
+    this.stageOf(child, 'dispatch', { ref: assignment.id, at, data: { parentTicketId: parentId, rootTicketId: rootId, attempt: 1 } })
+    this.emit('ticket.delegated', { parentTicketId: parentId, ticketId: id, rootTicketId: rootId, attempt: 1, depth })
+    if (request.replaces) this.childDecision(parentId, request.replaces, { source: 'dsh-superagent', id: 'parent-owner' }, 'reassigned',
+      `Replaced by ${id}`, id, at)
+    return this.require(id)
+  }
+  /**
+   * Record a child ticket's report in its parent owner's Inputs and wake the parent, without ending the child. The child's
+   * own `ready`/`dropped` reports are reports, not ends: only its parent owner or an ancestor's stop ends it.
+   * @throws UserError for a stale attempt or assignment, or a child already judged terminally.
+   */
+  childReport(childId: string, attempt: number, assignmentId: string, report: { state: ReportState; summary: string; review?: unknown
+    humanAction?: string }, at = this.now()): Ticket {
+    const child = this.require(childId)
+    if (!child.parentTicketId) throw new UserError('notChildTicket')
+    const parent = this.repo.tickets.get(child.parentTicketId)
+    const delegation = child.delegation
+    if (!parent || !delegation) throw new UserError('parentUnavailable', { parent: child.parentTicketId })
+    if (!liveTicket(parent)) {
+      this.orphanChild(child, 'parent-ended')
+      return this.require(childId)
+    }
+    if (delegation.resolution) throw new UserError('childClosed')
+    if (attempt !== delegation.attempt || latestAssignment(child)?.id !== assignmentId) {
+      throw new UserError('staleChildAttempt', { attempt: String(attempt), current: String(delegation.attempt) })
+    }
+    const previous = delegation.lastReportAt
+    if (previous && report.state === 'ready' && Date.parse(at) < Date.parse(previous)) throw new UserError('staleChildAttempt',
+      { attempt: String(attempt), current: String(delegation.attempt) })
+    delegation.reportCount = (delegation.reportCount ?? 0) + 1
+    delegation.lastReportAt = at
+    child.updatedAt = at
+    // One pending report per child: replace what the parent has not read yet rather than queueing a backlog.
+    const inputId = key('input', parent.id, 'child-report', childId, String(delegation.attempt), at)
+    const replaced = parent.inputs.filter(input => input.kind === 'child-report' && input.childTicketId === childId && !input.readAt)
+    parent.inputs = parent.inputs.filter(input => !replaced.includes(input))
+    parent.undelivered = parent.undelivered.filter(id => !replaced.some(input => input.id === id))
+    const input: TicketInput = { id: inputId, kind: 'child-report', childTicketId: childId, attempt: delegation.attempt, assignmentId,
+      reportAt: at, state: report.state, summary: report.summary, ...(report.review ? { review: report.review as never } : {}),
+      ...(report.humanAction ? { humanAction: report.humanAction } : {}), at }
+    this.addInput(parent, input)
+    this.repo.tickets.save(child)
+    // A new child report invalidates the root's review acceptance: the aggregate it approved no longer describes the tree.
+    this.invalidateRootReview(child)
+    this.stageOf(parent, 'delegation.report', { ref: inputId, at, data: { childTicketId: childId, attempt: delegation.attempt, state: report.state } })
+    this.emit('ticket.child.reported', { parentTicketId: parent.id, ticketId: childId, attempt: delegation.attempt, state: report.state })
+    return this.require(childId)
+  }
+  /** Mark a child whose parent cannot receive its work as orphaned, for the nearest living ancestor or a person to decide. */
+  orphan(childId: string, reason: string): void {
+    const child = this.require(childId)
+    if (!isChildTicket(child)) throw new UserError('notChildTicket')
+    this.orphanChild(child, reason)
+  }
+  /** Mark a child whose parent cannot receive its work as orphaned, for the nearest living ancestor or a person to decide. */
+  orphanChild(child: Ticket, reason: string): void {
+    if (!child.delegation || child.delegation.orphaned) return
+    const at = this.now()
+    child.delegation.orphaned = { reason, at }
+    // An orphaned child must not keep working: its parent can no longer receive or judge the result.
+    const stopping = child.assignments.filter(assignment => assignment.state !== 'ended')
+    for (const assignment of stopping) { assignment.state = 'ended'; assignment.endedAt = at; assignment.endedReason = 'orphaned' }
+    child.undelivered = []
+    child.updatedAt = at
+    this.repo.tickets.save(child)
+    for (const assignment of stopping) this.options.executor.stop(child, assignment, 'orphaned')
+    // The nearest live node carries the one attention; a child never pages anyone itself and is not resumed silently.
+    const root = this.repo.tickets.get(rootTicketIdOf(child))
+    const carrier = root && liveTicket(root) ? root : child
+    carrier.attention = { id: key('attention', carrier.id, 'orphan', child.id), question:
+      `Child ticket ${child.id} (${child.title}) is orphaned: ${reason}. Decide whether to retry the parent, cancel the child, or take over the work.`,
+      triggerId: carrier.origin.triggerId }
+    carrier.updatedAt = at
+    this.repo.tickets.save(carrier)
+    this.emit('ticket.child.orphaned', { parentTicketId: child.parentTicketId!, ticketId: child.id, reason })
+  }
+  /**
+   * The parent owner accepts a child ticket's current ready report: the child ends completed, its resolution pairs with the
+   * end, and its own descendants must already be resolved. The acceptance is the parent's, not a person's Review confirmation.
+   * @throws UserError when the parent or child is unavailable, the child has unresolved descendants, or its latest report is
+   * not a ready result.
+   */
+  acceptChild(parentId: string, childId: string, by: ActorRef, merge?: { into?: string; childRevisions?: string[]; conflicts?: string[]
+    resolution?: 'merged' | 'escalated' | 'none'; reason?: string }, at = this.now()): Ticket {
+    const { parent, child } = this.childPair(parentId, childId)
+    if (!liveTicket(parent)) throw new UserError('parentUnavailable', { parent: parentId })
+    const delegation = child.delegation!
+    if (child.ended || delegation.resolution) throw new UserError('childClosed')
+    const unresolved = this.unresolvedChildren(child.id)
+    if (unresolved.length) throw new UserError('childStillOpen', { tickets: unresolved.map(item => item.id).join(', ') })
+    const report = currentChildReport(child)
+    if (!report || report.state !== 'ready') throw new UserError('reviewNotReady')
+    const disposition = this.dispose(parent, child, 'accepted', by, at, 'accepted-by-parent')
+    delegation.resolution = { kind: 'accepted', by, at, acceptedReportAt: report.at, acceptedAttempt: delegation.attempt,
+      traceId: disposition.traceId }
+    delegation.merge = { at, by, childRevisions: merge?.childRevisions ?? (report.review ? [report.review.deliverable.artifact.revision] : []),
+      conflicts: merge?.conflicts ?? [], resolution: merge?.resolution ?? 'none', ...(merge?.into ? { into: merge.into } : {}),
+      ...(merge?.reason ? { reason: merge.reason } : {}) }
+    this.finishChild(child, 'completed', at, 'accepted-by-parent')
+    this.stageOf(parent, 'delegation.review', { ref: disposition.traceId, at, data: { childTicketId: childId, decision: 'accepted',
+      attempt: delegation.attempt } })
+    this.emit('ticket.child.reviewed', { parentTicketId: parentId, ticketId: childId, decision: 'accepted' })
+    return this.require(childId)
+  }
+  /**
+   * Reopen a child ticket for another attempt: the old Assignment is ended, `attempt` increments so its late reports are
+   * refused, the accepted/merge state is cleared, and a new worker Assignment is queued. A root that already has a person's
+   * review acceptance cannot be rewound this way.
+   * @throws UserError when the parent or child is unavailable, the child is terminally judged, or the root is already approved.
+   */
+  returnChild(parentId: string, childId: string, by: ActorRef, reason: string, at = this.now()): Ticket {
+    const { parent, child } = this.childPair(parentId, childId)
+    if (!liveTicket(parent)) throw new UserError('parentUnavailable', { parent: parentId })
+    const delegation = child.delegation!
+    // An accepted child may be reopened until the root's aggregate gets a person's review acceptance; any other
+    // terminal resolution (cancel/fail) stays closed.
+    const accepted = delegation.resolution?.kind === 'accepted' && child.ended?.outcome === 'completed'
+    if ((child.ended || delegation.resolution) && !accepted) throw new UserError('childClosed')
+    const root = this.repo.tickets.get(rootTicketIdOf(child))
+    if (root?.assignments.some(assignment => assignment.report?.accepted)) throw new UserError('childClosed')
+    const previous = latestAssignment(child)
+    delete delegation.orphaned
+    delete child.attention
+    // Record the judgement against the attempt and report it judges, before the next attempt begins.
+    const disposition = this.dispose(parent, child, 'returned', by, at, reason)
+    delegation.attempt += 1
+    delete delegation.resolution
+    delete delegation.merge
+    delete delegation.endedAt
+    // A returned child is open work again, not an ended-without-resolution state.
+    delete child.ended
+    child.updatedAt = at
+    if (previous && previous.state !== 'ended') this.endAssignment(child, previous, 'returned')
+    const assignment = this.newAssignment(child, delegation.attempt)
+    this.repo.tickets.save(child)
+    if (previous) this.options.executor.stop(child, previous, 'returned')
+    this.options.executor.start(child, assignment)
+    this.stageOf(parent, 'delegation.review', { ref: disposition.traceId, at, data: { childTicketId: childId, decision: 'returned',
+      attempt: delegation.attempt } })
+    this.emit('ticket.child.reviewed', { parentTicketId: parentId, ticketId: childId, decision: 'returned' })
+    return this.require(childId)
+  }
+  /**
+   * Cancel a child ticket and its whole subtree; `failed` ends the child as dropped after a failure the parent will not
+   * retry. Each descendant records a cancelled resolution, and no end gate can block an explicit cancellation.
+   */
+  cancelChild(parentId: string, childId: string, by: ActorRef, reason: string, kind: 'cancelled' | 'failed' = 'cancelled',
+    at = this.now()): Ticket {
+    const { parent, child } = this.childPair(parentId, childId)
+    if (!liveTicket(parent)) throw new UserError('parentUnavailable', { parent: parentId })
+    if (child.ended || child.delegation!.resolution) throw new UserError('childClosed')
+    this.cancelTree(child, by, kind, at, reason)
+    this.stageOf(parent, 'delegation.review', { ref: key('disposition', childId, kind, at), at, data: { childTicketId: childId,
+      decision: kind, attempt: child.delegation?.attempt } })
+    this.emit('ticket.child.reviewed', { parentTicketId: parentId, ticketId: childId, decision: kind })
+    return this.require(childId)
+  }
+  /** Record a parent owner's non-terminal judgement about a child: self-work, an escalation, or a reassignment. */
+  childDecision(parentId: string, childId: string, by: ActorRef, decision: 'self-work' | 'escalated' | 'reassigned', reason: string,
+    replacementTicketId?: string, at = this.now()): ChildReportDisposition {
+    const { parent, child } = this.childPair(parentId, childId)
+    if (!liveTicket(parent)) throw new UserError('parentUnavailable', { parent: parentId })
+    if (child.ended || child.delegation!.resolution) throw new UserError('childClosed')
+    const disposition = this.dispose(parent, child, decision, by, at, reason, replacementTicketId)
+    this.stageOf(parent, decision === 'self-work' ? 'delegation.self-work' : 'delegation.review', { ref: disposition.traceId, at,
+      data: { childTicketId: childId, decision, ...(replacementTicketId ? { replacementTicketId } : {}) } })
+    this.emit('ticket.child.reviewed', { parentTicketId: parentId, ticketId: childId, decision })
+    return disposition
+  }
+  /** The live root tickets' direct children that still wait for their parent's judgement, including corrupt end pairs. */
+  unresolvedChildren(ticketId: string): Ticket[] {
+    return this.repo.tickets.childrenOf(ticketId).filter(child => !child.ended || !childResolutionValid(child))
+  }
+  /** Refuse a human or main-Session command aimed at a child node: its parent owner decides those. */
+  private assertRoot(ticket: Ticket): void {
+    if (isChildTicket(ticket)) throw new UserError('childRequiresParent')
+  }
+  /** The root, parent and child of a delegation, refusing a link that is not exactly the child's parent. */
+  private childPair(parentId: string, childId: string): { parent: Ticket; child: Ticket } {
+    const parent = this.require(parentId)
+    const child = this.require(childId)
+    if (!isChildTicket(child) || child.parentTicketId !== parentId) throw new UserError('unknownChildTicket')
+    const rootId = rootTicketIdOf(parent)
+    if (child.rootTicketId !== rootId) throw new UserError('rootInconsistent')
+    if (!this.repo.tickets.get(rootId)) throw new UserError('parentUnavailable', { parent: parentId })
+    return { parent, child }
+  }
+  /** Append a judgement to the child's delegation and return it. */
+  private dispose(parent: Ticket, child: Ticket, decision: ChildReportDisposition['decision'], by: ActorRef, at: string,
+    reason?: string, replacementTicketId?: string): ChildReportDisposition {
+    const delegation = child.delegation!
+    const report = currentChildReport(child)
+    const assignment = latestAssignment(child)
+    const reportId = report && delegation.lastReportAt ? key('child-report', child.id, String(delegation.attempt), delegation.lastReportAt) : undefined
+    const disposition: ChildReportDisposition = { childTicketId: child.id, attempt: delegation.attempt, decision, by, at,
+      traceId: key('disposition', child.id, String(delegation.attempt), at, decision),
+      ...(reportId ? { reportId } : {}), ...(assignment ? { assignmentId: assignment.id } : {}),
+      ...(report ? { reportAt: report.at } : {}), ...(reason ? { reason } : {}), ...(replacementTicketId ? { replacementTicketId } : {}) }
+    delegation.dispositions = [...delegation.dispositions ?? [], disposition]
+    delegation.lastDisposition = disposition
+    child.updatedAt = at
+    this.repo.tickets.save(child)
+    return disposition
+  }
+  /** End a child ticket without the root end gate; its resolution must already have been written. */
+  private finishChild(child: Ticket, outcome: Extract<TicketOutcome, 'completed' | 'stopped' | 'dropped'>, at: string, reason: string): void {
+    const stopping = child.assignments.filter(assignment => assignment.state !== 'ended')
+    child.ended = { at, by: 'executor', outcome, reason }
+    child.undelivered = []
+    child.updatedAt = at
+    delete child.attention
+    delete child.delivery
+    delete child.endPending
+    for (const assignment of stopping) { assignment.state = 'ended'; assignment.endedAt = at; assignment.endedReason = reason }
+    if (child.delegation) child.delegation.endedAt = at
+    this.repo.tickets.save(child)
+    this.emit('ticket.ended', { ticketId: child.id, by: 'executor', outcome, reason })
+    for (const assignment of stopping) this.options.executor.stop(child, assignment, reason)
+    this.stageOf(child, 'report', { ref: `${at}:${outcome}`, at, data: { outcome, reason, childTicketId: child.id } })
+  }
+  /** Cancel a child subtree depth first, so no descendant is left live under an ended parent. */
+  private cancelTree(child: Ticket, by: ActorRef, kind: 'cancelled' | 'failed', at: string, reason: string): void {
+    for (const descendant of this.repo.tickets.childrenOf(child.id)) {
+      if (!descendant.ended) this.cancelTree(descendant, by, 'cancelled', at, 'parent-cancelled')
+    }
+    if (!liveTicket(child)) return
+    const delegation = child.delegation!
+    if (kind === 'failed') delegation.resolution = { kind: 'failed', by, at, reason, traceId: key('disposition', child.id, 'failed', at) }
+    else delegation.resolution = { kind: 'cancelled', by, at, reason, traceId: key('disposition', child.id, 'cancelled', at) }
+    this.dispose(this.repo.tickets.get(child.parentTicketId!) ?? child, child, kind, by, at, reason)
+    this.finishChild(child, kind === 'failed' ? 'dropped' : 'stopped', at, kind === 'failed' ? 'child-failed' : reason)
+  }
+  /** Cancel every live descendant of a root or parent that ends by a person's stop or a `dropped` report. */
+  private cancelSubtree(parent: Ticket, by: TicketEndBy, reason: string): void {
+    const actor: ActorRef = { source: 'dsh-superagent', id: 'engine' }
+    const at = this.now()
+    for (const child of this.repo.tickets.childrenOf(parent.id)) {
+      if (!liveTicket(child)) continue
+      this.cancelTree(child, actor, 'cancelled', at, by === 'human' ? 'parent-stopped' : 'parent-dropped')
+    }
+    void reason
+  }
+  /** Clear the root's person acceptance when a child report makes the review aggregate stale. */
+  private invalidateRootReview(child: Ticket): void {
+    const root = this.repo.tickets.get(rootTicketIdOf(child))
+    if (!root) return
+    let changed = false
+    for (const assignment of root.assignments) if (assignment.report?.accepted) { delete assignment.report.accepted; changed = true }
+    if (changed) { root.updatedAt = this.now(); this.repo.tickets.save(root) }
+  }
   /**
    * Start an inline run of `ticket`, record its dispatch stage and hand the host its run token. The token names every
    * callback of this run, so a callback left over from an earlier run is refused instead of acting on this one.
@@ -100,8 +406,9 @@ export class Tickets extends EnginePart {
       throw new TypeError('An inline action needs a valid time at or after its run started')
     }
     if (!withinActionLevel(step.action.level, 'draft')) throw new TypeError(`A lightweight Ticket cannot record a ${step.action.level} action`)
-    if (!this.policy().revalidate(ticket.mandate, step.at, { level: step.action.level }).ok
-      || (ticket.mandate.maxActionLevel !== undefined && !withinActionLevel(step.action.level, ticket.mandate.maxActionLevel))) {
+    const mandate = ticket.mandate
+    if (!mandate || !this.policy().revalidate(mandate, step.at, { level: step.action.level }).ok
+      || (mandate.maxActionLevel !== undefined && !withinActionLevel(step.action.level, mandate.maxActionLevel))) {
       throw new UserError('mandateRevoked')
     }
     state.steps += 1
@@ -152,6 +459,7 @@ export class Tickets extends EnginePart {
    * @throws UserError when the ticket is unknown or has ended.
    */
   bind(ticketId: string, thread: ThreadRef, own: boolean): Ticket {
+    this.assertRoot(this.require(ticketId))
     if (!liveTicket(this.require(ticketId))) throw new UserError('ticketEnded')
     this.subscribe(ticketId, thread)
     const ticket = this.require(ticketId)
@@ -171,6 +479,7 @@ export class Tickets extends EnginePart {
    */
   bindChannel(ticketId: string, channel: ChannelRef): Ticket {
     const ticket = this.require(ticketId)
+    this.assertRoot(ticket)
     if (!liveTicket(ticket)) throw new UserError('ticketEnded')
     const thread = channelThread(channel)
     if (thread.source !== channel.source || !thread.id) throw new UserError('channelThreadMismatch')
@@ -197,6 +506,15 @@ export class Tickets extends EnginePart {
       this.repo.tickets.save(ticket)
       const done = this.followsDone(ticket)
       if (!done || this.unfinished(ticket, at)) continue
+      // A thread closing is a pending end while child tickets are unresolved; the parent owner applies it once it disposes them.
+      const pending: PendingEnd = { by: 'thread', outcome: done.outcome, at: done.at, ref: closed }
+      if (this.unresolvedChildren(ticket.id).length) {
+        ticket.endPending = pending
+        this.repo.tickets.save(ticket)
+        this.addInput(ticket, { id: key('input', ticket.id, 'end-gate', done.at), kind: 'end-gate', pending, at: this.now() })
+        this.emit('ticket.end.pending', { ticketId: ticket.id, by: 'thread', outcome: done.outcome })
+        continue
+      }
       // Work resumed after the close and finished ends now.
       const resumed = Date.parse(latestAssignment(ticket)?.createdAt ?? '') > Date.parse(at)
       this.end(ticket.id, 'executor', done.outcome, resumed ? this.now() : done.at)
@@ -223,8 +541,10 @@ export class Tickets extends EnginePart {
     // A follow-up that reached a ticket goes elsewhere only once the workers that decide it hand it back.
     this.leftToWorkers(trigger)
     const current = this.require(ticketId)
+    this.assertRoot(current)
     if (current.ended?.by === 'human') throw new UserError('ticketStopped')
-    if (!liveTicket(current) && !this.policy().revalidate(current.mandate, this.now()).ok) throw new UserError('mandateRevoked')
+    const mandate = this.repo.tickets.get(rootTicketIdOf(current))?.mandate
+    if (!liveTicket(current) && (!mandate || !this.policy().revalidate(mandate, this.now()).ok)) throw new UserError('mandateRevoked')
     return trigger
   }
   /**
@@ -233,6 +553,7 @@ export class Tickets extends EnginePart {
    * message as its ticket's takes it as a new Input, which wakes an ended ticket as any attached message does.
    */
   attach(ticketId: string, trigger: Trigger, note?: string): void {
+    this.assertRoot(this.require(ticketId))
     for (const ref of trigger.threads) this.subscribe(ticketId, ref)
     // A person's sending it to Eval, which routed it here, is over, and so is the ticket's reading it for context only.
     const current: TriggerDisposition = this.repo.triggers.disposition(trigger.id) ?? { fanout: [], at: this.now() }
@@ -264,6 +585,7 @@ export class Tickets extends EnginePart {
    */
   requestStatus(ticketId: string): boolean {
     const ticket = this.require(ticketId)
+    this.assertRoot(ticket)
     if (!liveTicket(ticket) || runningAssignment(ticket)?.report?.state !== 'waiting') return false
     this.addInput(ticket, { id: `status:${ticketId}:${ticket.updatedAt}`, kind: 'text', text: STATUS_REQUEST, at: this.now() })
     return true
@@ -273,6 +595,7 @@ export class Tickets extends EnginePart {
    * @throws UserError when the ticket is unknown.
    */
   stop(ticketId: string, reason?: string): Ticket {
+    this.assertRoot(this.require(ticketId))
     this.end(ticketId, 'human', 'stopped', this.now(), reason)
     return this.require(ticketId)
   }
@@ -282,6 +605,7 @@ export class Tickets extends EnginePart {
    */
   retry(ticketId: string): Ticket {
     const ticket = this.require(ticketId)
+    this.assertRoot(ticket)
     const latest = latestAssignment(ticket)
     if (!canRetry(ticket) || !latest) throw new UserError('notRetryable')
     this.endAssignment(ticket, latest, 'retried')
@@ -299,6 +623,7 @@ export class Tickets extends EnginePart {
    */
   markUnrelated(ticketId: string, thread: string, reason: string): void {
     const ticket = this.require(ticketId)
+    this.assertRoot(ticket)
     if (this.source(ticket)?.threads.some(ref => threadKey(ref) === thread)) throw new UserError('sourceThread')
     if (ticket.follows?.some(item => item.thread === thread)) throw new UserError('followedThread')
     if (!this.repo.threads.get(thread)?.subscriptions.includes(ticketId)) throw new UserError('notFollowing')
@@ -367,11 +692,11 @@ export class Tickets extends EnginePart {
    */
   wake(ticketId: string): void {
     const ticket = this.repo.tickets.get(ticketId)
-    if (!ticket || liveTicket(ticket) || ticket.ended?.by === 'human' || !ticket.undelivered.length) return
+    if (!ticket || isChildTicket(ticket) || liveTicket(ticket) || ticket.ended?.by === 'human' || !ticket.undelivered.length) return
     const policy = this.policy()
     if (policy.paused) return
     const at = this.now()
-    if (!policy.revalidate(ticket.mandate, at).ok) { this.refuse(ticket); return }
+    if (!ticket.mandate || !policy.revalidate(ticket.mandate, at).ok) { this.refuse(ticket); return }
     // Only a human's message resumes an ended ticket; bot/CI triggers wait alongside inputs from before the ticket ended.
     const first = ticket.undelivered.map(id => ticket.inputs.find(input => input.id === id)).find(input => input?.kind === 'trigger' && input.human)
     if (first?.kind !== 'trigger') return
@@ -466,7 +791,21 @@ export class Tickets extends EnginePart {
    */
   end(ticketId: string, by: TicketEndBy, outcome: TicketOutcome, at = this.now(), reason?: string): void {
     const ticket = this.require(ticketId)
+    this.assertRoot(ticket)
     if (!liveTicket(ticket)) return
+    // Completed/merged/closed work waits for every child ticket's parent judgement; a dropped or stopped ticket cancels its subtree.
+    const unresolved = this.unresolvedChildren(ticket.id)
+    if (unresolved.length && (outcome === 'completed' || outcome === 'merged' || outcome === 'closed')) {
+      throw new UserError('unfinishedChildTickets', { count: String(unresolved.length), tickets: unresolved.map(item => item.id).join(', ') })
+    }
+    if (outcome === 'dropped' || by === 'human') this.cancelSubtree(ticket, by, reason ?? outcome)
+    // A close that waited for child tickets is applied now that the parent owner disposed of them.
+    if (ticket.endPending && (outcome === 'completed' || outcome === 'merged' || outcome === 'closed')) {
+      outcome = ticket.endPending.outcome
+      reason ??= ticket.endPending.reason
+      at = ticket.endPending.at
+    }
+    delete ticket.endPending
     const stopping = ticket.assignments.filter(assignment => assignment.state !== 'ended')
     const why = reason && reason !== outcome ? { reason } : {}
     const until = readUntil(ticket)
@@ -506,8 +845,9 @@ export class Tickets extends EnginePart {
     return report?.state !== 'ready' || ticket.undelivered.length > 0 || later
   }
   /** Add a pending Assignment; a failed delivery to the one before it no longer concerns the ticket. */
-  private newAssignment(ticket: Ticket): Assignment {
-    const assignment: Assignment = { id: key('assignment', ticket.id, String(ticket.assignments.length)), state: 'pending', createdAt: this.now() }
+  private newAssignment(ticket: Ticket, attempt?: number): Assignment {
+    const assignment: Assignment = { id: key('assignment', ticket.id, String(ticket.assignments.length)), state: 'pending', createdAt: this.now(),
+      ...(attempt !== undefined ? { attempt } : {}) }
     ticket.assignments.push(assignment)
     delete ticket.delivery
     return assignment
@@ -522,6 +862,7 @@ export class Tickets extends EnginePart {
    */
   note(ticketId: string, text: string): Ticket {
     const ticket = this.require(ticketId)
+    this.assertRoot(ticket)
     if (!liveTicket(ticket)) throw new UserError('ticketEnded')
     const at = this.now()
     this.addInput(ticket, { id: key('input', ticketId, 'note', at, text), kind: 'note', text, at })
@@ -533,7 +874,9 @@ export class Tickets extends EnginePart {
    * @throws UserError when the ticket is unknown or has ended.
    */
   followForContext(ticketId: string, ref: ThreadRef): boolean {
-    if (!liveTicket(this.require(ticketId))) throw new UserError('ticketEnded')
+    const ticket = this.require(ticketId)
+    this.assertRoot(ticket)
+    if (!liveTicket(ticket)) throw new UserError('ticketEnded')
     if (this.thread(ref).subscriptions.includes(ticketId)) return false
     this.subscribe(ticketId, ref)
     const thread = this.thread(ref)

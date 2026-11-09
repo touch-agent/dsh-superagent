@@ -235,18 +235,21 @@ export function policyEffects(tickets: readonly Ticket[], old: Settings, now: Se
   const before = settingsPolicy(old, scope(old)), after = settingsPolicy(now, scope(now))
   const effects = new Map<string, PolicyEffect>()
   for (const ticket of tickets) {
-    const rules = (ticket.mandate.basis.rules ?? []).flatMap((id): NonNullable<PolicyEffect['rules']> => {
+    // Children inherit their root's authorization; the root's own entry carries the effect.
+    const mandate = ticket.mandate
+    if (!mandate) continue
+    const rules = (mandate.basis.rules ?? []).flatMap((id): NonNullable<PolicyEffect['rules']> => {
       const was = old.policy.rules.find(rule => rule.id === id), is = now.policy.rules.find(rule => rule.id === id)
       if (!is?.enabled) return was?.enabled ? [{ id, name: was.name, change: 'disabled' }] : []
       return JSON.stringify(was) === JSON.stringify(is) ? [] : [{ id, name: is.name, change: 'changed', instruction: is.instruction }]
     })
     const effect: PolicyEffect = rules.length ? { rules } : {}
-    if (before.revalidate(ticket.mandate, at).ok && !after.revalidate(ticket.mandate, at).ok) {
+    if (before.revalidate(mandate, at).ok && !after.revalidate(mandate, at).ok) {
       // With the previous accept mode and rules, the Mandate holds unless the sender or receiving scope lost authorization.
       const asBefore = { ...now, eval: old.eval, policy: { ...now.policy, rules: old.policy.rules } }
-      if (!settingsPolicy(asBefore, scope(now)).revalidate(ticket.mandate, at).ok) {
-        Object.assign(effect, { requesterAllowed: false, requester: ticket.mandate.actor })
-      } else if (ticket.mandate.strength === 'inferred' && old.eval.mode === 'auto' && now.eval.mode !== 'auto') effect.proactive = false
+      if (!settingsPolicy(asBefore, scope(now)).revalidate(mandate, at).ok) {
+        Object.assign(effect, { requesterAllowed: false, requester: mandate.actor })
+      } else if (mandate.strength === 'inferred' && old.eval.mode === 'auto' && now.eval.mode !== 'auto') effect.proactive = false
     }
     if (Object.keys(effect).length) effects.set(ticket.id, effect)
   }

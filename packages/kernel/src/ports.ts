@@ -181,6 +181,16 @@ export interface DomainEvents {
   /** A person's follow-up that reached tickets and that an earlier version also queued for Eval left the queue. */
   'trigger.followup': { triggerId: string }
   'policy.changed': { from: string; to: string }
+  /** A parent owner created a child Ticket under the same authorization root. */
+  'ticket.delegated': { parentTicketId: string; ticketId: string; rootTicketId: string; attempt: number; depth: number }
+  /** A child Ticket's report reached its parent owner's queue. */
+  'ticket.child.reported': { parentTicketId: string; ticketId: string; attempt: number; state: import('./model.ts').ReportState }
+  /** A parent owner judged a child Ticket's report. */
+  'ticket.child.reviewed': { parentTicketId: string; ticketId: string; decision: import('./model.ts').ChildReportDisposition['decision'] }
+  /** A pull request or followed Thread closed while child Tickets were unresolved; the end waits. */
+  'ticket.end.pending': { ticketId: string; by: 'thread' | 'follows'; outcome: 'merged' | 'closed' }
+  /** A child Ticket's parent or root became unavailable; a person decides it and it is never resumed silently. */
+  'ticket.child.orphaned': { parentTicketId: string; ticketId: string; reason: string }
 }
 export type DomainEvent = { [K in keyof DomainEvents]: { type: K; at: string; data: DomainEvents[K] } }[keyof DomainEvents]
 
@@ -211,10 +221,22 @@ export interface Repositories {
   tickets: {
     get(id: string): Ticket | undefined
     save(ticket: Ticket): void
+    /** Root Tickets only, newest first: children are execution nodes, never independent work. */
     list(): Ticket[]
+    /** Open root Tickets only, newest first. */
     open(): Ticket[]
-    /** Tickets with undelivered Inputs or a pending or running Assignment, which is always the latest. */
+    /** Root Tickets with undelivered Inputs or a pending or running Assignment, which is always the latest. */
     active(): Ticket[]
+    /** Every Ticket, root and child, newest first; lifecycle queries that must not miss a child use this. */
+    allList(): Ticket[]
+    /** Every open Ticket, root and child, newest first. */
+    allOpen(): Ticket[]
+    /** Every active Ticket, root and child, newest first. */
+    allActive(): Ticket[]
+    /** The direct child Tickets of `ticketId`, newest first. */
+    childrenOf(ticketId: string): Ticket[]
+    /** Every Ticket whose `rootTicketId` is `rootTicketId`, including the root itself, newest first. */
+    subtree(rootTicketId: string): Ticket[]
   }
   decisions: {
     get(id: string): Decision | undefined

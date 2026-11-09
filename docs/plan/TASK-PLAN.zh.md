@@ -457,7 +457,7 @@ graph LR
 - **验收**：`tests/delegation.spec.ts` 与 `tests/delegation-contract.spec.ts` 覆盖 `../tasks-view-architecture.zh.md` §9.2：父 owner 能建 2 个子 Ticket 且 owner/worker 不同；子报告回到父 owner，父能接受/退回/自干/再委派并逐层上报；未结束子 Ticket 时父 `ready` 被拒（`unfinishedChildTickets`）；停止级联 5 秒内；深度/宽度/配额报错；子 owner 不能创建授权根 Ticket、直接找人、提动作等级、写 state DB 或外发，但可请求同根下级子 Ticket；根/子 Approval 与 outbox 归属测试；子 `ready`/`dropped` 不自行结束、子 stop/retry 被拒、子 worker 占 slot 且关停时取消；重启恢复先父后子，孤儿子 Ticket 交人一次；迟到 attempt 被拒；`pendingEnd`/`endPending` 语义；旧库行当根、旧二进制拒绝 schema 15；独立 review 核对「子节点不成为授权主体」并写成 PR review 评论。
 - **估时**：8 人日。**依赖**：T3-09（共享投影）、T3-01、T2（均已完成）。**回退**：feature flag `taskView.childTickets`；schema 15 为前向迁移，回滚需 down migration/备份（`../tasks-view-architecture.zh.md` §10）。
 - **泳道**：Kernel + Runtime。
-- **限制**：子 owner 的受限执行配置是运行时要求；若平台无法强制，只能降级为父审阅提示，不能保留「子 owner 不能外部动作」的承诺。
+- **限制**：子 owner 的受限执行配置是运行时要求。Phase 2a 落在工具级 guard（无 subagent/send，bash 拒绝 gh/git remote/curl/sqlite/state 路径），不是 OS sandbox；部署仍是 `danger-full-access`。因此不能声称对对抗性命令有强隔离，专用 OS 账户或受限 preset 仍是部署工作；父审阅必须覆盖子交付。
 
 ### T3-11 任务树 Phase 2b：子 Ticket 树视图、父审阅与交付聚合 · Runtime · 5 人日
 

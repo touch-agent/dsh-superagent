@@ -3,7 +3,7 @@ import { key } from './ids.ts'
 import { UserError } from './errors.ts'
 import type { DeliverableInput, Review } from './deliverable.ts'
 import { enterReview } from './deliverable.ts'
-import { latestAssignment, liveTicket, runningAssignment } from './model.ts'
+import { isChildTicket, latestAssignment, liveTicket, runningAssignment } from './model.ts'
 import type { ActorRef, ReportState, Ticket } from './model.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
@@ -22,6 +22,8 @@ export interface WorkerReport {
   answers?: string
   /** The reviewable deliverable a ready result produced, normalized by `enterReview`; without one a person cannot review it. */
   deliverable?: DeliverableInput
+  /** The Assignment the reporting worker runs, when the caller records it: a late report from a replaced attempt is refused. */
+  assignmentId?: string
 }
 const RECOVERY_NOTE = 'The host restarted during this ticket. Inspect the current worktree, git history and GitHub state before continuing. Do not repeat an already completed external operation. Finish the original assignment and report its status.'
 
@@ -105,6 +107,44 @@ export class Assignments extends EnginePart {
   report(ticketId: string, report: WorkerReport): Ticket {
     const ticket = this.require(ticketId)
     if (!liveTicket(ticket)) throw new UserError('ticketEnded')
+    const child = isChildTicket(ticket)
+    if (child) {
+      // A child owner has no person path: its attention goes to the parent owner, who decides whether a person must act.
+      if (report.askedBy || report.answers) throw new UserError('notAuthorizationRoot')
+      if (report.state === 'ready') {
+        const unresolved = this.tickets.unresolvedChildren(ticketId)
+        if (unresolved.length) throw new UserError('unfinishedChildTickets', { count: String(unresolved.length),
+          tickets: unresolved.map(item => item.id).join(', ') })
+      }
+      const assignment = runningAssignment(ticket) ?? latestAssignment(ticket)
+      if (!assignment) throw new UserError('unknownAssignment')
+      if (report.assignmentId && report.assignmentId !== assignment.id) {
+        throw new UserError('staleChildAttempt', { attempt: String(Math.max(1, (ticket.delegation?.attempt ?? 1) - 1)),
+          current: String(ticket.delegation?.attempt ?? 1) })
+      }
+      if (assignment.state === 'ended') throw new UserError('assignmentEnded')
+      const review: Review | undefined = report.deliverable === undefined ? undefined : enterReview(report.deliverable)
+      const at = this.now()
+      assignment.report = { state: report.state, summary: report.summary, at, ...(review ? { review } : {}) }
+      this.stageOf(ticket, 'report', { ref: `${at}:${report.state}`, data: { state: report.state, childTicketId: ticketId } })
+      if (report.state === 'ready') this.stageOf(ticket, 'delegation.report-up', { ref: `${at}:ready`,
+        data: { childTicketId: ticketId, parentTicketId: ticket.parentTicketId } })
+      ticket.updatedAt = at
+      if (report.state === 'blocked' || report.state === 'failed') {
+        ticket.undelivered = ticket.undelivered.filter(id => !automatic(ticket.inputs.find(input => input.id === id)))
+      }
+      this.repo.tickets.save(ticket)
+      // Only reports that need the parent's judgement reach it; progress and waiting stay inside the child's own turn.
+      if (report.state === 'ready' || report.state === 'dropped' || report.state === 'blocked' || report.state === 'failed') {
+        this.tickets.childReport(ticketId, assignment.attempt ?? 1, assignment.id,
+          { state: report.state, summary: report.summary, ...(review ? { review } : {}), ...(report.question ? { humanAction: report.question } : {}) }, at)
+      }
+      return this.require(ticketId)
+    }
+    if (report.state === 'ready' && this.tickets.unresolvedChildren(ticketId).length) {
+      const unresolved = this.tickets.unresolvedChildren(ticketId)
+      throw new UserError('unfinishedChildTickets', { count: String(unresolved.length), tickets: unresolved.map(item => item.id).join(', ') })
+    }
     if (report.question && (report.state === 'ready' || report.answers)) throw new UserError('questionWithResult')
     if (report.askedBy && !report.question) throw new UserError('askerWithoutQuestion')
     const person = (id: string, channel: boolean) => {
@@ -115,6 +155,8 @@ export class Assignments extends EnginePart {
     if (report.answers && !person(report.answers, false)) throw new UserError('notAnswerable')
     const assignment = runningAssignment(ticket) ?? latestAssignment(ticket)
     if (!assignment) throw new UserError('unknownAssignment')
+    // A report that names a replaced Assignment is late: returnChild has already started the child's next attempt.
+    if (report.assignmentId && report.assignmentId !== assignment.id) throw new UserError('assignmentEnded')
     if (assignment.state === 'ended') throw new UserError('assignmentEnded')
     // Normalize here so a malformed deliverable never reaches the Store, and keep it with the report revision it describes.
     const review: Review | undefined = report.deliverable === undefined ? undefined : enterReview(report.deliverable)
@@ -138,6 +180,9 @@ export class Assignments extends EnginePart {
     const ready = !ticket.follows?.length ? 'completed' : this.tickets.followsDone(ticket)?.outcome
     // A dropped report after a close the ticket deferred ends it as the close did, which its final notice tells.
     const outcome = report.state === 'dropped' ? this.tickets.followsDone(ticket)?.outcome ?? 'dropped' : report.state === 'ready' ? ready : undefined
+    // A parent that delegated reports its own completed goal upward; a ticket with no children has nothing extra to report.
+    const children = this.repo.tickets.childrenOf(ticket.id)
+    if (report.state === 'ready' && children.length) this.stageOf(ticket, 'delegation.report-up', { ref: `${at}:ready`, at, data: { childCount: children.length } })
     if (outcome) this.tickets.end(ticketId, 'executor', outcome, at)
     return this.require(ticketId)
   }
@@ -148,7 +193,10 @@ export class Assignments extends EnginePart {
    */
   review(ticketId: string, by: ActorRef): Ticket {
     const ticket = this.require(ticketId)
+    if (isChildTicket(ticket)) throw new UserError('childRequiresParent')
     if (!liveTicket(ticket)) throw new UserError('ticketEnded')
+    const unresolved = this.tickets.unresolvedChildren(ticketId)
+    if (unresolved.length) throw new UserError('unfinishedChildTickets', { count: String(unresolved.length), tickets: unresolved.map(item => item.id).join(', ') })
     const stage = ticketStage(ticket)
     if (stage.stage !== 'person' || stage.action !== 'review') throw new UserError('reviewNotReady')
     const report = latestAssignment(ticket)?.report

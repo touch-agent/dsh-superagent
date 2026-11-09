@@ -159,18 +159,22 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
   const view = snapshot(host)
   const origin = store.triggers.get(ticket.origin.triggerId)
   const disposition = origin ? store.triggers.disposition(origin.id) : undefined
-  const decision = store.decisions.get(ticket.decisionId)
+  const decision = ticket.decisionId ? store.decisions.get(ticket.decisionId) : undefined
   const shown = decision ? decisionView(view, decision) : undefined
   const spans = origin ? store.spans.trace(traceId(origin.id)) : []
-  const mandateFacts = basisFacts(ticket.mandate.basis, view.rule).facts
-  const authority = (): TimelineBasis => ({ strength: ticket.mandate.strength, facts: mandateFacts,
-    policyVersion: ticket.mandate.policyVersion })
+  // A child Ticket inherits its root's authorization and has no Mandate of its own.
+  const root = ticket.parentTicketId ? store.tickets.get(ticket.rootTicketId ?? ticket.parentTicketId) : ticket
+  const mandate = root?.mandate
+  const policyVersion = mandate?.policyVersion ?? ''
+  const mandateFacts = mandate ? basisFacts(mandate.basis, view.rule).facts : []
+  const authority = (): TimelineBasis => ({ ...mandate ? { strength: mandate.strength } : {}, facts: mandateFacts,
+    policyVersion })
   const entries: TimelineEntry[] = []
   // The request itself: the message the Ticket was accepted from, with where that Trigger went.
   if (origin) {
     entries.push({ id: `request:${origin.id}`, at: origin.at, kind: 'request', source: disposition ? 'disposition' : 'ticket',
       who: { actor: actorName(view, origin.actor, origin.human) },
-      basis: { policyVersion: decision?.policyVersion ?? ticket.mandate.policyVersion,
+      basis: { policyVersion: decision?.policyVersion ?? policyVersion,
         ...disposition ? { disposition: dispositionOf(store, ticket.id, origin.id, true)! } : {} },
       change: { kind: 'input', input: { kind: 'trigger', preview: preview(origin.text), delivered: true } },
       trigger: origin.id })
@@ -190,8 +194,7 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
   // The Ticket's creation and each Assignment start, both recorded by the Engine in the Trigger's trace.
   const create = spans.find(span => span.kind === 'attach' && span.data?.ticketId === ticket.id && span.data?.created === true)
   entries.push({ id: create?.id ?? `create:${ticket.id}`, at: create?.at ?? ticket.createdAt, kind: 'create',
-    source: create ? 'trace' : 'ticket', who: decision ? { actor: actorName(view, ticket.mandate.actor,
-      ticket.mandate.basis.via !== 'bot') } : system('executor'), basis: authority(),
+    source: create ? 'trace' : 'ticket', who: decision && mandate ? { actor: actorName(view, mandate.actor, mandate.basis.via !== 'bot') } : system('executor'), basis: authority(),
     change: { kind: 'ticket', id: ticket.id, title: ticket.title } })
   for (const item of ticket.inputs) {
     const entry = inputEntry(store, view, ticket, item)
@@ -258,16 +261,18 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
 
 /** One Input of the Ticket as a timeline entry; a Trigger it came from also brings its disposition. */
 function inputEntry(store: Store, view: Snapshot, ticket: Ticket, item: TicketInput): TimelineEntry | undefined {
+  const root = ticket.parentTicketId ? store.tickets.get(ticket.rootTicketId ?? ticket.parentTicketId) : ticket
+  const policyVersion = root?.mandate?.policyVersion ?? ''
   const base = { id: `input:${item.id}`, at: item.at, source: 'ticket' as const }
   switch (item.kind) {
     case 'trigger': {
       const trigger = store.triggers.get(item.triggerId)
-      if (!trigger) return { ...base, kind: 'input', who: system('session'), basis: { policyVersion: ticket.mandate.policyVersion },
+      if (!trigger) return { ...base, kind: 'input', who: system('session'), basis: { policyVersion: policyVersion },
         change: { kind: 'input', input: { kind: 'trigger', delivered: !ticket.undelivered.includes(item.id) } }, gap: 'noTrace' as const }
       const handback = (store.triggers.disposition(item.triggerId)?.handbacks ?? []).find(handback => handback.ticketId === ticket.id)
       return { ...base, kind: 'input', source: store.triggers.disposition(item.triggerId) ? 'disposition' : 'ticket',
         who: { actor: actorName(view, trigger.actor, trigger.human) },
-        basis: { policyVersion: ticket.mandate.policyVersion, ...store.triggers.disposition(item.triggerId)
+        basis: { policyVersion, ...store.triggers.disposition(item.triggerId)
           ? { disposition: dispositionOf(store, ticket.id, item.triggerId, !ticket.undelivered.includes(item.id)) } : {} },
         change: { kind: 'input', input: { kind: 'trigger', preview: preview(trigger.text), delivered: !ticket.undelivered.includes(item.id),
           ...item.readAt !== undefined ? { readAt: item.readAt } : {}, ...handback ? { handback: { reason: handback.reason,
@@ -276,7 +281,7 @@ function inputEntry(store: Store, view: Snapshot, ticket: Ticket, item: TicketIn
     }
     case 'text':
     case 'note':
-      return { ...base, kind: 'input', who: system('session'), basis: { policyVersion: ticket.mandate.policyVersion },
+      return { ...base, kind: 'input', who: system('session'), basis: { policyVersion: policyVersion },
         change: { kind: 'input', input: { kind: item.kind, text: markdown(item.text) } } }
     case 'policy-changed':
       return { ...base, kind: 'policy', who: system('panel'), basis: { policyVersion: item.to },
@@ -285,16 +290,16 @@ function inputEntry(store: Store, view: Snapshot, ticket: Ticket, item: TicketIn
       const decision = store.decisions.get(item.decisionId)
       return { ...base, kind: 'reopen', who: decision ? { actor: actorName(view, decision.mandate?.actor ?? { source: 'dsh-superagent',
         id: 'engine' }, decision.mandate?.basis.via !== 'bot') } : system('executor'),
-        basis: { policyVersion: decision?.policyVersion ?? ticket.mandate.policyVersion, ...decision ? { decision: { id: decision.id,
+        basis: { policyVersion: decision?.policyVersion ?? policyVersion, ...decision ? { decision: { id: decision.id,
           kind: decision.kind, at: decision.at }, reason: decision.reason } : {} }, change: { kind: 'reopen' } }
     }
     case 'resumed': {
       const trigger = store.triggers.get(item.triggerId)
       return { ...base, kind: 'resume', who: trigger ? { actor: actorName(view, trigger.actor, trigger.human) } : system('human'),
-        basis: { policyVersion: ticket.mandate.policyVersion }, change: { kind: 'resume' }, ...trigger ? { trigger: trigger.id } : {} }
+        basis: { policyVersion: policyVersion }, change: { kind: 'resume' }, ...trigger ? { trigger: trigger.id } : {} }
     }
     case 'binding':
-      return { ...base, kind: 'binding', who: system('executor'), basis: { policyVersion: ticket.mandate.policyVersion },
+      return { ...base, kind: 'binding', who: system('executor'), basis: { policyVersion: policyVersion },
         change: { kind: 'binding', channel: item.channel } }
   }
 }
