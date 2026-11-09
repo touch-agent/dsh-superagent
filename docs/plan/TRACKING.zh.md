@@ -48,7 +48,7 @@
 | T3-05 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/36 | `tests/lightweight.spec.ts`、`tests/inline-work.spec.ts`；kernel 契约（PR #29）+ Phase 0 生产 `InlineWork`、Eval/route/dispatch 的 `form`、`executor.lightweight` 回退；真实只读小活 943 ms（复测 918/928 ms），tracked 仍为默认；待 PR #36 合并后改为已完成 | 2026-11-09 |
 | T3-06 | 未开始 | — | — | 2026-11-08 |
 | T3-07 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/24 | `tests/panel-approval.spec.tsx`；review 必须有 preview | 2026-11-08 |
-| T3-08 | 未开始 | — | — | 2026-11-08 |
+| T3-08 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/37 | `tests/ticket-timeline.spec.ts`；`tests/panel-timeline.spec.tsx`；`GET tickets/:id/timeline` 只读合成 trace、disposition 与 approval；Before/After 截图 | 2026-11-09 |
 | T3-09 | 未开始 | — | — | 2026-11-08 |
 | T3-10 | 未开始 | — | — | 2026-11-08 |
 | T3-11 | 未开始 | — | — | 2026-11-08 |

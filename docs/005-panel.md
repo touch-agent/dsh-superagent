@@ -21,7 +21,7 @@ The tabs follow the workflow: **Overview**, **Tasks** (任务), **Source**, **Tr
 | Source | Source state, setup problems and non-zero counts. Filtered Triggers and dropped messages cover the same 24-hour window as Overview |
 | Trigger | Threads filtered by Subscribed, Evaluating, New Triggers in 24 h, or All Threads. Each Thread shows its Triggers newest first, Decisions and Subscriptions |
 | Eval | Decisions with their reason and matched rules |
-| Execution | Executor state, Pause processing, and Tickets filtered by Open, Pending, Working, Waiting for a Trigger or Ended. Ticket details show actions, the review preview, authorization, waiting Inputs, Subscriptions and Assignments |
+| Execution | Executor state, Pause processing, and Tickets filtered by Open, Pending, Working, Waiting for a Trigger or Ended. Ticket details show actions, the review preview, authorization, waiting Inputs, Subscriptions, Assignments and a read-only audit timeline |
 | Settings | Sources, Eval, Execution, Prompts and Deployment. Each group includes its save history |
 
 ### Tasks
@@ -66,6 +66,15 @@ Same 1440×1000 viewport and light theme, with the same synthetic review-stage T
 ![The same Ticket when its report has no preview](images/review-preview/after-review-missing.png)
 
 The same Ticket when its latest Report has no Deliverable preview: the review section says **无法审核** and offers no approval.
+
+### Audit timeline
+
+Every Ticket page carries a read-only audit timeline, built from the Trigger's trace, the dispositions of the Triggers that reached the Ticket, the Ticket's Approvals and the Ticket itself. Each step names **who** acted (a person, the panel, the Executor, the Policy or the system), **on what basis** (Mandate strength and admission facts, the Decision and its matched rules, the Policy version, the Approval and its grant level, where a message went), and **what changed** (the Action's kind, object, revision and level, a Report and its deliverable, an Input, an Assignment, a Policy change or the Ticket end). The timeline reads the stored records only; it adds no write path. When the records cannot answer a question, the timeline states the gap instead of guessing: a person end whose actor was never recorded, a missing Decision, or a Trigger with no trace.
+| Before (main `543c017`) | After (this change) |
+| --- | --- |
+| ![Ticket page without the audit timeline](images/ticket-timeline/before-ticket-page.png) | ![The same Ticket page with its audit timeline](images/ticket-timeline/after-ticket-page.png) |
+
+Same 1440×1600 viewport and light theme, with the same synthetic Ticket, Thread and records. Before is `main` at `543c017`, which has no timeline; after is this branch, whose timeline lists the request, Decision, creation, dispatch, approved Action and Report, each with its basis.
 
 ### Work assigned in the conversation
 
