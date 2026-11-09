@@ -1041,7 +1041,7 @@ interface ExecutionUnitView {
 7. **无交付的 Ticket**：`ReviewAggregate` 为空；仍可结束，但不能声称“已验收”；UI 显示“无交付”。
 8. **lightweight**：没有 `Assignment.report.review`/子 Ticket，不产生 `TaskReviewView`；`TaskView.review` 缺省，人工不能批准一个不存在的 review。
 
-**实现边界（当前 vs 本提案）**：以上 `ReviewAggregate`、`reviewRevision` 与带 revision 的 `POST tickets/:id/approve` 都是**提案**。当前 `reviewTicket`/`Assignments.review` 只接受最新 Report 的 review，没有 revision 参数，也不会返回 `409 reviewStale`；`POST tickets/:id/approve` 只对 review-stage、带 preview 的 Report 记录接受者/时间，不结束 Ticket，后续 Report 会覆盖它。实现 6.6 之前，现有验收路径不变；设计原则（PR #30）里「按 revision 确认」也只能在 6.6 落地后成立，不能当作当前不变量。
+**实现（T3-11，2026-11-09）**：`ReviewAggregate`/`reviewRevision` 与带 revision 的 `POST tickets/:id/approve` 已落地。`reviewTicket`/`Assignments.review` 要求当前 revision，过期返回 `409 reviewStale`；批准写入最新 Report 的 `accepted.reviewRevision`，只结束「无 open follows 或已有 pendingEnd」的根 Ticket，open PR 仍等待其 Thread。聚合按 `artifact.kind:ref:revision` 去重根与已接受子 Ticket，子 `HumanCriterion` 保留在根确认中，父 `accept_child` 不写人的确认；无人工确认的规则交付不需要批准即可结束。测试见 `tests/review-aggregate.spec.ts`。
 
 UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不再只读 `ticket.review` 的最新 Assignment；`TaskView.review` 是详情字段，列表只显示去重后的 `deliverables` 摘要。子 Ticket 详情显示自己的交付与“已进入根 review 的确认”，并明确“父 owner 已接受 ≠ 人已确认”。`GET tickets/:id` 的 review 视图同步改为聚合，避免两套验收口径。
 
@@ -1262,7 +1262,7 @@ UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不�
 
 **2b 视图**
 
-- 列表/树显示根 Ticket → 子 Ticket（默认一层，更深折叠）；子 Ticket 行显示 owner 角色、状态、待父审阅/父处置、交付摘要，不显示内部 worker/Session id；根详情用 6.6 `TaskReviewView`，显示子确认来源与 `reviewRevision`。lightweight 是叶子，不显示子 Ticket。
+- 列表/树显示根 Ticket → 子 Ticket（默认一层，更深折叠）；子 Ticket 行显示 owner 角色、状态、待父审阅/父处置、交付摘要，不显示内部 worker/Session id；根详情用 6.6 `TaskReviewView`，显示子确认来源与 `reviewRevision`。lightweight 是叶子，不显示子 Ticket。（T3-11 已实现：右栏选中根后展开一层，状态页树按需加载，L4+ 默认折叠；`GET tasks/:id?depth=`）
 - 父节点详情显示子 Ticket、父 owner 的报告/判断/再委派/自干/上报记录；子节点详情复用组件，隐藏 Mandate/来源锚点，显示根授权引用与父 owner。
 - 右栏只显示一层子 Ticket；完整树进状态页；选中统一为 `{kind:'ticket', id}`，没有 subtask 选中类型。
 - 验收：父 owner 能创建 2 个子 Ticket，各有自己的 owner/worker；子报告回到父 owner，父能接受/退回/自干/再委派并逐层上报；有未结束子 Ticket 时父不能 `ready`；停止父级联停止子；重启后子状态不丢；超过深度/宽度/配额返回明确错误；不产生独立根 Ticket。

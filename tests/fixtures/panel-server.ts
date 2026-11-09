@@ -394,6 +394,11 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET metrics': { answer: () => overviewView().metrics },
   'GET activity': { query: ['after', 'limit', 'level'], answer: () => ({ items: [], latest: 0, next: 0 }) },
   'GET tasks': { answer: () => server.tasks },
+  'GET tasks/:id': { query: ['depth'], answer: ({ params }) => {
+    const task = server.tasks.tasks.find(item => item.id === params.id)
+    if (!task) return refuse(404, 'Ticket not found')
+    return { task, children: task.children ?? [] }
+  } },
   'GET search': { query: ['q'], answer: async ({ query }) => {
     const q = query.q ?? ''
     await server.searching?.(q)
@@ -448,12 +453,13 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     server.tickets.open = []; server.person = server.person.filter(ticket => ticket.id !== params.id)
     return { stopped: true }
   } },
-  'POST tickets/:id/approve': { answer: ({ params }) => {
+  'POST tickets/:id/approve': { body: true, answer: ({ params, body }) => {
     const detail = server.ticketDetails[params.id]
     if (!detail) return refuse(404, 'Ticket not found')
     if (!detail.review?.canReview) return refuse(400, 'This review has no preview to approve', { code: 'deliverablePreviewMissing', values: {} })
-    detail.review = { ...detail.review, accepted: { by: { source: 'panel', id: 'local' }, at: '2026-09-22T00:05:00Z' } }
-    return { approved: true }
+    detail.review = { ...detail.review, accepted: { by: { source: 'panel', id: 'local' }, at: '2026-09-22T00:05:00Z',
+      reviewRevision: body.reviewRevision } }
+    return { approved: true, reviewRevision: body.reviewRevision }
   } },
   'POST outbox/:id/recall': { answer: () => ({ status: 'recalled' }) },
   'POST approvals/:id/approve': { body: true, answer: ({ params, body }) => {

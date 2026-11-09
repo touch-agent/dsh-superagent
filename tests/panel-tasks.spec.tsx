@@ -130,3 +130,37 @@ it('uses the same task filter vocabulary in both languages', () => {
   expect(zh.tasksFilterLabel).toBe('任务状态筛选')
   expect(en.tasksFilterLabel).toBe('Task status filter')
 })
+it('shows one child Ticket layer with its parent decision and the pending end of its root', async () => {
+  const board = taskBoardView()
+  const root = board.tasks.find(task => task.id === 't1')!
+  root.childSummary = { total: 2, live: 2, queued: 0, working: 0, waiting: 1, review: 1, blocked: 0, failed: 0, orphaned: 0,
+    accepted: 0, cancelled: 0, unresolved: 2 }
+  root.status = 'working'
+  root.pendingEnd = { by: 'follows', outcome: 'merged', at: '2026-09-23T12:00:00Z', reason: 'waiting for the child' }
+  const child: TaskView = { id: 'c1', kind: 'ticket', title: '子任务：补齐迁移说明', form: 'tracked', status: 'review',
+    parentTicketId: 't1', rootTicketId: 't1', depth: 1, parentOwner: { role: 'owner' }, delegation: { parentTicketId: 't1', rootTicketId: 't1',
+      goal: '补齐迁移说明', attempt: 1, dispositions: [] }, origin: { source: 'conversation', triggerId: 'tr-child', preview: '', at: '2026-09-23T00:00:00Z' },
+    sources: [], execution: { assignments: 1 }, deliverables: [] }
+  const waiting: TaskView = { ...child, id: 'c2', title: '核对审计日志格式', status: 'idle',
+    delegation: { ...child.delegation!, goal: '核对审计日志格式' } }
+  root.children = [child, waiting]
+  server.tasks = board
+  await openTasks()
+  const item = row('修复回归（T2-03）')!
+  expect(item.textContent).toContain(zh.tasksPendingEnd)
+  expect(item.textContent).toContain(zh.tasksChildCount.replace('{count}', '2'))
+  await click(item.querySelector('.dt-tasks-row')!)
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+  const nested = all('.dt-tasks-child')
+  expect(nested).toHaveLength(2)
+  expect(nested[0]!.textContent).toContain('子任务：补齐迁移说明')
+  expect(nested[0]!.textContent).toContain(zh['tasksRole.child'])
+  expect(nested[0]!.textContent).toContain(zh.tasksParentReview)
+  await click(nested[0]!.querySelector('.dt-tasks-row')!)
+  expect(nested[0]!.textContent).toContain(zh.tasksChildSelectedHint)
+  await click(all('button').find(button => button.textContent?.trim() === zh['activityFilter.running'])!)
+  const running = all('.dt-tasks-child')
+  expect(running).toHaveLength(1)
+  expect(running[0]!.textContent).toContain('核对审计日志格式')
+  expect(running[0]!.textContent).not.toContain('补齐迁移说明')
+})

@@ -466,6 +466,7 @@ graph LR
 - **验收**：父 owner 创建 2 个子 Ticket 在树中可见且各有 owner；父接受/退回/自干/再委派与逐层上报在详情可见（父目标完成时才上报，只接受一个子不得提前上报）；父接受/退回后交付聚合不重复；子 Ticket `HumanCriterion` 在最终根 review 中仍出现；`dropped`/`stopped`/取消不出现在「进行中」；`waiting` 不算 blocked；`待父审阅` 不计入人的“需处理”；500 根 Ticket/2000 子 Ticket 投影 p95 ≤400ms 且无 N+1；360px 右栏不展开深层。
 - **估时**：5 人日。**依赖**：T3-10。**回退**：同 T3-10。
 - **泳道**：Runtime。
+- **实现状态（2026-11-09）**：Phase 2b 已落地。`TaskView` 增加父子/delegation/childSummary/pendingEnd，`GET tasks` 一次读取全部 Ticket 并在内存建父子索引（触发器、activity 也批量读取），`GET tasks/:id?depth=1..5` 按需加载；`TaskReviewView`/`ReviewAggregate` 按 `artifact.kind:ref:revision` 去重根与已接受子交付，`POST tickets/:id/approve` 带 `reviewRevision`，过期返回 409 `reviewStale`；子 `waiting` 显示为 idle，`dropped`/`stopped` 保持终态，父接受不写入人的确认；右栏一层子工单、360px 不横向滚动，状态页树 L4+ 默认折叠。测试见 `tests/review-aggregate.spec.ts`、`tests/tasks-children.spec.ts`、`tests/panel-tasks.spec.tsx`（500 根/2000 子投影 p95 ≤400ms，且无逐行 Ticket 查询）。同场景 Before/After（1280×900、同一临时状态库、359px 右栏）见 `docs/images/tasks-view/phase2b-before-tasks-360.png` 与 `phase2b-after-tasks-360.png`、`phase2b-before-review.png` 与 `phase2b-after-review.png`。独立 review 核对 `docs/011` E1 与本节并写在 PR review 评论。
 
 ## 6.2 M5 原则落地（T5-01…06）
 

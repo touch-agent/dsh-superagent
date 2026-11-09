@@ -19,7 +19,8 @@ const STATUS_TONE: Record<ActivityStatus, TagTone> = { queued: 'neutral', workin
 const STATUS_DOT: Record<ActivityStatus, DotState> = { queued: 'idle', working: 'ongoing', idle: 'idle', review: 'warning',
   answer: 'warning', delivery: 'warning', blocked: 'warning', failed: 'error', done: 'done' }
 const VIEWS = ['tree', 'graph'] as const
-type TasksView = typeof VIEWS[number]
+type PlanView = typeof VIEWS[number]
+type TasksView = 'list' | 'tickets' | PlanView
 export const TASK_FILTERS = ['all', 'attention', 'running', 'failed'] as const
 export type TaskFilter = typeof TASK_FILTERS[number]
 
@@ -240,34 +241,72 @@ function TaskSources({ t, task }: { t: T; task: TaskView }) {
 }
 
 /**
- * The compact task list both task surfaces show: one row per Ticket, reviews indented below their owner, with the
- * person-facing role (parent worker, reviewer, or lightweight) and only deliveries that really have a preview.
+ * The compact task list both task surfaces show: one row per root Ticket and, while selected, its direct child
+ * Tickets; reviews stay indented below their owner. A child row never opens its own children here: the right pane
+ * shows one child layer and deeper levels open on the Ticket page.
  */
-export function TaskList({ tasks, t, filter, selected, onSelect, onOpenTask, onOpenEvents, empty }: {
-  tasks: readonly TaskView[]; t: T; filter: TaskFilter; selected?: string
-  onSelect?: (id: string) => void; onOpenTask?: (id: string) => void; onOpenEvents?: (id: string) => void; empty?: string
+export function TaskList({ tasks, t, filter, selected, expanded, childrenOf, onSelect, onSelectChild, onOpenTask, onOpenEvents, empty }: {
+  tasks: readonly TaskView[]; t: T; filter: TaskFilter; selected?: string; expanded?: string
+  childrenOf?: (id: string) => readonly TaskView[]; onSelect?: (id: string) => void; onSelectChild?: (root: string, id: string) => void
+  onOpenTask?: (id: string) => void; onOpenEvents?: (id: string) => void; empty?: string
 }) {
   const shown = orderTasks(tasks).filter(task => matchesTaskFilter(task, filter))
   if (!shown.length) return <p className="dt-hint">{tasks.length ? t('tasksFilterEmpty') : empty ?? t('tasksEmpty')}</p>
+  const childRow = (task: TaskView, root: string) => {
+    const confirmations = task.review?.confirmations.length ?? 0
+    return <li key={task.id} className="dt-tasks-item dt-tasks-child" data-kind={task.kind} data-form={task.form}
+      data-status={task.status} data-selected={selected === task.id ? 'true' : undefined}>
+      <button type="button" className="dt-tasks-row" aria-pressed={selected === task.id} onClick={() => onSelectChild?.(root, task.id)}>
+        <span className="dt-tasks-row-head">
+          <span className="dt-tasks-indent" aria-hidden />
+          <Dot state={STATUS_DOT[task.status]} />
+          <span className="dt-tasks-title" title={task.title}>{task.title}</span>
+        </span>
+        <span className="dt-tasks-row-meta">
+          <Tag tone={STATUS_TONE[task.status]}>{task.status === 'review' ? t('tasksParentReview') : statusLabel(t, task.status)}</Tag>
+          {task.terminal && <Tag tone="quiet">{t(`tasksTerminal.${task.terminal}`)}</Tag>}
+          {task.delegation?.resolution && task.delegation.resolution.kind !== 'accepted'
+            && <Tag tone="quiet">{t(`delegationResolution.${task.delegation.resolution.kind}` as never)}</Tag>}
+          {task.delegation?.orphaned && <Tag tone="danger">{t('tasksNeedsOwner')}</Tag>}
+          {task.deliverables.length > 0 && <Tag tone="info">{t('tasksDeliverables', { count: task.deliverables.length,
+            confirmations })}</Tag>}
+        </span>
+        <span className="dt-tasks-row-foot"><span className="dt-tasks-role">{t('tasksRole.child')}</span>
+          {task.parentOwner && <span className="dt-hint">{task.delegation?.resolution?.kind === 'accepted'
+              ? t('tasksParentAccepted') : t('tasksOwnedByParent')}</span>}</span>
+      </button>
+      {selected === task.id && <div className="dt-tasks-detail">
+        <span className="dt-hint">{t('tasksChildSelectedHint')}</span>
+        {onOpenTask && <Button size="sm" variant="outline" icon={<Icon name="external" size={13} />}
+          onClick={() => onOpenTask(task.id)}>{t('tasksOpen')}</Button>}
+        {onOpenEvents && <Button size="sm" variant="ghost" onClick={() => onOpenEvents(task.id)}>{t('tasksViewEvents')}</Button>}
+      </div>}
+    </li>
+  }
   return <ul className="dt-tasks-list">
     {shown.map(task => {
       const review = task.kind === 'review'
       const role = task.form === 'lightweight' ? t('tasksForm.lightweight')
-        : review ? t('tasksRole.reviewer') : t('tasksRole.parentWorker')
+        : review ? t('tasksRole.reviewer') : task.parentTicketId ? t('tasksRole.child') : t('tasksRole.parentWorker')
       const confirmations = task.review?.confirmations.length ?? 0
+      const children = (expanded === task.id ? childrenOf?.(task.id) ?? [] : []).filter(child => matchesTaskFilter(child, filter))
       return <li key={task.id} className="dt-tasks-item" data-kind={task.kind} data-form={task.form}
         data-status={task.status} data-selected={selected === task.id ? 'true' : undefined}
-        data-review={review ? 'true' : undefined}>
+        data-review={review ? 'true' : undefined} data-parent={task.parentTicketId ? 'true' : undefined}>
         <button type="button" className="dt-tasks-row" aria-pressed={selected === task.id} onClick={() => onSelect?.(task.id)}>
           <span className="dt-tasks-row-head">
             <Dot state={STATUS_DOT[task.status]} />
             {review && <Tag tone="quiet">{t('tasksKind.review')}</Tag>}
+            {task.childSummary && <Icon name={expanded === task.id ? 'chevron-down' : 'chevron-right'} size={12} />}
             <span className="dt-tasks-title" title={task.title}>{task.title}</span>
+            {task.childSummary && task.childSummary.total > 0 && <span className="dt-hint">{t('tasksChildCount',
+              { count: task.childSummary.total })}</span>}
           </span>
           <span className="dt-tasks-row-meta">
             <Tag tone={STATUS_TONE[task.status]}>{statusLabel(t, task.status)}</Tag>
             {task.attention && <Tag tone="warning">{t('tasksAttention')}</Tag>}
             {task.terminal && <Tag tone="quiet">{t(`tasksTerminal.${task.terminal}`)}</Tag>}
+            {task.pendingEnd && <Tag tone="warning">{t('tasksPendingEnd')}</Tag>}
             {task.progress && <span className="dt-tasks-progress">{t('tasksReviewProgress', task.progress)}</span>}
             {task.deliverables.length > 0 && <Tag tone="info">{t('tasksDeliverables', { count: task.deliverables.length,
               confirmations })}</Tag>}
@@ -279,6 +318,7 @@ export function TaskList({ tasks, t, filter, selected, onSelect, onOpenTask, onO
             <TaskSources t={t} task={task} />
           </span>
         </button>
+        {children.length > 0 && <ul className="dt-tasks-children">{children.map(child => childRow(child, task.id))}</ul>}
         {selected === task.id && <div className="dt-tasks-detail">
           <span className="dt-hint">{task.form === 'lightweight' ? t('tasksLightweightNote') : t('tasksSelectedHint')}</span>
           {onOpenTask && <Button size="sm" variant="outline" icon={<Icon name="external" size={13} />}
@@ -290,12 +330,70 @@ export function TaskList({ tasks, t, filter, selected, onSelect, onOpenTask, onO
   </ul>
 }
 
+/** One lazily expanded child Ticket row in the status-page tree. */
+function TicketTreeNode({ task, depth, client, expanded, toggle }: { task: TaskView; depth: number; client: TasksViewClient
+  expanded: ReadonlySet<string>; toggle: (id: string) => void }) {
+  const { t, navigate } = usePanel()
+  const open = expanded.has(task.id)
+  const total = task.childSummary?.total ?? 0
+  const loaded = client.detailOf(task.id)
+  const children = open ? loaded?.children ?? [] : []
+  return <li className="dt-ticket-tree-node" data-status={task.status} data-child={task.parentTicketId ? 'true' : undefined}>
+    <div className="dt-ticket-tree-row" style={{ paddingInlineStart: `${depth * 16}px` }}>
+      {total > 0 ? <button type="button" className="dt-task-toggle" aria-expanded={open}
+        aria-label={t(open ? 'tasksCollapse' : 'tasksExpand')} onClick={() => toggle(task.id)}>
+        <Icon name={open ? 'chevron-down' : 'chevron-right'} size={13} /></button>
+        : <span className="dt-task-toggle" aria-hidden />}
+      <Dot state={STATUS_DOT[task.status]} label={statusLabel(t, task.status)} />
+      <button type="button" className="dt-task-title dt-task-open" onClick={() => navigate({ page: 'execution', id: task.id })}>
+        {task.title}</button>
+      {task.childSummary && <Tag tone="quiet">{t('tasksChildCount', { count: task.childSummary.total })}</Tag>}
+      {task.parentOwner && <Tag tone="quiet">{t('tasksRole.child')}</Tag>}
+      {task.attention && <Tag tone="warning">{t('tasksAttention')}</Tag>}
+      {task.pendingEnd && <Tag tone="warning">{t('tasksPendingEnd')}</Tag>}
+      {task.terminal && <Tag tone="quiet">{t(`tasksTerminal.${task.terminal}`)}</Tag>}
+      <Tag tone={STATUS_TONE[task.status]}>{task.parentTicketId && task.status === 'review'
+        ? t('tasksParentReview') : statusLabel(t, task.status)}</Tag>
+      {task.review?.deliverables.length ? <span className="dt-hint">{t('tasksDeliverables', {
+        count: task.review.deliverables.length, confirmations: task.review.confirmations.length })}</span> : null}
+    </div>
+    {open && total > 0 && !loaded && <p className="dt-hint" style={{ paddingInlineStart: `${(depth + 1) * 16 + 20}px` }}>{t('loading')}</p>}
+    {children.length > 0 && <ul className="dt-ticket-tree-children">{children.map(child => <TicketTreeNode key={child.id} task={child}
+      depth={depth + 1} client={client} expanded={expanded} toggle={toggle} />)}</ul>}
+  </li>
+}
+
+/**
+ * The status page's Ticket tree: roots at one level, children loaded on expansion through `GET tasks/:id`, so a
+ * 500-root/2000-child board never loads every child to draw its first screen. A node at the fourth level and deeper
+ * stays collapsed until opened, matching the architecture's L4 rule.
+ */
+export function TicketTree({ roots, client }: { roots: readonly TaskView[]; client: TasksViewClient }) {
+  const { t } = usePanel()
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  const toggle = (id: string) => {
+    const opening = !expanded.has(id)
+    setExpanded(current => {
+      const next = new Set(current)
+      if (opening) next.add(id); else next.delete(id)
+      return next
+    })
+    if (opening) client.ensureDetail(id)
+  }
+  if (!roots.length) return <p className="dt-hint">{t('tasksEmpty')}</p>
+  return <ul className="dt-ticket-tree dt-task-list">{roots.map(task => <TicketTreeNode key={task.id} task={task} depth={0}
+    client={client} expanded={expanded} toggle={toggle} />)}</ul>
+}
+
 /** The right-pane body. It is outside the panel's React tree, so it owns its poll and never assumes `usePanel()`. */
 export function TasksTab({ t, tasks, onOpenStatus, onOpenTask, onOpenEvents }: { t: T; tasks: TasksViewClient
   onOpenStatus: () => void; onOpenTask: (id: string) => void; onOpenEvents: (id: string) => void }) {
   const snapshot = useTasksView(tasks)
   const [filter, setFilter] = useState<TaskFilter>('all')
-  const select = (id: string) => tasks.select(snapshot.selection?.id === id ? undefined : { kind: 'ticket', id } satisfies TaskSelection)
+  const selected = snapshot.selection?.id
+  const rootId = snapshot.selection?.rootId ?? snapshot.selection?.id
+  const selectRoot = (id: string) => tasks.select(selected === id ? undefined : { kind: 'ticket', id, rootId: id })
+  const selectChild = (root: string, id: string) => tasks.select(selected === id ? undefined : { kind: 'ticket', id, rootId: root })
   return <div className="dt-tasks-tab">
     <div className="dt-tasks-head">
       <h2 className="dt-tasks-heading">{t('tasksTab')}</h2>
@@ -308,7 +406,8 @@ export function TasksTab({ t, tasks, onOpenStatus, onOpenTask, onOpenEvents }: {
       <TaskFilters t={t} value={filter} onChange={setFilter} tasks={snapshot.data.tasks} />
       {snapshot.data.totals.tickets === 0
         ? <p className="dt-hint">{t('tasksEmpty')}</p>
-        : <TaskList tasks={snapshot.data.tasks} t={t} filter={filter} selected={snapshot.selection?.id} onSelect={select}
+        : <TaskList tasks={snapshot.data.tasks} t={t} filter={filter} selected={selected} expanded={rootId}
+          childrenOf={id => tasks.detailOf(id)?.children ?? []} onSelect={selectRoot} onSelectChild={selectChild}
           onOpenTask={onOpenTask} onOpenEvents={onOpenEvents} />}
     </>}
   </div>
@@ -327,15 +426,20 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
   const snapshot = useTasksView(store)
   const [filter, setFilter] = useState<TaskFilter>('all')
   const flag = taskViewV1()
-  const views = flag ? ['list', ...VIEWS] as const : VIEWS
-  const [view, setView] = useState<TasksView | 'list'>(flag ? 'list' : 'tree')
+  const views = flag ? ['list', 'tickets', ...VIEWS] as const : VIEWS
+  const [view, setView] = useState<TasksView>(flag ? 'list' : 'tree')
   const id = useId()
   const data = snapshot.data
-  const select = (ticket: string) => store.select(snapshot.selection?.id === ticket ? undefined : { kind: 'ticket', id: ticket })
+  const selected = snapshot.selection?.id
+  const rootId = snapshot.selection?.rootId ?? snapshot.selection?.id
+  const selectRoot = (ticket: string) => store.select(selected === ticket ? undefined : { kind: 'ticket', id: ticket, rootId: ticket })
+  const selectChild = (root: string, ticket: string) => store.select(selected === ticket ? undefined
+    : { kind: 'ticket', id: ticket, rootId: root } satisfies TaskSelection)
   if (!data) return <LoadState error={snapshot.error} loading={!snapshot.ready || snapshot.loading} />
   return <>
     {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
-    <p className="dt-hint dt-task-intro">{view === 'list' ? t('tasksListIntro') : t('tasksIntro')}</p>
+    <p className="dt-hint dt-task-intro">{view === 'list' ? t('tasksListIntro')
+      : view === 'tickets' ? t('tasksTicketsIntro') : t('tasksIntro')}</p>
     <div className="dt-task-views">
       <SegmentedTabs label={t('tasksViewLabel')} value={view} onChange={value => setView(value)}
         items={views.map(value => ({ value, label: t(`tasksView.${value}`), id: `${id}-${value}`, panelId: `${id}-panel` }))} />
@@ -344,9 +448,11 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
     {view === 'list' && <TaskFilters t={t} value={filter} onChange={setFilter} tasks={data.tasks} />}
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${view}`}>
       {data.totals.tickets === 0 ? <p className="dt-hint">{t('tasksEmpty')}</p>
-        : view === 'list' ? <TaskList tasks={data.tasks} t={t} filter={filter} selected={snapshot.selection?.id} onSelect={select}
+        : view === 'list' ? <TaskList tasks={data.tasks} t={t} filter={filter} selected={selected} expanded={rootId}
+          childrenOf={ticket => store.detailOf(ticket)?.children ?? []} onSelect={selectRoot} onSelectChild={selectChild}
           onOpenTask={ticket => navigate({ page: 'execution', id: ticket })} empty={t('tasksEmpty')} />
-        : view === 'tree' ? <TreeView board={data} /> : <GraphView board={data} />}
+        : view === 'tickets' ? <TicketTree roots={data.tasks} client={store} />
+          : view === 'tree' ? <TreeView board={data} /> : <GraphView board={data} />}
     </div>
   </>
 }

@@ -49,8 +49,9 @@ async function stream(handler: Handler, url: string, headers: Headers = {}) {
 
 it('serves the Tickets board projection', async () => {
   const call = serve({
-    store: { tickets: { list: () => [] }, activity: { latestByTicket: () => [] }, spans: { byTraces: () => [] },
-      read: { firstTrigger: () => undefined }, threads: { get: () => undefined }, settings: () => SettingsSchema.parse({}) },
+    store: { tickets: { allList: () => [], list: () => [] }, triggers: { all: () => [] }, activity: { latestByTicket: () => [] },
+      spans: { byTraces: () => [] }, read: { firstTrigger: () => undefined, subscribedThreads: () => [] },
+      threads: { get: () => undefined }, settings: () => SettingsSchema.parse({}) },
     sources: { kind: () => undefined },
     links: () => ({}),
   })
@@ -60,20 +61,25 @@ it('serves the Tickets board projection', async () => {
 })
 
 it('approves a review-stage Ticket through the engine as the panel actor', async () => {
-  const reviews: [string, unknown][] = []
+  const reviews: [string, unknown, string][] = []
   const call = serve({
-    store: { tickets: { get: (id: string) => ['t1', 't2', 't3'].includes(id) ? { id } : undefined } },
-    engine: { reviewTicket: (id: string, by: unknown) => {
+    store: { tickets: { get: (id: string) => ['t1', 't2', 't3', 't4'].includes(id) ? { id } : undefined } },
+    engine: { reviewTicket: (id: string, by: unknown, reviewRevision: string) => {
       if (id === 't2') throw new UserError('reviewNotReady')
       if (id === 't3') throw new UserError('deliverablePreviewMissing')
-      reviews.push([id, by])
+      if (id === 't4') throw new UserError('reviewStale', { revision: 'rev-current' })
+      reviews.push([id, by, reviewRevision])
       return { id }
     } },
   })
-  expect(await call('POST', 'tickets/t1/approve')).toEqual({ status: 200, body: { approved: true } })
-  expect(reviews).toEqual([['t1', { source: 'panel', id: 'local' }]])
-  expect(await call('POST', 'tickets/t2/approve')).toMatchObject({ status: 400, body: { code: 'reviewNotReady' } })
-  expect(await call('POST', 'tickets/t3/approve')).toMatchObject({ status: 400, body: { code: 'deliverablePreviewMissing' } })
+  expect(await call('POST', 'tickets/t1/approve', { reviewRevision: 'rev-1' })).toEqual({ status: 200,
+    body: { approved: true, reviewRevision: 'rev-1' } })
+  expect(reviews).toEqual([['t1', { source: 'panel', id: 'local' }, 'rev-1']])
+  expect(await call('POST', 'tickets/t2/approve', { reviewRevision: 'rev-2' })).toMatchObject({ status: 400, body: { code: 'reviewNotReady' } })
+  expect(await call('POST', 'tickets/t3/approve', { reviewRevision: 'rev-3' })).toMatchObject({ status: 400,
+    body: { code: 'deliverablePreviewMissing' } })
+  expect(await call('POST', 'tickets/t4/approve', { reviewRevision: 'rev-old' })).toMatchObject({ status: 409,
+    body: { code: 'reviewStale', values: { revision: 'rev-current' } } })
   expect(await call('POST', 'tickets/missing/approve')).toEqual({ status: 404, body: { error: 'Ticket not found' } })
 })
 

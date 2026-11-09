@@ -497,6 +497,20 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-tasks-delivery { min-width: 0; overflow-wrap: anywhere; color: var(--dsw-alias-label-secondary); }
 .dt-tasks-detail { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 10px 10px; border-top: 0.5px solid var(--dsw-alias-border-l3); }
 .dt-tasks-detail .dt-hint { flex: 1 1 100%; min-width: 0; }
+/* A selected root reveals one child layer; the nested list stays inside the pane and never scrolls sideways. */
+.dt-tasks-children { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; padding: 0 8px 8px; list-style: none; }
+.dt-tasks-child { margin-inline-start: 8px; border-inline-start-width: 2px; border-inline-start-color: var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-1); }
+.dt-tasks-child .dt-tasks-row { padding: 7px 8px; }
+.dt-tasks-indent { flex: none; width: 10px; }
+/* The status page's lazily expanded Ticket tree. */
+.dt-ticket-tree { display: flex; flex-direction: column; gap: 2px; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.dt-ticket-tree-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; box-sizing: border-box; padding: 5px 6px; border-radius: 8px; }
+.dt-ticket-tree-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dt-ticket-tree-row .dt-task-title { flex: 1 1 160px; max-width: none; }
+.dt-ticket-tree-children { display: flex; flex-direction: column; gap: 2px; min-width: 0; margin: 0; padding: 0; list-style: none; }
+/* A review aggregate can hold several deliveries; each stays a readable block in the detail page. */
+.dt-review-deliverable { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 0; }
+.dt-review-deliverable + .dt-review-deliverable { border-top: 0.5px solid var(--dsw-alias-border-l3); }
 /* A task selected in either surface narrows Events; the chip says which one and can be cleared. */
 .dt-events-selection { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 6px 8px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); }
 .dt-events-selection-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 18px; }

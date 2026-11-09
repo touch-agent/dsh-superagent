@@ -248,6 +248,8 @@ export class Store implements Repositories {
 
   readonly triggers = {
     get: (id: string): Trigger | undefined => { const row = this.db.prepare('SELECT value FROM trigger WHERE id=?').get(id); return row ? JSON.parse(String(row.value)) as Trigger : undefined },
+    /** Every Trigger in one read, for projections that would otherwise query once per Ticket. */
+    all: (): Trigger[] => this.values('SELECT value FROM trigger ORDER BY rowid'),
     save: (trigger: Trigger): void => this.atomic(() => {
       this.db.prepare('INSERT INTO trigger VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value, at=excluded.at').run(trigger.id, JSON.stringify(trigger), trigger.at)
       this.indexThreads(trigger)

@@ -3,6 +3,7 @@ import { channelThread, latestReport, liveTicket, threadKey, ticketStage, type A
   type TicketStage } from '@superagent/kernel'
 import { workerSessionId } from '../../executor/dsh.ts'
 import type { Store } from '../store.ts'
+import { taskDetail } from '../tasks.ts'
 import { channelLink, decisionView, newestFirst, page, snapshot, threadSummary, ticketLine, type Snapshot,
   type ViewHost } from './records.ts'
 import { markdown, preview } from './text.ts'
@@ -82,18 +83,26 @@ export function ticketDetail(host: ViewHost, id: string) {
   // A conversation task can be read in the main Session it came from; its Trigger records that Session.
   const origin = store.triggers.get(ticket.origin.triggerId)
   const report = latestReport(ticket)
-  const review = report?.review
-  // A review stage renders the deliverable preview, or says plainly that the Ticket cannot be reviewed; approval is never offered without one.
-  const reviewView = current.stage === 'person' && current.action === 'review' ? { review: {
-    canReview: !!review,
-    ...review ? { deliverable: review.deliverable, criteria: review.criteria, confirmations: review.confirmations,
-      summary: markdown(report?.summary ?? ''), ...report?.accepted ? { accepted: { ...report.accepted, by: view.actor(report.accepted.by) } } : {} } : {},
+  // The detail and its children share one projection, so the aggregate review, pending close and parent/child rows cannot
+  // disagree with the task list. A child's row carries no Mandate of its own; the root's authorization is shown below.
+  const detail = taskDetail(host, id, 1)
+  const task = detail?.task
+  const aggregate = task?.review
+  const inReview = current.stage === 'person' && current.action === 'review'
+  // A review stage always says whether it can be approved; a completed root still shows the aggregate it delivered.
+  const reviewView = aggregate || inReview ? { review: {
+    canReview: !ticket.parentTicketId && inReview && !!aggregate?.deliverables.length,
+    ...aggregate ?? { reviewRevision: '', deliverables: [], criteria: [], confirmations: [] },
+    ...markdown(report?.summary ?? '') ? { summary: markdown(report?.summary ?? '') } : {},
   } } : {}
   return { ...ticketLine(view, ticket), ...reviewView, ...origin?.source === 'conversation' && typeof origin.meta.sessionId === 'string'
     ? { conversationSession: origin.meta.sessionId } : {},
     mandate: { ...mandate, actor: view.actor(mandate.actor, human) }, basis: basisFacts(mandate.basis, view.rule),
     ...ticket.parentTicketId ? { parentTicketId: ticket.parentTicketId, rootTicketId: ticket.rootTicketId ?? ticket.parentTicketId,
-      ...(ticket.delegation ? { delegation: ticket.delegation } : {}) } : {},
+      ...task?.delegation ? { delegation: task.delegation } : {} } : {},
+    ...task?.children?.length ? { children: task.children } : {},
+    ...task?.childSummary ? { childSummary: task.childSummary } : {},
+    ...task?.pendingEnd ? { pendingEnd: task.pendingEnd } : {},
     paused: store.settings().paused,
     channels: ticket.channels.map(channel => channelLink(view, channel)),
     decision: decision ? decisionView(view, decision) : undefined,

@@ -7,6 +7,7 @@ import { isChildTicket, latestAssignment, liveTicket, runningAssignment } from '
 import type { ActorRef, ReportState, Ticket } from './model.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
+import { reviewAggregate } from './review.ts'
 import { ticketStage } from './stage.ts'
 import { automatic, type Tickets } from './tickets.ts'
 
@@ -183,15 +184,20 @@ export class Assignments extends EnginePart {
     // A parent that delegated reports its own completed goal upward; a ticket with no children has nothing extra to report.
     const children = this.repo.tickets.childrenOf(ticket.id)
     if (report.state === 'ready' && children.length) this.stageOf(ticket, 'delegation.report-up', { ref: `${at}:ready`, at, data: { childCount: children.length } })
-    if (outcome) this.tickets.end(ticketId, 'executor', outcome, at)
+    // Accepted work with person confirmations waits for the final approval; a dropped or stopped ticket does not.
+    const approved = outcome === 'dropped' || !outcome || !(outcome === 'completed' || outcome === 'merged' || outcome === 'closed')
+      || !this.tickets.requiresReviewApproval(ticket) || this.tickets.reviewApproved(ticket)
+    if (outcome && approved) this.tickets.end(ticketId, 'executor', outcome, at)
     return this.require(ticketId)
   }
   /**
-   * Records a person's acceptance of the current review's deliverable revision. It does not end the Ticket: a followed pull
-   * request still ends it with that Thread, and a later report replaces the deliverable and its acceptance.
-   * @throws UserError when the ticket is unknown or ended, is not awaiting review, or has no deliverable with a preview.
+   * Records a person's approval of the current review aggregate. It does not itself end open work: a pending close is
+   * applied, a closed follow ends with that outcome, no follows ends completed, and open follows wait. A later report or
+   * accepted child delivery changes `reviewRevision`, so an older approval no longer matches.
+   * @throws UserError when the ticket is unknown or ended, is a child, is not awaiting review, has no reviewable aggregate,
+   * or `reviewRevision` is not the current one.
    */
-  review(ticketId: string, by: ActorRef): Ticket {
+  review(ticketId: string, by: ActorRef, reviewRevision: string): Ticket {
     const ticket = this.require(ticketId)
     if (isChildTicket(ticket)) throw new UserError('childRequiresParent')
     if (!liveTicket(ticket)) throw new UserError('ticketEnded')
@@ -199,13 +205,18 @@ export class Assignments extends EnginePart {
     if (unresolved.length) throw new UserError('unfinishedChildTickets', { count: String(unresolved.length), tickets: unresolved.map(item => item.id).join(', ') })
     const stage = ticketStage(ticket)
     if (stage.stage !== 'person' || stage.action !== 'review') throw new UserError('reviewNotReady')
+    const aggregate = reviewAggregate(ticket, id => this.repo.tickets.get(id), id => this.repo.tickets.childrenOf(id))
+    if (!aggregate?.deliverables.length) throw new UserError('deliverablePreviewMissing')
+    if (reviewRevision !== aggregate.reviewRevision) throw new UserError('reviewStale', { revision: aggregate.reviewRevision })
     const report = latestAssignment(ticket)?.report
-    if (!report?.review) throw new UserError('deliverablePreviewMissing')
-    if (!report.accepted) {
-      report.accepted = { by, at: this.now() }
-      ticket.updatedAt = report.accepted.at
+    if (!report) throw new UserError('reviewNotReady')
+    if (report.accepted?.reviewRevision !== reviewRevision) {
+      const at = this.now()
+      report.accepted = { by, at, reviewRevision }
+      ticket.updatedAt = at
       this.repo.tickets.save(ticket)
     }
+    this.tickets.endAfterApproval(ticketId, report.accepted.at)
     return this.require(ticketId)
   }
   /** The ticket, while it is open and `assignmentId` runs it. */

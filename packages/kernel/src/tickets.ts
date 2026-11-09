@@ -10,6 +10,7 @@ import type { AssessmentOutcome, InlineResult, InlineStep } from './ports.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
 import { canRetry } from './stage.ts'
+import { acceptedReviewRevision, reviewAggregate } from './review.ts'
 
 const sameChannel = (a: ChannelRef, b: ChannelRef): boolean => JSON.stringify(a) === JSON.stringify(b)
 /** Whether an Input is a message no person wrote, such as CI's, a bot's, or the main Session's note. */
@@ -506,9 +507,10 @@ export class Tickets extends EnginePart {
       this.repo.tickets.save(ticket)
       const done = this.followsDone(ticket)
       if (!done || this.unfinished(ticket, at)) continue
-      // A thread closing is a pending end while child tickets are unresolved; the parent owner applies it once it disposes them.
+      // A thread closing is a pending end while child tickets are unresolved or person confirmations are still unapproved;
+      // the parent owner or the final approval applies it afterwards.
       const pending: PendingEnd = { by: 'thread', outcome: done.outcome, at: done.at, ref: closed }
-      if (this.unresolvedChildren(ticket.id).length) {
+      if (this.unresolvedChildren(ticket.id).length || (this.requiresReviewApproval(ticket) && !this.reviewApproved(ticket))) {
         ticket.endPending = pending
         this.repo.tickets.save(ticket)
         this.addInput(ticket, { id: key('input', ticket.id, 'end-gate', done.at), kind: 'end-gate', pending, at: this.now() })
@@ -530,6 +532,32 @@ export class Tickets extends EnginePart {
     const counted = own.length ? own : follows
     if (!counted.length || counted.some(item => !item.closed)) return undefined
     return counted.map(item => item.closed!).sort((a, b) => a.at.localeCompare(b.at)).at(-1)
+  }
+  /** The root's current review aggregate, read through the Store's children index rather than one query per node. */
+  private aggregateOf(ticket: Ticket): ReturnType<typeof reviewAggregate> {
+    return reviewAggregate(ticket, id => this.repo.tickets.get(id), id => this.repo.tickets.childrenOf(id))
+  }
+  /** Whether the root still carries person confirmations that need a final approval before accepted work can end. */
+  requiresReviewApproval(ticket: Ticket): boolean {
+    return (this.aggregateOf(ticket)?.confirmations.length ?? 0) > 0
+  }
+  /** Whether a person accepted exactly the current aggregate revision. */
+  reviewApproved(ticket: Ticket): boolean {
+    const aggregate = this.aggregateOf(ticket)
+    return !!aggregate && acceptedReviewRevision(ticket) === aggregate.reviewRevision
+  }
+  /**
+   * Apply a person's final approval to the Ticket's end after the approval was recorded. A pending close (a PR or Thread
+   * that closed first) keeps its outcome; otherwise a closed follow ends with that outcome, a Ticket with no follows ends
+   * completed, and one whose follows are still open waits. Approval itself does not end open work.
+   */
+  endAfterApproval(ticketId: string, at = this.now()): void {
+    const ticket = this.require(ticketId)
+    if (!liveTicket(ticket)) return
+    if (ticket.endPending) { this.end(ticketId, 'executor', ticket.endPending.outcome, ticket.endPending.at, ticket.endPending.reason); return }
+    const done = this.followsDone(ticket)
+    if (done) { this.end(ticketId, 'executor', done.outcome, done.at); return }
+    if (!(ticket.follows ?? []).length) this.end(ticketId, 'executor', 'completed', at)
   }
   /**
    * The Trigger to attach to a ticket, once the ticket may take it.
@@ -797,6 +825,12 @@ export class Tickets extends EnginePart {
     const unresolved = this.unresolvedChildren(ticket.id)
     if (unresolved.length && (outcome === 'completed' || outcome === 'merged' || outcome === 'closed')) {
       throw new UserError('unfinishedChildTickets', { count: String(unresolved.length), tickets: unresolved.map(item => item.id).join(', ') })
+    }
+    // A delivery with person confirmations cannot end as accepted work until a person approved its current revision.
+    const aggregate = this.aggregateOf(ticket)
+    if (aggregate?.confirmations.length && (outcome === 'completed' || outcome === 'merged' || outcome === 'closed')
+      && acceptedReviewRevision(ticket) !== aggregate.reviewRevision) {
+      throw new UserError('reviewNotApproved', { revision: aggregate.reviewRevision })
     }
     if (outcome === 'dropped' || by === 'human') this.cancelSubtree(ticket, by, reason ?? outcome)
     // A close that waited for child tickets is applied now that the parent owner disposed of them.

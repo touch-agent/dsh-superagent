@@ -64,11 +64,15 @@ it('stops an open Ticket from its page after confirmation', async () => {
 })
 
 it('renders a review-stage Ticket\'s preview and approves that revision', async () => {
-  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never /* the fixture narrows action to "queued" */, review: { canReview: true,
-    deliverable: { artifact: { kind: 'document', ref: 'docs/review.md', revision: 'rev-1' }, acceptanceCriteria: [],
-      previewRef: { kind: 'text/redline', ref: 'https://example.test/preview/rev-1', revision: 'rev-1' } },
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never /* the fixture narrows action to "queued" */, review: { canReview: true, reviewRevision: 'review-rev-1', deliverables: [{
+      key: 'document:docs/review.md:rev-1', sources: [{ kind: 'ticket', ticketId: 't1', assignmentId: 'a1' }],
+      at: '2026-09-22T00:00:00Z', artifact: { kind: 'document', ref: 'docs/review.md', revision: 'rev-1' },
+      previewRef: { kind: 'text/redline', ref: 'https://example.test/preview/rev-1', revision: 'rev-1' },
+      criteria: [{ kind: 'rule', rule: 'pr.merged' }],
+      confirmations: [{ kind: 'human', reason: { code: 'said', values: { text: 'Check the tone' } } }] }],
     criteria: [{ kind: 'rule', rule: 'pr.merged' }],
-    confirmations: [{ kind: 'human', reason: { code: 'said', values: { text: 'Check the tone' } } }], summary: 'Ready for review' } }
+    confirmations: [{ ref: 'confirmation-1', source: { kind: 'ticket', ticketId: 't1', assignmentId: 'a1' },
+      criterion: { kind: 'human', reason: { code: 'said', values: { text: 'Check the tone' } } } }], summary: 'Ready for review' } }
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
   expect(all('.dt-section-title .dt-section-name').map(name => name.textContent)).toContain(zh.reviewSection)
@@ -82,7 +86,7 @@ it('renders a review-stage Ticket\'s preview and approves that revision', async 
 })
 
 it('says a review-stage Ticket without a preview cannot be reviewed and offers no approval', async () => {
-  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never /* the fixture narrows action to "queued" */, review: { canReview: false } }
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, stage: 'person', action: 'review' as never /* the fixture narrows action to "queued" */, review: { canReview: false, reviewRevision: '', deliverables: [], criteria: [], confirmations: [] } }
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
   expect(text()).toContain(zh.reviewUnavailable)

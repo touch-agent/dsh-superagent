@@ -1,3 +1,5 @@
 {
-  "exemptions": []
+  "exemptions": [
+    { "task": "T3-11", "rule": "in-progress-without-pr", "reason": "Implementation and tests are in progress; this PR link replaces the exemption before handoff." }
+  ]
 }
