@@ -274,7 +274,7 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 | 文档 | 现有主张 | 关系 | 冲突/空白 | 取舍与原因 |
 | --- | --- | --- | --- | --- |
 | [docs/000](000-philosophy.md) | 注意力最小、价值最大；少概念、少设置、面板只显示需要人的事 | 支持 A；B/C/D 未展开 | 有总原则，缺组织与进化的具体约束 | 保留原文，本文作为展开；不重复改写 000 |
-| [docs/001](001-domain.md) | 只有 Eval 创建 Ticket；Executor/Session 在领域外；拒绝跨源身份 | 支持 B、D | 子 Ticket 提案复用 Ticket，不新增执行实体；需防止它变成第二授权层 | 接受「执行树」持久化，但授权仍只在根 Ticket/Mandate；子 Ticket 没有自己的 Mandate/Decision，继承根授权与 `maxActionLevel`，不另开 |
+| [docs/001](001-domain.md) | 只有 Eval 创建 Ticket；Executor/Session 在领域外；拒绝跨源身份 | 支持 B、D | 子 Ticket 提案复用 Ticket，不新增新的实体类型；执行仍落在 Assignment/worker；需防止它变成第二授权层 | 接受「执行树」持久化，但授权仍只在根 Ticket/Mandate；子 Ticket 没有自己的 Mandate/Decision，继承根授权与 `maxActionLevel`，不另开 |
 | [docs/003](003-execution.md) | 一进程一体系；tracked 有 worker/Session/目录；subagent 是执行细节；目录不是安全边界；`reviewTicket` 只接受最新 Report，`approve` 不按 revision 令牌 | 支持 C 的六层上下文与 D 的执行边界 | 细节面向操作者，容易被误读为产品默认面；任务视图提案的 `ReviewAggregate`/`reviewRevision` 尚不存在 | 保留为操作文档；产品默认面按 B 的 E0/E1 分层；不把目录当组织/权限；6.6 的「按 revision 确认」只能作为提案，不能当作当前不变量 |
 | [docs/005](005-panel.md) | 七 tab 管理面板；聚焦、安静、诚实；Tasks 是计划树 | 支持 A；与 B 部分冲突 | 默认面板暴露 Trigger/Eval/Execution；Tasks 树把计划编号当层级 | 面板定位为 E2 信任控制台，不是产品主界面；默认面按 E0；计划树在任务视图里降为标签/回退 |
 | [docs/007](007-architecture.md) | kernel 零宿主依赖；依赖规则；worker 只读自己的 Ticket；读资源分页与上限 | 支持 C、D | 上下文规则分散在装配、prompt、读资源中，没有统一装配表 | 收敛成 C.3 的装配表；不改代码；用测试固定隔离 |
