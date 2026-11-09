@@ -115,7 +115,8 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
             ...(args.deliverable ? { deliverable: args.deliverable } : {}) }
           const assignment = runningAssignment(current)
           const updated = host.engine.report(ticketId, { ...report, ...(assignment ? { assignmentId: assignment.id } : {}) })
-          const relay = reportRelay(updated, report)
+          // A child reports to its parent owner; only a root reaches the main Session.
+          const relay = updated.parentTicketId ? undefined : reportRelay(updated, report)
           if (relay) host.sessions.relay(relay.id, relay.text)
           const notification = relay ? 'orchestrator' : 'internal_only'
           return { reported: true, notification, ...(updated.attention ? { attention: updated.attention } : {}) }
