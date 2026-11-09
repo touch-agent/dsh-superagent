@@ -122,6 +122,7 @@ function TimelineChangeView({ change }: { change: TicketTimelineView['entries'][
       return <>
         <span className="dt-mono">{action.kind} · {action.source}:{action.objectId}</span>
         <span className="dt-mono">{action.revision}</span>
+        {action.target && <span className="dt-mono">{action.target}</span>}
         <Tag tone="neutral">{valueLabel(t, 'level', action.level)}</Tag>
         {cost && <span className="dt-mono">{cost}</span>}
         {change.ok === false ? <Tag tone="danger">{t('timelineActionFailed')}</Tag>
