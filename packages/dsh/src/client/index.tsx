@@ -20,12 +20,15 @@ import { ActivityFeedClient } from './activity-feed.ts'
 import { App } from './app.tsx'
 import { caller } from './api.ts'
 import { PluginConfig, usePageForm } from './deployment.tsx'
-import { en, zh } from './locales.ts'
+import { taskViewV1 } from './features.ts'
+import { en, zh, type DshSuperagentKey } from './locales.ts'
 import { MasterStore } from './master.ts'
 import { openPanelRoute, PANEL_ID } from './panel.ts'
 import { messages } from './provider.tsx'
 import { mountStyles } from './styles.ts'
 import { EventsBridge, EventsTab, EventsTitle, MasterBadge, MasterEntry, SystemView } from './system.tsx'
+import { TasksTab, TasksTitle } from './tasks.tsx'
+import { TasksViewClient } from './tasks-view.ts'
 import type { T } from './text.ts'
 import type { Route } from './route.ts'
 
@@ -34,6 +37,8 @@ const NS = 'dshSuperagent'
 const ENTRY = 'dsh-superagent'
 const EVENTS_ID = 'dsh-superagent-events'
 const EVENTS_KIND = 'system-events'
+const TASKS_ID = 'dsh-superagent-tasks'
+const TASKS_KIND = 'task-list'
 
 function HammerIcon({ size }: SidebarPanelIconOwnerProps) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -42,10 +47,10 @@ function HammerIcon({ size }: SidebarPanelIconOwnerProps) {
 }
 
 /** Panel wrapper: reads the deployment form and renders the management page, in the panel or embedded in the Conversation. */
-function Mounted({ ctx, t, openSession, embedded }: { ctx: ClientContext; t: T; openSession: (id: string) => Promise<void>
-  embedded?: boolean }) {
+function Mounted({ ctx, t, openSession, embedded, tasks }: { ctx: ClientContext; t: T; openSession: (id: string) => Promise<void>
+  embedded?: boolean; tasks: TasksViewClient }) {
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
-  return <App t={t} openSession={openSession} deploymentForm={form} embedded={embedded} />
+  return <App t={t} openSession={openSession} deploymentForm={form} embedded={embedded} tasks={tasks} />
 }
 
 export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
@@ -57,8 +62,9 @@ export function apply(ctx: ClientContext): void {
   const call = caller(() => messages(t))
   const master = new MasterStore(call)
   const activity = new ActivityFeedClient(call)
+  const tasks = new TasksViewClient(call)
   const autoOpen = { done: false }
-  ctx.effect(() => () => { master.dispose(); activity.dispose() }, 'dsh-superagent: session surfaces')
+  ctx.effect(() => () => { master.dispose(); activity.dispose(); tasks.dispose() }, 'dsh-superagent: session surfaces')
   const openSession = async (id: string) => {
     try {
       await openKnownSession(ctx.sessions, id as SessionId, target => { ctx.uiWorkspace.openSession(target) }, new AbortController().signal)
@@ -71,8 +77,11 @@ export function apply(ctx: ClientContext): void {
   const openEvents = () => {
     try { ctx.get('sidebarRight')?.openTab(EVENTS_KIND) } catch { /* a host without the right sidebar has no Events tab */ }
   }
+  const openTasks = () => {
+    try { ctx.get('sidebarRight')?.openTab(TASKS_KIND) } catch { /* a host without the right sidebar has no Task tab */ }
+  }
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({}) },
-    (props: { t: T }) => <Mounted ctx={ctx} t={props.t} openSession={openSession} />))
+    (props: { t: T }) => <Mounted ctx={ctx} t={props.t} openSession={openSession} tasks={tasks} />))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 10, label: () => t('panel'), locale: NS },
     HammerIcon))
   // The New Session row's right-aligned option: open the process's existing main Session rather than start a second router Session.
@@ -84,17 +93,29 @@ export function apply(ctx: ClientContext): void {
   // The in-Session Status view reuses the management page; non-main Sessions render its explanation instead.
   ctx.slots.inject('conversation.view', () => ctx.slots.register({ name: 'conversation.view', id: 'system', order: 20, locale: NS,
     label: () => t('systemTab') }, (props: { sessionId: string; t: T }) => <SystemView t={props.t} sessionId={props.sessionId}
-    master={master}><Mounted ctx={ctx} t={props.t} openSession={openSession} embedded /></SystemView>))
+    master={master}><Mounted ctx={ctx} t={props.t} openSession={openSession} embedded tasks={tasks} /></SystemView>))
   // The right Events tab type: the host owns closing, expanding, floating and docking.
-  try {
-    ctx.effect(() => ctx.get('sidebarRightTabs')?.register({ id: EVENTS_ID, kind: EVENTS_KIND, title: () => t('eventsTab'),
-      priority: 'extension', guide: [{ id: EVENTS_ID, order: 300, title: () => t('eventsTab'), description: () => t('eventsGuide') }] })
-      ?? (() => {}), 'dsh-superagent: events tab type')
-  } catch { /* a host without the right sidebar keeps the rest of the plugin */ }
+  const registerTab = (id: string, kind: string, title: DshSuperagentKey, guide: DshSuperagentKey, order: number) => {
+    try {
+      ctx.effect(() => ctx.get('sidebarRightTabs')?.register({ id, kind, title: () => t(title), priority: 'extension',
+        guide: [{ id, order, title: () => t(title), description: () => t(guide) }] }) ?? (() => {}), `dsh-superagent: ${kind} tab type`)
+    } catch { /* a host without the right sidebar keeps the rest of the plugin */ }
+  }
+  const taskView = taskViewV1()
+  registerTab(EVENTS_ID, EVENTS_KIND, 'eventsTab', 'eventsGuide', 300)
+  if (taskView) registerTab(TASKS_ID, TASKS_KIND, 'tasksTab', 'tasksGuide', 310)
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: EVENTS_ID, locale: NS },
-    (props: { t: T }) => <EventsTab t={props.t} activity={activity} master={master} onOpen={openPanel} />))
+    (props: { t: T }) => <EventsTab t={props.t} activity={activity} master={master} tasks={taskView ? tasks : undefined}
+      onOpen={openPanel} onOpenTasks={taskView ? openTasks : undefined} />))
   ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: EVENTS_ID, locale: NS },
     (props: { t: T }) => <EventsTitle t={props.t} activity={activity} />))
+  if (taskView) {
+    ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TASKS_ID, locale: NS },
+      (props: { t: T }) => <TasksTab t={props.t} tasks={tasks} onOpenStatus={() => openPanel({ page: 'tasks' })}
+        onOpenTask={id => openPanel({ page: 'execution', id })} onOpenEvents={id => { tasks.select({ kind: 'ticket', id }); openEvents() }} />))
+    ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: TASKS_ID, locale: NS },
+      (props: { t: T }) => <TasksTitle t={props.t} />))
+  }
   // An invisible Session companion: it keeps the stream alive and opens Events on the first unread notice.
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
     id: 'system-events-bridge', order: 900, locale: NS }, () => <EventsBridge activity={activity} master={master} autoOpen={autoOpen}

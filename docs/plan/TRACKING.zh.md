@@ -49,7 +49,7 @@
 | T3-06 | 未开始 | — | — | 2026-11-08 |
 | T3-07 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/24 | `tests/panel-approval.spec.tsx`；review 必须有 preview | 2026-11-08 |
 | T3-08 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/37 | `tests/ticket-timeline.spec.ts`；`tests/panel-timeline.spec.tsx`；`GET tickets/:id/timeline` 只读合成 trace、disposition 与 approval；Before/After 截图 | 2026-11-09 |
-| T3-09 | 未开始 | — | — | 2026-11-08 |
+| T3-09 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/38 | `tests/tasks-view.spec.ts`、`tests/panel-tasks.spec.tsx`、`tests/client.spec.tsx`；同场景 Before/After 见 `docs/images/tasks-view/`；359px 右栏 `scrollWidth=clientWidth`；`pnpm check` 1653 测试通过 | 2026-11-09 |
 | T3-10 | 未开始 | — | — | 2026-11-08 |
 | T3-11 | 未开始 | — | — | 2026-11-08 |
 | T4-01 | 未开始 | — | — | 2026-11-08 |

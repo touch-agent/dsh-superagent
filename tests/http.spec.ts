@@ -49,14 +49,14 @@ async function stream(handler: Handler, url: string, headers: Headers = {}) {
 
 it('serves the Tickets board projection', async () => {
   const call = serve({
-    store: { tickets: { list: () => [] }, read: { firstTrigger: () => undefined }, threads: { get: () => undefined },
-      settings: () => SettingsSchema.parse({}) },
+    store: { tickets: { list: () => [] }, activity: { latestByTicket: () => [] }, spans: { byTraces: () => [] },
+      read: { firstTrigger: () => undefined }, threads: { get: () => undefined }, settings: () => SettingsSchema.parse({}) },
     sources: { kind: () => undefined },
     links: () => ({}),
   })
   const answer = await call('GET', 'tasks')
   expect(answer.status).toBe(200)
-  expect(answer.body).toMatchObject({ milestones: [], totals: { milestones: 0, tasks: 0, tickets: 0, open: 0 } })
+  expect(answer.body).toMatchObject({ milestones: [], tasks: [], totals: { milestones: 0, tasks: 0, tickets: 0, open: 0, attention: 0 } })
 })
 
 it('approves a review-stage Ticket through the engine as the panel actor', async () => {

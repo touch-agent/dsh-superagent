@@ -15,6 +15,7 @@ import { HOME, TABS, initialLocation, lastSettingsGroup, parseRoute, remember, r
 import { SettingsPage } from './settings.tsx'
 import { SourceStatus } from './source.tsx'
 import { TasksPage } from './tasks.tsx'
+import type { TasksViewClient } from './tasks-view.ts'
 import { actorName, errorText, reasonLabel, valueLabel, type T, readableMarkers } from './text.ts'
 import { ThreadPage } from './thread.tsx'
 import { TicketPage } from './ticket.tsx'
@@ -26,6 +27,8 @@ export interface AppProps {
   deploymentForm: DeploymentForm
   /** A second mount inside the Conversation: local route, unique DOM ids, no panel-navigation listener. */
   embedded?: boolean
+  /** The plugin's shared task list; a standalone mount (tests, embedded host) may create its own. */
+  tasks?: TasksViewClient
 }
 
 function Glossary({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -142,8 +145,8 @@ function Header({ masterId }: { masterId: string | undefined }) {
   </header>
 }
 
-function Pages({ route, openTab, deploymentForm, pageId, tabPrefix }: { route: Route; openTab: (tab: Tab) => void
-  deploymentForm: DeploymentForm; pageId: string; tabPrefix: string }) {
+function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { route: Route; openTab: (tab: Tab) => void
+  deploymentForm: DeploymentForm; pageId: string; tabPrefix: string; tasks?: TasksViewClient }) {
   const { t } = usePanel()
   const { state, error, reload } = usePanelData()
   // Keep the active tab scrolled into view on narrow screens when routes change via links.
@@ -153,7 +156,7 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix }: { route: R
   const page = (() => {
     switch (route.page) {
       case 'overview': return <OverviewPage />
-      case 'tasks': return <TasksPage />
+      case 'tasks': return <TasksPage tasks={tasks} />
       case 'source': return <SourceStatus />
       case 'trigger': return route.id !== undefined ? <ThreadPage key={route.id} id={route.id} target={route.query?.trigger} />
         : <TriggerStatus filter={route.query?.filter ?? 'subscribed'} />
@@ -177,7 +180,7 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix }: { route: R
 }
 
 /** Root panel component managing route history and shared panel state. */
-export function App({ t, openSession, deploymentForm, embedded = false }: AppProps) {
+export function App({ t, openSession, deploymentForm, embedded = false, tasks }: AppProps) {
   // The embedded Status page keeps its own route and does not overwrite the panel's remembered route.
   const [location, setLocation] = useState<Location>(() => embedded ? { route: HOME, stack: [] } : initialLocation())
   useEffect(() => { if (!embedded) remember(location) }, [location, embedded])
@@ -203,6 +206,6 @@ export function App({ t, openSession, deploymentForm, embedded = false }: AppPro
   const pageId = embedded ? 'dt-page-status' : 'dt-page'
   const tabPrefix = embedded ? 'dt-page-status-tab' : 'dt-tab'
   return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? HOME)}>
-    <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} pageId={pageId} tabPrefix={tabPrefix} />
+    <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} pageId={pageId} tabPrefix={tabPrefix} tasks={tasks} />
   </PanelProvider>
 }

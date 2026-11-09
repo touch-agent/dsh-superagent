@@ -315,6 +315,10 @@ export class Store implements Repositories {
     trace: (traceIdValue: string): Span[] => this.values('SELECT value FROM span WHERE trace = ? ORDER BY at, rowid', traceIdValue),
     /** The newest spans of every trace, newest first. */
     recent: (limit = 50): Span[] => this.values('SELECT value FROM span ORDER BY at DESC, rowid DESC LIMIT ?', limit),
+    /** The spans of several traces in one query, so a task list does not query once per lightweight Ticket. */
+    byTraces: (traceIds: readonly string[]): Span[] => traceIds.length
+      ? this.values(`SELECT value FROM span WHERE trace IN (${traceIds.map(() => '?').join(',')}) ORDER BY at, rowid`, ...traceIds)
+      : [],
   }
 
   /** Graded domain events for the system view, newest first, with an incremental cursor; readers filter quiet events out. */
@@ -336,6 +340,9 @@ export class Store implements Repositories {
     /** The highest stored sequence at `level`, or 0 when none matches. */
     latest: (level?: ActivityLevel): number =>
       Number(this.db.prepare(`SELECT IFNULL(MAX(seq), 0) AS seq FROM activity WHERE 1=1${minLevel(level)}`).get()!.seq),
+    /** One latest record per Ticket, for a task list's "last event" column without a query per row. */
+    latestByTicket: (): ActivityRecord[] =>
+      this.activityValues("seq IN (SELECT MAX(seq) FROM activity WHERE json_extract(value, '$.ticket') IS NOT NULL GROUP BY json_extract(value, '$.ticket'))", []),
   }
   /** Reads activity rows, restoring each row's sequence beside the JSON the grader stored. */
   private activityValues(sql: string, parameters: SQLInputValue[]): ActivityRecord[] {

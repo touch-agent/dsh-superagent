@@ -49,7 +49,8 @@ const openMaster = async (container: HTMLElement) => {
 }
 const feedItem = { seq: 1, at: '2026-01-01T00:00:00Z', event: 'ticket.ended' as const, level: 'notice' as const,
   summary: 'Ticket t1 ended', ticket: 't1' }
-const board = { generatedAt: '2026-09-23T12:00:00Z', totals: { milestones: 1, tasks: 1, tickets: 1, open: 1 }, milestones: [
+const board = { generatedAt: '2026-09-23T12:00:00Z', totals: { milestones: 1, tasks: 1, tickets: 1, open: 1, attention: 0 },
+  tasks: [], milestones: [
   { kind: 'milestone', id: 'M2', title: 'M2', status: 'review', progress: { done: 0, total: 2 }, durationMs: 86_400_000,
     startedAt: '2026-09-22T00:00:00Z', children: [
       { kind: 'task', id: 'T2-03', title: '修复登录', subtitle: 'T2-03', status: 'review', progress: { done: 0, total: 2 },
@@ -82,12 +83,22 @@ it('registers a localized main panel, sidebar entry and Plugin Manager row page,
   const { entries, dictionaries, main, nav } = fixture([])
   expect(entries.map(entry => entry.options.name)).toEqual(['main', 'sidebar.panellist', 'conversation.hero.options',
     'sidebar.session.row.leading', 'conversation.view', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
-    'conversation.session.header.utilities', 'plugins.row.config'])
-  expect(entries[8]!.options).toMatchObject({ key: 'dsh-superagent#dsh-superagent', locale: 'dshSuperagent' })
+    'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title', 'conversation.session.header.utilities', 'plugins.row.config'])
+  expect(entries[10]!.options).toMatchObject({ key: 'dsh-superagent#dsh-superagent', locale: 'dshSuperagent' })
   expect(Object.keys(dictionaries)).toEqual(['dshSuperagent'])
   expect(main.options).toMatchObject({ key: 'dsh-superagent', locale: 'dshSuperagent' })
   expect(nav.options).toMatchObject({ id: 'dsh-superagent', order: 10, locale: 'dshSuperagent' })
   expect(nav.options.label?.()).toBe('Superagent')
+})
+
+
+it('rolls the Task tab and its Events task scope back when taskView.v1 is off', () => {
+  localStorage.setItem('taskView.v1', 'off')
+  const { entries, tabs } = fixture([])
+  expect(entries.map(entry => entry.options.name)).toEqual(['main', 'sidebar.panellist', 'conversation.hero.options',
+    'sidebar.session.row.leading', 'conversation.view', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
+    'conversation.session.header.utilities', 'plugins.row.config'])
+  expect(tabs).toHaveLength(1)
 })
 
 it('opens a listed Session through the workspace from the main panel', async () => {
@@ -355,6 +366,9 @@ it('shows the task tree with milestones, tasks, Tickets, reviews and pull reques
   const { main } = fixture([])
   const view = await render(main, { t })
   await openTasks(view.container)
+  const treeTab = [...view.container.querySelectorAll<HTMLElement>('[role=tab]')].find(item => item.textContent === zh['tasksView.tree'])
+  expect(treeTab).toBeDefined()
+  await act(async () => { treeTab!.click() })
   const rows = [...view.container.querySelectorAll('.dt-task-row')]
   expect(rows.length).toBe(5)
   expect(rows[0]!.textContent).toContain('M2')

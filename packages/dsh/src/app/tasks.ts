@@ -5,10 +5,13 @@
  * reviews and pull requests come from the ownership derivation shared with the Events tab. Nothing here writes to the
  * Store: a board is a projection of the Tickets, Threads and reports that exist, so it cannot disagree with them.
  */
-import { liveTicket, type Thread, type ThreadFacts, type Ticket, type TicketOutcome } from '@superagent/kernel'
-import { activityStatusOf, type ActivityStatus } from './activity.ts'
+import { latestReport, liveTicket, threadKey, ticketForm, traceId, type Artifact, type HumanCriterion, type PreviewRef, type RuleCriterion,
+  type Span, type Thread, type ThreadFacts, type Ticket, type TicketOutcome } from '@superagent/kernel'
+import { activityStatusOf, type ActivityRecord, type ActivityStatus } from './activity.ts'
 import { isReviewTicket, ownershipIndex, type OwnershipIndex, type PlanRef } from './ownership.ts'
-import { snapshot, threadFacts, type Snapshot, type ViewHost } from './views/records.ts'
+import { snapshot, threadFacts, type ActorView, type Snapshot, type ViewHost } from './views/records.ts'
+import { markdown, preview } from './views/text.ts'
+import { workerSessionId } from '../executor/dsh.ts'
 
 /** What a node stands for: a planning milestone, a planned task, a Ticket, a review Ticket, or a pull request. */
 export type TaskNodeKind = 'milestone' | 'task' | 'ticket' | 'review' | 'pull'
@@ -59,11 +62,85 @@ export interface TaskGraph {
 /** A milestone node always carries its graph, so the two views of the same board cannot disagree. */
 export interface TaskMilestone extends TaskNode { kind: 'milestone'; graph: TaskGraph }
 
-/** Everything the Tickets tab reads in one request. */
+/** One source anchor of a task: the conversation, pull request or other Thread the work came from. */
+export interface TaskSourceView {
+  source: string
+  threadKey?: string
+  label?: string
+  url?: string
+  facts?: ThreadFacts
+}
+
+/** One reviewable delivery, deduplicated by artifact and revision; the Phase 1 view has at most one per Ticket. */
+export interface TaskDeliverableSummary {
+  /** `<artifact.kind>:<artifact.ref>:<artifact.revision>`, the key a later aggregate dedupes parent and child work by. */
+  key: string
+  at: string
+  artifact: Artifact
+  previewRef: PreviewRef
+  criteria: RuleCriterion[]
+  confirmations: HumanCriterion[]
+  summary: string
+  /** The person who accepted this revision; present only when the report records it. */
+  accepted?: { by: ActorView; at: string }
+}
+
+/** A Ticket's review surface: its recorded deliverable and criteria, empty when it delivered nothing reviewable. */
+export interface TaskReviewView {
+  deliverables: TaskDeliverableSummary[]
+  criteria: RuleCriterion[]
+  confirmations: HumanCriterion[]
+  summary: string
+  accepted?: { by: ActorView; at: string }
+}
+
+/** How a lightweight Ticket's inline run went, read from the trace it records instead of an Assignment. */
+export interface TaskInlineView {
+  steps: number
+  lastActionAt?: string
+  summary?: string
+  traceId: string
+}
+
+/** One Ticket as the task list reads it; reviews stay separate rows and name the Ticket they review. */
+export interface TaskView {
+  id: string
+  kind: 'ticket' | 'review'
+  /** For a review, the Ticket whose pull request it reviews, when ownership resolves one. */
+  reviewedTicketId?: string
+  title: string
+  /** Missing on records written before forms existed; both the data and the UI read that as `tracked`. */
+  form: 'tracked' | 'lightweight'
+  status: ActivityStatus
+  /** `dropped` and `stopped` are terminal but not failures; counts use this, not `status` alone. */
+  terminal?: 'dropped' | 'stopped'
+  /** A person's turn: review, answer, delivery, blocked or failed work that has not ended. */
+  attention?: boolean
+  plan?: PlanRef
+  origin: { source: string; triggerId: string; preview: string; at: string }
+  sources: TaskSourceView[]
+  lastEventAt?: string
+  startedAt?: string
+  endedAt?: string
+  durationMs?: number
+  /** The review Tickets finished below this Ticket; a delivery step count is not invented here. */
+  progress?: { done: number; total: number }
+  execution: { name?: string; sessionId?: string; assignments: number }
+  /** Deduplicated deliveries; empty for a lightweight Ticket and for a Ticket with no reviewable report. */
+  deliverables: TaskDeliverableSummary[]
+  /** Present only when the latest report recorded a review with a preview; never an empty card. */
+  review?: TaskReviewView
+  /** Present only for a lightweight Ticket, whose inline run has no Assignment to describe it. */
+  inline?: TaskInlineView
+}
+
+/** Everything the Tickets tab reads in one request. The plan tree stays for the rollback and the status-page tree/graph. */
 export interface TaskBoardView {
   generatedAt: string
   milestones: TaskMilestone[]
-  totals: { milestones: number; tasks: number; tickets: number; open: number }
+  /** The flat task list both the right tab and the status page read; read-only and derived at request time. */
+  tasks: TaskView[]
+  totals: { milestones: number; tasks: number; tickets: number; open: number; attention: number }
 }
 
 /** The highest-standing child state; one failure colours the container, and an all-finished container is done. */
@@ -189,6 +266,83 @@ export function graphOf(tasks: readonly TaskNode[], now: number): TaskGraph {
 const milestoneNode = (id: string, title: string, tasks: TaskNode[], now: number): TaskMilestone => ({
   ...container('milestone', tasks, now, { id, title }) as TaskNode, kind: 'milestone', graph: graphOf(tasks, now) })
 
+/** The person stages that make a task need attention; the same set the Events tab's `attention` filter uses. */
+const ATTENTION: ReadonlySet<ActivityStatus> = new Set(['review', 'answer', 'delivery', 'blocked', 'failed'])
+const TERMINAL: Partial<Record<TicketOutcome, 'dropped' | 'stopped'>> = { dropped: 'dropped', stopped: 'stopped' }
+
+/** One snapshot of a Ticket's latest review; absent unless the report recorded a preview of the artifact. */
+function reviewOf(ticket: Ticket, view: Snapshot): { review?: TaskReviewView; deliverables: TaskDeliverableSummary[] } {
+  const report = latestReport(ticket)
+  // A review without a preview cannot be shown or approved; render no card rather than an empty one.
+  const recorded = report?.review
+  if (!report || !recorded?.deliverable?.previewRef) return { deliverables: [] }
+  const { artifact, previewRef } = recorded.deliverable
+  const accepted = report.accepted ? { by: view.actor(report.accepted.by), at: report.accepted.at } : undefined
+  const summary = markdown(report.summary)
+  const deliverable: TaskDeliverableSummary = { key: `${artifact.kind}:${artifact.ref}:${artifact.revision}`, at: report.at, artifact,
+    previewRef, criteria: recorded.criteria, confirmations: recorded.confirmations, summary, ...accepted ? { accepted } : {} }
+  return { review: { deliverables: [deliverable], criteria: recorded.criteria, confirmations: recorded.confirmations, summary,
+    ...accepted ? { accepted } : {} }, deliverables: [deliverable] }
+}
+
+/** A lightweight Ticket's inline history, from the action spans under its Trigger's trace. */
+function inlineOf(ticket: Ticket, spans: readonly Span[]): TaskInlineView {
+  const actions = spans.filter(item => item.kind === 'action')
+  const last = actions.reduce<string | undefined>((latest, item) => !latest || item.at > latest ? item.at : latest, undefined)
+  return { steps: actions.length, ...last ? { lastActionAt: last } : {},
+    ...ticket.ended?.reason ? { summary: markdown(ticket.ended.reason) } : {}, traceId: traceId(ticket.origin.triggerId) }
+}
+
+/** The source anchors a row shows: the originating Trigger first, then every Thread the Ticket subscribes to. */
+function sourcesOf(ticket: Ticket, view: Snapshot): TaskSourceView[] {
+  const trigger = view.store.triggers.get(ticket.origin.triggerId)
+  const sources: TaskSourceView[] = []
+  if (trigger) {
+    const originKey = trigger.threads[0] ? threadKey(trigger.threads[0]) : undefined
+    sources.push({ source: trigger.source, ...originKey ? { threadKey: originKey } : {}, label: preview(trigger.text, 80),
+      ...trigger.url ? { url: trigger.url } : {} })
+  }
+  for (const thread of view.threadsOf(ticket.id)) {
+    const facts = threadFacts(view.store, thread)
+    if (sources.some(item => item.threadKey === facts.key)) continue
+    sources.push({ source: facts.source, threadKey: facts.key, label: facts.title, ...facts.url ? { url: facts.url } : {},
+      ...Object.keys(facts.facts).length ? { facts: facts.facts } : {} })
+  }
+  return sources
+}
+
+/** One Ticket's flat task row; everything here is derived at request time and writes nothing. */
+function taskView(ticket: Ticket, view: Snapshot, index: OwnershipIndex, now: number, latest: ActivityRecord | undefined,
+  inlineSpans: readonly Span[]): TaskView {
+  const form = ticketForm(ticket)
+  const trigger = view.store.triggers.get(ticket.origin.triggerId)
+  const review = isReviewTicket(ticket)
+  const parent = review ? index.of(ticket.id).parent : undefined
+  const status = form === 'lightweight' && !ticket.ended ? 'working' : activityStatusOf(ticket)
+  const terminal = ticket.ended ? TERMINAL[ticket.ended.outcome] : undefined
+  const start = Date.parse(ticket.createdAt), end = ticket.ended ? Date.parse(ticket.ended.at) : now
+  const reviews = index.reviewsOf(ticket.id)
+  const { review: reviewView, deliverables } = form === 'tracked' ? reviewOf(ticket, view) : { review: undefined, deliverables: [] }
+  return {
+    id: ticket.id, kind: review ? 'review' : 'ticket', ...parent ? { reviewedTicketId: parent } : {}, title: ticket.title, form, status,
+    ...terminal ? { terminal } : {}, ...form === 'tracked' && !ticket.ended && ATTENTION.has(status) ? { attention: true } : {},
+    ...index.of(ticket.id).plan ? { plan: index.of(ticket.id).plan } : {},
+    origin: { source: trigger?.source ?? '', triggerId: ticket.origin.triggerId, preview: preview(trigger?.text ?? ''),
+      at: trigger?.at ?? ticket.createdAt },
+    sources: sourcesOf(ticket, view),
+    ...latest ? { lastEventAt: latest.at } : {},
+    ...Number.isFinite(start) && Number.isFinite(end) ? { startedAt: ticket.createdAt, durationMs: Math.max(0, end - start),
+      ...ticket.ended ? { endedAt: ticket.ended.at } : {} } : {},
+    ...reviews.length ? { progress: { done: reviews.filter(item => activityStatusOf(item) === 'done').length, total: reviews.length } } : {},
+    execution: form === 'lightweight' ? { assignments: 0 } : { assignments: ticket.assignments.length,
+      ...ticket.assignments.some(assignment => assignment.startedAt) ? { sessionId: workerSessionId(ticket.id) } : {},
+      ...ticket.execution?.name ? { name: ticket.execution.name } : {} },
+    deliverables,
+    ...reviewView ? { review: reviewView } : {},
+    ...form === 'lightweight' ? { inline: inlineOf(ticket, inlineSpans) } : {},
+  }
+}
+
 /** Build the board from the Store and the source facts the panel already reads. */
 export function taskBoard(host: ViewHost, now = new Date()): TaskBoardView {
   const view = snapshot(host)
@@ -213,7 +367,16 @@ export function taskBoard(host: ViewHost, now = new Date()): TaskBoardView {
   const loose = unplanned.slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     .map(ticket => topNode(ticket, view, index, at))
   if (loose.length) milestones.push(milestoneNode('unplanned', 'unplanned', loose, at))
-  return { generatedAt: new Date(at).toISOString(), milestones,
+  // The flat list is the one projection the right tab and the status page share; its order is stable for tests and people.
+  const latest = new Map<string, ActivityRecord>()
+  for (const record of host.store.activity.latestByTicket()) if (record.ticket) latest.set(record.ticket, record)
+  const lightweight = tickets.filter(ticket => ticketForm(ticket) === 'lightweight')
+  const spans = lightweight.length ? host.store.spans.byTraces(lightweight.map(ticket => traceId(ticket.origin.triggerId))) : []
+  const byTrace = new Map<string, Span[]>()
+  for (const item of spans) byTrace.set(item.traceId, [...byTrace.get(item.traceId) ?? [], item])
+  const tasks = tickets.slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
+    .map(ticket => taskView(ticket, view, index, at, latest.get(ticket.id), byTrace.get(traceId(ticket.origin.triggerId)) ?? []))
+  return { generatedAt: new Date(at).toISOString(), milestones, tasks,
     totals: { milestones: milestones.length, tasks: milestones.reduce((sum, milestone) => sum + milestone.children.length, 0),
-      tickets: tickets.length, open: tickets.filter(liveTicket).length } }
+      tickets: tickets.length, open: tickets.filter(liveTicket).length, attention: tasks.filter(task => task.attention).length } }
 }

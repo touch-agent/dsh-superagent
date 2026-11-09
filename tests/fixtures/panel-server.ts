@@ -10,7 +10,7 @@ import { SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInPart, buil
   environmentSection, policySection, promptParts } from '@superagent/dsh/app/prompts.ts'
 import type { ApprovalRow, DroppedReply, HistoryView, Problem, PromptsView, SetupView, SourceStatusRow, SourceView, StateView,
   ThreadPageView, ThreadRow, TicketPageView, TicketRow, TicketStage, TicketTimelineView, TriggerRow } from '@superagent/dsh/client/api.ts'
-import type { TaskBoardView } from '@superagent/dsh/app/tasks.ts'
+import type { TaskBoardView, TaskView } from '@superagent/dsh/app/tasks.ts'
 import { SETUP_FIELDS } from '@superagent/dsh/deployment.ts'
 import { DispatchConfigSchema, EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSchema } from '@superagent/dsh/policy.ts'
 import { SetupError, type SetupCode } from '@superagent/dsh/setup.ts'
@@ -302,7 +302,21 @@ export function taskBoardView(): TaskBoardView {
     plan: { milestone: 'M2', task: 'T2-03' }, children: [ticket] }
   const second = { kind: 'ticket' as const, id: 't9', title: '整理迁移说明', status: 'blocked' as const, durationMs: 3_600_000,
     startedAt: '2026-09-23T00:00:00Z', href: { page: 'execution' as const, id: 't9' }, children: [] }
-  return { generatedAt: '2026-09-23T12:00:00Z', totals: { milestones: 2, tasks: 2, tickets: 2, open: 2 }, milestones: [
+  const ticketTask: TaskView = { id: 't1', kind: 'ticket', title: '修复回归（T2-03）', form: 'tracked', status: 'working',
+    plan: { milestone: 'M2', task: 'T2-03', title: '修复回归' }, origin: { source: 'feishu', triggerId: 'tr1', preview: '修一下登录回归',
+      at: '2026-09-22T00:00:00Z' }, sources: [{ source: 'feishu', threadKey: 'feishu:oc_team:om_1', label: '登录回归' }],
+    startedAt: '2026-09-22T00:00:00Z', lastEventAt: '2026-09-23T11:00:00Z', progress: { done: 0, total: 1 },
+    execution: { assignments: 1, name: 't1' }, deliverables: [] }
+  const reviewTask: TaskView = { id: 'r1', kind: 'review', reviewedTicketId: 't1', title: 'review PR #42：修复回归',
+    form: 'tracked', status: 'review', attention: true, origin: { source: 'github', triggerId: 'tr2', preview: '请审查 PR #42',
+      at: '2026-09-22T02:00:00Z' }, sources: [{ source: 'github', threadKey: 'github:42', label: '#42 Fix login' }],
+    startedAt: '2026-09-22T02:00:00Z', lastEventAt: '2026-09-23T10:00:00Z', execution: { assignments: 1 }, deliverables: [] }
+  const blockedTask: TaskView = { id: 't9', kind: 'ticket', title: '整理迁移说明', form: 'tracked', status: 'blocked',
+    attention: true, origin: { source: 'conversation', triggerId: 'tr3', preview: '补一下迁移说明', at: '2026-09-23T00:00:00Z' },
+    sources: [{ source: 'conversation', label: '主会话' }], startedAt: '2026-09-23T00:00:00Z',
+    lastEventAt: '2026-09-23T01:00:00Z', execution: { assignments: 1 }, deliverables: [] }
+  return { generatedAt: '2026-09-23T12:00:00Z', totals: { milestones: 2, tasks: 2, tickets: 2, open: 2, attention: 2 },
+    tasks: [ticketTask, reviewTask, blockedTask], milestones: [
     { kind: 'milestone', id: 'M2', title: 'M2', status: 'working', progress: { done: 0, total: 2 }, durationMs: 86_400_000,
       startedAt: '2026-09-22T00:00:00Z', children: [task], graph: { start: '2026-09-22T00:00:00Z', end: '2026-09-23T12:00:00Z', lanes: 1,
         branches: [{ id: 't1', title: '修复回归（T2-03）', task: 'T2-03', start: '2026-09-22T00:00:00Z', status: 'working', lane: 0 }] } },
