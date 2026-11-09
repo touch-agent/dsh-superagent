@@ -1,7 +1,6 @@
 /** A Ticket's audit timeline: the Trigger's trace, where it went, and every Approval, read as who, on what basis, and what changed. */
 import { z } from 'zod'
-import type { Span } from '@superagent/kernel'
-import { ACTION_LEVELS, actionKey, traceId, type ActionCost, type ActionLevel, type ActorRef, type Approval,
+import { ACTION_LEVELS, traceId, type ActionCost, type ActionLevel, type ActorRef, type Approval,
   type AssignmentState, type ChannelRef, type DecisionKind, type PolicyEffect, type Reason, type ReportState, type Review,
   type Strength, type Ticket, type TicketInput, type TicketOutcome } from '@superagent/kernel'
 import type { Store } from '../store.ts'
@@ -104,7 +103,7 @@ export interface TicketTimelineView {
 /** The `action` span data a lightweight Ticket's inline run records, validated because it is read back from JSON. */
 const InlineAction = z.object({
   action: z.object({ kind: z.string(), source: z.string(), objectId: z.string(), revision: z.string(),
-    level: z.enum(ACTION_LEVELS), actor: z.object({ source: z.string(), id: z.string() }), idempotencyKey: z.string().optional(),
+    level: z.enum(ACTION_LEVELS), actor: z.object({ source: z.string(), id: z.string() }),
     cost: z.union([z.object({ kind: z.literal('money'), amount: z.number(), currency: z.string() }),
       z.object({ kind: z.literal('time'), minutes: z.number() })]).optional() }),
   ok: z.boolean().optional(),
@@ -163,13 +162,6 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
   const decision = store.decisions.get(ticket.decisionId)
   const shown = decision ? decisionView(view, decision) : undefined
   const spans = origin ? store.spans.trace(traceId(origin.id)) : []
-  // An action can run under a follow-up Trigger's trace, not only the origin's; read every trace the Ticket knows.
-  const actionSpans = new Map<string, Span>()
-  const traces = new Set<string>(origin ? [traceId(origin.id)] : [])
-  for (const item of ticket.inputs) if (item.kind === 'trigger' || item.kind === 'resumed') traces.add(traceId(item.triggerId))
-  for (const triggerId of decision?.triggerIds ?? []) traces.add(traceId(triggerId))
-  for (const id of traces) for (const span of store.spans.trace(id)) if (span.kind === 'action' && span.data?.ticketId === ticket.id)
-    actionSpans.set(span.id, span)
   const mandateFacts = basisFacts(ticket.mandate.basis, view.rule).facts
   const authority = (): TimelineBasis => ({ strength: ticket.mandate.strength, facts: mandateFacts,
     policyVersion: ticket.mandate.policyVersion })
@@ -185,7 +177,8 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
   }
   // The Decision that accepted the Ticket: who asked, under which strength and rules, at which Policy version.
   if (decision) {
-    const decide = spans.find(span => span.kind === 'decide')
+    const decide = decision.evalId ? spans.find(span => span.kind === 'decide' && span.evalId === decision.evalId)
+      : spans.find(span => span.kind === 'decide')
     entries.push({ id: `decision:${decision.id}`, at: decision.at, kind: 'decision', source: decide ? 'trace' : 'ticket',
       who: { actor: actorName(view, decision.mandate?.actor ?? origin?.actor ?? { source: 'dsh-superagent', id: 'engine' },
         (decision.mandate?.basis.via ?? 'local') !== 'bot') },
@@ -196,12 +189,10 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
   }
   // The Ticket's creation and each Assignment start, both recorded by the Engine in the Trigger's trace.
   const create = spans.find(span => span.kind === 'attach' && span.data?.ticketId === ticket.id && span.data?.created === true)
-  if (!decision || create) {
-    entries.push({ id: create?.id ?? `create:${ticket.id}`, at: create?.at ?? ticket.createdAt, kind: 'create',
-      source: create ? 'trace' : 'ticket', who: decision ? { actor: actorName(view, ticket.mandate.actor,
-        ticket.mandate.basis.via !== 'bot') } : system('executor'), basis: authority(),
-      change: { kind: 'ticket', id: ticket.id, title: ticket.title } })
-  }
+  entries.push({ id: create?.id ?? `create:${ticket.id}`, at: create?.at ?? ticket.createdAt, kind: 'create',
+    source: create ? 'trace' : 'ticket', who: decision ? { actor: actorName(view, ticket.mandate.actor,
+      ticket.mandate.basis.via !== 'bot') } : system('executor'), basis: authority(),
+    change: { kind: 'ticket', id: ticket.id, title: ticket.title } })
   for (const item of ticket.inputs) {
     const entry = inputEntry(store, view, ticket, item)
     if (entry) entries.push(entry)
@@ -226,14 +217,13 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
     }
   }
   // A lightweight Ticket's action ledger: one entry per Action its inline run performed, with ok/error.
-  for (const span of actionSpans.values()) {
+  for (const span of spans) {
+    if (span.kind !== 'action' || span.data?.ticketId !== ticket.id) continue
     const parsed = InlineAction.safeParse(span.data)
     if (!parsed.success) continue
     const action = parsed.data.action
-    const approval = store.approvals.byTicket(ticket.id).find(item => item.action.idempotencyKey === actionKey(action))
     entries.push({ id: span.id, at: span.at, kind: 'action', source: 'trace',
-      who: { actor: actorName(view, action.actor) }, basis: { ...authority(),
-        ...approval ? { approval: approvalOf(view, approval) } : {} },
+      who: { actor: actorName(view, action.actor) }, basis: authority(),
       change: { kind: 'action', action: { kind: action.kind, source: action.source, objectId: action.objectId,
         revision: action.revision, level: action.level, actor: actorName(view, action.actor),
         ...action.cost ? { cost: action.cost } : {} },
