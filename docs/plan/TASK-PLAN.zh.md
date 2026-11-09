@@ -422,6 +422,7 @@ graph LR
 
 - **交付**：`sessions.ts` 增 warm 池（N 个空闲 worker，超时回收）；Assignment 复用同 Session 时不再 `create`。
 - **验收**：连续 5 个小活，第 2 个起冷启动耗时为 0；池泄漏测试（回收后进程数回落）。
+- **设计约束**：workspace handle 的模型见 [docs/013](../013-workspace-model.zh.md)；本任务只负责 warm 池本身与同 Ticket 的 Session 复用。跨 Ticket 复用必须先释放写租约、reset 空间并重置 Session（T3-13），否则不得把带旧目标/历史的 Session 直接指到新空间。
 
 ### T3-07 review 页的结构性约束 · Runtime · 3 人日
 
@@ -433,6 +434,22 @@ graph LR
 
 - **交付**：按 trace + disposition + approval 合成一条人类可读时间线。
 - **验收**：任意工单的每个动作都能回答「谁、凭什么、改了什么」。
+
+### T3-12 工作空间模型 Phase 1：空间只读投影与 E2 视图 · Runtime · 4 人日
+
+- **目标**：把现有 `execution.directory` 事实投影为可观测的空间引用，回答「哪个空间、谁在用、是否旧布局」；不改变执行路径、不新增 schema、不引入租约写行为。
+- **交付**：`Execution` 的只读投影 `workspace`（`kind`/`name`/`locator`/`branch`/`state`/`holder`/`legacy`，从 execution、Assignment 与 Session 派生，lightweight 不伪造）；`GET spaces` 只读端点（管理 API）；E1 任务详情「空间」区块与 E2 管理面板「空间」只读列表（筛选、按空间分组）；feature flag `workspace.view`；`docs/003`、`docs/006` 补「目录即空间 locator」与配置说明；`tests/spaces.spec.ts`、`tests/panel-spaces.spec.tsx`。
+- **验收**：根/子/旧嵌套/lightweight 四类投影正确；E0 不出现空间，360px 右栏不出现空间视图；无 schema 变化、无写接口、无租约行为；`pnpm check`；实现 UI 时 PR 附同场景 Before/After。
+- **估时**：4 人日。**依赖**：T3-09、T3-10（均已完成）、[docs/013](../013-workspace-model.zh.md) 的 Phase 1。**回退**：feature flag `workspace.view`，关闭即回旧界面。
+- **泳道**：Runtime。
+
+### T3-13 工作空间模型 Phase 2：写租约与子 Ticket 独立空间 · Kernel + Runtime · 7 人日
+
+- **目标**：同一空间同一时刻只有一个写者；子 Ticket 默认拥有与父分离的检出；冲突可解释、重启可恢复、旧布局可兼容。
+- **交付**：additive `space`/`space_lease` 表（只加表与索引，不改旧记录）；执行器在 prepare 后获取写租约、Ticket 结束时释放；`spaceLeaseHeld` 排队与 stale/epoch 恢复；子 Ticket 新空间放执行根兄弟目录（旧嵌套按 legacy 收养，不搬迁）；prepare 后置校验（分支、脏状态、无其他写者、`verifyDirectory`）；E2 释放/回收/复用（需确认、审计）；`docs/003`、`docs/006` 更新；`tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`、`tests/panel-spaces.spec.tsx`。
+- **验收**：两个 Ticket 指向同一空间时第二个排队、不覆盖；同一 Ticket 重入；父子默认不同目录且父清理不删子空间；重启后 stale 恢复且父先于子；子 Ticket 仍不能推送/开 PR；旧库/旧 worktree 迁移演练无重复 prepare；`pnpm check`。
+- **估时**：7 人日。**依赖**：T3-12、[docs/013](../013-workspace-model.zh.md) 的 Phase 2。**回退**：flag `workspace.lease` 关闭回到路径模式；additive 表保留，不影响旧读。
+- **泳道**：Kernel + Runtime。
 
 ---
 
