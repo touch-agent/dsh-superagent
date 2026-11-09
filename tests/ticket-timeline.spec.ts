@@ -66,6 +66,9 @@ it('reads a tracked Ticket as request, decision, creation, dispatch, inputs, rep
   const timeline = ticketTimeline(host(), 't1')!
   expect(timeline.entries.map(entry => entry.kind)).toEqual(['request', 'decision', 'create', 'dispatch', 'report', 'input', 'approval'])
   expect(timeline.gaps).toBeUndefined()
+  // Each step keeps the record it came from: the Trigger's trace, its disposition, the Approval and the Ticket.
+  expect(timeline.entries.map(entry => entry.source)).toEqual(['disposition', 'trace', 'trace', 'trace', 'ticket', 'disposition',
+    'approval'])
   expect(timeline.entries.map(entry => entry.who.actor?.name ?? entry.who.system)).toEqual([{ zh: 'Alice', en: 'Alice' }, { zh: 'Alice',
     en: 'Alice' }, { zh: 'Alice', en: 'Alice' }, 'executor', 'executor', { zh: 'Alice', en: 'Alice' }, { zh: '管理页', en: 'Panel' }])
   const [, accepted, , dispatched, reported, followup, approval] = timeline.entries
