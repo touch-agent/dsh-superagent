@@ -33,7 +33,7 @@
 
 ### 1.1 系统根、执行根与主 Session
 
-- 一进程一 system：主 Session 的工作目录是 `<stateDir>/system`；默认执行根是 `<stateDir>/system/work`，可由 `executor.directory` 改到别处。主 Session 的目录是上下文根，worker 目录是它下面的一层。
+- 一进程一 system：主 Session 的工作目录是 `<stateDir>/system`；默认执行根是 `<stateDir>/system/work`，可由 `executor.directory` 改到别处。主 Session 的目录是上下文根；worker 目录默认是它下面的一层，配置后可落在别处。
 - 这些都只是默认值，**不是安全边界**：worker 以操作者 OS 用户运行，可以 `cd` 到任何位置，也可以用绝对路径执行程序。
 - 主 Session 在系统根直接使用工具；这类调用不进入某个 Ticket 的 action ledger，也没有「空间」归属。它是路由、读上下文、做部署/维护的场所。
 
@@ -147,13 +147,15 @@ interface WorkspaceRef {
 | 类型 | 是什么 | 谁写 | 典型用途 | 生命周期 |
 | --- | --- | --- | --- | --- |
 | `root` | 主 Session 的系统根（`<stateDir>/system`） | 主 Session 的维护/路由操作；不是用户工作 | 读上下文、部署/维护、路由 | 进程级持久；不随 Ticket 回收 |
-| `project` | 项目基线：本地克隆/缓存/共享只读检出 | 部署维护（fetch/更新）持写租约；worker 只读 | prepare 的源、跨 Ticket 的只读上下文 | 长生命周期；定期 fetch |
+| `project` | 项目基线（根仓库的本地克隆/缓存/共享只读检出） | 部署维护（fetch/更新）持写租约；worker 只读 | prepare 的源、跨 Ticket 的只读上下文 | 长生命周期；定期 fetch |
 | `checkout` | 每 Ticket 的 VCS 检出（worktree） | 该 Ticket 独占写租约 | 代码修改、测试、分支、PR | Ticket 生命周期 + 交付保留期 |
 | `scratch` | 每 Ticket 的临时目录（可无 VCS） | 该 Ticket 独占写租约 | 文档草稿、数据分析、临时产物 | Ticket 生命周期 + 短保留期 |
 | `subdir` | 另一个空间的路径视图（如 monorepo 包） | 跟随所属 `checkout` 的租约，不单独写 | 限定 cwd、减少上下文 | 跟随所属空间；不单独回收 |
 | `remote` | 未来：云工作区、对象桶、远程容器 | provider 决定；语义同写租约 | 云端长任务、共享工作区 | provider 回收 |
 
 **类型选择不是权限等级**。`checkout` 不比 `scratch` 更「可信」；`root` 不比 `checkout` 更「安全」。类型只描述工作形态与生命周期。
+
+对应需求里的说法：根仓库 ≈ `project`，项目 worktree ≈ `checkout`，临时目录 ≈ `scratch`，子目录 ≈ `subdir`；`root` 是系统根，`remote` 是未来的 provider 空间。
 
 ### 2.3 与任务树正交
 
