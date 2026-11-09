@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { Engine, MemoryRepositories, UserError, outboundAction, type Policy, type Ticket } from '@superagent/kernel'
 import { requestActionApproval } from '@superagent/dsh/app/action-gate.ts'
 import { ApprovalPolicySchema } from '@superagent/dsh/policy.ts'
+import { childShellReason } from '@superagent/dsh/app/sessions.ts'
 
 const actor = { source: 'chat', id: 'alice' }
 const root: Ticket = {
@@ -64,5 +65,15 @@ describe('child Tickets are not an authorization root', () => {
     expect(outcome.approval).not.toHaveProperty('requestedForTicketId')
     expect(h.repo.approvals.byTicket('root')).toHaveLength(1)
     expect(h.repo.approvals.byTicket(h.child.id)).toEqual([])
+  })
+})
+
+describe('a child shell is restricted at the tool level', () => {
+  it('refuses network, GitHub, git-remote and state access while allowing local work', () => {
+    for (const command of ['gh pr create --fill', 'git push origin HEAD', 'curl https://example.test', 'sqlite3 db.sqlite .tables',
+      'cat /Users/me/.dsh/state/superagent/store.sqlite']) expect(childShellReason(command), command).toBeDefined()
+    for (const command of ['pnpm vitest run', 'git diff --stat', 'git commit -m "work"', 'ls -la', 'rg TODO src']) {
+      expect(childShellReason(command), command).toBeUndefined()
+    }
   })
 })
