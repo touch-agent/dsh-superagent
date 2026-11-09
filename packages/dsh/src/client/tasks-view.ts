@@ -143,12 +143,12 @@ export class TasksViewClient {
     try {
       const data = await this.call('GET tasks')
       this.publish({ ...this.snapshot, data, ready: true, loading: false, error: undefined })
-      // A board poll can change a selected Ticket's children or review revision; refresh that detail once, not per row.
+      // A board poll can change a selected Ticket's children or review revision; refresh the selected detail and the root
+      // whose child layer is open, keeping the cached rows visible while the request runs.
       const selected = this.snapshot.selection?.id
-      if (selected) {
-        this.details.delete(selected)
-        void this.loadDetail(selected)
-      }
+      if (selected) void this.loadDetail(selected)
+      const root = this.snapshot.selection?.rootId
+      if (root && root !== selected) void this.loadDetail(root)
     } catch (failure) {
       this.publish({ ...this.snapshot, error: failure instanceof Error ? failure : new Error(String(failure)), ready: true, loading: false })
     }
