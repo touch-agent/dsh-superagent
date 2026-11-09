@@ -1225,16 +1225,16 @@ UI：根 Ticket 详情的“交付与审查”区块读 `TaskReviewView`，不�
 
 ## 9. 分阶段落地
 
-### 第 0 期：lightweight 运行时前置（仅在产品要支持轻量时）
+### 第 0 期：lightweight 运行时前置（已接通）
 
-这不是任务视图本身的工期，而是第 1 期里 lightweight 行能否验收的前置条件：
+这是第 1 期里 lightweight 行验收的前置条件，2026-11-09 已满足：
 
-- 生产 `InlineExecutor` 实现并注入 `assembly.ts`；`Tickets.startInline`/`wake` 能在生产装配下运行；
-- Eval/assessor 显式选择 `form`，`prepareTicket` 执行 3.5.1 的约束（review/workspace/子 Ticket/外部写必须 tracked）；
-- 没有生产 `inline` 时，accept 不得选择 lightweight；启动时缺 `inline` 必须拒绝，而不是静默创建无执行器的 Ticket；
+- 生产 `InlineWork` 已实现并注入 `assembly.ts`；`Tickets.startInline`/`wake` 能在生产装配下运行；
+- Eval/assessor 已能显式选择 `form`，`prepareTicket` 执行 3.5.1 的约束（review/workspace/子 Ticket/外部写必须 tracked）；
+- 运行时尚缺 `inline` 时仍拒绝 accept/启动，不静默创建无执行器的 Ticket（防御性约束保留）；
 - 重启恢复策略明确：当前 lightweight 不做恢复；升级只走新 Thread/对话（3.5.3）。
 
-**Phase 0 未完成前，第 1 期只验收 tracked；lightweight 行只做前向兼容渲染，不声称产品已能受理。** 这避免把 kernel-only 状态伪装成运行时事实。
+**Phase 0 已接通：第 1 期按真实 lightweight 受理边界验收（一次只读仓库查文件，最多 4 个路径），不再把 kernel-only 状态伪装成运行时事实，也不夸大能力。**
 
 ### 第 1 期：右栏只读任务视图（先让用户看见）
 
