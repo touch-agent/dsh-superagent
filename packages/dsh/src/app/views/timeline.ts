@@ -168,7 +168,7 @@ export function ticketTimeline(host: ViewHost, ticketId: string): TicketTimeline
   const entries: TimelineEntry[] = []
   // The request itself: the message the Ticket was accepted from, with where that Trigger went.
   if (origin) {
-    entries.push({ id: `request:${origin.id}`, at: origin.at, kind: 'request', source: 'disposition',
+    entries.push({ id: `request:${origin.id}`, at: origin.at, kind: 'request', source: disposition ? 'disposition' : 'ticket',
       who: { actor: actorName(view, origin.actor, origin.human) },
       basis: { policyVersion: decision?.policyVersion ?? ticket.mandate.policyVersion,
         ...disposition ? { disposition: dispositionOf(store, ticket.id, origin.id, true)! } : {} },
@@ -268,7 +268,8 @@ function inputEntry(store: Store, view: Snapshot, ticket: Ticket, item: TicketIn
       if (!trigger) return { ...base, kind: 'input', who: system('session'), basis: { policyVersion: ticket.mandate.policyVersion },
         change: { kind: 'input', input: { kind: 'trigger', delivered: !ticket.undelivered.includes(item.id) } }, gap: 'noTrace' as const }
       const handback = (store.triggers.disposition(item.triggerId)?.handbacks ?? []).find(handback => handback.ticketId === ticket.id)
-      return { ...base, kind: 'input', source: 'disposition', who: { actor: actorName(view, trigger.actor, trigger.human) },
+      return { ...base, kind: 'input', source: store.triggers.disposition(item.triggerId) ? 'disposition' : 'ticket',
+        who: { actor: actorName(view, trigger.actor, trigger.human) },
         basis: { policyVersion: ticket.mandate.policyVersion, ...store.triggers.disposition(item.triggerId)
           ? { disposition: dispositionOf(store, ticket.id, item.triggerId, !ticket.undelivered.includes(item.id)) } : {} },
         change: { kind: 'input', input: { kind: 'trigger', preview: preview(trigger.text), delivered: !ticket.undelivered.includes(item.id),
