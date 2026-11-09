@@ -149,7 +149,7 @@
 
 ### 3.5 轻量 Ticket 与 tracked 任务树（#29 合入后）
 
-#29 已把 Ticket 明确分成两种 form：`TicketForm = 'tracked' | 'lightweight'`，`ticket.form` 缺省为 tracked；`ticketForm()` 读取。二者都是 Ticket，都有 Mandate、来源、Inputs、结束状态，但执行方式不同：
+#29 已把根 Ticket 明确分成两种 form：`TicketForm = 'tracked' | 'lightweight'`，`ticket.form` 缺省为 tracked；`ticketForm()` 读取。二者都是根 Ticket，都有 Mandate、来源、Inputs、结束状态，但执行方式不同（子 Ticket 永远是 tracked，见 4.1）：
 
 | 维度 | tracked Ticket | lightweight Ticket（#29） |
 | --- | --- | --- |
