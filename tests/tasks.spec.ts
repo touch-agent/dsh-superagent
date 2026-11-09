@@ -92,7 +92,7 @@ it('builds milestones, tasks, Tickets, reviews and pull requests from the facts 
   seed(store, [impl, review, loose])
   store.threads.save(thread(['impl']))
   const board = taskBoard(host(store), new Date('2026-09-22T12:00:00Z'))
-  expect(board.totals).toEqual({ milestones: 2, tasks: 2, tickets: 3, open: 2 })
+  expect(board.totals).toEqual({ milestones: 2, tasks: 2, tickets: 3, open: 2, attention: 1 })
   const [milestone, unplanned] = board.milestones
   expect(milestone).toMatchObject({ id: 'M2', status: 'review', progress: { done: 0, total: 2 } })
   const task = milestone!.children[0]!

@@ -8,6 +8,7 @@ import type { ActivityRecord, ActivityStatus, ActivitySubject, ActivityTask } fr
 import type { ActivityFeedClient, ActivitySnapshot } from './activity-feed.ts'
 import { useActivityFeed } from './activity-feed.ts'
 import { Button, Icon, Pill, Tag, type IconName, type TagTone } from './controls.tsx'
+import { useTaskSelection, type TasksViewClient } from './tasks-view.ts'
 import type { MasterStore } from './master.ts'
 import { useMaster } from './master.ts'
 import { settingsRoute, type Route } from './route.ts'
@@ -184,8 +185,8 @@ export function ActivityLine({ record, t, onOpen }: { record: ActivityRecord; t:
   </li>
 }
 /** One task: its title, state and origin, folded open to the event lines. */
-function ActivityGroupView({ group, t, open, onToggle, onOpen }: { group: ActivityGroup; t: T; open: boolean
-  onToggle: () => void; onOpen: (route: Route) => void }) {
+function ActivityGroupView({ group, t, open, onToggle, onOpen, onLocate }: { group: ActivityGroup; t: T; open: boolean
+  onToggle: () => void; onOpen: (route: Route) => void; onLocate?: () => void }) {
   const latest = group.items[0]!
   return <li className="dt-events-group" data-status={group.status}>
     <div className="dt-events-group-head">
@@ -193,6 +194,8 @@ function ActivityGroupView({ group, t, open, onToggle, onOpen }: { group: Activi
         <span className="dt-events-chevron"><Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} /></span>
         <span className="dt-events-group-title">{group.title || t('eventsSystem')}</span>
       </button>
+      {onLocate && <Button className="dt-events-locate" size="sm" variant="ghost" aria-label={t('eventsLocateTask')}
+        title={t('eventsLocateTask')} icon={<Icon name="review" size={13} />} onClick={onLocate} />}
       <Tag tone={STATUS_TONE[group.status]}><span className="dt-events-status-icon"><Icon name={STATUS_ICON[group.status]}
         size={12} /></span>{statusLabel(t, group.status)}</Tag>
     </div>
@@ -206,8 +209,8 @@ function ActivityGroupView({ group, t, open, onToggle, onOpen }: { group: Activi
   </li>
 }
 /** The folded feed: groups in newest-first order, each expandable to its event lines. */
-function ActivityGroups({ groups, t, onOpen, empty }: { groups: readonly ActivityGroup[]; t: T; onOpen: (route: Route) => void
-  empty: string }) {
+function ActivityGroups({ groups, t, onOpen, empty, onLocate, locatable }: { groups: readonly ActivityGroup[]; t: T; onOpen: (route: Route) => void
+  empty: string; onLocate?: (key: string) => void; locatable?: (key: string) => boolean }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
   const toggle = (key: string) => setOpen(previous => {
     const next = new Set(previous)
@@ -216,37 +219,54 @@ function ActivityGroups({ groups, t, onOpen, empty }: { groups: readonly Activit
   })
   if (!groups.length) return <p className="dt-hint">{empty}</p>
   return <ul className="dt-list dt-events-groups">{groups.map(group => <ActivityGroupView key={group.key} group={group}
-    t={t} open={open.has(group.key)} onToggle={() => toggle(group.key)} onOpen={onOpen} />)}</ul>
+    t={t} open={open.has(group.key)} onToggle={() => toggle(group.key)} onOpen={onOpen}
+    onLocate={onLocate && locatable?.(group.key) ? () => onLocate(group.key) : undefined} />)}</ul>
 }
 /** The feed as task groups, folded by default so the newest event of each task stays visible without its whole history. */
-export function ActivityList({ items, t, onOpen, empty }: { items: readonly ActivityRecord[]; t: T; onOpen: (route: Route) => void
-  empty: string }) {
-  return <ActivityGroups groups={groupActivity(items)} t={t} onOpen={onOpen} empty={empty} />
+export function ActivityList({ items, t, onOpen, empty, onLocate, locatable }: { items: readonly ActivityRecord[]; t: T; onOpen: (route: Route) => void
+  empty: string; onLocate?: (key: string) => void; locatable?: (key: string) => boolean }) {
+  return <ActivityGroups groups={groupActivity(items)} t={t} onOpen={onOpen} empty={empty} onLocate={onLocate} locatable={locatable} />
 }
 function FeedHint({ snapshot, t }: { snapshot: ActivitySnapshot; t: T }) {
   const mode = snapshot.mode === 'streaming' ? t('eventsLive') : snapshot.mode === 'polling' ? t('eventsPolling') : t('eventsConnecting')
   return <p className={snapshot.error ? 'dt-hint dt-error-text' : 'dt-hint'}>{snapshot.error ?? mode}</p>
 }
 /** The right pane body; opening it marks the head seen, so its tab title clears. */
-export function EventsTab({ t, activity, master, onOpen }: { t: T; activity: ActivityFeedClient; master: MasterStore
-  onOpen: (route: Route) => void }) {
+export function EventsTab({ t, activity, master, tasks, onOpen, onOpenTasks }: { t: T; activity: ActivityFeedClient; master: MasterStore
+  tasks?: TasksViewClient; onOpen: (route: Route) => void; onOpenTasks?: () => void }) {
   const snapshot = useActivityFeed(activity)
   const identity = useMaster(master)
+  const selection = useTaskSelection(tasks)
   const [filter, setFilter] = useState<ActivityFilter>('all')
   useEffect(() => { activity.markSeen() }, [activity])
   const current = identity.masterId === undefined || identity.masterId === ''
     ? undefined : identity.masterId
-  const shown = groupActivity(snapshot.items).filter(group => matchesActivityFilter(group.status, filter))
+  const groups = groupActivity(snapshot.items)
+  // A selected review row narrows to the Ticket it reviews, whose events own the group.
+  const selectedTask = selection && tasks ? tasks.taskOf(selection.id) : undefined
+  // The Events chip names the Ticket whose events are shown, not the review row that selected it.
+  const selectedEventTask = selectedTask?.kind === 'review' && selectedTask.reviewedTicketId
+    ? tasks?.taskOf(selectedTask.reviewedTicketId) : selectedTask
+  const scoped = selection && tasks ? groups.filter(group => group.key === tasks.eventTaskId(selection.id)) : groups
+  const shown = scoped.filter(group => matchesActivityFilter(group.status, filter))
+  const locate = tasks ? (key: string) => { const task = tasks.taskOf(key); if (!task) return
+    tasks.select({ kind: 'ticket', id: task.id }); onOpenTasks?.() } : undefined
   return <div className="dt-events-tab">
     <div className="dt-events-head">
       <h2 className="dt-events-title">{t('eventsTab')}</h2>
       <FeedHint snapshot={snapshot} t={t} />
     </div>
     {current === undefined && <p className="dt-hint">{t('eventsWaitingMaster')}</p>}
+    {selection && tasks && <div className="dt-events-selection">
+      <span className="dt-events-selection-title">{t('eventsTaskFilter', { title: selectedEventTask?.title ?? tasks.titleOf(selection.id) ?? selection.id })}</span>
+      <Button size="sm" variant="ghost" aria-label={t('eventsClearTask')} title={t('eventsClearTask')} icon={<Icon name="close" size={13} />}
+        onClick={() => tasks.select(undefined)} />
+    </div>}
     <div className="dt-events-filters" role="group" aria-label={t('eventsTab')}>
       {FILTERS.map(value => <Pill key={value} active={filter === value} onClick={() => setFilter(value)}>{t(`activityFilter.${value}`)}</Pill>)}
     </div>
-    <ActivityGroups groups={shown} t={t} onOpen={onOpen} empty={snapshot.items.length ? t('eventsFilterEmpty') : t('eventsEmpty')} />
+    <ActivityGroups groups={shown} t={t} onOpen={onOpen} onLocate={locate} locatable={tasks ? key => !!tasks.taskOf(key) : undefined}
+      empty={selection ? t('eventsTaskEmpty') : snapshot.items.length ? t('eventsFilterEmpty') : t('eventsEmpty')} />
   </div>
 }
 /** The tab chip; unread notice-level events after the persisted cursor are counted here. */

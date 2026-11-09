@@ -3,14 +3,15 @@
  * optional git-like graph of when Tickets ran in parallel and where they merged. Both views read one `GET tasks`
  * projection, so they cannot disagree about a node's state, progress or times.
  */
-import { useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import type { ActivityStatus } from '../app/activity.ts'
-import type { TaskBoardView, TaskGraphBranch, TaskMilestone, TaskNode } from '../app/tasks.ts'
-import { usePoll } from './api.ts'
-import { Dot, Icon, SegmentedTabs, Tag, type DotState, type TagTone } from './controls.tsx'
+import type { TaskBoardView, TaskGraphBranch, TaskMilestone, TaskNode, TaskView } from '../app/tasks.ts'
+import { Button, Dot, Icon, Pill, SegmentedTabs, Tag, type DotState, type TagTone } from './controls.tsx'
+import { taskViewV1 } from './features.ts'
 import { usePanel } from './provider.tsx'
 import type { Route } from './route.ts'
-import { duration, fullTime, localized, when, type T } from './text.ts'
+import { duration, fullTime, localized, valueLabel, when, type T } from './text.ts'
+import { TasksViewClient, useTasksView, type TaskSelection } from './tasks-view.ts'
 import { LoadState, Section } from './widgets.tsx'
 
 const STATUS_TONE: Record<ActivityStatus, TagTone> = { queued: 'neutral', working: 'info', idle: 'neutral', review: 'warning',
@@ -19,6 +20,35 @@ const STATUS_DOT: Record<ActivityStatus, DotState> = { queued: 'idle', working: 
   answer: 'warning', delivery: 'warning', blocked: 'warning', failed: 'error', done: 'done' }
 const VIEWS = ['tree', 'graph'] as const
 type TasksView = typeof VIEWS[number]
+export const TASK_FILTERS = ['all', 'attention', 'running', 'failed'] as const
+export type TaskFilter = typeof TASK_FILTERS[number]
+
+/** The same status semantics as the Events tab, except that only a live person stage counts as attention. */
+export function matchesTaskFilter(task: Pick<TaskView, 'status' | 'attention'>, filter: TaskFilter): boolean {
+  switch (filter) {
+    case 'all': return true
+    case 'attention': return !!task.attention
+    case 'running': return task.status === 'queued' || task.status === 'working' || task.status === 'idle'
+    case 'failed': return task.status === 'failed'
+  }
+}
+
+/** Put each review row directly below the Ticket it reviews; a review with no known owner stays a top-level row. */
+export function orderTasks(tasks: readonly TaskView[]): TaskView[] {
+  const reviews = new Map<string, TaskView[]>()
+  for (const task of tasks) if (task.kind === 'review' && task.reviewedTicketId) {
+    reviews.set(task.reviewedTicketId, [...reviews.get(task.reviewedTicketId) ?? [], task])
+  }
+  const seen = new Set<string>()
+  const ordered: TaskView[] = []
+  for (const task of tasks) {
+    if (task.kind === 'review' && task.reviewedTicketId) continue
+    ordered.push(task); seen.add(task.id)
+    for (const review of reviews.get(task.id) ?? []) { ordered.push(review); seen.add(review.id) }
+  }
+  for (const task of tasks) if (!seen.has(task.id)) ordered.push(task)
+  return ordered
+}
 
 const statusLabel = (t: T, status: ActivityStatus): string => t(`activityStatus.${status}`)
 const kindLabel = (t: T, node: TaskNode): string => t(`tasksKind.${node.kind}`)
@@ -184,23 +214,138 @@ function GraphView({ board }: { board: TaskBoardView }) {
   </>
 }
 
-/** The task board page: one poll, a tree by default, and the graph behind the same toggle in either direction. */
-export function TasksPage(): ReactNode {
-  const { t, call } = usePanel()
+const filterCount = (tasks: readonly TaskView[], filter: TaskFilter): number => tasks.filter(task => matchesTaskFilter(task, filter)).length
+
+/** The four status filters shared with the Events tab's vocabulary; a count appears only where it asks for a person. */
+export function TaskFilters({ t, value, onChange, tasks }: { t: T; value: TaskFilter; onChange: (filter: TaskFilter) => void
+  tasks: readonly TaskView[] }) {
+  const attention = filterCount(tasks, 'attention')
+  return <div className="dt-tasks-filters dt-events-filters" role="group" aria-label={t('tasksFilterLabel')}>
+    {TASK_FILTERS.map(filter => <Pill key={filter} active={value === filter} onClick={() => onChange(filter)}>
+      {t(`activityFilter.${filter}`)}{filter === 'attention' && attention > 0 ? ` ${attention}` : ''}
+    </Pill>)}
+  </div>
+}
+
+/** A row's source anchors, deduplicated and capped so three sources fit a 360px pane. */
+function TaskSources({ t, task }: { t: T; task: TaskView }) {
+  const sources = [...new Set(task.sources.map(source => source.source).filter(Boolean))]
+  return <>{sources.slice(0, 3).map(source => <Tag key={source} tone="quiet">{valueLabel(t, 'source', source)}</Tag>)}
+    {sources.length > 3 && <Tag tone="quiet">+{sources.length - 3}</Tag>}
+    {task.form === 'lightweight' && task.inline && task.inline.steps > 0 && <Tag tone="quiet">
+      {t('tasksInlineSteps', { count: task.inline.steps })}</Tag>}
+    {task.deliverables[0] && <span className="dt-tasks-delivery" title={task.review?.summary}>
+      {t('tasksLatestDelivery', { kind: valueLabel(t, 'artifact', task.deliverables[0].artifact.kind),
+        revision: task.deliverables[0].artifact.revision })}</span>}</>
+}
+
+/**
+ * The compact task list both task surfaces show: one row per Ticket, reviews indented below their owner, with the
+ * person-facing role (parent worker, reviewer, or lightweight) and only deliveries that really have a preview.
+ */
+export function TaskList({ tasks, t, filter, selected, onSelect, onOpenTask, onOpenEvents, empty }: {
+  tasks: readonly TaskView[]; t: T; filter: TaskFilter; selected?: string
+  onSelect?: (id: string) => void; onOpenTask?: (id: string) => void; onOpenEvents?: (id: string) => void; empty?: string
+}) {
+  const shown = orderTasks(tasks).filter(task => matchesTaskFilter(task, filter))
+  if (!shown.length) return <p className="dt-hint">{tasks.length ? t('tasksFilterEmpty') : empty ?? t('tasksEmpty')}</p>
+  return <ul className="dt-tasks-list">
+    {shown.map(task => {
+      const review = task.kind === 'review'
+      const role = task.form === 'lightweight' ? t('tasksForm.lightweight')
+        : review ? t('tasksRole.reviewer') : t('tasksRole.parentWorker')
+      const confirmations = task.review?.confirmations.length ?? 0
+      return <li key={task.id} className="dt-tasks-item" data-kind={task.kind} data-form={task.form}
+        data-status={task.status} data-selected={selected === task.id ? 'true' : undefined}
+        data-review={review ? 'true' : undefined}>
+        <button type="button" className="dt-tasks-row" aria-pressed={selected === task.id} onClick={() => onSelect?.(task.id)}>
+          <span className="dt-tasks-row-head">
+            <Dot state={STATUS_DOT[task.status]} />
+            {review && <Tag tone="quiet">{t('tasksKind.review')}</Tag>}
+            <span className="dt-tasks-title" title={task.title}>{task.title}</span>
+          </span>
+          <span className="dt-tasks-row-meta">
+            <Tag tone={STATUS_TONE[task.status]}>{statusLabel(t, task.status)}</Tag>
+            {task.attention && <Tag tone="warning">{t('tasksAttention')}</Tag>}
+            {task.terminal && <Tag tone="quiet">{t(`tasksTerminal.${task.terminal}`)}</Tag>}
+            {task.progress && <span className="dt-tasks-progress">{t('tasksReviewProgress', task.progress)}</span>}
+            {task.deliverables.length > 0 && <Tag tone="info">{t('tasksDeliverables', { count: task.deliverables.length,
+              confirmations })}</Tag>}
+            {task.lastEventAt && <time dateTime={task.lastEventAt} title={fullTime(task.lastEventAt, t('lang'))}>
+              {when(task.lastEventAt, t('lang'))}</time>}
+          </span>
+          <span className="dt-tasks-row-foot">
+            <span className="dt-tasks-role">{role}</span>
+            <TaskSources t={t} task={task} />
+          </span>
+        </button>
+        {selected === task.id && <div className="dt-tasks-detail">
+          <span className="dt-hint">{task.form === 'lightweight' ? t('tasksLightweightNote') : t('tasksSelectedHint')}</span>
+          {onOpenTask && <Button size="sm" variant="outline" icon={<Icon name="external" size={13} />}
+            onClick={() => onOpenTask(task.id)}>{t('tasksOpen')}</Button>}
+          {onOpenEvents && <Button size="sm" variant="ghost" onClick={() => onOpenEvents(task.id)}>{t('tasksViewEvents')}</Button>}
+        </div>}
+      </li>
+    })}
+  </ul>
+}
+
+/** The right-pane body. It is outside the panel's React tree, so it owns its poll and never assumes `usePanel()`. */
+export function TasksTab({ t, tasks, onOpenStatus, onOpenTask, onOpenEvents }: { t: T; tasks: TasksViewClient
+  onOpenStatus: () => void; onOpenTask: (id: string) => void; onOpenEvents: (id: string) => void }) {
+  const snapshot = useTasksView(tasks)
+  const [filter, setFilter] = useState<TaskFilter>('all')
+  const select = (id: string) => tasks.select(snapshot.selection?.id === id ? undefined : { kind: 'ticket', id } satisfies TaskSelection)
+  return <div className="dt-tasks-tab">
+    <div className="dt-tasks-head">
+      <h2 className="dt-tasks-heading">{t('tasksTab')}</h2>
+      <Button size="sm" variant="ghost" onClick={onOpenStatus}>{t('tasksOpenInStatus')}</Button>
+    </div>
+    {!snapshot.data && !snapshot.error && <p className="dt-hint">{t('loading')}</p>}
+    {snapshot.error && <div className="dt-tasks-error" role="alert"><span>{snapshot.error.message}</span>
+      <Button size="sm" variant="outline" onClick={() => tasks.refresh()}>{t('retry')}</Button></div>}
+    {snapshot.data && <>
+      <TaskFilters t={t} value={filter} onChange={setFilter} tasks={snapshot.data.tasks} />
+      {snapshot.data.totals.tickets === 0
+        ? <p className="dt-hint">{t('tasksEmpty')}</p>
+        : <TaskList tasks={snapshot.data.tasks} t={t} filter={filter} selected={snapshot.selection?.id} onSelect={select}
+          onOpenTask={onOpenTask} onOpenEvents={onOpenEvents} />}
+    </>}
+  </div>
+}
+
+/** The tab chip is intentionally quiet: the Task tab must not pull attention or start a poll before it is opened. */
+export function TasksTitle({ t }: { t: T }) {
+  return <span className="dt-events-chip">{t('tasksTab')}</span>
+}
+
+export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNode {
+  const { t, call, navigate } = usePanel()
+  const store = useMemo(() => tasks ?? new TasksViewClient(call), [tasks, call])
+  // A page-specific client belongs to this page; the shared one is disposed by the plugin effect.
+  useEffect(() => () => { if (!tasks) store.dispose() }, [store, tasks])
+  const snapshot = useTasksView(store)
+  const [filter, setFilter] = useState<TaskFilter>('all')
+  const flag = taskViewV1()
+  const views = flag ? ['list', ...VIEWS] as const : VIEWS
+  const [view, setView] = useState<TasksView | 'list'>(flag ? 'list' : 'tree')
   const id = useId()
-  const [view, setView] = useState<TasksView>('tree')
-  const { data, error } = usePoll(() => call('GET tasks'), [])
-  if (!data) return <LoadState error={error} loading />
+  const data = snapshot.data
+  const select = (ticket: string) => store.select(snapshot.selection?.id === ticket ? undefined : { kind: 'ticket', id: ticket })
+  if (!data) return <LoadState error={snapshot.error} loading={!snapshot.ready || snapshot.loading} />
   return <>
-    {error && <LoadState error={error} loading={false} />}
-    <p className="dt-hint dt-task-intro">{t('tasksIntro')}</p>
+    {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
+    <p className="dt-hint dt-task-intro">{view === 'list' ? t('tasksListIntro') : t('tasksIntro')}</p>
     <div className="dt-task-views">
-      <SegmentedTabs label={t('tasksViewLabel')} value={view} onChange={setView}
-        items={VIEWS.map(value => ({ value, label: t(`tasksView.${value}`), id: `${id}-${value}`, panelId: `${id}-panel` }))} />
+      <SegmentedTabs label={t('tasksViewLabel')} value={view} onChange={value => setView(value)}
+        items={views.map(value => ({ value, label: t(`tasksView.${value}`), id: `${id}-${value}`, panelId: `${id}-panel` }))} />
       <span className="dt-hint">{t('tasksGenerated', { time: when(data.generatedAt, t('lang')) })}</span>
     </div>
+    {view === 'list' && <TaskFilters t={t} value={filter} onChange={setFilter} tasks={data.tasks} />}
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${view}`}>
       {data.totals.tickets === 0 ? <p className="dt-hint">{t('tasksEmpty')}</p>
+        : view === 'list' ? <TaskList tasks={data.tasks} t={t} filter={filter} selected={snapshot.selection?.id} onSelect={select}
+          onOpenTask={ticket => navigate({ page: 'execution', id: ticket })} empty={t('tasksEmpty')} />
         : view === 'tree' ? <TreeView board={data} /> : <GraphView board={data} />}
     </div>
   </>

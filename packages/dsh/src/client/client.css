@@ -474,7 +474,36 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-graph-key { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); }
 .dt-graph-key-line { display: inline-block; width: 22px; height: 2px; background: var(--dsw-alias-border-l1); }
 .dt-graph-key-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); }
+/* Shared compact task list: one wrapping row per Ticket, never wider than a 360px right pane. */
+.dt-tasks-tab { box-sizing: border-box; height: 100%; overflow: auto; padding: 12px 14px 24px; display: flex; flex-direction: column; gap: 10px; }
+.dt-tasks-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.dt-tasks-heading { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; }
+.dt-tasks-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l3)); border-radius: 8px; color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.dt-tasks-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.dt-tasks-item { min-width: 0; overflow: hidden; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 12px; background: var(--dsw-alias-bg-layer-2); }
+.dt-tasks-item[data-review='true'] { margin-inline-start: 10px; border-inline-start-width: 3px; border-inline-start-color: var(--dsw-alias-brand-primary); }
+.dt-tasks-item[data-selected='true'] { border-color: var(--dsw-alias-brand-primary); }
+.dt-tasks-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; box-sizing: border-box; width: 100%; min-width: 0; padding: 9px 10px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dt-tasks-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dt-tasks-row:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
+.dt-tasks-row-head { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.dt-tasks-row-head > .dt-tag { flex: none; }
+.dt-tasks-title { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
+.dt-tasks-row-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); }
+.dt-tasks-row-meta time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dt-tasks-row-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
+.dt-tasks-role { flex: none; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-secondary); }
+.dt-tasks-progress { font-variant-numeric: tabular-nums; }
+.dt-tasks-delivery { min-width: 0; overflow-wrap: anywhere; color: var(--dsw-alias-label-secondary); }
+.dt-tasks-detail { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 10px 10px; border-top: 0.5px solid var(--dsw-alias-border-l3); }
+.dt-tasks-detail .dt-hint { flex: 1 1 100%; min-width: 0; }
+/* A task selected in either surface narrows Events; the chip says which one and can be cleared. */
+.dt-events-selection { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 6px 8px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); }
+.dt-events-selection-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 18px; }
+.dt-events-locate { flex: none; }
 @media (max-width: 720px) {
   .dt-task-title { max-width: 28ch; }
   .dt-task-row { flex-wrap: wrap; }
+  .dt-tasks-tab { padding: 10px 10px 20px; }
+  .dt-task-views .dt-segmented { max-width: none; }
 }
