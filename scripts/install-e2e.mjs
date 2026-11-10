@@ -19,14 +19,19 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, parse, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const profile = 'install-e2e'
-const temporary = mkdtempSync(join(tmpdir(), 'dsh-superagent-install-e2e-'))
+const isWindows = process.platform === 'win32'
+// Windows' `stateDir` schema wants a POSIX-style absolute path, which Node resolves against the current
+// drive (the checkout's drive here). Keep the throwaway home on that same drive so the two spellings name
+// one directory; a drive-letter `stateDir` is rejected by the bundle and is documented as a Windows limit.
+const temporary = mkdtempSync(join(isWindows ? dirname(root) : tmpdir(), 'dsh-superagent-install-e2e-'))
 const home = join(temporary, 'home')
-const stateDir = join(temporary, 'state')
+const statePath = join(temporary, 'state')
+const stateDir = isWindows ? `/${relative(parse(statePath).root, statePath).split(sep).join('/')}` : statePath
 const keep = process.env.KEEP === '1'
 const env = { ...process.env, DSH_HOME: home, NO_COLOR: '1' }
 const results = []
