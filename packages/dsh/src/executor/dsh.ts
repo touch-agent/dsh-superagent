@@ -2,8 +2,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { mkdir, rmdir, stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { mkdir, realpath, rmdir, stat } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { key, latestAssignment, latestReport, liveTicket, runningAssignment, threadKey, waitsForPerson } from '@superagent/kernel'
 import { depthOf } from '@superagent/kernel'
 import type { AssessmentOutcome, Assignment, EngineForExecutor, Execution, Executor, Mandate, PolicyEffect, Ticket, TicketInput, Trigger }
@@ -16,6 +17,7 @@ import { Later, type Effects } from '../app/effects.ts'
 import { executionRoot, type Variable } from '../app/execution-environment.ts'
 import type { Sessions } from '../app/sessions.ts'
 import { WorktreeNameSchema } from '../app/assessment.ts'
+import type { SpaceLease, SpaceLeases } from '../app/spaces.ts'
 import { resultRelay } from '../app/notices.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { cancelled, collectJob, killJobs, runningJobs, stopBackground, stopSubagents, until, untilQuiet } from './background.ts'
@@ -54,6 +56,22 @@ export function transient(error: unknown): boolean {
   const text = error instanceof Error ? `${error.name} ${error.message} ${String((error as { code?: unknown }).code ?? '')}` : String(error)
   return PASSING.test(text)
 }
+/** Verifies a prepared VCS directory is this worktree and that no other worktree holds its branch. */
+async function verifyCheckout(directory: string, subprocess: Parameters<typeof verifyDirectory>[1], signal: AbortSignal): Promise<void> {
+  const git = (argv: string[]): Promise<string> =>
+    runAsWorker(subprocess, argv, directory, AbortSignal.any([signal, AbortSignal.timeout(60_000)]))
+  const top = (await git(['git', 'rev-parse', '--show-toplevel'])).trim()
+  if (resolve(top) !== resolve(directory)) throw new Error(`The prepared checkout reports ${top} as its worktree root, not ${directory}`)
+  const branch = (await git(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+  // A detached checkout has no branch that another worktree could also hold.
+  if (branch === 'HEAD') return
+  const holders = (await git(['git', 'worktree', 'list', '--porcelain'])).trim().split('\n\n').filter(Boolean).flatMap(block => {
+    const path = /^worktree (.+)$/m.exec(block)?.[1]
+    const ref = /^branch (.+)$/m.exec(block)?.[1]
+    return path && ref === `refs/heads/${branch}` && resolve(path) !== resolve(directory) ? [path] : []
+  })
+  if (holders.length) throw new Error(`The prepared branch ${branch} is also checked out at ${holders.join(', ')}`)
+}
 /** Appends a stable 12-character ticket ID suffix to a validated English worktree name. */
 const ticketWorktreeName = (name: string, id: string): string => `${WorktreeNameSchema.parse(name)}-${id.slice(0, 12)}`
 /** Host dependencies used by `DshExecutor`. */
@@ -72,6 +90,8 @@ export interface ExecutorHost {
   readonly lifetime: AbortSignal
   /** Session manager for worker sessions and for relaying worker reports to the main Session. */
   readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds'>
+  /** Write leases for ticket directories; it coordinates writers and grants no action. */
+  readonly spaces: Pick<SpaceLeases, 'reserve' | 'activate' | 'release' | 'reconcile'>
   closing(): boolean
   /** Whether processing is paused, which holds launches and input deliveries. */
   paused(): boolean
@@ -372,6 +392,8 @@ export class DshExecutor implements Executor {
     const sessionId = workerSessionId(ticket.id)
     this.host.store.afterCommit(() => {
       this.settling.get(ticket.id)?.abort()
+      // A Ticket that ended releases its write lease; an Assignment stop on a live Ticket keeps it for a retry.
+      if (ticket.ended) this.host.spaces.release(ticket.id, ticket.execution?.directory)
       if (!ownTurn) this.host.context.agents.get(sessionId as SessionId)?.cancel({ kind: 'user' }, { keepInbox: false })
       // Its shell jobs and subagents stop with it, also those of a worker that ends its own turn.
       this.stopWork(ticket.id, reason)
@@ -441,42 +463,87 @@ export class DshExecutor implements Executor {
     const source = sourceTrigger(this.host, ticket)
     const workspace = ticket.execution?.directory ?? ''
     if (!current()) return
-    // Prepare the workspace directory once; an existing directory counts as already prepared, including worktrees created before `prepare` commands existed.
-    if (!await stat(workspace).then(() => true, () => false)) {
-      await this.prepareDirectory(ticket)
+    const leaseOn = this.host.store.settings().executor.workspace.lease && !!workspace
+    let lease: SpaceLease | undefined
+    try {
+      // Reserve before prepare so two Assignments cannot both create the same directory; a holder waits without a slot.
+      if (leaseOn) {
+        const reserved = await this.host.spaces.reserve({ ticket, assignmentId: assignment.id, sessionId: workerSessionId(ticket.id),
+          live: id => this.isLive(id) })
+        if (!reserved.lease) throw new Later(`The space is held by ${reserved.heldBy.ticketTitle || 'another Ticket'}`)
+        lease = reserved.lease
+        if (!current()) { this.host.spaces.release(ticket.id, workspace); return }
+      }
+      // Prepare the workspace directory once; an existing directory counts as already prepared, including worktrees created before `prepare` commands existed.
+      if (!await stat(workspace).then(() => true, () => false)) {
+        await this.prepareDirectory(ticket)
+        if (!current()) { this.releaseReserved(lease, ticket.id, workspace); return }
+      }
+      if (!current()) { this.releaseReserved(lease, ticket.id, workspace); return }
+      // Verify after prepare: the real directory must still be the reserved locator, and a checkout must belong to this path.
+      if (lease) {
+        await this.verifySpace(ticket, lease)
+        if (!current()) throw new Later('Processing is paused')
+        lease = this.host.spaces.activate(lease)
+      }
+      const sessionId = workerSessionId(ticket.id)
+      const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker')
       if (!current()) return
+      // The background work of the Assignment this one replaces stops first, so its end does not clear this one's message.
+      await this.stopped(ticket.id)
+      if (!current()) return
+      // A message put back for this Assignment may still wait in the Session, kept by a restart's cancel or persisted across a
+      // crash, where this launch's message would take it into a step beside the copy delivered next: that copy is the only one.
+      for (const id of this.host.store.tickets.get(ticket.id)?.undelivered ?? []) agent.inbox.remove(this.host.sessions.promptedId(id))
+      // The first message holds the assignment and the source Trigger; a later Assignment's says only what is new, unless the
+      // Session lost the first, such as when someone deleted it.
+      const first = `assignment:${ticket.id}`
+      const later = ticket.assignments.length > 1
+      const told = later && await this.host.sessions.holds(sessionId, first)
+      if (!current()) return
+      const retried = ticket.assignments.at(-2)?.endedReason === 'retried' ? { note: RETRIED } : {}
+      const assignmentText = ticket.execution?.assignment ?? ''
+      const { text: brief, chars, read } = capped(assignmentText, ASSIGNMENT_CHARS, `ticket/${ticket.id}/assignment`)
+      const card = told || !source ? undefined : await this.triggerCard(ticket, source.id)
+      if (!current()) return
+      const batch = told ? [] : batchOf(this.host, ticket).map(batchLine)
+      const text = told ? JSON.stringify({ ticket_id: ticket.id, assignment: ticket.assignments.length, ...retried })
+        : JSON.stringify({ ticket_id: ticket.id, title: ticket.title, ...(brief ? { assignment: brief } : {}),
+          ...(read ? { assignment_chars: chars, assignment_read: read } : {}), ...(card ? { trigger: card } : {}),
+          ...(batch.length ? { batch } : {}), ...retried })
+      const requestId = later ? `assignment:${ticket.id}:${assignment.id}` : first
+      await this.host.sessions.prompt(sessionId, requestId, text, 'queue',
+        () => { if (!current()) throw new Error('Launch authorization changed before worker delivery') },
+        () => { this.host.engine.assignmentStarted(ticket.id, assignment.id) })
+      this.host.engine.assignmentStarted(ticket.id, assignment.id)
+    } catch (error) {
+      // A reservation that never became active leaves no holder behind; an active lease on a failed live Ticket is kept for retry.
+      if (lease?.state === 'reserved') this.host.spaces.release(ticket.id, workspace)
+      throw error
     }
-    if (!current()) return
-    const sessionId = workerSessionId(ticket.id)
-    const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker')
-    if (!current()) return
-    // The background work of the Assignment this one replaces stops first, so its end does not clear this one's message.
-    await this.stopped(ticket.id)
-    if (!current()) return
-    // A message put back for this Assignment may still wait in the Session, kept by a restart's cancel or persisted across a
-    // crash, where this launch's message would take it into a step beside the copy delivered next: that copy is the only one.
-    for (const id of this.host.store.tickets.get(ticket.id)?.undelivered ?? []) agent.inbox.remove(this.host.sessions.promptedId(id))
-    // The first message holds the assignment and the source Trigger; a later Assignment's says only what is new, unless the
-    // Session lost the first, such as when someone deleted it.
-    const first = `assignment:${ticket.id}`
-    const later = ticket.assignments.length > 1
-    const told = later && await this.host.sessions.holds(sessionId, first)
-    if (!current()) return
-    const retried = ticket.assignments.at(-2)?.endedReason === 'retried' ? { note: RETRIED } : {}
-    const assignmentText = ticket.execution?.assignment ?? ''
-    const { text: brief, chars, read } = capped(assignmentText, ASSIGNMENT_CHARS, `ticket/${ticket.id}/assignment`)
-    const card = told || !source ? undefined : await this.triggerCard(ticket, source.id)
-    if (!current()) return
-    const batch = told ? [] : batchOf(this.host, ticket).map(batchLine)
-    const text = told ? JSON.stringify({ ticket_id: ticket.id, assignment: ticket.assignments.length, ...retried })
-      : JSON.stringify({ ticket_id: ticket.id, title: ticket.title, ...(brief ? { assignment: brief } : {}),
-        ...(read ? { assignment_chars: chars, assignment_read: read } : {}), ...(card ? { trigger: card } : {}),
-        ...(batch.length ? { batch } : {}), ...retried })
-    const requestId = later ? `assignment:${ticket.id}:${assignment.id}` : first
-    await this.host.sessions.prompt(sessionId, requestId, text, 'queue',
-      () => { if (!current()) throw new Error('Launch authorization changed before worker delivery') },
-      () => { this.host.engine.assignmentStarted(ticket.id, assignment.id) })
-    this.host.engine.assignmentStarted(ticket.id, assignment.id)
+  }
+  /** Drops a reservation that never became active, so a pause or stop during prepare leaves no holder behind. */
+  private releaseReserved(lease: SpaceLease | undefined, ticketId: string, directory: string): void {
+    if (lease?.state === 'reserved') this.host.spaces.release(ticketId, directory)
+  }
+  /** Release the Ticket's directory lease at its end, including a Ticket whose last Assignment had already ended. */
+  release(ticket: Ticket): void {
+    this.host.spaces.release(ticket.id, ticket.execution?.directory)
+  }
+  /** Whether this ticket's worker Session still runs a turn, the only live writer that blocks a stale-lease takeover. */
+  isLive(ticketId: string): boolean {
+    return this.host.context.agents.get(workerSessionId(ticketId) as SessionId)?.status === 'running'
+  }
+  /** Verify a prepared directory is the reserved locator and that a checkout is this worktree, not another branch holder. */
+  private async verifySpace(ticket: Ticket, lease: SpaceLease): Promise<void> {
+    const directory = ticket.execution?.directory ?? ''
+    if (!await stat(directory).then(() => true, () => false)) throw new Error(`The prepared directory is missing: ${directory}`)
+    const real = await realpath(directory)
+    if (real !== lease.locatorKey) {
+      throw new Error(`The prepared directory resolves to ${real}, not to the reserved space ${lease.locatorKey}`)
+    }
+    await verifyDirectory(directory, this.host.context.subprocess, this.host.lifetime)
+    if (existsSync(join(directory, '.git'))) await verifyCheckout(directory, this.host.context.subprocess, this.host.lifetime)
   }
   /** Returns the stored ticket for `agent` when it is a worker session, or undefined otherwise. */
   private ticketOf(agent: Agent): Ticket | undefined {
@@ -532,6 +599,8 @@ export class DshExecutor implements Executor {
    * while failed launches (`waitsForPerson`) wait for a person's message or a retry.
    */
   resume(): void {
+    // Old-process leases whose holder has no live Session become stale; a live holder keeps its row until it is stopped.
+    this.host.spaces.reconcile(id => this.isLive(id))
     // Launch pending tickets parents first: a child resumes only when its parent and root are live; otherwise it waits as orphaned.
     const depth = (ticket: Ticket) => depthOf(ticket, id => this.host.store.tickets.get(id))
     const parentsFirst = this.host.store.tickets.allOpen().sort((a, b) => depth(a) - depth(b)

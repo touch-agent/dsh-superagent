@@ -306,7 +306,8 @@ describe('settings migration', () => {
       approval: { sources: {} },
       sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }, { id: 'ou_bob', name: 'Bob' }], syncChat: CHAT, admission: {} }, github: { allowed: [{ id: 'alice' }, { id: 'carol' }], admission: {} } },
     })
-    expect(saved).toMatchObject({ paused: false, executor: { model: null, maxWorkers: 2, directory: '', prepare: '', blockedCommands: [] } })
+    expect(saved).toMatchObject({ paused: false, executor: { model: null, maxWorkers: 2, directory: '', prepare: '', blockedCommands: [],
+      workspace: { lease: true, childSibling: true } } })
     expect(saved.sources.feishu).toEqual({ enabled: true, config: { chats: [], directMessages: true } })
     expect(SettingsSchema.parse(migrateSettings(saved))).toEqual(saved)
     expect(SettingsSchema.parse(migrateSettings({ executor: { maxWorkers: 2, paused: true } }))).toMatchObject({ paused: true, executor: { maxWorkers: 2 } })
@@ -320,7 +321,8 @@ describe('settings migration', () => {
       policy: { rules: [], maxActionLevel: 'draft', mandateMinutes: 0, undoWindowSeconds: 30, approval: { sources: {} }, sources: { feishu: { allowed: [{ id: MEMBER, name: 'A' }], admission: {} }, github: { allowed: [{ id: 'a' }], admission: {} } } },
       eval: { mode: 'auto', timeoutSeconds: 90, model: { provider: 'p', model: 'm' } },
       dispatch: { mode: 'single', maxTickets: 5 },
-      executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [], lightweight: true },
+      executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [], workspace: { lease: true, childSibling: true },
+        lightweight: true },
     })
     expect(migrateSettings(migrated)).toEqual(migrated)
   })

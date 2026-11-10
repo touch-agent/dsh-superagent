@@ -5,11 +5,13 @@ import { LIMITS } from '../limits.ts'
 import { usePoll, type SettingsView, type SourceView, type StateView } from './api.ts'
 import { DisclosureRow, Icon, InfoTip, Input, Pill } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
+import { workspaceView } from './features.ts'
 import { usePanel } from './provider.tsx'
 import { TicketLine } from './rows.tsx'
 import { ConfigHistory, Field, Fields, ModelField, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
-import { localized } from './text.ts'
-import { ConfirmButton, Hint, LabelValue, LoadMore, LoadState, Section, StatusHead } from './widgets.tsx'
+import { localized, valueLabel } from './text.ts'
+import { ConfirmButton, Hint, LabelValue, LoadMore, LoadState, Section, StatusHead, When } from './widgets.tsx'
+import type { SpaceRow } from '../app/spaces.ts'
 
 export function ExecutionStatus({ filter: current, from, state, reload }: {
   filter: TicketFilter; from?: TicketOrigin | undefined; state: StateView; reload: () => Promise<void>
@@ -52,7 +54,66 @@ export function ExecutionStatus({ filter: current, from, state, reload }: {
       ? <TicketLine key={ticket.id} ticket={ticket} question
         onChanged={reloadTickets} /> : <TicketLine key={ticket.id} ticket={ticket} />)}</ul> : <Hint>{t('none')}</Hint>)}
     {data?.next_offset != null && <LoadMore onMore={() => setLimit(limit + 20)} />}
+    {current === 'open' && !from && <SpacesSection />}
   </>
+}
+
+/** Read-only Spaces list: display name, holder, lease diagnostics and a copyable path, grouped by state. */
+function SpacesSection() {
+  const { t, call, navigate } = usePanel()
+  const { data, error } = usePoll(() => call('GET spaces'), [])
+  const [filter, setFilter] = useState<'all' | 'active' | 'legacy' | 'stale' | 'checkout' | 'scratch' | 'unknown'>('all')
+  const [copied, setCopied] = useState<string>()
+  if (!workspaceView()) return null
+  const rows = data?.rows ?? []
+  const isStale = (row: SpaceRow) => !!row.lease?.stale
+  const kinds = new Set(['checkout', 'scratch', 'unknown'])
+  const shown = rows.filter(row => filter === 'all' ? true : filter === 'stale' ? isStale(row)
+    : kinds.has(filter) ? row.kind === filter : row.state === filter)
+  const order = ['preparing', 'active', 'legacy', 'planned', 'ready', 'failed']
+  const grouped = [...new Set(shown.map(row => isStale(row) ? 'stale' : row.state))]
+    .sort((left, right) => (order.indexOf(left) + 1 || 99) - (order.indexOf(right) + 1 || 99))
+    .map(state => [state, shown.filter(row => (isStale(row) ? 'stale' : row.state) === state)] as const)
+  const copy = async (row: SpaceRow) => {
+    try {
+      await navigator.clipboard.writeText(row.locator)
+      setCopied(row.ticket.id)
+      window.setTimeout(() => setCopied(value => value === row.ticket.id ? undefined : value), 1500)
+    } catch { /* clipboard access may be denied; the path stays readable */ }
+  }
+  return <Section title={t('spaces')} count={rows.length} icon="session" hint={t('spacesHint')}>
+    <div className="dt-filters">
+      {(['all', 'active', 'legacy', 'stale'] as const).map(value => <Pill key={value} active={filter === value}
+        onClick={() => setFilter(value)}>{t(`spaceFilter.${value}`)}</Pill>)}
+      <span className="dt-filters-separator" />
+      {(['checkout', 'scratch', 'unknown'] as const).map(value => <Pill key={value} active={filter === value}
+        onClick={() => setFilter(value)}>{valueLabel(t, 'spaceKind', value)}</Pill>)}
+    </div>
+    <LoadState error={error} loading={!data} />
+    {data && (shown.length ? <div className="dt-form">
+      {grouped.map(([state, group]) => <div key={state}>
+        <h3 className="dt-block-title">{valueLabel(t, 'spaceState', state)}<span className="dt-count">{group.length}</span></h3>
+        <ul className="dt-list">{group.map(row => <li className="dt-row" key={row.ticket.id}>
+          <div className="dt-row-main">
+            <div className="dt-row-title"><button type="button" className="dt-open"
+              onClick={() => navigate({ page: 'execution', id: row.ticket.id })}>{row.name}</button>
+              <span className="dt-hint"> · {valueLabel(t, 'spaceKind', row.kind)}{row.branch ? ` · ${row.branch}` : ''}</span>
+              {row.legacy && <span className="dt-hint"> · {t('spaceLegacy')}</span>}
+            </div>
+            <div className="dt-row-meta"><span>{row.ticket.title}</span>
+              <span>{valueLabel(t, 'activityStatus', row.ticket.status)}</span>
+              {row.lease && <span>{t('spaceLeaseState', { state: valueLabel(t, 'spaceLease', row.lease.stale ? 'stale' : row.lease.state),
+                epoch: row.lease.epoch })}</span>}
+              {row.lastAt && <When at={row.lastAt} />}
+            </div>
+            <div className="dt-row-meta"><span className="dt-mono dt-clamp">{row.locator}</span>
+              <button type="button" className="dt-textlink" onClick={() => void copy(row)}>{copied === row.ticket.id ? t('copied') : t('copyPath')}</button>
+            </div>
+          </div>
+        </li>)}</ul>
+      </div>)}
+    </div> : <Hint>{t('spaceNone')}</Hint>)}
+  </Section>
 }
 
 const firstSentence = (text: string): string => /^[^。；;.]*(?:[。；;]|\.(?=\s|$))?/.exec(text)?.[0] ?? text
@@ -123,6 +184,18 @@ export function ExecutionSettings() {
             <Input className="dt-mono" value={value.blockedCommands} placeholder={t('blockedCommandsNone')} spellCheck={false}
               onChange={event => edit({ blockedCommands: event.target.value })} />
           </Field>
+          <Section title={t('workspaceOptions')} hint={t('workspaceOptionsHint')}>
+            <label className="dt-hint" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+              <input type="checkbox" checked={value.workspace.lease}
+                onChange={event => edit({ workspace: { ...value.workspace, lease: event.target.checked } })} />
+              {t('workspaceLease')}
+            </label>
+            <label className="dt-hint" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="checkbox" checked={value.workspace.childSibling}
+                onChange={event => edit({ workspace: { ...value.workspace, childSibling: event.target.checked } })} />
+              {t('workspaceChildSibling')}
+            </label>
+          </Section>
         </div>
       </Fields>
       <SaveBar {...draft} onDiscard={draft.discard} />

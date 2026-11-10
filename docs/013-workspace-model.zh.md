@@ -1,6 +1,8 @@
 # 工作空间模型设计：空间与任务树正交
 
-> 状态：**设计提案 v1.1（2026-11-10，docs-only，未实现）**。按方案 A 精简：`Execution.directory` 是空间的唯一 locator，只增加写租约，不建空间注册表。本文回答「工作空间是什么、和任务树/分支/Session 什么关系、什么情况下用哪种空间、怎么并发与恢复、界面上怎么表达」，不改变领域契约、授权、代码或现有 UI。
+> 状态：**设计 v1.2（2026-11-10）；Phase 1 只读投影与 Phase 2 写租约/独立子空间已实现（T3-12/T3-13）**。按方案 A 精简：`Execution.directory` 是空间的唯一 locator，只增加写租约，不建空间注册表。Phase 3 复用/回收与 Phase 4 provider 仍不在本次范围。
+>
+> 实现备注：schema 16 增加 `space_lease`（additive，旧读忽略）；`packages/dsh/src/app/spaces.ts` 负责 locator、投影和 `SpaceLeases`；执行器在 prepare 前预留、校验后激活、Ticket 结束释放；`executor.workspace.lease` 与 `childSibling` 两个 flag 可分别回退路径模式与旧嵌套布局；E1 的空间区块、E2 的只读列表和 `workspace.view` 客户端开关已落地。租约不进入 Mandate/Action/Approval/Acceptance，任何界面都不把它显示成授权。
 >
 > 依据：2026-11-09 的工作空间模型设计请求与 2026-11-10 的「按 A 精简」决定；现状以 `origin/main`（`e4125e9`，子 Ticket Phase 2a/2b 合入后）为准。
 >
@@ -17,7 +19,7 @@
 | 5 | **租约在 prepare 前预留、prepare 后校验并激活**。先按计划路径占用，避免两个 Assignment 在都未租用时同时 prepare；旧目录首次启动按规范 locator 收养。 | 修复「prepare 之后才取租约」的写者窗口。 |
 | 6 | **Ticket 结束即释放租约；Phase 2 不做跨 Ticket 复用/回收/E2 释放操作**。resume 时重新获取；空间仍绑定原 Ticket 目录，不自动给别人。 | 避免「已结束但可恢复」的 Ticket 被复用时进入别人的分支/工作树。 |
 | 7 | **跨仓库任务拆子 Ticket，不在 Phase 2 提供改绑**。一个 Ticket 一个写空间；同时提交两个仓库就是两个子 Ticket，各自一个空间。 | 避开「改绑唯一写空间」与 Session 固定 cwd 的冲突；多仓库基线留到后续。 |
-| 8 | **UI 先只读**。E0 不出现空间；E1 一个只读区块；E2 只读列表；释放/回收/复用/复制路径等操作留到 Phase 3。 | 符合 docs/011 A/B；Phase 1 就能回答「谁在哪个空间做什么」。 |
+| 8 | **UI 先只读**。E0 不出现空间；E1 一个只读区块；E2 只读列表和复制路径；释放/回收/复用等写操作留到 Phase 3。 | 符合 docs/011 A/B；Phase 1 就能回答「谁在哪个空间做什么」。 |
 | 9 | **与 docs/011/012 的取舍**：空间是 agent 维度的工作目录载体，不是第七层上下文；`Execution.directory` 就是 012 的最小 workspace handle；provider/云空间是 Phase 4 的可替换边界。 | 不新增授权主体、不新增默认注意力成本、不把目录当隔离或权限。 |
 | 10 | **分五阶段落地**：Phase 0 本文与词汇；Phase 1 只读投影与 E2 视图（T3-12）；Phase 2 写租约与子 Ticket 独立空间（T3-13）；Phase 3 复用/回收/E2 操作/warm 池；Phase 4 provider。Phase 1 可以先落地。 | 计划落点见 [T3-12、T3-13](plan/TASK-PLAN.zh.md)；T3-13 范围已随本版收缩。 |
 
@@ -154,7 +156,7 @@
 
 对应需求里的说法：根仓库 ≈ `project`，项目 worktree ≈ `checkout`，临时目录 ≈ `scratch`，子目录 ≈ 所属 `checkout` 的 view；`root` 是系统根，`remote` 是未来的 provider 空间。
 
-**`project` 在 Phase 1 允许缺省**：现有状态没有基线实体；Phase 1 只投影 `root`/`checkout`/`unknown`，不伪造 `project`；Phase 2 也不建基线表，`project` 仍由部署配置与项目仓库派生，真正需要共享基线时再做。
+**`project` 在 Phase 1 允许缺省**：现有状态没有基线实体；Phase 1 只投影 `root`/`checkout`/`unknown`，Phase 2 对已准备但没有 VCS 元数据的目录投影 `scratch`；不伪造 `project`/`remote`。Phase 2 也不建基线表，`project` 仍由部署配置与项目仓库派生，真正需要共享基线时再做。
 
 ### 2.3 与任务树正交
 
@@ -317,8 +319,8 @@ stale → active（新 holder 获取）或 released
 | `reserved` | `released` | prepare 失败/超时，或 locator 不匹配 |
 | `active` | `released` | Ticket 结束/人工释放 |
 | `active` | `stale` | 进程重启且 holder 无活 Session |
-| `stale` | `active` | 新 Assignment 获取（epoch + 1） |
-| `stale` | `released` | 人工确认后释放 |
+| `stale` | `stale` + 新 `reserved` | 新 Assignment 获取：旧行保留为历史，新行 `epoch + 1`，校验后激活 |
+| `active`/`reserved` | `released` | Ticket 结束，或 prepare 失败/校验失败；幂等 |
 
 ### 4.2 创建与校验
 

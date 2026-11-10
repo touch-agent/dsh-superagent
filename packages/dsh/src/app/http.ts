@@ -34,6 +34,8 @@ import { ticketTimeline } from './views/timeline.ts'
 import { triggerTrace } from './views/trace.ts'
 import { activityFeed, activityLookup } from './activity.ts'
 import { taskBoard, taskDetail } from './tasks.ts'
+import { spaceRows } from './spaces.ts'
+import type { SpaceLeases } from './spaces.ts'
 
 export interface HttpHost {
   readonly store: Store
@@ -44,7 +46,9 @@ export interface HttpHost {
   readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery'>
   readonly settings: Pick<Settings, 'view' | 'save' | 'pause' | 'sync' | 'refreshLabels'>
   readonly engine: EngineForPeople
-  readonly executor: Pick<DshExecutor, 'activeCount'>
+  readonly executor: Pick<DshExecutor, 'activeCount' | 'isLive'>
+  /** Write-lease read model; E2 lists spaces and never authorizes from them. */
+  readonly spaces: Pick<SpaceLeases, 'processEpoch'>
   readonly outbox: Pick<Outbox, 'recall' | 'reconcile'>
   readonly health: Record<string, Health>
   readonly machine: Machine
@@ -172,6 +176,8 @@ function routes(runtime: HttpHost): Routes {
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
     'GET metrics': () => metrics(store),
     'GET tasks': () => taskBoard(views(runtime)),
+    'GET spaces': () => ({ generatedAt: new Date().toISOString(),
+      rows: spaceRows(store, runtime.spaces.processEpoch, id => runtime.executor.isLive(id)) }),
     'GET tasks/:id': ({ params, query }) => {
       const detail = taskDetail(views(runtime), params.id, TasksQuery.parse(query).depth)
       if (!detail) throw new RouteError(404, 'Ticket not found')

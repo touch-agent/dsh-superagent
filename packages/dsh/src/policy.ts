@@ -170,12 +170,20 @@ export type DispatchMode = DispatchConfig['mode']
 const CommandNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/).refine(name => name !== '.' && name !== '..', 'Not a command name')
   .refine(name => !WORKER_COMMANDS.includes(name), `${WORKER_COMMANDS.join(', ')} cannot be blocked`)
 /** Executor settings: worker model, concurrency, ticket directory root (empty defaults to `<stateDir>/system/work`), `prepare` command, blocked commands, and whether lightweight tickets may run inline. */
+export const WorkspaceConfigSchema = z.object({
+  /** Whether prepare reserves and activates the write lease in the additive `space_lease` table. */
+  lease: z.boolean().default(true),
+  /** Whether a child Ticket gets a sibling directory under the execution root instead of a nested one. */
+  childSibling: z.boolean().default(true),
+}).strict()
 export const ExecutorConfigSchema = z.object({
   model: RoleModelSchema.nullable().default(null),
   maxWorkers: z.number().int().min(LIMITS.maxWorkers.min).max(LIMITS.maxWorkers.max).default(3),
   directory: z.string().trim().refine(path => path === '' || path.startsWith('/'), 'An absolute path, or empty for <stateDir>/system/work').default(''),
   prepare: z.string().max(LIMITS.prepareCommand).default(''),
   blockedCommands: z.array(CommandNameSchema).default([]),
+  /** Write-lease and child-layout flags; both default on and can be turned off for a path-mode rollback. */
+  workspace: WorkspaceConfigSchema.default(() => WorkspaceConfigSchema.parse({})),
   /**
    * Whether an accept may choose the lightweight form. The form itself still defaults to tracked; turning this off is the
    * deployment-wide fallback that keeps every accept tracked with its Assignment, Session and workspace.

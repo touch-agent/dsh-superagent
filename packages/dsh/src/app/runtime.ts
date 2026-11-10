@@ -37,6 +37,7 @@ import { HealthBoard } from '../infra/health.ts'
 import { health, type Health, type SourceContext, type SourceHost } from '../sources/host.ts'
 import { sourceContextOf } from './source-context.ts'
 import type { SetupProblem } from '../setup.ts'
+import type { SpaceLeases } from './spaces.ts'
 
 // Source plugins interact with dsh-superagent exclusively through the `SourceHost` service interface.
 declare module '@deepseek-ai/cordis' { interface Context { orchestrator: SourceHost } }
@@ -95,6 +96,8 @@ export class Runtime extends Service implements SourceHost {
   get sessions(): Sessions { return this.assembled.sessions }
   get settings(): Settings { return this.assembled.settings }
   get executor(): DshExecutor { return this.assembled.executor }
+  /** Write leases for ticket directories; tests and the panel read them without authorizing anything. */
+  get spaces(): SpaceLeases { return this.assembled.spaces }
   /** The inline executor a lightweight ticket runs through; it has no worker Session or workspace. */
   get inline(): InlineWork { return this.assembled.inline }
   get assessor(): MasterAssessor { return this.assembled.assessor }
@@ -154,8 +157,8 @@ export class Runtime extends Service implements SourceHost {
   }
   private httpHost(): HttpHost {
     const runtime = this
-    const { store, sources, prompts, sessions, settings, engine, executor, outbox, masterId, ready, setup, passes } = this
-    return { store, sources, prompts, sessions, settings, engine, executor, outbox, health: runtime.health, machine: this.machine, masterId, ready,
+    const { store, sources, prompts, sessions, settings, engine, executor, spaces, outbox, masterId, ready, setup, passes } = this
+    return { store, sources, prompts, sessions, settings, engine, executor, spaces, outbox, health: runtime.health, machine: this.machine, masterId, ready,
       sourceLinks: this.assembled.sourceLinks,
       get deployment() { return setup.deployment },
       get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem },

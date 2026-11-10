@@ -101,6 +101,7 @@ export function ticketDetail(host: ViewHost, id: string) {
     ...ticket.parentTicketId ? { parentTicketId: ticket.parentTicketId, rootTicketId: ticket.rootTicketId ?? ticket.parentTicketId,
       ...task?.delegation ? { delegation: task.delegation } : {} } : {},
     ...task?.children?.length ? { children: task.children } : {},
+    ...task?.space ? { space: task.space } : {},
     ...task?.childSummary ? { childSummary: task.childSummary } : {},
     ...task?.pendingEnd ? { pendingEnd: task.pendingEnd } : {},
     paused: store.settings().paused,

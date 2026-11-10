@@ -36,6 +36,7 @@ import { dispatchConversation } from './conversation.ts'
 import type { ResourceHost } from './resources.ts'
 import { mainTools, type MainToolsHost } from './tools/main.ts'
 import { executorTools, type ExecutorToolsHost } from './tools/executor.ts'
+import { SpaceLeases } from './spaces.ts'
 
 /** What the composition root lends the assembly: live host state and the few operations that stay on `Runtime`. */
 export interface AssemblyHost {
@@ -69,6 +70,8 @@ interface Parts {
   commands: Commands
   sessions: Sessions
   settings: Settings
+  /** Write leases for ticket directories; it coordinates writers and never grants authorization. */
+  spaces: SpaceLeases
   executor: DshExecutor
   /** Runs a lightweight ticket's read-only work inline, without an Assignment or a Session. */
   inline: InlineWork
@@ -128,7 +131,9 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const policyChanged: EngineForSettings['policyChanged'] = (from, to, changed) => { parts.engine.policyChanged(from, to, changed) }
   const settings = parts.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime, sessions,
     sourceHost: { sources, context: kind => sourceContextOf(parts.sourceDeps, kind) }, setup, requestPass: () => { host.requestPass() } })
-  const executor = parts.executor = new DshExecutor({ context: ctx, get engine() { return parts.engine }, store, effects,
+  // One epoch per Runtime process: an old epoch is what makes a lease from a stopped process distinguishable from a live one.
+  const spaces = parts.spaces = new SpaceLeases(store, Date.now())
+  const executor = parts.executor = new DshExecutor({ context: ctx, get engine() { return parts.engine }, store, effects, spaces,
     health: board.claim('worker'), machine, lifetime, sessions, closing: () => host.closing(), paused: () => host.paused(), environment,
     sourceLink: link, repliedTo: trigger => repliedTo({ store, sources }, trigger) })
   const inline = parts.inline = new InlineWork({ store, get engine() { return parts.engine },
@@ -145,6 +150,8 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   // Every domain event is graded and stored in the same transaction that produced it; no other part needs the log itself.
   const activity = new ActivityLog(store)
   const engine = parts.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, inline, outbox, trace,
+    // A child directory is flat when the deployment keeps the default; turning the flag off restores the nested layout.
+    childSibling: () => store.settings().executor.workspace.childSibling,
     // A lightweight ticket runs inline and has no workspace or assignment text, so it must not claim execution metadata.
     // `executor.lightweight` is the deployment's fallback: turning it off keeps every accept tracked, with its workspace.
     prepareTicket: (ticket, outcome) => ticketForm(ticket) === 'lightweight' && store.settings().executor.lightweight

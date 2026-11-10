@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { ApiError, usePoll, type TicketPageView, type TicketTimelineView } from './api.ts'
 import { Button, DisclosureRow, Dot, Icon, Tag, type IconName } from './controls.tsx'
 import { decisionMark, reportDot, ticketMark } from './marks.ts'
+import { workspaceView } from './features.ts'
 import { useAction, usePanel } from './provider.tsx'
 import { settingsRoute } from './route.ts'
 import { Earlier, ThreadLine, automatedRuns } from './rows.tsx'
@@ -389,9 +390,20 @@ export function TicketPage({ id }: { id: string }) {
         { count: data.inputs.length - undelivered.length })}>
         <InputList inputs={data.inputs.filter(input => input.delivered)} />
       </Details>}
+      {workspaceView() && data.space && <Details icon="session" title={t('space')}>
+        <KeyValues rows={[[t('spaceName'), <span className="dt-mono">{data.space.name}</span>],
+          [t('spaceKind'), valueLabel(t, 'spaceKind', data.space.kind)],
+          ...data.space.branch ? [[t('spaceBranch'), <span className="dt-mono">{data.space.branch}</span>] as [string, ReactNode]] : [],
+          [t('spaceState'), valueLabel(t, 'spaceState', data.space.state)],
+          ...data.space.lastAt ? [[t('spaceLastActivity'), <When at={data.space.lastAt} />] as [string, ReactNode]] : [],
+          ...data.space.holder ? [[t('spaceHolder'), t('spaceHolderValue', { title: data.space.holder.ticketTitle,
+            status: valueLabel(t, 'activityStatus', data.space.holder.status) })] as [string, ReactNode]] : [],
+          ...data.space.legacy ? [[t('spaceLayout'), t('spaceLegacy')] as [string, ReactNode]] : []]} />
+      </Details>}
       <Details icon="hash" title={t('identifiers')}>
-        <KeyValues rows={[[t('ticketId'), <span className="dt-mono">{data.id}</span>], [t('executionDirectory'), <span
-          className="dt-mono">{data.directory ?? t('empty')}</span>],
+        <KeyValues rows={[[t('ticketId'), <span className="dt-mono">{data.id}</span>],
+          ...!workspaceView() && data.directory ? [[t('executionDirectory'), <span
+            className="dt-mono">{data.directory}</span>] as [string, ReactNode]] : [],
           ...legacy && data.mandate.scope ? [[t('legacyAssignment'), <span
             className="dt-mono dt-clamp">{data.mandate.scope}</span>] as [string, ReactNode]] : []]} />
       </Details>
