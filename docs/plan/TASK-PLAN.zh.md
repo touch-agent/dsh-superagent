@@ -490,7 +490,7 @@ graph LR
 - **目标**：同一空间同一时刻只有一个写者；子 Ticket 默认拥有与父分离的检出；冲突可解释、重启可恢复、旧布局可兼容。按方案 A 只加写租约，不建空间注册表。
 - **交付**：只加 **`space_lease`** 表（`locator_key`、holder、`processEpoch`、`epoch`、state、时间；只加表/索引，不建 `space` 表、不改旧记录）；执行器在 **prepare 前预留、prepare 后校验/激活** 写租约；Ticket 结束时释放；`spaceLeaseHeld` 排队与 stale/epoch 恢复；租约按 Ticket 持有，Assignment 只更新当前 holder 元数据；规范 locator `realpath(dirname)+basename`，prepare 后 `realpath(directory)` 必须匹配；子 Ticket 新空间放执行根下的兄弟目录（平铺，名字含父名）；旧嵌套按 legacy 标记，不搬迁；prepare cwd 变化要迁移并演练；kernel 继续拥有目录布局（`delegate` 一处改）；prepare 后置校验（目录、locator、git 工作树、凭据卫生）；**不做** E2 释放/回收/复用、不做 TTL/心跳、不做 read claim、不做 provider 抽象、不做跨仓库改绑；两个 flag `workspace.lease`/`workspace.childSibling`；`docs/003`、`docs/006` 更新；`tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`。
 - **验收**：两个 Ticket 指向同一目录（同 `locatorKey`）时第二个在 prepare 前排队、不覆盖；同一 Ticket 重入；prepare 失败/locator 不匹配时释放预留，不留下 active 租约；父子默认不同目录且父清理不删子空间；子空间 prepare cwd 为执行根；重启后按 `processEpoch`/活 Session 标 stale，不静默抢占，父先于子恢复；Ticket 结束后释放，resume 重新获取，Phase 2 不把旧目录自动给别的 Ticket；子 Ticket 仍不能推送/开 PR；旧库/旧 worktree 迁移演练无重复 prepare；`pnpm check`。
-- **估时**：5 人日。**依赖**：T3-12、[docs/013](../013-workspace-model.zh.md) 的 Phase 2。**回退**：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留，不影响旧读。
+- **估时**：5 人日。**依赖**：T3-12、[docs/013](../013-workspace-model.zh.md) 的 Phase 2。**回退**：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留，但旧二进制拒绝 schema 16，二进制回滚需升级前备份或停服删表降 schema。
 - **泳道**：Kernel + Runtime。**实现**：PR [#43](https://github.com/touch-agent/dsh-superagent/pull/43)；schema 16 `space_lease`、两个 `workspace` flag、结束释放与 stale 恢复；`tests/spaces.spec.ts` 覆盖并发预留、prepare 失败释放、结束释放、重启 stale。
 
 ## 6.2 M5 原则落地（T5-01…06）

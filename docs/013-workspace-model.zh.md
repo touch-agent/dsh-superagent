@@ -571,7 +571,7 @@ Phase 2 有租约后，才增加：
   - 子 Ticket 仍不能推送/开 PR；父整合子分支；
   - `tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`、`pnpm check`；
   - 迁移演练：旧库/旧 worktree 正常启动，按 locator 获取租约，无重复 prepare；子空间 prepare cwd 改为执行根后，相对路径命令的迁移结果符合预期。
-- 回退：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留不影响旧读；不删除旧目录。
+- 回退：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留，但旧二进制拒绝 schema 16，二进制回滚需升级前备份或停服删表降 schema；不删除旧目录。
 
 ### 8.4 Phase 3：复用、回收、E2 操作与 warm 池（约 5 人日，可与 T3-06 合并）
 
@@ -594,7 +594,7 @@ Phase 2 有租约后，才增加：
 | `executor.prepare` | 命令签名不变；后置条件更严；子 Ticket 的 cwd 从父目录变为执行根 | 保持默认；Phase 2 增加校验与迁移演练，相对路径命令要改成绝对路径或基于 `$DSH_SUPERAGENT_DIR` |
 | 分支/PR 绑定 | 不变 | 仍看分支最后一段；不新增空间记录 |
 | Session | 仍固定到 locator；warm 复用需重置 | Phase 3 实现；Phase 1/2 不做跨 Ticket 复用 |
-| schema | Phase 1 无；Phase 2 只加 `space_lease` | 旧库直接打开；不重写旧记录；回退保留表 |
+| schema | Phase 1 无；Phase 2 只加 `space_lease` | 新构建直接打开旧库，不重写旧记录；行为回退保留表，但旧二进制拒绝 schema 16，二进制回滚需备份或降 schema |
 | 配置 | `workspace.view`、`workspace.lease`、`workspace.childSibling`；Phase 3 再加保留天数 | 默认值保持现状；不配置即旧行为 |
 | 文档 | 003/006 在 Phase 2 更新；013 为提案 | 实现前不把提案写成现状 |
 | 测试 | 新增 spaces/panel/migration 用例 | 现有 1600+ 测试保持通过 |
