@@ -593,7 +593,7 @@ graph LR
 | X-12 | 文档结构与计划跟踪：011/012 入 `docs/`、计划文档入 `docs/plan/`、跟踪表校验 | 1 | 文档与计划分散在仓库根，引用与状态易漂移；由 `tests/docs.spec.ts` 固定结构和格式 |
 | X-13 | TRACKING 自动化：计划↔跟踪表↔PR 证据一致性 | 2 | 防止「合并即更新」靠人记；把状态漂移变成 CI 红灯 |
 
-**X-09 落地（2026-11-10，本 PR）**：首页改为「待我处理 / 正在跑 / 最近历史」三区，`stage = person` 工单与审批进 E0，running/queued/idle 工单与执行器计数进第二区，最近结束工单按 `ticket.ended` 倒序最多八条进第三区；24 小时流量与健康指标折叠为 E2，tab、过滤器与 E2/E3 记录不删。`GET overview` 新增 `running`/`recent` 投影，侧边栏图标在 SVG 内画 warning 点（宿主 `sidebar.panellist` 无 badge 子槽），每 60 秒读同一 `GET overview`。整页由 `entry.threeZones.v1` 开关控制，关闭恢复旧 Overview；原则 A/B 的逐项核对见 PR review 评论。
+**X-09 落地（2026-11-10，本 PR）**：首页改为「待我处理 / 正在跑 / 最近历史」三区，`stage = person` 工单与审批进 E0，`working`（queued/running）工单与执行器计数进第二区，`idle` 工单留在 Execution 过滤，最近结束工单按 `ticket.ended` 倒序最多八条进第三区；24 小时流量与健康指标折叠为 E2，tab、过滤器与 E2/E3 记录不删。`GET overview` 新增 `running`/`recent` 投影，侧边栏图标在 SVG 内画 warning 点（宿主 `sidebar.panellist` 无 badge 子槽），每 60 秒读同一 `GET overview`。整页由 `entry.threeZones.v1` 开关控制，关闭恢复旧 Overview；原则 A/B 的逐项核对见 PR review 评论。
 
 **X-07 与 X-11 曾是 M1 的前置**（5 人日，均已完成）：M1 要写 `SourceManifest` 与新源，这些代码落在哪个包取决于切分结果；切晚了等于搬两次。X-08 是 M1 的退出证据——没有它，M1 交付的「三个源」只在本机跑过。
 
