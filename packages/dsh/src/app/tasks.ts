@@ -13,6 +13,7 @@ import { isReviewTicket, ownershipIndex, type OwnershipIndex, type PlanRef } fro
 import { snapshot, threadFacts, type ActorView, type Snapshot, type ViewHost } from './views/records.ts'
 import { markdown, preview } from './views/text.ts'
 import { workerSessionId } from '../executor/dsh.ts'
+import { SpaceProjection, type SpaceView } from './spaces.ts'
 
 /** What a node stands for: a planning milestone, a planned task, a Ticket, a review Ticket, or a pull request. */
 export type TaskNodeKind = 'milestone' | 'task' | 'ticket' | 'review' | 'pull'
@@ -175,6 +176,8 @@ export interface TaskView {
   /** The review Tickets finished below this Ticket; a delivery step count is not invented here. */
   progress?: { done: number; total: number }
   execution: { name?: string; sessionId?: string; assignments: number }
+  /** Read-only space projection; absent for a lightweight Ticket and for a record without an Execution. */
+  space?: SpaceView
   /** Present only on a child Ticket; a root has none. */
   parentTicketId?: string
   rootTicketId?: string
@@ -510,7 +513,8 @@ function nodeStatus(ticket: Ticket, children: readonly Ticket[]): ActivityStatus
 
 /** One Ticket's flat task row; everything here is derived at request time and writes nothing. */
 function taskView(ticket: Ticket, view: Snapshot, owners: OwnershipIndex, tree: TaskTreeIndex, now: number,
-  latest: ActivityRecord | undefined, inlineSpans: readonly Span[], triggers?: ReadonlyMap<string, Trigger>): TaskView {
+  latest: ActivityRecord | undefined, inlineSpans: readonly Span[], spaces?: SpaceProjection,
+  triggers?: ReadonlyMap<string, Trigger>): TaskView {
   const form = ticketForm(ticket)
   const trigger = triggers?.get(ticket.origin.triggerId) ?? view.store.triggers.get(ticket.origin.triggerId)
   const review = isReviewTicket(ticket)
@@ -523,6 +527,7 @@ function taskView(ticket: Ticket, view: Snapshot, owners: OwnershipIndex, tree: 
   const { review: reviewView, deliverables } = form === 'tracked' ? reviewOf(ticket, view, tree) : { review: undefined, deliverables: [] }
   const childSummary = children.length ? childSummaryOf(children) : undefined
   const sessionId = ticket.assignments.some(assignment => assignment.startedAt) ? workerSessionId(ticket.id) : undefined
+  const space = spaces?.view(ticket, ticket.parentTicketId ? tree.get(ticket.parentTicketId) : undefined)
   return {
     id: ticket.id, kind: review ? 'review' : 'ticket', ...parent ? { reviewedTicketId: parent } : {}, title: ticket.title, form, status,
     ...terminal ? { terminal } : {}, ...!ticket.parentTicketId && attentionFor(ticket, tree) ? { attention: true } : {},
@@ -536,6 +541,7 @@ function taskView(ticket: Ticket, view: Snapshot, owners: OwnershipIndex, tree: 
     ...reviews.length ? { progress: { done: reviews.filter(item => activityStatusOf(item) === 'done').length, total: reviews.length } } : {},
     execution: form === 'lightweight' ? { assignments: 0 } : { assignments: ticket.assignments.length,
       ...sessionId ? { sessionId } : {}, ...ticket.execution?.name ? { name: ticket.execution.name } : {} },
+    ...space ? { space } : {},
     ...ticket.parentTicketId ? { parentTicketId: ticket.parentTicketId, rootTicketId: rootTicketIdOf(ticket) } : {},
     ...ticket.parentTicketId ? { depth: depthOf(ticket, tree.get) } : { depth: 0 },
     ...form === 'tracked' ? { owner: { role: 'owner' as const }, worker: { role: 'worker' as const, ...sessionId ? { sessionId } : {} } } : {},
@@ -591,8 +597,9 @@ export function taskBoard(host: ViewHost, now = new Date()): TaskBoardView {
   if (loose.length) milestones.push(milestoneNode('unplanned', 'unplanned', loose, at))
   // The flat list is the one projection the right tab and the status page share; its order is stable for tests and people.
   const { latest, byTrace, triggers } = readContext(host, all)
+  // A board row does not read the file system for a Space: only the detail page shows one, so the 2,500-row projection stays cheap.
   const tasks = roots.slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
-    .map(ticket => taskView(ticket, view, owners, tree, at, latest.get(ticket.id), byTrace.get(traceId(ticket.origin.triggerId)) ?? [], triggers))
+    .map(ticket => taskView(ticket, view, owners, tree, at, latest.get(ticket.id), byTrace.get(traceId(ticket.origin.triggerId)) ?? [], undefined, triggers))
   const children = all.length - roots.length
   return { generatedAt: new Date(at).toISOString(), milestones, tasks,
     totals: { milestones: milestones.length, tasks: milestones.reduce((sum, milestone) => sum + milestone.children.length, 0),
@@ -614,9 +621,10 @@ export function taskDetail(host: ViewHost, id: string, depth = 1, now = new Date
   const view = snapshot(host)
   const at = now.getTime()
   const { latest, byTrace, triggers } = readContext(host, tree.tickets)
+  const spaces = new SpaceProjection(host.store, 0, () => false)
   const levels = Math.max(0, Math.min(5, depth))
   const build = (current: Ticket, remaining: number): TaskView => {
-    const row = taskView(current, view, owners, tree, at, latest.get(current.id), byTrace.get(traceId(current.origin.triggerId)) ?? [], triggers)
+    const row = taskView(current, view, owners, tree, at, latest.get(current.id), byTrace.get(traceId(current.origin.triggerId)) ?? [], spaces, triggers)
     if (remaining <= 0) return row
     const children = tree.childrenOf(current.id).map(child => build(child, remaining - 1))
     return children.length ? { ...row, children } : row

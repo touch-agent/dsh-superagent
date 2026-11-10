@@ -93,7 +93,7 @@ export class Store implements Repositories {
   /**
    * Opens or creates the SQLite database at `path`, rewriting schema 10 records to their current shapes in a single transaction.
    * @param report - Receives errors thrown by `afterCommit` callbacks without failing the committed transaction.
-   * @throws When the database schema is older than `OLDEST_SCHEMA` (10), newer than `SCHEMA_VERSION` (15), or when migration fails; in every case the database file is left unchanged and the SQLite handle is closed so a later attempt in the same process can open it.
+   * @throws When the database schema is older than `OLDEST_SCHEMA` (10), newer than `SCHEMA_VERSION` (16), or when migration fails; in every case the database file is left unchanged and the SQLite handle is closed so a later attempt in the same process can open it.
    */
   constructor(path: string, private readonly report: (error: unknown) => void = () => {}) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
@@ -123,6 +123,14 @@ export class Store implements Repositories {
             CREATE TABLE IF NOT EXISTS effect (kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, seq INTEGER NOT NULL,
               generation INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', due INTEGER NOT NULL,
               since TEXT NOT NULL, PRIMARY KEY (kind, key));
+            CREATE TABLE IF NOT EXISTS space_lease (
+              locator_key TEXT NOT NULL, ticket_id TEXT NOT NULL, assignment_id TEXT, session_id TEXT,
+              process_epoch INTEGER NOT NULL, epoch INTEGER NOT NULL, state TEXT NOT NULL,
+              reserved_at TEXT NOT NULL, activated_at TEXT, released_at TEXT, updated_at TEXT NOT NULL,
+              PRIMARY KEY (locator_key, epoch));
+            CREATE UNIQUE INDEX IF NOT EXISTS space_lease_current ON space_lease(locator_key)
+              WHERE state IN ('reserved', 'active');
+            CREATE INDEX IF NOT EXISTS space_lease_ticket ON space_lease(ticket_id, state);
             CREATE INDEX IF NOT EXISTS trigger_at ON trigger(at);
             CREATE INDEX IF NOT EXISTS trigger_thread_at ON trigger_thread(thread, at);
             CREATE INDEX IF NOT EXISTS decision_thread ON decision(thread);
@@ -131,9 +139,10 @@ export class Store implements Repositories {
             CREATE INDEX IF NOT EXISTS span_at ON span(at);
           `)
           this.addColumns()
-          // Schema 12–15 only add the `span`, `activity` and `approval` tables and the ticket tree's generated `parent`/`root`
-          // columns and indexes, which the schema block and `addColumns` create for every database they open; their records
-          // need no conversion, so only a database older than schema 11 runs the record-rewriting migration.
+          // Schema 12–16 only add the `span`, `activity`, `approval` and `space_lease` tables and the ticket tree's
+          // generated `parent`/`root` columns and indexes, which the schema block and `addColumns` create for every
+          // database they open; their records need no conversion, so only a database older than schema 11 runs the
+          // record-rewriting migration.
           if (version !== undefined && version < 11) migrateTo11(this)
           if (version !== SCHEMA_VERSION) this.set(KV.store.schema, SCHEMA_VERSION)
         })

@@ -17,6 +17,11 @@ export interface EngineOptions {
   inline?: InlineExecutor
   outbox: Outbox
   prepareTicket?: (ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>) => Ticket
+  /**
+   * Put a child Ticket's directory beside its root's directory under the execution root, instead of nesting it inside
+   * the parent's directory. The kernel still owns the layout; the deployment chooses flat or nested for compatibility.
+   */
+  childSibling?: () => boolean
   now?: () => string
   emit?: (event: DomainEvent) => void
   /** Where the stages of a Trigger's trace are reported; without one the Engine records no trace. */

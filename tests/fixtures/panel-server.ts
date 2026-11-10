@@ -11,6 +11,7 @@ import { SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInPart, buil
 import type { ApprovalRow, DroppedReply, HistoryView, Problem, PromptsView, SetupView, SourceStatusRow, SourceView, StateView,
   ThreadPageView, ThreadRow, TicketPageView, TicketRow, TicketStage, TicketTimelineView, TriggerRow } from '@superagent/dsh/client/api.ts'
 import type { TaskBoardView, TaskView } from '@superagent/dsh/app/tasks.ts'
+import type { SpaceRowsView } from '@superagent/dsh/app/spaces.ts'
 import { SETUP_FIELDS } from '@superagent/dsh/deployment.ts'
 import { DispatchConfigSchema, EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSchema } from '@superagent/dsh/policy.ts'
 import { SetupError, type SetupCode } from '@superagent/dsh/setup.ts'
@@ -121,6 +122,8 @@ export interface PanelServer {
   dropped: DroppedReply[]
   /** The Tickets board the tab polls; a test may replace it to exercise a shape. */
   tasks: TaskBoardView
+  /** The read-only spaces list E2 polls; a test may replace it. */
+  spaces: SpaceRowsView
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
   /** Source cards a test adds as if their plugin had loaded, such as the manifest-only fixture. */
   extraSources: SourceView[]
@@ -232,6 +235,8 @@ export const acceptDecision = (): NonNullable<TicketPageView['decision']> => ({ 
   triggerIds: ['e1'], thread: 'feishu:oc_1:om_root', rules: [], preview: '@bot 修一下', ticketTitle: undefined })
 const ticketDetail = (): TicketPageView => ({
   ...ticketSummary(), paused: false, decision: acceptDecision(), threads: [threadSummary()],
+  space: { kind: 'checkout', name: 't1', branch: 'fix-login', state: 'active',
+    holder: { ticketTitle: '修复回归', status: 'working', own: true } },
   mandate: { strength: 'explicit', policyVersion: 'abcdef1234567890', basis: { via: 'addressed', sender: 'Alice', addressed: 'mention' },
     actor: actor('feishu', MEMBER), scope: '修复登录页回归' },
   basis: { facts: [{ name: 'sender', value: 'Alice' }, { name: 'addressed', value: 'mention' }], legacy: false },
@@ -355,6 +360,10 @@ function initial(): PanelServer {
       defaultChanged: [], revisions: [{ ...defaults, changed: [] }], sessions: [], notificationPending: false, next_offset: null },
     tickets: { open: [ticketSummary()], ended: [ended] }, ticketDetails: { t1: ticketDetail() },
     ticketTimelines: { t1: ticketTimeline() }, tasks: taskBoardView(),
+    spaces: { generatedAt: '2026-09-23T12:00:00Z', rows: [{ kind: 'checkout', name: 't1', branch: 'fix-login', state: 'active',
+      ticket: { id: 't1', title: '修复回归', status: 'working' }, locator: '/srv/work/t1-abc123def456',
+      lease: { state: 'active', epoch: 1, processEpoch: 1, stale: false, reservedAt: '2026-09-22T00:00:00Z',
+        activatedAt: '2026-09-22T00:00:00Z' } }] },
     threads: [threadSummary()], threadPages: threadPage,
     person: [ticketSummary({ attention: { id: 'q1', question: '需要确认按钮颜色' }, note: { text: '需要确认按钮颜色', error: false }, reply },
       { stage: 'person', action: 'answer' }),
@@ -394,6 +403,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET metrics': { answer: () => overviewView().metrics },
   'GET activity': { query: ['after', 'limit', 'level'], answer: () => ({ items: [], latest: 0, next: 0 }) },
   'GET tasks': { answer: () => server.tasks },
+  'GET spaces': { answer: () => server.spaces },
   'GET tasks/:id': { query: ['depth'], answer: ({ params }) => {
     const task = server.tasks.tasks.find(item => item.id === params.id)
     if (!task) return refuse(404, 'Ticket not found')

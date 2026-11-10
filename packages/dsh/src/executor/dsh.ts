@@ -2,8 +2,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { mkdir, rmdir, stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { mkdir, realpath, rmdir, stat } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { key, latestAssignment, latestReport, liveTicket, runningAssignment, threadKey, waitsForPerson } from '@superagent/kernel'
 import { depthOf } from '@superagent/kernel'
 import type { AssessmentOutcome, Assignment, EngineForExecutor, Execution, Executor, Mandate, PolicyEffect, Ticket, TicketInput, Trigger }
@@ -16,6 +17,7 @@ import { Later, type Effects } from '../app/effects.ts'
 import { executionRoot, type Variable } from '../app/execution-environment.ts'
 import type { Sessions } from '../app/sessions.ts'
 import { WorktreeNameSchema } from '../app/assessment.ts'
+import type { SpaceLease, SpaceLeases } from '../app/spaces.ts'
 import { resultRelay } from '../app/notices.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { cancelled, collectJob, killJobs, runningJobs, stopBackground, stopSubagents, until, untilQuiet } from './background.ts'
@@ -54,6 +56,22 @@ export function transient(error: unknown): boolean {
   const text = error instanceof Error ? `${error.name} ${error.message} ${String((error as { code?: unknown }).code ?? '')}` : String(error)
   return PASSING.test(text)
 }
+/** Verifies a prepared VCS directory is this worktree and that no other worktree holds its branch. */
+async function verifyCheckout(directory: string, subprocess: Parameters<typeof verifyDirectory>[1], signal: AbortSignal): Promise<void> {
+  const git = (argv: string[]): Promise<string> =>
+    runAsWorker(subprocess, argv, directory, AbortSignal.any([signal, AbortSignal.timeout(60_000)]))
+  const top = (await git(['git', 'rev-parse', '--show-toplevel'])).trim()
+  if (resolve(top) !== resolve(directory)) throw new Error(`The prepared checkout reports ${top} as its worktree root, not ${directory}`)
+  const branch = (await git(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+  // A detached checkout has no branch that another worktree could also hold.
+  if (branch === 'HEAD') return
+  const holders = (await git(['git', 'worktree', 'list', '--porcelain'])).trim().split('\n\n').filter(Boolean).flatMap(block => {
+    const path = /^worktree (.+)$/m.exec(block)?.[1]
+    const ref = /^branch (.+)$/m.exec(block)?.[1]
+    return path && ref === `refs/heads/${branch}` && resolve(path) !== resolve(directory) ? [path] : []
+  })
+  if (holders.length) throw new Error(`The prepared branch ${branch} is also checked out at ${holders.join(', ')}`)
+}
 /** Appends a stable 12-character ticket ID suffix to a validated English worktree name. */
 const ticketWorktreeName = (name: string, id: string): string => `${WorktreeNameSchema.parse(name)}-${id.slice(0, 12)}`
 /** Host dependencies used by `DshExecutor`. */
@@ -72,6 +90,8 @@ export interface ExecutorHost {
   readonly lifetime: AbortSignal
   /** Session manager for worker sessions and for relaying worker reports to the main Session. */
   readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds'>
+  /** Write leases for ticket directories; it coordinates writers and grants no action. */
+  readonly spaces: Pick<SpaceLeases, 'reserve' | 'activate' | 'release' | 'releaseReservation' | 'reconcile'>
   closing(): boolean
   /** Whether processing is paused, which holds launches and input deliveries. */
   paused(): boolean
@@ -228,6 +248,10 @@ export class DshExecutor implements Executor {
   private readonly settling = new Map<string, AbortController>()
   /** The stops of tickets' background work that run, by ticket, which a launch or a delivery of the ticket waits for. */
   private readonly stopping = new Map<string, Promise<void>>()
+  /** Launches in flight, by ticket, so an end releases the lease only after the launch can no longer write. */
+  private readonly launching = new Map<string, Promise<void>>()
+  /** The prepare commands in flight, by ticket, aborted when the Ticket ends or its Assignment is replaced. */
+  private readonly preparing = new Map<string, AbortController>()
   /** The jobs workers left to a person when they handed off, by ticket, and the collecting of their ends. */
   private readonly left = new Map<string, { jobs: Set<string>; collect: AbortController }>()
   /** When a person's message typed into a worker's Session last started a turn, by ticket. */
@@ -260,15 +284,21 @@ export class DshExecutor implements Executor {
     const command = this.host.store.settings().executor.prepare.trim()
     const env = Object.fromEntries(this.host.environment(ticket).map(variable => [variable.key, variable.value]))
     // Enforce a timeout so a hung prepare command (such as on a credential prompt) fails the ticket instead of holding a worker slot indefinitely.
-    const signal = AbortSignal.any([this.host.lifetime, AbortSignal.timeout(PREPARE_TIMEOUT_MS)])
-    if (command) await runAsWorker(this.host.context.subprocess, ['sh', '-c', command], dirname(directory), signal, env)
-      .catch(async (error: unknown) => {
-        // Remove an empty directory left by a failed prepare command so a later retry does not treat it as already prepared.
-        await rmdir(directory).catch(() => { /* Absent, or holding what the command wrote, which the output explains. */ })
-        throw new PrepareFailed(`The prepare command failed: ${error instanceof Error ? error.message : String(error)}`)
-      })
-    await mkdir(directory, { recursive: true })
-    await verifyDirectory(directory, this.host.context.subprocess, this.host.lifetime)
+    const abort = new AbortController()
+    this.preparing.set(ticket.id, abort)
+    const signal = AbortSignal.any([this.host.lifetime, abort.signal, AbortSignal.timeout(PREPARE_TIMEOUT_MS)])
+    try {
+      if (command) await runAsWorker(this.host.context.subprocess, ['sh', '-c', command], dirname(directory), signal, env)
+        .catch(async (error: unknown) => {
+          // Remove an empty directory left by a failed prepare command so a later retry does not treat it as already prepared.
+          await rmdir(directory).catch(() => { /* Absent, or holding what the command wrote, which the output explains. */ })
+          throw new PrepareFailed(`The prepare command failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
+      await mkdir(directory, { recursive: true })
+      await verifyDirectory(directory, this.host.context.subprocess, signal)
+    } finally {
+      if (this.preparing.get(ticket.id) === abort) this.preparing.delete(ticket.id)
+    }
   }
   /** Enqueues a `launch` effect for an accepted or resumed assignment; launches start in queue order as worker slots free up. */
   start(ticket: Ticket, assignment: Assignment): void {
@@ -282,7 +312,9 @@ export class DshExecutor implements Executor {
     const assignment = ticket && latestAssignment(ticket)
     if (!ticket || !liveTicket(ticket) || assignment?.id !== assignmentId || assignment.state !== 'pending') return
     this.slots.reserve(ticketId, 'launch')
-    try { await this.launch(ticket, assignment); this.transient.delete(`launch:${assignmentId}`) }
+    const work = this.launch(ticket, assignment)
+    this.launching.set(ticketId, work)
+    try { await work; this.transient.delete(`launch:${assignmentId}`) }
     catch (error) {
       // Shutdown or pause re-queues the launch for resume, and transient network/provider errors retry with backoff.
       // A failed prepare command is not retried automatically because an existing directory counts as prepared, so retrying
@@ -291,7 +323,10 @@ export class DshExecutor implements Executor {
       if (this.host.closing() || error instanceof Later) throw error
       if (!(error instanceof PrepareFailed) && this.retries(`launch:${assignmentId}`, error)) throw error
       this.launchFailed(ticketId, assignmentId, error)
-    } finally { this.slots.free(ticketId) }
+    } finally {
+      if (this.launching.get(ticketId) === work) this.launching.delete(ticketId)
+      this.slots.free(ticketId)
+    }
   }
   /**
    * Delivers queued inputs to a running assignment one by one, re-reading ticket state before each delivery so delivery
@@ -366,6 +401,8 @@ export class DshExecutor implements Executor {
    */
   stop(ticket: Ticket, assignment: Assignment, reason: string): void {
     this.transient.delete(assignment.id); this.transient.delete(`launch:${assignment.id}`)
+    // A replaced or ended Assignment must not keep writing through a prepare command it no longer owns.
+    this.preparing.get(ticket.id)?.abort()
     const report = assignment.report
     const busy = !!assignment.deliveredAt && !!report && assignment.deliveredAt >= report.at
     const ownTurn = (report?.state === 'ready' || report?.state === 'dropped') && !busy
@@ -441,42 +478,97 @@ export class DshExecutor implements Executor {
     const source = sourceTrigger(this.host, ticket)
     const workspace = ticket.execution?.directory ?? ''
     if (!current()) return
-    // Prepare the workspace directory once; an existing directory counts as already prepared, including worktrees created before `prepare` commands existed.
-    if (!await stat(workspace).then(() => true, () => false)) {
-      await this.prepareDirectory(ticket)
+    const leaseOn = this.host.store.settings().executor.workspace.lease && !!workspace
+    let lease: SpaceLease | undefined
+    try {
+      // Reserve before prepare so two Assignments cannot both create the same directory; a holder waits without a slot.
+      if (leaseOn) {
+        const reserved = await this.host.spaces.reserve({ ticket, assignmentId: assignment.id, sessionId: workerSessionId(ticket.id),
+          live: id => this.isLive(id) })
+        if (!reserved.lease) throw new Later(`The space is held by ${reserved.heldBy.ticketTitle || 'another Ticket'}`)
+        lease = reserved.lease
+        if (!current()) { this.releaseReserved(lease); return }
+      }
+      // Prepare the workspace directory once; an existing directory counts as already prepared, including worktrees created before `prepare` commands existed.
+      if (!await stat(workspace).then(() => true, () => false)) {
+        await this.prepareDirectory(ticket)
+        if (!current()) { this.releaseReserved(lease); return }
+      }
+      if (!current()) { this.releaseReserved(lease); return }
+      // Verify after prepare: the real directory must still be the reserved locator, and a checkout must belong to this path.
+      if (lease) {
+        await this.verifySpace(ticket, lease)
+        if (!current()) throw new Later('Processing is paused')
+        lease = this.host.spaces.activate(lease)
+      }
+      const sessionId = workerSessionId(ticket.id)
+      const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker')
       if (!current()) return
+      // The background work of the Assignment this one replaces stops first, so its end does not clear this one's message.
+      await this.stopped(ticket.id)
+      if (!current()) return
+      // A message put back for this Assignment may still wait in the Session, kept by a restart's cancel or persisted across a
+      // crash, where this launch's message would take it into a step beside the copy delivered next: that copy is the only one.
+      for (const id of this.host.store.tickets.get(ticket.id)?.undelivered ?? []) agent.inbox.remove(this.host.sessions.promptedId(id))
+      // The first message holds the assignment and the source Trigger; a later Assignment's says only what is new, unless the
+      // Session lost the first, such as when someone deleted it.
+      const first = `assignment:${ticket.id}`
+      const later = ticket.assignments.length > 1
+      const told = later && await this.host.sessions.holds(sessionId, first)
+      if (!current()) return
+      const retried = ticket.assignments.at(-2)?.endedReason === 'retried' ? { note: RETRIED } : {}
+      const assignmentText = ticket.execution?.assignment ?? ''
+      const { text: brief, chars, read } = capped(assignmentText, ASSIGNMENT_CHARS, `ticket/${ticket.id}/assignment`)
+      const card = told || !source ? undefined : await this.triggerCard(ticket, source.id)
+      if (!current()) return
+      const batch = told ? [] : batchOf(this.host, ticket).map(batchLine)
+      const text = told ? JSON.stringify({ ticket_id: ticket.id, assignment: ticket.assignments.length, ...retried })
+        : JSON.stringify({ ticket_id: ticket.id, title: ticket.title, ...(brief ? { assignment: brief } : {}),
+          ...(read ? { assignment_chars: chars, assignment_read: read } : {}), ...(card ? { trigger: card } : {}),
+          ...(batch.length ? { batch } : {}), ...retried })
+      const requestId = later ? `assignment:${ticket.id}:${assignment.id}` : first
+      await this.host.sessions.prompt(sessionId, requestId, text, 'queue',
+        () => { if (!current()) throw new Error('Launch authorization changed before worker delivery') },
+        () => { this.host.engine.assignmentStarted(ticket.id, assignment.id) })
+      this.host.engine.assignmentStarted(ticket.id, assignment.id)
+    } catch (error) {
+      // A reservation that never became active leaves no holder behind; an active lease on a failed live Ticket is kept for retry.
+      this.releaseReserved(lease)
+      throw error
     }
-    if (!current()) return
-    const sessionId = workerSessionId(ticket.id)
-    const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker')
-    if (!current()) return
-    // The background work of the Assignment this one replaces stops first, so its end does not clear this one's message.
-    await this.stopped(ticket.id)
-    if (!current()) return
-    // A message put back for this Assignment may still wait in the Session, kept by a restart's cancel or persisted across a
-    // crash, where this launch's message would take it into a step beside the copy delivered next: that copy is the only one.
-    for (const id of this.host.store.tickets.get(ticket.id)?.undelivered ?? []) agent.inbox.remove(this.host.sessions.promptedId(id))
-    // The first message holds the assignment and the source Trigger; a later Assignment's says only what is new, unless the
-    // Session lost the first, such as when someone deleted it.
-    const first = `assignment:${ticket.id}`
-    const later = ticket.assignments.length > 1
-    const told = later && await this.host.sessions.holds(sessionId, first)
-    if (!current()) return
-    const retried = ticket.assignments.at(-2)?.endedReason === 'retried' ? { note: RETRIED } : {}
-    const assignmentText = ticket.execution?.assignment ?? ''
-    const { text: brief, chars, read } = capped(assignmentText, ASSIGNMENT_CHARS, `ticket/${ticket.id}/assignment`)
-    const card = told || !source ? undefined : await this.triggerCard(ticket, source.id)
-    if (!current()) return
-    const batch = told ? [] : batchOf(this.host, ticket).map(batchLine)
-    const text = told ? JSON.stringify({ ticket_id: ticket.id, assignment: ticket.assignments.length, ...retried })
-      : JSON.stringify({ ticket_id: ticket.id, title: ticket.title, ...(brief ? { assignment: brief } : {}),
-        ...(read ? { assignment_chars: chars, assignment_read: read } : {}), ...(card ? { trigger: card } : {}),
-        ...(batch.length ? { batch } : {}), ...retried })
-    const requestId = later ? `assignment:${ticket.id}:${assignment.id}` : first
-    await this.host.sessions.prompt(sessionId, requestId, text, 'queue',
-      () => { if (!current()) throw new Error('Launch authorization changed before worker delivery') },
-      () => { this.host.engine.assignmentStarted(ticket.id, assignment.id) })
-    this.host.engine.assignmentStarted(ticket.id, assignment.id)
+  }
+  /** Drops a reservation that never became active, so a pause, stop or newer Assignment leaves no holder behind. */
+  private releaseReserved(lease: SpaceLease | undefined): void {
+    if (lease?.state === 'reserved') this.host.spaces.releaseReservation(lease)
+  }
+  /** Release the Ticket's directory lease at its end, after its launch and stopped work can no longer write. */
+  release(ticket: Ticket): void {
+    // Abort a prepare still running so its command cannot write after the lease is handed to another Ticket.
+    this.preparing.get(ticket.id)?.abort()
+    this.host.store.afterCommit(() => this.releaseAfterWork(ticket))
+  }
+  /** Release only after the in-flight launch (including prepare/verification) and any stop of background work settles. */
+  private releaseAfterWork(ticket: Ticket): void {
+    const waits = [this.launching.get(ticket.id), this.stopping.get(ticket.id)]
+      .filter((work): work is Promise<void> => !!work)
+    const release = (): void => { this.host.spaces.release(ticket.id, ticket.execution?.directory) }
+    if (!waits.length) { release(); return }
+    void Promise.allSettled(waits).then(release)
+  }
+  /** Whether this ticket's worker Session still runs a turn, the only live writer that blocks a stale-lease takeover. */
+  isLive(ticketId: string): boolean {
+    return this.host.context.agents.get(workerSessionId(ticketId) as SessionId)?.status === 'running'
+  }
+  /** Verify a prepared directory is the reserved locator and that a checkout is this worktree, not another branch holder. */
+  private async verifySpace(ticket: Ticket, lease: SpaceLease): Promise<void> {
+    const directory = ticket.execution?.directory ?? ''
+    if (!await stat(directory).then(() => true, () => false)) throw new Error(`The prepared directory is missing: ${directory}`)
+    const real = await realpath(directory)
+    if (real !== lease.locatorKey) {
+      throw new Error(`The prepared directory resolves to ${real}, not to the reserved space ${lease.locatorKey}`)
+    }
+    await verifyDirectory(directory, this.host.context.subprocess, this.host.lifetime)
+    if (existsSync(join(directory, '.git'))) await verifyCheckout(directory, this.host.context.subprocess, this.host.lifetime)
   }
   /** Returns the stored ticket for `agent` when it is a worker session, or undefined otherwise. */
   private ticketOf(agent: Agent): Ticket | undefined {
@@ -532,6 +624,8 @@ export class DshExecutor implements Executor {
    * while failed launches (`waitsForPerson`) wait for a person's message or a retry.
    */
   resume(): void {
+    // Old-process leases whose holder has no live Session become stale; a live holder keeps its row until it is stopped.
+    this.host.spaces.reconcile(id => this.isLive(id))
     // Launch pending tickets parents first: a child resumes only when its parent and root are live; otherwise it waits as orphaned.
     const depth = (ticket: Ticket) => depthOf(ticket, id => this.host.store.tickets.get(id))
     const parentsFirst = this.host.store.tickets.allOpen().sort((a, b) => depth(a) - depth(b)

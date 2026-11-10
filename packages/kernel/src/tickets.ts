@@ -23,6 +23,16 @@ const readBefore = (input: Extract<TicketInput, { kind: 'trigger' }>, until: str
   ? (input.deliveredAt && input.deliveredAt > input.at ? input.deliveredAt : input.at) <= until : !!input.readAt && input.readAt < until
 const STATUS_REQUEST = 'Report the current ticket status with orchestrator_report. This is a status-only request: do not resume implementation or perform external actions.'
 
+/** The execution root: the directory holding the root Ticket's own directory. A child goes beside it, not inside its parent. */
+function childSiblingRoot(root: Ticket, parent: Ticket): string {
+  const base = root.execution?.directory
+  const cut = base?.lastIndexOf('/') ?? -1
+  if (base && cut >= 0) return base.slice(0, cut)
+  const fallback = parent.execution?.directory ?? ''
+  const parentCut = fallback.lastIndexOf('/')
+  return parentCut >= 0 ? fallback.slice(0, parentCut) : fallback
+}
+
 /**
  * Manages each ticket's lifecycle: creates the ticket for an accept decision with its Mandate, Subscriptions, and first
  * Assignment, binds and attaches Threads, adds Inputs, resumes, retries, restarts, and ends tickets, and drops Subscriptions.
@@ -111,9 +121,13 @@ export class Tickets extends EnginePart {
     const goal = request.goal.trim()
     if (!goal) throw new TypeError('A child Ticket needs a goal')
     const title = (request.title ?? goal.split('\n')[0] ?? goal).slice(0, 200)
-    const childExecution = parent.execution
-      ? { name: `${parent.execution.name}-child-${siblings.length + 1}`,
-          directory: `${parent.execution.directory}/child-${siblings.length + 1}`,
+    const parentExecution = parent.execution
+    const childName = `${parentExecution?.name ?? ''}-child-${siblings.length + 1}`
+    const childExecution = parentExecution
+      ? { name: childName,
+          directory: this.options.childSibling?.()
+            ? `${childSiblingRoot(root, parent)}/${childName}`
+            : `${parentExecution.directory}/child-${siblings.length + 1}`,
           assignment: [goal, request.scope ? `Scope: ${request.scope}` : ''].filter(Boolean).join('\n') }
       : request.name ? { name: request.name, directory: request.name, assignment: [goal, request.scope ? `Scope: ${request.scope}` : ''].filter(Boolean).join('\n') } : undefined
     const delegation: Delegation = { parentTicketId: parentId, rootTicketId: rootId, goal,
@@ -192,6 +206,8 @@ export class Tickets extends EnginePart {
     child.updatedAt = at
     this.repo.tickets.save(child)
     for (const assignment of stopping) this.options.executor.stop(child, assignment, 'orphaned')
+    // An orphaned child no longer writes; its space must not stay held as if it could.
+    this.options.executor.release?.(child)
     // The nearest live node carries the one attention; a child never pages anyone itself and is not resumed silently.
     const root = this.repo.tickets.get(rootTicketIdOf(child))
     const carrier = root && liveTicket(root) ? root : child
@@ -344,6 +360,7 @@ export class Tickets extends EnginePart {
     this.repo.tickets.save(child)
     this.emit('ticket.ended', { ticketId: child.id, by: 'executor', outcome, reason })
     for (const assignment of stopping) this.options.executor.stop(child, assignment, reason)
+    this.options.executor.release?.(child)
     this.stageOf(child, 'report', { ref: `${at}:${outcome}`, at, data: { outcome, reason, childTicketId: child.id } })
   }
   /** Cancel a child subtree depth first, so no descendant is left live under an ended parent. */
@@ -854,7 +871,9 @@ export class Tickets extends EnginePart {
     this.repo.tickets.save(ticket)
     this.letGo(ticketId, waiting, left)
     this.emit('ticket.ended', { ticketId, by, outcome, ...why })
+    // Stop the Assignments first, then release ticket-scoped resources even when every Assignment had already ended.
     for (const assignment of stopping) this.options.executor.stop(ticket, assignment, reason ?? outcome)
+    this.options.executor.release?.(ticket)
     // A lightweight ticket's run has no Assignment; only a person's stop cancels it, since a normal finish already ended it.
     if (ticketForm(ticket) === 'lightweight') {
       if (by === 'human') this.options.inline?.stop(ticket, reason ?? outcome)

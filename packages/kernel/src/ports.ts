@@ -84,6 +84,11 @@ export interface Executor {
   deliver(ticket: Ticket, assignment: Assignment): void
   /** End an assignment's work, such as cancelling its Session's turn; called after the ticket or assignment has already ended in the domain. */
   stop(ticket: Ticket, assignment: Assignment, reason: string): void
+  /**
+   * Release resources tied to the Ticket itself, such as its directory lease, when the Ticket ends even if it has no open
+   * Assignment; optional because an inline executor owns no workspace.
+   */
+  release?(ticket: Ticket): void
 }
 
 /** One Action a lightweight ticket ran, with when it ran and whether it succeeded. */

@@ -30,7 +30,7 @@ The runtime stores a Deliverable carried by a `ready` Report (`orchestrator_repo
 
 ## The Executor
 
-Each tracked Ticket gets an Executor Session named `worker-<ticket id>` and a directory named after the Ticket's short name. Root Ticket directories are created under the configured execution root, which defaults to `<stateDir>/system/work`; a child Ticket's directory is nested under its parent as `child-<n>` (a workspace-model proposal changes this to a flat sibling under the execution root). A lightweight Ticket gets no Assignment, Session or directory: its actions run inline, as [Lightweight tickets](#lightweight-tickets) describes.
+Each tracked Ticket gets an Executor Session named `worker-<ticket id>` and a directory named after the Ticket's short name. Root Ticket directories are created under the configured execution root, which defaults to `<stateDir>/system/work`; a child Ticket's directory is a flat sibling under the same execution root (its name includes the parent's name), not a directory nested inside its parent. `executor.workspace.childSibling = false` restores the old `<parent>/child-<n>` layout for compatibility. A lightweight Ticket gets no Assignment, Session or directory: its actions run inline, as [Lightweight tickets](#lightweight-tickets) describes.
 
 The main Session works in the system root, `<stateDir>/system`, which dsh-superagent creates on startup. One process is one system: the main Session's directory is the context root; worker directories are below it by default, or under the configured execution root when that points elsewhere. It still separates Tickets by directory only and is not a security boundary.
 
@@ -70,13 +70,15 @@ Worker subagents, including nested ones, use DeepSeek Harness's `standard` prese
 
 ### Preparing a Ticket directory
 
-Before the first Assignment, if the Ticket directory does not exist, the prepare command runs once with `sh` in the parent directory of the Ticket directory: the execution root for a root Ticket, and the parent Ticket's directory for a child. It has ten minutes to finish. Without a prepare command, the worker starts in an empty directory.
+Before the first Assignment, if the Ticket directory does not exist, the prepare command runs once with `sh` in the parent directory of the Ticket directory: the execution root for a root Ticket, and for a flat child its execution root too, so a child is prepared beside its parent rather than inside it. It has ten minutes to finish. Without a prepare command, the worker starts in an empty directory.
+
+The directory is the Ticket's **Space** locator. Before prepare, the Executor reserves a write lease for the canonical locator `realpath(dirname(directory)) + basename(directory)` in the additive `space_lease` table; after prepare it requires `realpath(directory) === locatorKey`, verifies the checkout's worktree and branch, and only then activates the lease. A directory already held by another live Ticket makes the launch retry without holding a worker slot while it waits. The lease coordinates writers only: it grants no action and is not a security boundary. It is released when the Ticket ends, kept across retries and blocking, and an old-process lease with no live Session is marked stale rather than silently preempted. `executor.workspace.lease = false` turns the lease off and returns to path-only behavior.
 
 A failed command fails the Ticket and records its output. A retry or a person's message on one of the Ticket's Threads tries preparation again. A typical command uses `git worktree` to create a checkout. A pull request belongs to the Ticket when its branch's last path segment matches the Ticket's short name.
 
 ### Concurrency
 
-A Ticket holds a worker slot from the start of a launch, including preparation, or from the delivery that wakes its idle Executor. It also holds the slot throughout an active turn.
+A Ticket holds a worker slot from the start of a launch, including preparation, or from the delivery that wakes its idle Executor. It also holds the slot throughout an active turn. A directory lease is reserved before preparation, but waiting for another Ticket's lease does not take a worker slot.
 
 The configured concurrency limit applies to these slots, with one extra slot for a person's message or a status request. Such a wake can use the extra slot when normal slots are full, and takes the next free slot before a new launch. New work therefore cannot prevent a person from continuing an existing Ticket.
 

@@ -1,6 +1,10 @@
 # 工作空间模型设计：空间与任务树正交
 
-> 状态：**设计提案 v1.1（2026-11-10，docs-only，未实现）**。按方案 A 精简：`Execution.directory` 是空间的唯一 locator，只增加写租约，不建空间注册表。本文回答「工作空间是什么、和任务树/分支/Session 什么关系、什么情况下用哪种空间、怎么并发与恢复、界面上怎么表达」，不改变领域契约、授权、代码或现有 UI。
+> 状态：**设计 v1.2（2026-11-10）；Phase 1 只读投影与 Phase 2 写租约/独立子空间已实现（T3-12/T3-13）**。按方案 A 精简：`Execution.directory` 是空间的唯一 locator，只增加写租约，不建空间注册表。Phase 3 复用/回收与 Phase 4 provider 仍不在本次范围。
+>
+> 实现备注：schema 16 增加 `space_lease`；`packages/dsh/src/app/spaces.ts` 负责 locator、投影和 `SpaceLeases`；执行器在 prepare 前预留、校验后激活、Ticket 结束释放；`executor.workspace.lease` 与 `childSibling` 两个 flag 可分别回退路径模式与旧嵌套布局；E1 的空间区块、E2 的只读列表和 `workspace.view` 客户端开关已落地。租约不进入 Mandate/Action/Approval/Acceptance，任何界面都不把它显示成授权。
+>
+> 回退：行为回退先关两个 `workspace` flag；二进制回退到 schema 15 及更早版本时，旧构建会拒绝打开 schema 16，需按 [006 部署](006-deployment.md) 恢复升级前备份（或在停服后删除 `space_lease` 并把 `kv.schema` 改回 15）。`space_lease` 没有外键、也不改写旧记录，删除它不影响其他表。
 >
 > 依据：2026-11-09 的工作空间模型设计请求与 2026-11-10 的「按 A 精简」决定；现状以 `origin/main`（`e4125e9`，子 Ticket Phase 2a/2b 合入后）为准。
 >
@@ -17,7 +21,7 @@
 | 5 | **租约在 prepare 前预留、prepare 后校验并激活**。先按计划路径占用，避免两个 Assignment 在都未租用时同时 prepare；旧目录首次启动按规范 locator 收养。 | 修复「prepare 之后才取租约」的写者窗口。 |
 | 6 | **Ticket 结束即释放租约；Phase 2 不做跨 Ticket 复用/回收/E2 释放操作**。resume 时重新获取；空间仍绑定原 Ticket 目录，不自动给别人。 | 避免「已结束但可恢复」的 Ticket 被复用时进入别人的分支/工作树。 |
 | 7 | **跨仓库任务拆子 Ticket，不在 Phase 2 提供改绑**。一个 Ticket 一个写空间；同时提交两个仓库就是两个子 Ticket，各自一个空间。 | 避开「改绑唯一写空间」与 Session 固定 cwd 的冲突；多仓库基线留到后续。 |
-| 8 | **UI 先只读**。E0 不出现空间；E1 一个只读区块；E2 只读列表；释放/回收/复用/复制路径等操作留到 Phase 3。 | 符合 docs/011 A/B；Phase 1 就能回答「谁在哪个空间做什么」。 |
+| 8 | **UI 先只读**。E0 不出现空间；E1 一个只读区块；E2 只读列表和复制路径；释放/回收/复用等写操作留到 Phase 3。 | 符合 docs/011 A/B；Phase 1 就能回答「谁在哪个空间做什么」。 |
 | 9 | **与 docs/011/012 的取舍**：空间是 agent 维度的工作目录载体，不是第七层上下文；`Execution.directory` 就是 012 的最小 workspace handle；provider/云空间是 Phase 4 的可替换边界。 | 不新增授权主体、不新增默认注意力成本、不把目录当隔离或权限。 |
 | 10 | **分五阶段落地**：Phase 0 本文与词汇；Phase 1 只读投影与 E2 视图（T3-12）；Phase 2 写租约与子 Ticket 独立空间（T3-13）；Phase 3 复用/回收/E2 操作/warm 池；Phase 4 provider。Phase 1 可以先落地。 | 计划落点见 [T3-12、T3-13](plan/TASK-PLAN.zh.md)；T3-13 范围已随本版收缩。 |
 
@@ -43,8 +47,8 @@
 
 ### 1.2 每工单目录与 prepare
 
-- 每个**根** tracked Ticket 在受理时得到 `execution: { name, directory, assignment }`：`name = <worktree name>-<ticket id 前 12 位>`，`directory = <execution root>/<name>`。子 Ticket 不走这条路径：它在委派时直接得到 `<父目录>/child-<n>`（见 1.3）。
-- 首次启动前，如果目录不存在，执行器在 **`dirname(directory)`** 运行一次 `executor.prepare`，带 `DSH_SUPERAGENT_DIR` 等执行变量，10 分钟超时：根 Ticket 的 cwd 是执行根，子 Ticket 的 cwd 是父目录。典型部署命令用 `git worktree add` 创建检出和分支。
+- 每个**根** tracked Ticket 在受理时得到 `execution: { name, directory, assignment }`：`name = <worktree name>-<ticket id 前 12 位>`，`directory = <execution root>/<name>`。子 Ticket 不走这条路径：默认得到根目录所在目录下的平铺兄弟目录 `<root 目录所在目录>/<root name>-child-<n>`；`executor.workspace.childSibling = false` 时保留旧的 `<父目录>/child-<n>`（见 1.3）。
+- 首次启动前，如果目录不存在，执行器在 **`dirname(directory)`** 运行一次 `executor.prepare`，带 `DSH_SUPERAGENT_DIR` 等执行变量，10 分钟超时：根 Ticket 的 cwd 是执行根；平铺子 Ticket 的 cwd 也是根 Ticket 目录所在目录，旧嵌套子 Ticket 保持父目录。典型部署命令用 `git worktree add` 创建检出和分支。
 - **已存在的目录一律视为已准备**：这是当前最重要的隐含契约。它让重启/重试不必重复 prepare，但也意味着半成品、手工目录、上一次失败留下的非空目录都可能被当作准备好的空间。
 - prepare 失败会直接让 Ticket 失败并记录输出，不自动重试；空目录会被删除，非空目录保留。
 - prepare 后会 `verifyDirectory`：检查目录里 local/worktree scope 的 git 配置没有自定义 `credential.*` 或 `http.*extraheader`。它校验凭据卫生，不校验分支、脏状态或空间归属。
@@ -53,9 +57,9 @@
 
 ### 1.3 父子工单的目录关系
 
-- 子 Ticket 由父 owner 委派创建，`execution.directory = <父目录>/child-<n>`，`name = <父 name>-child-<n>`。
-- 子 Ticket 有自己的 `worker-<childTicketId>` Session 和 Assignment，但它的目录**物理嵌套在父目录内部**；首次启动时 prepare 在父目录里运行，在子目录这个位置创建检出（若配置了 prepare 命令）。
-- 这带来三个具体问题：
+- 子 Ticket 由父 owner 委派创建。默认 `execution.directory = <root 目录所在目录>/<root name>-child-<n>`，`name = <父 name>-child-<n>`，与父目录平级；`executor.workspace.childSibling = false` 时保留旧布局 `execution.directory = <父目录>/child-<n>`。
+- 子 Ticket 有自己的 `worker-<childTicketId>` Session 和 Assignment。默认平铺后，首次启动时 prepare 在根目录所在目录运行，在兄弟位置创建子目录；旧嵌套布局仍在父目录里 prepare。
+- 旧嵌套布局带来三个具体问题（默认平铺已消除，旧目录只读标记为 `legacy`）：
   1. 父目录的 VCS 会把子目录看成未跟踪内容；父 worker 执行 `git clean -fdx`、`git stash -u` 或删除目录时可能连带毁掉子空间；
   2. 父/子同时工作时，相对路径、递归搜索、打包和文件监听会把两边的工作混在一起；
   3. 目录层级看起来像任务层级，读者容易把「子目录」误读为「子任务的空间所有权」，而实际上授权关系在 Ticket/Delegation，不在目录。
@@ -154,7 +158,7 @@
 
 对应需求里的说法：根仓库 ≈ `project`，项目 worktree ≈ `checkout`，临时目录 ≈ `scratch`，子目录 ≈ 所属 `checkout` 的 view；`root` 是系统根，`remote` 是未来的 provider 空间。
 
-**`project` 在 Phase 1 允许缺省**：现有状态没有基线实体；Phase 1 只投影 `root`/`checkout`/`unknown`，不伪造 `project`；Phase 2 也不建基线表，`project` 仍由部署配置与项目仓库派生，真正需要共享基线时再做。
+**`project` 在 Phase 1 允许缺省**：现有状态没有基线实体；Phase 1 只投影 `root`/`checkout`/`unknown`，Phase 2 对已准备但没有 VCS 元数据的目录投影 `scratch`；不伪造 `project`/`remote`。Phase 2 也不建基线表，`project` 仍由部署配置与项目仓库派生，真正需要共享基线时再做。
 
 ### 2.3 与任务树正交
 
@@ -239,7 +243,7 @@
 
 **默认另开**，这是本设计对现状的明确修正：
 
-- 子 Ticket 的写空间从**项目基线**派生，放在**执行根下的兄弟目录**（例如 `<execution root>/<child name>`），与父目录平级，不放在父目录内部；孙 Ticket 同样平铺在执行根下，名字含父名；prepare 的 cwd 是执行根，不是父目录；
+- 子 Ticket 的写空间从**项目基线**派生，放在**根 Ticket 目录所在目录的兄弟位置**（通常即执行根，例如 `<execution root>/<child name>`），与父目录平级，不放在父目录内部；孙 Ticket 同样平铺，名字含父名；平铺子 Ticket 的 prepare cwd 是根目录所在目录，不是父目录；
 - 子 Ticket 的分支是委派草稿；子不能推送/开 PR（现状 guard 已如此）；父 owner 在自己的空间里做最终合并、冲突解决和上报；
 - 子 Ticket 只读父的在制品时，必须用项目基线或 detached/snapshot 副本读**已提交修订**；不能直接读父的 live checkout，因为父可能正在写；
 - **禁止**父子同时写同一空间；需要「父先做、子接着做」时，按顺序释放/获取租约（handoff），不是共享。
@@ -272,10 +276,10 @@
 
 ### 3.6 冲突与抢占规则
 
-1. **写者冲突**：目标空间已有写租约 → 新 Assignment 停在 `working / queued`，原因写 `spaceLeaseHeld`（持有者的 Ticket 标题，不显示内部 id/path）；不占 worker 槽，不自动失败。
+1. **写者冲突**：目标空间已有写租约 → 新 Assignment 的 launch 以 `Later` 定期重试，等待期间不占 worker 槽，不自动失败；E1 只显示持有者的 Ticket 标题，不显示内部 id/path，也没有单独的 `queued` 状态或原因字段。
 2. **只读不参与排队**：读基线/snapshot 是约定，不取租约；UI 可标「只读」，但不承诺跨修订一致快照，也不承诺「完全不改仓库元数据」。
 3. **人工抢占**：Phase 2 不提供 E2 抢占按钮；需要运维停止旧 worker、释放租约、再让新 holder 获取。不能在旧 worker 仍在写时并发转移；记录谁、何时、为什么。
-4. **过期租约**：重启后若租约的 `processEpoch` 不是当前进程、且 holder 没有活 Session/Assignment，标 `stale` 并允许重新获取；若无法判断，停在 `blocked` 请人决定，不静默抢占。单进程下不引入 TTL/心跳；多 host 以后再加。
+4. **过期租约**：重启后若租约的 `processEpoch` 不是当前进程、且 holder 没有活 Session/Assignment，标 `stale` 并允许重新获取；若 holder Session 仍活着或无法判断，保留租约，不静默抢占（没有单独的 `blocked` 租约状态）。单进程下不引入 TTL/心跳；多 host 以后再加。
 5. **父子冲突**：旧嵌套布局下，父的 `git clean`/删除可能破坏子空间；Phase 2 起新子空间不再嵌套；旧布局不自动迁移，发现时在 E2 标「旧布局」，并提示父不要清理子目录。
 6. **合并冲突**：不同 `checkout` 改同一文件是正常的 VCS 合并冲突，由父 owner/人解决；空间租约只防同一检出并发写，不防跨检出的语义冲突。
 
@@ -288,14 +292,14 @@
 ```text
 planned → preparing → ready → active（有写租约）
              ↘ failed          ↘ ready（租约释放）
-legacy（旧嵌套/旧目录，无租约历史）
+legacy（目录仍嵌套在父目录内的旧子空间）
 ```
 
 - `planned`：`Execution.directory` 已确定，目录尚未创建。
 - `preparing`：prepare 运行中；超时/失败 → `failed`（Ticket 失败，不自动重试）。
-- `ready`：目录存在、校验通过、当前无写租约。
+- `ready`：目录存在、当前无写租约（实现按目录存在性派生；校验通过由租约激活记录体现）。
 - `active`：当前有写租约（同一 Ticket 可重入）。
-- `legacy`：旧嵌套子目录或旧目录，Phase 2 只读标记，不自动搬迁。
+- `legacy`：目录仍嵌套在父目录内的旧子空间，Phase 2 只读标记，不自动搬迁；非嵌套旧目录按普通空间处理。
 - `failed`：prepare/校验失败；重试按现有规则。
 
 **租约状态**（持久化，只有这一张表）：
@@ -317,8 +321,8 @@ stale → active（新 holder 获取）或 released
 | `reserved` | `released` | prepare 失败/超时，或 locator 不匹配 |
 | `active` | `released` | Ticket 结束/人工释放 |
 | `active` | `stale` | 进程重启且 holder 无活 Session |
-| `stale` | `active` | 新 Assignment 获取（epoch + 1） |
-| `stale` | `released` | 人工确认后释放 |
+| `stale` | `stale` + 新 `reserved` | 新 Assignment 获取：旧行保留为历史，新行 `epoch + 1`，校验后激活 |
+| `active`/`reserved` | `released` | Ticket 结束，或 prepare 失败/校验失败；幂等 |
 
 ### 4.2 创建与校验
 
@@ -334,8 +338,8 @@ stale → active（新 holder 获取）或 released
 
 ### 4.3 租用与释放
 
-- 获取时机：**prepare 前预留、prepare 后激活**；被占时排队，不占 worker 槽。
-- 释放时机：Ticket 结束（completed/dropped/stopped）后，先停止后台工作，再释放。`ready` 待审阅的 Ticket **尚未结束**，因此保留写租约（人可能要求返工）；PR 合并/关闭、验收完成或部署在无 PR 时 ready 即结束，才释放。若人要求返工，Ticket 仍活，租约继续。
+- 获取时机：**prepare 前预留、prepare 后激活**；被占时 launch 重试，等待期间不占 worker 槽。
+- 释放时机：Ticket 结束（completed/dropped/stopped）后，先中止未完成的 prepare、停止后台工作，再释放。`ready` 待审阅的 Ticket **尚未结束**，因此保留写租约（人可能要求返工）；PR 合并/关闭、验收完成或部署在无 PR 时 ready 即结束，才释放。若人要求返工，Ticket 仍活，租约继续。
 - 失败/阻塞的 Ticket：保持租约（可能重试/人工继续）；只有 Ticket 结束或人工释放才释放。
 - 同一 Ticket 重入：同一 `holder.ticketId` 的 Assignment 可重入，不阻塞自己；`holder.assignmentId`/`sessionId` 随当前执行者更新，租约本身不换手。
 - **结束但可恢复**：Ticket 结束后租约释放，但目录仍属于该 Ticket 的 `Execution.directory`；Phase 2 不把目录自动复用给别的 Ticket。人通过同一 Thread 恢复时，重新按计划 locator 获取租约；若已被其他手动配置的 Ticket 占用，排队/请人处理。Phase 3 跨 Ticket 复用前必须先解决「可恢复」问题（冻结 Session、重建 Session，或证明不再可恢复）。
@@ -357,7 +361,7 @@ stale → active（新 holder 获取）或 released
   1. 读 `Execution.directory`；目录存在则校验，缺失则按 prepare 规则重建；
   2. 若租约 holder 是本进程且 Session 已恢复 → 保持；
   3. 若没有活 Session/Assignment 且 `processEpoch` 不是当前进程 → 标 `stale`，新 Assignment 可获取；
-  4. 若无法判断（例如目录被外部进程占用）→ `blocked`，请人决定，不静默抢占。
+  4. 若无法判断（例如目录被外部进程占用）→ 保留租约，不静默抢占；人可在 E2 看到状态并决定是否停旧 worker。
 - 恢复顺序：父先于子（现有 `resume` 已按深度排序）；孤儿子 Ticket 仍按现有 `orphanChild` 规则交人。
 - 恢复不自动删除/重置任何空间；reset 是 Phase 3 的显式动作。旧 epoch 的 worker 若仍活着，先停止，不能与新 holder 并发写。
 
@@ -368,7 +372,7 @@ stale → active（新 holder 获取）或 released
 - **计算并发**：`WorkerSlots` 管 worker 数；空间租约不替代它。
 - **数据并发**：写租约管同一空间；不同空间并发写同一仓库是允许的，冲突在合并时解决。
 - **执行点**：租约在「prepare 前预留 / 启动 worker 前激活」时检查，不是每条命令的沙箱；worker 仍可用绝对路径读写别的目录。
-- **获取顺序**：先预留租约，再 prepare，再占 worker 槽；租约等待期间不占槽，避免「占着槽等目录」拖垮并发。
+- **获取顺序**：先占 worker 槽并尝试预留租约；租约被占时抛出 `Later`、释放槽并重试；拿到租约后 prepare，等待期间不长期占槽。
 - **死锁**：一个 Ticket 只有一个写空间，不存在多写空间排序；要同时写两个仓库就拆子 Ticket。没有只读租约，不参与死锁。
 - **父子并发**：默认独立空间，可并行；父的合并/审阅在子结束后进行。旧嵌套布局下，父子并行被视为高风险，E2 标警告。
 - **warm 池**：Phase 2 只做同 Ticket 复用；跨 Ticket 复用必须等 Phase 3 的释放/reset/重建 Session 契约。
@@ -387,7 +391,7 @@ stale → active（新 holder 获取）或 released
 ### 5.3 可见性
 
 - **E0 默认面**：不出现空间名、路径、租约、分支；只出现目标/状态/需决定/结果。
-- **E1 任务详情/审查面**：显示空间区块（类型、显示名、分支、状态、最后活动）；Phase 1 的「持有者/写租约」由 Assignment 推断，Phase 2 才有租约；不显示内部 id、绝对路径、Session id；路径只在 E2。
+- **E1 任务详情/审查面**：显示空间区块（类型、显示名、分支、状态、最后活动）；Phase 1 的「持有者/写租约」由 Assignment 推断，Phase 2 才有租约；新增空间区块不显示内部 id、绝对路径、Session id；页面既有的 Session 按钮保留；路径只在 E2。
 - **E2 管理面板**：只读「空间」视图；Phase 1 显示 locator/派生状态，Phase 2 才显示租约/epoch/stale；Phase 1/2 没有释放/回收/复用按钮；这是排障/审计面。
 - **E3 原始面**：Session 记录、日志、实际目录；明确进入，遵守隐私与脱敏。
 - **冲突是例外**：只有「需要人决定/无法继续」的租约冲突才进入 E1/E0 的阻塞原因，且只给 Ticket 标题与「同一空间被占用」的事实，不给路径。
@@ -420,7 +424,7 @@ Phase 2 有租约后，才增加：
 
 ```text
   状态      进行中 · 写租约
-  持有者    本任务 / 另一个任务正在写入（已排队）
+  持有者    当前租约的 Ticket 标题（E1 不区分本任务）
 ```
 
 规则：
@@ -428,7 +432,7 @@ Phase 2 有租约后，才增加：
 - E1 只读；释放/回收/复用都在 E2 且 Phase 3 才出现；Phase 1/2 不显示这些操作。
 - 子 Ticket 显示「由父任务 <标题> 审阅」，不显示父目录路径；旧嵌套布局加「旧布局」标签与 E2 警告。
 - `ready` 待审阅时 Phase 1/2 不显示「保留中」；Phase 3 有保留策略后再显示保留到期。
-- 冲突时显示「另一个任务正在写入同一空间，已排队」或「空间准备失败」，并提供 E2 入口；不显示对方路径。
+- E1 只显示当前持有者，不显示排队原因；E2 显示租约状态与路径，释放/回收操作留到 Phase 3。
 - lightweight 详情显示「轻量执行：无独立空间」一句，不显示空的租约/分支字段。
 - 现有任务视图若在 identifiers 折叠块里显示目录，T3-12 实现时收敛为显示名/类型，路径移到 E2；不要把内部路径留在 E1 默认展开。
 
@@ -445,7 +449,7 @@ Phase 2 有租约后，才增加：
 | 项目/仓库 | 来源仓库显示名 | 多项目时区分 |
 | 分支/修订 | 分支名或短 commit | 无则不显示 |
 | 持有者 | Ticket 标题 + 状态 | Phase 1 由 Assignment 推断；Phase 2 由租约 |
-| 状态 | 准备中/就绪/执行中/排队/旧布局/失败 | 由目录状态与租约派生 |
+| 状态 | 准备中/就绪/执行中/旧布局/失败 | 由目录状态与租约派生；排队只体现在 launch 重试，不是空间状态 |
 | 最后活动 | 相对时间 | 来自 activity/trace |
 | 操作 | 复制路径 | 只读，Phase 1 起可用；释放/回收/复用 Phase 3 |
 
@@ -503,7 +507,7 @@ Phase 2 有租约后，才增加：
 ### 7.3 与 003「一工单一 Session 一目录」的冲突
 
 - 保留「一 Ticket 一 Session」与「一 Ticket 一主目录」，但把「目录」明确为 locator；Phase 2 不引入只读空间租约，一个 Ticket 仍只有一个写空间。
-- 子 Ticket 的目录从「父目录内」改为「执行根下的独立兄弟目录」（平铺，名字含父名）；这是行为变化，放在 Phase 2 并用 flag/兼容旧布局。prepare 的 cwd 随之从父目录变为执行根，相对路径命令要迁移。003 在执行层面仍成立：每个 tracked Ticket 有自己的 Session 和目录。
+- 子 Ticket 的目录从「父目录内」改为「根 Ticket 目录所在目录的独立兄弟位置」（平铺，名字含父名；通常即执行根）；这是行为变化，放在 Phase 2 并用 flag/兼容旧布局。prepare 的 cwd 随之从父目录变为根目录所在目录，相对路径命令要迁移。003 在执行层面仍成立：每个 tracked Ticket 有自己的 Session 和目录。
 - lightweight 仍无空间；003 的轻量边界不变。
 
 ### 7.4 与 011 B/C/D 的潜在冲突
@@ -552,9 +556,9 @@ Phase 2 有租约后，才增加：
 
 - 交付：
   - **只加 `space_lease` 表**（`locator_key`、holder、`processEpoch`、`epoch`、state、时间；只加表/索引，不建 `space` 注册表、不改旧记录）；
-  - 执行器在 **prepare 前预留、prepare 后校验/激活** 写租约；Ticket 结束时释放；冲突排队/`spaceLeaseHeld`；租约按 Ticket 持有，Assignment 只更新当前 holder 元数据；
+  - 执行器在 **prepare 前预留、prepare 后校验/激活** 写租约；Ticket 结束并停止后台工作后释放；冲突时 launch 重试排队；租约按 Ticket 持有，Assignment 只更新当前 holder 元数据；
   - 规范 locator `realpath(dirname)+basename`；prepare 后 `realpath(directory)` 必须匹配，否则释放并失败；
-  - 子 Ticket 新空间放执行根下的兄弟目录（平铺，名字含父名）；旧嵌套目录按 legacy 标记，不自动搬迁；prepare cwd 变化要写迁移说明并演练；kernel 继续拥有目录布局（`delegate` 一处改），不引入 runtime layout port；
+  - 子 Ticket 新空间放根 Ticket 目录所在目录的兄弟位置（通常即执行根；名字含父名）；旧嵌套目录按 legacy 标记，不自动搬迁；prepare cwd 变化要写迁移说明并演练；kernel 继续拥有目录布局（`delegate` 一处改），不引入 runtime layout port；
   - prepare 后置校验（目录、locator、分支/检出、凭据卫生）；
   - **不做** E2 释放/回收/复用、不做 TTL/心跳、不做 read claim、不做 provider 抽象、不做跨仓库改绑；
   - 文档 003/006 更新。
@@ -566,8 +570,8 @@ Phase 2 有租约后，才增加：
   - Ticket 结束后释放；resume 重新获取；Phase 2 不把旧目录自动给别的 Ticket；
   - 子 Ticket 仍不能推送/开 PR；父整合子分支；
   - `tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`、`pnpm check`；
-  - 迁移演练：旧库/旧 worktree 正常启动，按 locator 获取租约，无重复 prepare；子空间 prepare cwd 改为执行根后，相对路径命令的迁移结果符合预期。
-- 回退：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留不影响旧读；不删除旧目录。
+  - 迁移演练：旧库/旧 worktree 正常启动，按 locator 获取租约，无重复 prepare；平铺子空间 prepare cwd 改为根目录所在目录后，相对路径命令的迁移结果符合预期。
+- 回退：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留，但旧二进制拒绝 schema 16，二进制回滚需升级前备份或停服删表降 schema；不删除旧目录。
 
 ### 8.4 Phase 3：复用、回收、E2 操作与 warm 池（约 5 人日，可与 T3-06 合并）
 
@@ -586,12 +590,12 @@ Phase 2 有租约后，才增加：
 | 对象 | 影响 | 迁移 |
 | --- | --- | --- |
 | 现有 worktree | 视为 legacy/普通 `checkout`；路径不变 | Phase 2 首次启动按 `locatorKey` 获取租约，不移动/不重置；无注册表迁移 |
-| 旧嵌套子目录 | 保留；父清理风险仍在 | 标「旧布局」；新子 Ticket 用执行根下的兄弟目录；不自动搬迁 |
-| `executor.prepare` | 命令签名不变；后置条件更严；子 Ticket 的 cwd 从父目录变为执行根 | 保持默认；Phase 2 增加校验与迁移演练，相对路径命令要改成绝对路径或基于 `$DSH_SUPERAGENT_DIR` |
+| 旧嵌套子目录 | 保留；父清理风险仍在 | 标「旧布局」；新子 Ticket 用根目录所在目录的兄弟位置；不自动搬迁 |
+| `executor.prepare` | 命令签名不变；后置条件更严；平铺子 Ticket 的 cwd 从父目录变为根目录所在目录 | 保持默认；Phase 2 增加校验与迁移演练，相对路径命令要改成绝对路径或基于 `$DSH_SUPERAGENT_DIR` |
 | 分支/PR 绑定 | 不变 | 仍看分支最后一段；不新增空间记录 |
 | Session | 仍固定到 locator；warm 复用需重置 | Phase 3 实现；Phase 1/2 不做跨 Ticket 复用 |
-| schema | Phase 1 无；Phase 2 只加 `space_lease` | 旧库直接打开；不重写旧记录；回退保留表 |
-| 配置 | `workspace.view`、`workspace.lease`、`workspace.childSibling`；Phase 3 再加保留天数 | 默认值保持现状；不配置即旧行为 |
+| schema | Phase 1 无；Phase 2 只加 `space_lease` | 新构建直接打开旧库，不重写旧记录；行为回退保留表，但旧二进制拒绝 schema 16，二进制回滚需备份或降 schema |
+| 配置 | `workspace.view`、`workspace.lease`、`workspace.childSibling`；Phase 3 再加保留天数 | 两个 `workspace` flag 默认 `true`（启用租约与平铺子空间）；关闭 `lease` 回到路径模式，关闭 `childSibling` 回到旧嵌套布局 |
 | 文档 | 003/006 在 Phase 2 更新；013 为提案 | 实现前不把提案写成现状 |
 | 测试 | 新增 spaces/panel/migration 用例 | 现有 1600+ 测试保持通过 |
 
@@ -717,6 +721,6 @@ interface WorkspaceProvider {
 | 2026-11-10 | `subdir` 不是空间类型，只是 checkout 的 cwd/view | 避免每个包一条无租约记录；不制造第二身份 | 提案 |
 | 2026-11-10 | 租约 prepare 前预留、prepare 后激活；Ticket 结束释放，Phase 2 不复用/回收/E2 操作 | 消除 prepare 写者窗口；避免已结束可恢复 Ticket 被复用 | 提案 |
 | 2026-11-10 | 跨仓库拆子 Ticket；Phase 2 不提供改绑 | 避开 Session 固定 cwd 的冲突；多仓库后续再议 | 提案 |
-| 2026-11-10 | 子 Ticket 空间平铺到执行根下；prepare cwd 变为执行根；kernel 继续拥有布局 | 目录与任务树正交；改动集中在一处 | 提案 |
+| 2026-11-10 | 子 Ticket 空间平铺到根目录所在目录的兄弟位置（通常为执行根）；平铺子 Ticket 的 prepare cwd 随之改变；kernel 继续拥有布局 | 目录与任务树正交；改动集中在一处 | 实现 |
 | 2026-11-10 | UI 先只读；E2 操作留到 Phase 3 | 符合 011 A/B；Phase 1 先回答可观测性 | 提案 |
 | 2026-11-10 | Phase 4 才引入 provider / `Workspace` 抽象 | 没有第二个 provider，过早抽象会增加复杂度 | 提案 |

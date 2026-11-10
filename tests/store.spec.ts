@@ -263,10 +263,10 @@ it('reads `%` and `_` in a key prefix and a search query as written, not as patt
   store.close()
 })
 
-it('stores the task tree as generated parent and root columns with partial indexes at schema 15', () => {
+it('stores the task tree as generated parent and root columns with partial indexes at schema 16', () => {
   const path = join(directory, 'tree.sqlite')
   const store = new Store(path)
-  expect(store.get(KV.store.schema)).toBe(15)
+  expect(store.get(KV.store.schema)).toBe(SCHEMA_VERSION)
   store.close()
   const db = new DatabaseSync(path)
   const columns = db.prepare('PRAGMA table_xinfo(ticket)').all().map(row => (row as { name: string }).name)
