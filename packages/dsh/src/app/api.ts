@@ -13,7 +13,7 @@ import type { TicketListView } from './views/tickets.ts'
 import type { TicketTimelineView } from './views/timeline.ts'
 import type { TriggerTraceView } from './views/trace.ts'
 import type { ActivityFeed, ActivityLevel } from './activity.ts'
-import type { TaskBoardView } from './tasks.ts'
+import type { TaskBoardView, TaskDetailView } from './tasks.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
@@ -31,6 +31,7 @@ export interface Api {
   'GET metrics': { response: MetricsView }
   'GET activity': { query?: { after?: number; limit?: number; level?: ActivityLevel }; response: ActivityFeed }
   'GET tasks': { response: TaskBoardView }
+  'GET tasks/:id': { query?: { depth?: number }; response: TaskDetailView }
   'GET search': { query: { q: string }; response: SearchView }
   'GET sources': { response: SourceStatusView[] }
   'GET settings': { response: SettingsView }
@@ -47,7 +48,7 @@ export interface Api {
   'GET tickets/:id/timeline': { response: TicketTimelineView }
   'POST tickets/:id/retry': { response: { retried: true } }
   'POST tickets/:id/stop': { response: { stopped: true } }
-  'POST tickets/:id/approve': { response: { approved: true } }
+  'POST tickets/:id/approve': { body: { reviewRevision: string }; response: { approved: true; reviewRevision: string } }
   'POST outbox/:id/recall': { response: { status: ReplyStatus } }
   'POST approvals/:id/approve': { body: { level?: ApprovalRow['action']['level'] };
     response: { state: 'approved'; level: ApprovalRow['action']['level'] } }

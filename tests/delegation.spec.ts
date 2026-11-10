@@ -146,7 +146,7 @@ describe('child ticket delegation', () => {
     expect(h.repo.tickets.get(grandchild.id)!.ended).toMatchObject({ outcome: 'stopped' })
     expect(() => h.engine.stopTicket(child.id)).toThrow(UserError)
     expect(() => h.engine.retryTicket(child.id)).toThrow(UserError)
-    expect(() => h.engine.reviewTicket(child.id, rootActor)).toThrow(UserError)
+    expect(() => h.engine.reviewTicket(child.id, rootActor, 'rev')).toThrow(UserError)
   })
 
   it('enforces the direct-child width, depth and live-child quota caps', () => {

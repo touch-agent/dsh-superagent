@@ -243,7 +243,7 @@ export interface Assignment {
   endedAt?: string
   endedReason?: string
   /** The worker's latest report, with the reviewable deliverable it carried and a person's acceptance of that revision. */
-  report?: { state: ReportState; summary: string; at: string; review?: Review; accepted?: { by: ActorRef; at: string } }
+  report?: { state: ReportState; summary: string; at: string; review?: Review; accepted?: { by: ActorRef; at: string; reviewRevision?: string } }
   /** When Inputs last reached the worker; one at or after `report.at` means the worker has been busy with Inputs since that report. */
   deliveredAt?: string
   /**

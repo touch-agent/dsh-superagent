@@ -214,11 +214,14 @@ export class Engine {
    */
   retryTicket(ticketId: string): Ticket { return this.repo.atomic(() => this.tickets.retry(ticketId)) }
   /**
-   * A person accepts the deliverable revision a review-stage Ticket shows, which records the decision without ending the
-   * Ticket: a followed pull request still ends it with that Thread.
-   * @throws UserError when the ticket is unknown or ended, is not awaiting review, or has no deliverable with a preview.
+   * A person approves the review aggregate at `reviewRevision`, which covers the root's and its accepted children's
+   * deliveries. It records the approval and applies a pending or already closed end; open followed work still waits.
+   * @throws UserError when the ticket is unknown or ended, is a child, is not awaiting review, has no deliverable with a
+   * preview, or the revision is stale.
    */
-  reviewTicket(ticketId: string, by: ActorRef): Ticket { return this.repo.atomic(() => this.assignments.review(ticketId, by)) }
+  reviewTicket(ticketId: string, by: ActorRef, reviewRevision: string): Ticket {
+    return this.repo.atomic(() => this.assignments.review(ticketId, by, reviewRevision))
+  }
 
   // The Executor
 

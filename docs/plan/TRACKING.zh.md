@@ -52,7 +52,7 @@
 | T3-08 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/37 | `tests/ticket-timeline.spec.ts`；`tests/panel-timeline.spec.tsx`；`GET tickets/:id/timeline` 只读合成 trace、disposition 与 approval；Before/After 截图 | 2026-11-09 |
 | T3-09 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/38 | `tests/tasks-view.spec.ts`、`tests/panel-tasks.spec.tsx`、`tests/client.spec.tsx`；同场景 Before/After 见 `docs/images/tasks-view/`；359px 右栏 `scrollWidth=clientWidth`；`pnpm check` 1653 测试通过 | 2026-11-09 |
 | T3-10 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/40 | Phase 2a 子 Ticket 运行时、父 owner 审阅链、结束门与 schema 15；`tests/delegation*.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/store.spec.ts`、`tests/migration.spec.ts` 通过，typecheck/build/check:size 通过 | 2026-11-09 |
-| T3-11 | 未开始 | — | — | 2026-11-09 |
+| T3-11 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/42 | `tests/review-aggregate.spec.ts`、`tests/tasks-children.spec.ts`、`tests/panel-tasks.spec.tsx`；500 根/2000 子投影 p95 ≤400ms；360px 右栏无横向滚动（359px `scrollWidth=clientWidth`）；同场景 Before/After 见 `docs/images/tasks-view/phase2b-{before,after}-tasks-360.png` 与 `phase2b-{before,after}-review.png` | 2026-11-09 |
 | T4-01 | 未开始 | — | — | 2026-11-08 |
 | T4-02 | 未开始 | — | — | 2026-11-08 |
 | T4-03 | 未开始 | — | — | 2026-11-08 |

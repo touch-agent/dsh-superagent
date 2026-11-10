@@ -33,7 +33,7 @@ import { executorLoad, ticketDetail, ticketList } from './views/tickets.ts'
 import { ticketTimeline } from './views/timeline.ts'
 import { triggerTrace } from './views/trace.ts'
 import { activityFeed, activityLookup } from './activity.ts'
-import { taskBoard } from './tasks.ts'
+import { taskBoard, taskDetail } from './tasks.ts'
 
 export interface HttpHost {
   readonly store: Store
@@ -93,7 +93,8 @@ function failure(error: unknown): [number, Record<string, unknown>] {
   }
   if (error instanceof SetupError) return [400, { error: error.message, setup: error.problem }]
   if (error instanceof RouteError) return [error.status, { error: error.message }]
-  if (error instanceof UserError) return [error.missing ? 404 : 400, { error: error.message, code: error.code, values: error.values }]
+  if (error instanceof UserError) return [error.missing ? 404 : error.code === 'reviewStale' ? 409 : 400,
+    { error: error.message, code: error.code, values: error.values }]
   if (error instanceof SettingsConflict || error instanceof PromptConflict) return [409, { error: error.message }]
   return [500, { error: error instanceof Error ? error.message : String(error) }]
 }
@@ -148,6 +149,8 @@ const limit = (fallback: number, max: number) => z.coerce.number().int().positiv
 const TicketsQuery = z.object({ state: z.enum(TICKET_FILTERS).catch('open'),
   origin: z.string().regex(/^[a-z][a-z0-9-]*$/).optional().catch(undefined), offset, limit: limit(20, 1000) })
 const ThreadsQuery = z.object({ filter: z.enum(THREAD_FILTERS).catch('subscribed'), offset, limit: limit(20, 1000) })
+const TasksQuery = z.object({ depth: z.coerce.number().int().min(1).max(5).catch(1) })
+const ReviewApproval = z.object({ reviewRevision: z.string().min(1) })
 const ThreadQuery = z.object({ limit: limit(50, 100), before: z.string().optional(), around: z.string().optional() })
 const DecisionsQuery = z.object({ kind: z.string().default(''), window: z.literal('24h').optional().catch(undefined), offset,
   limit: limit(30, 200) })
@@ -169,6 +172,11 @@ function routes(runtime: HttpHost): Routes {
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
     'GET metrics': () => metrics(store),
     'GET tasks': () => taskBoard(views(runtime)),
+    'GET tasks/:id': ({ params, query }) => {
+      const detail = taskDetail(views(runtime), params.id, TasksQuery.parse(query).depth)
+      if (!detail) throw new RouteError(404, 'Ticket not found')
+      return detail
+    },
     'GET activity': ({ query }) => {
       const { after, limit, level } = ActivityQuery.parse(query)
       return activityFeed(store.activity, after, limit, level, activityLookup(store))
@@ -215,7 +223,12 @@ function routes(runtime: HttpHost): Routes {
     },
     'POST tickets/:id/retry': ({ params }) => { const id = ticket(params.id); runtime.engine.retryTicket(id); return { retried: true } },
     'POST tickets/:id/stop': ({ params }) => { const id = ticket(params.id); runtime.engine.stopTicket(id); return { stopped: true } },
-    'POST tickets/:id/approve': ({ params }) => { const id = ticket(params.id); runtime.engine.reviewTicket(id, PANEL_ACTOR); return { approved: true } },
+    'POST tickets/:id/approve': async ({ params, body }) => {
+      const id = ticket(params.id)
+      const { reviewRevision } = ReviewApproval.parse(await body())
+      runtime.engine.reviewTicket(id, PANEL_ACTOR, reviewRevision)
+      return { approved: true, reviewRevision }
+    },
     'POST outbox/:id/recall': ({ params }) => ({ status: runtime.outbox.recall(decoded(params.id)) }),
     'POST approvals/:id/approve': async ({ params, body }) => {
       const { level } = ApprovalDecision.parse(await body())

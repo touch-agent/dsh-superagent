@@ -23,7 +23,7 @@ import { githubLink } from '@superagent/dsh/sources/github-channel.ts'
 import { githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
 import { conversationDefinition, conversationTrigger } from '@superagent/dsh/sources/conversation.ts'
 import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
-import { createAction, createApproval, enterReview, followupOwners, outboundAction, type ChannelRef } from '@superagent/kernel'
+import { createAction, createApproval, enterReview, followupOwners, outboundAction, reviewAggregate, type ChannelRef } from '@superagent/kernel'
 import { fakeDefinition, fakeManifest } from './fixtures/fake-source.ts'
 
 let directory: string
@@ -419,11 +419,21 @@ it('projects a review-stage Ticket\'s deliverable preview, and marks a review wi
   ticket('t1', { review, accepted: { by: { source: 'feishu', id: 'ou_alice' }, at } })
   ticket('t2', {})
   ticket('t3', { review, accepted: { by: { source: 'panel', id: 'local' }, at } })
-  expect(ticketDetail(host, 't1')!.review).toMatchObject({ canReview: true, deliverable: review.deliverable,
-    criteria: [{ kind: 'rule', rule: 'pr.merged' }], confirmations: [{ kind: 'human', reason: { code: 'said' } }],
+  const revision = (id: string) => reviewAggregate(store.tickets.get(id)!, value => store.tickets.get(value),
+    value => store.tickets.childrenOf(value))!.reviewRevision
+  for (const [id, by] of [['t1', { source: 'feishu', id: 'ou_alice' }], ['t3', { source: 'panel', id: 'local' }]] as const) {
+    const saved = store.tickets.get(id)!
+    saved.assignments[0]!.report!.accepted = { by, at, reviewRevision: revision(id) }
+    store.tickets.save(saved)
+  }
+  expect(ticketDetail(host, 't1')!.review).toMatchObject({ canReview: true, reviewRevision: revision('t1'),
+    deliverables: [{ artifact: review.deliverable!.artifact, previewRef: review.deliverable!.previewRef,
+      criteria: [{ kind: 'rule', rule: 'pr.merged' }] }],
+    criteria: [{ kind: 'rule', rule: 'pr.merged' }], confirmations: [{ source: { ticketId: 't1' }, criterion: { kind: 'human' } }],
     summary: 'Ready for review', accepted: { by: { source: 'feishu', id: 'ou_alice' } } })
   // The panel's own acceptance names the panel, rather than showing its stored local actor id.
   expect(ticketDetail(host, 't3')!.review).toMatchObject({ accepted: { by: { source: 'panel', id: 'local', name: { zh: '管理页', en: 'Panel' } } } })
   // A review-stage Ticket whose report carried no deliverable says that it cannot be reviewed; it has nothing to approve.
-  expect(ticketDetail(host, 't2')!.review).toEqual({ canReview: false })
+  expect(ticketDetail(host, 't2')!.review).toMatchObject({ canReview: false, reviewRevision: '', deliverables: [],
+    criteria: [], confirmations: [] })
 })

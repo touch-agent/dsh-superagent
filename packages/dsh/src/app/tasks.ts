@@ -5,8 +5,9 @@
  * reviews and pull requests come from the ownership derivation shared with the Events tab. Nothing here writes to the
  * Store: a board is a projection of the Tickets, Threads and reports that exist, so it cannot disagree with them.
  */
-import { latestReport, liveTicket, threadKey, ticketForm, traceId, type Artifact, type HumanCriterion, type PreviewRef, type RuleCriterion,
-  type Span, type Thread, type ThreadFacts, type Ticket, type TicketOutcome } from '@superagent/kernel'
+import { childUnresolved, depthOf, latestReport, liveTicket, reviewAggregate, rootTicketIdOf, threadKey, ticketForm, traceId,
+  type Artifact, type HumanCriterion, type PreviewRef, type ReviewSource, type RuleCriterion, type Span, type Thread, type ThreadFacts,
+  type Ticket, type TicketOutcome, type Trigger } from '@superagent/kernel'
 import { activityStatusOf, type ActivityRecord, type ActivityStatus } from './activity.ts'
 import { isReviewTicket, ownershipIndex, type OwnershipIndex, type PlanRef } from './ownership.ts'
 import { snapshot, threadFacts, type ActorView, type Snapshot, type ViewHost } from './views/records.ts'
@@ -71,27 +72,75 @@ export interface TaskSourceView {
   facts?: ThreadFacts
 }
 
-/** One reviewable delivery, deduplicated by artifact and revision; the Phase 1 view has at most one per Ticket. */
+/** One reviewable delivery, deduplicated by artifact revision across the root and its accepted child Tickets. */
 export interface TaskDeliverableSummary {
-  /** `<artifact.kind>:<artifact.ref>:<artifact.revision>`, the key a later aggregate dedupes parent and child work by. */
+  /** `<artifact.kind>:<artifact.ref>:<artifact.revision>`, the key the aggregate deduplicates parent and child work by. */
   key: string
+  /** Every Ticket/Assignment that delivered this revision; a merged parent and child keep one row and both sources. */
+  sources: ReviewSource[]
   at: string
   artifact: Artifact
   previewRef: PreviewRef
   criteria: RuleCriterion[]
   confirmations: HumanCriterion[]
-  summary: string
-  /** The person who accepted this revision; present only when the report records it. */
-  accepted?: { by: ActorView; at: string }
+  summary?: string
+  /** The child delivery was accepted by its parent owner; that is not a person's confirmation. */
+  parentAccepted?: { by: ActorView; at: string }
+  /** The person approval that covers this row, bound to the aggregate revision. */
+  humanAccepted?: { by: ActorView; at: string; reviewRevision: string }
 }
 
-/** A Ticket's review surface: its recorded deliverable and criteria, empty when it delivered nothing reviewable. */
+/** One person confirmation of a source delivery, with the ref the approval covers. */
+export interface TaskReviewConfirmationView {
+  ref: string
+  source: ReviewSource
+  criterion: HumanCriterion
+  coveredBy?: { by: ActorView; at: string; reviewRevision: string }
+}
+
+/** A Ticket's review surface: its deliveries plus the accepted children's, and the revision a person approves. */
 export interface TaskReviewView {
+  reviewRevision: string
   deliverables: TaskDeliverableSummary[]
   criteria: RuleCriterion[]
-  confirmations: HumanCriterion[]
-  summary: string
-  accepted?: { by: ActorView; at: string }
+  confirmations: TaskReviewConfirmationView[]
+  summary?: string
+  /** Present only when the stored approval matches the current revision. */
+  accepted?: { by: ActorView; at: string; reviewRevision: string }
+  /** A stored approval that no longer describes the current aggregate; the person must approve again. */
+  staleAccepted?: { by: ActorView; at: string; reviewRevision: string }
+}
+
+/** How one task node's owner/worker is shown; the internals such as a Session id stay in E2 details. */
+export interface TaskActorView { role: 'owner' | 'worker'; sessionId?: string }
+
+/** One accepted, cancelled or failed parent decision on a child Ticket, without the internal Session id. */
+export interface TaskDelegationView {
+  parentTicketId: string
+  rootTicketId: string
+  goal: string
+  scope?: string
+  attempt: number
+  orphaned?: { reason: string; at: string }
+  resolution?: { kind: 'accepted' | 'cancelled' | 'failed'; by: ActorView; at: string; reason?: string }
+  dispositions: { decision: string; by: ActorView; at: string; reason?: string }[]
+  merge?: { into?: string; resolution: 'merged' | 'escalated' | 'none'; childRevisions: string[]; conflicts: string[]; reason?: string }
+}
+
+/** Direct child counts for one node; a projection of child Tickets, not a second stored state. */
+export interface TaskChildSummary {
+  total: number
+  live: number
+  queued: number
+  working: number
+  waiting: number
+  review: number
+  blocked: number
+  failed: number
+  orphaned: number
+  accepted: number
+  cancelled: number
+  unresolved: number
 }
 
 /** How a lightweight Ticket's inline run went, read from the trace it records instead of an Assignment. */
@@ -112,7 +161,7 @@ export interface TaskView {
   /** Missing on records written before forms existed; both the data and the UI read that as `tracked`. */
   form: 'tracked' | 'lightweight'
   status: ActivityStatus
-  /** `dropped` and `stopped` are terminal but not failures; counts use this, not `status` alone. */
+  /** `dropped`, `stopped` and a parent-cancelled child are terminal but not failures; counts use this, not `status` alone. */
   terminal?: 'dropped' | 'stopped'
   /** A person's turn: review, answer, delivery, blocked or failed work that has not ended. */
   attention?: boolean
@@ -126,9 +175,28 @@ export interface TaskView {
   /** The review Tickets finished below this Ticket; a delivery step count is not invented here. */
   progress?: { done: number; total: number }
   execution: { name?: string; sessionId?: string; assignments: number }
+  /** Present only on a child Ticket; a root has none. */
+  parentTicketId?: string
+  rootTicketId?: string
+  /** 0 for a root; the parent chain's length for a child. */
+  depth?: number
+  /** The node's own owner; a lightweight Ticket has none, since it runs inline. */
+  owner?: TaskActorView
+  /** The node's worker when an Assignment started; the Session id stays for E2 details only. */
+  worker?: TaskActorView
+  /** Present only on a child Ticket: its parent node's owner. */
+  parentOwner?: TaskActorView
+  /** Present only on a child Ticket: the parent owner's goal, judgements and terminal decision. */
+  delegation?: TaskDelegationView
+  /** Direct child Tickets; counts only, never a second hierarchy inside the board's root list. */
+  childSummary?: TaskChildSummary
+  /** The close a PR or Thread already reported while child Tickets or the final approval still held it. */
+  pendingEnd?: { by: 'thread' | 'follows'; outcome: 'merged' | 'closed'; at: string; reason?: string; ref?: string }
+  /** Children expanded on demand for a detail tree; the root list never carries them. */
+  children?: TaskView[]
   /** Deduplicated deliveries; empty for a lightweight Ticket and for a Ticket with no reviewable report. */
   deliverables: TaskDeliverableSummary[]
-  /** Present only when the latest report recorded a review with a preview; never an empty card. */
+  /** Present when the latest report recorded a review with a preview; never an empty card. */
   review?: TaskReviewView
   /** Present only for a lightweight Ticket, whose inline run has no Assignment to describe it. */
   inline?: TaskInlineView
@@ -138,9 +206,15 @@ export interface TaskView {
 export interface TaskBoardView {
   generatedAt: string
   milestones: TaskMilestone[]
-  /** The flat task list both the right tab and the status page read; read-only and derived at request time. */
+  /** The root Ticket rows both the right tab and the status page read; children are loaded from `GET tasks/:id`. */
   tasks: TaskView[]
-  totals: { milestones: number; tasks: number; tickets: number; open: number; attention: number }
+  totals: { milestones: number; tasks: number; tickets: number; open: number; attention: number; children?: number }
+}
+
+/** One detail request: the selected Ticket and its direct children, for one-layer expansion or a deeper tree. */
+export interface TaskDetailView {
+  task: TaskView
+  children: TaskView[]
 }
 
 /** The highest-standing child state; one failure colours the container, and an all-finished container is done. */
@@ -270,19 +344,53 @@ const milestoneNode = (id: string, title: string, tasks: TaskNode[], now: number
 const ATTENTION: ReadonlySet<ActivityStatus> = new Set(['review', 'answer', 'delivery', 'blocked', 'failed'])
 const TERMINAL: Partial<Record<TicketOutcome, 'dropped' | 'stopped'>> = { dropped: 'dropped', stopped: 'stopped' }
 
-/** One snapshot of a Ticket's latest review; absent unless the report recorded a preview of the artifact. */
-function reviewOf(ticket: Ticket, view: Snapshot): { review?: TaskReviewView; deliverables: TaskDeliverableSummary[] } {
+/** One request's Ticket tree: the read-once parent index every projection below shares, so no row queries per child. */
+export interface TaskTreeIndex {
+  tickets: readonly Ticket[]
+  get(id: string): Ticket | undefined
+  childrenOf(id: string): Ticket[]
+}
+
+/** Build the parent index once; the board and a detail request both project from it instead of querying per node. */
+export function treeIndex(tickets: readonly Ticket[]): TaskTreeIndex {
+  const byId = new Map(tickets.map(ticket => [ticket.id, ticket]))
+  const children = new Map<string, Ticket[]>()
+  for (const ticket of tickets) {
+    if (!ticket.parentTicketId) continue
+    children.set(ticket.parentTicketId, [...children.get(ticket.parentTicketId) ?? [], ticket])
+  }
+  return { tickets, get: id => byId.get(id), childrenOf: id => children.get(id) ?? [] }
+}
+
+/** The summary of the report that delivered one source, so a merged row can explain what changed there. */
+function sourceSummary(index: TaskTreeIndex, source: ReviewSource): string | undefined {
+  const ticket = index.get(source.ticketId)
+  const report = ticket?.assignments.find(assignment => assignment.id === source.assignmentId)?.report
+  return report ? markdown(report.summary) : undefined
+}
+
+/**
+ * One Ticket's review aggregate: its own latest report plus the accepted child deliveries, deduplicated by artifact
+ * revision. A stored approval only counts while it names the current revision; an older one is reported as stale.
+ */
+function reviewOf(ticket: Ticket, view: Snapshot, index: TaskTreeIndex): { review?: TaskReviewView; deliverables: TaskDeliverableSummary[] } {
   const report = latestReport(ticket)
-  // A review without a preview cannot be shown or approved; render no card rather than an empty one.
-  const recorded = report?.review
-  if (!report || !recorded?.deliverable?.previewRef) return { deliverables: [] }
-  const { artifact, previewRef } = recorded.deliverable
-  const accepted = report.accepted ? { by: view.actor(report.accepted.by), at: report.accepted.at } : undefined
-  const summary = markdown(report.summary)
-  const deliverable: TaskDeliverableSummary = { key: `${artifact.kind}:${artifact.ref}:${artifact.revision}`, at: report.at, artifact,
-    previewRef, criteria: recorded.criteria, confirmations: recorded.confirmations, summary, ...accepted ? { accepted } : {} }
-  return { review: { deliverables: [deliverable], criteria: recorded.criteria, confirmations: recorded.confirmations, summary,
-    ...accepted ? { accepted } : {} }, deliverables: [deliverable] }
+  const aggregate = reviewAggregate(ticket, index.get, index.childrenOf)
+  if (!aggregate) return { deliverables: [] }
+  const stored = report?.accepted
+  const accepted = stored?.reviewRevision === aggregate.reviewRevision
+    ? { by: view.actor(stored.by), at: stored.at, reviewRevision: stored.reviewRevision } : undefined
+  const stale = stored && !accepted ? { by: view.actor(stored.by), at: stored.at, reviewRevision: stored.reviewRevision ?? '' } : undefined
+  const deliverables: TaskDeliverableSummary[] = aggregate.deliverables.map(item => {
+    const summary = sourceSummary(index, item.sources[0]!)
+    return { ...item, ...summary ? { summary } : {},
+      ...item.parentAccepted ? { parentAccepted: { by: view.actor(item.parentAccepted.by), at: item.parentAccepted.at } } : {},
+      ...accepted ? { humanAccepted: accepted } : {} }
+  })
+  const summary = report ? markdown(report.summary) : deliverables.find(item => item.summary)?.summary
+  return { deliverables, review: { reviewRevision: aggregate.reviewRevision, deliverables, criteria: aggregate.criteria,
+    confirmations: aggregate.confirmations.map(item => ({ ...item, ...accepted ? { coveredBy: accepted } : {} })),
+    ...summary ? { summary } : {}, ...accepted ? { accepted } : {}, ...stale ? { staleAccepted: stale } : {} } }
 }
 
 /** A lightweight Ticket's inline history, from the action spans under its Trigger's trace. */
@@ -294,8 +402,8 @@ function inlineOf(ticket: Ticket, spans: readonly Span[]): TaskInlineView {
 }
 
 /** The source anchors a row shows: the originating Trigger first, then every Thread the Ticket subscribes to. */
-function sourcesOf(ticket: Ticket, view: Snapshot): TaskSourceView[] {
-  const trigger = view.store.triggers.get(ticket.origin.triggerId)
+function sourcesOf(ticket: Ticket, view: Snapshot, triggers?: ReadonlyMap<string, Trigger>): TaskSourceView[] {
+  const trigger = triggers?.get(ticket.origin.triggerId) ?? view.store.triggers.get(ticket.origin.triggerId)
   const sources: TaskSourceView[] = []
   if (trigger) {
     const originKey = trigger.threads[0] ? threadKey(trigger.threads[0]) : undefined
@@ -311,51 +419,165 @@ function sourcesOf(ticket: Ticket, view: Snapshot): TaskSourceView[] {
   return sources
 }
 
+/** A child Ticket's status: an orphaned child stays blocked even while its last Assignment is ended. */
+function childStatus(ticket: Ticket): ActivityStatus {
+  if (!ticket.ended && ticket.delegation?.orphaned) return 'blocked'
+  // A child its parent cancelled is terminal without being a failure; only its resolution says so.
+  if (ticket.ended && ticket.delegation?.resolution?.kind === 'cancelled') return 'done'
+  if (ticketForm(ticket) === 'lightweight' && !ticket.ended) return 'working'
+  return activityStatusOf(ticket)
+}
+
+/** Whether a live Ticket has an Assignment the owner can still resume, rather than a finished one. */
+function ownerAvailable(ticket: Ticket): boolean {
+  return !ticket.ended && ticket.assignments.some(assignment => assignment.state !== 'ended')
+}
+
+/** Whether any living ancestor owner can still take a child's report; only then is the child's failure not a person's. */
+function hasAvailableOwner(ticket: Ticket, tree: TaskTreeIndex): boolean {
+  const seen = new Set<string>()
+  let parentId = ticket.parentTicketId
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId)
+    const parent = tree.get(parentId)
+    if (!parent) return false
+    if (ownerAvailable(parent)) return true
+    parentId = parent.parentTicketId
+  }
+  return false
+}
+
+/** Every descendant of a Ticket, depth first; the board uses it for attention and the detail tree for expansion. */
+function descendants(ticket: Ticket, tree: TaskTreeIndex, seen = new Set<string>()): Ticket[] {
+  const found: Ticket[] = []
+  for (const child of tree.childrenOf(ticket.id)) {
+    if (seen.has(child.id)) continue
+    seen.add(child.id)
+    found.push(child, ...descendants(child, tree, seen))
+  }
+  return found
+}
+
+/**
+ * Whether a person must act. It is computed from Ticket/Delegation state, never from the display status: a live root's
+ * own person stage counts, and a failed, blocked or orphaned child counts only when no living ancestor owner can decide
+ * it. A child waiting for its parent's review is the parent owner's queue, not a person's.
+ */
+function attentionFor(ticket: Ticket, tree: TaskTreeIndex): boolean {
+  if (ticket.ended || ticketForm(ticket) !== 'tracked') return false
+  if (ATTENTION.has(activityStatusOf(ticket))) return true
+  if (ticket.endPending && !ownerAvailable(ticket)) return true
+  for (const child of descendants(ticket, tree)) {
+    const status = childStatus(child)
+    if (!childUnresolved(child) || (status !== 'failed' && status !== 'blocked')) continue
+    if (!hasAvailableOwner(child, tree)) return true
+  }
+  return false
+}
+
+/** A child's delegation as the E1 task view shows it: no Session id and no Mandate, since a child has neither of its own. */
+function delegationView(ticket: Ticket, view: Snapshot): TaskDelegationView | undefined {
+  const delegation = ticket.delegation
+  if (!delegation) return undefined
+  return { parentTicketId: delegation.parentTicketId, rootTicketId: delegation.rootTicketId, goal: delegation.goal,
+    ...delegation.scope ? { scope: delegation.scope } : {}, attempt: delegation.attempt,
+    ...delegation.orphaned ? { orphaned: { reason: delegation.orphaned.reason, at: delegation.orphaned.at } } : {},
+    ...delegation.resolution ? { resolution: { kind: delegation.resolution.kind, by: view.actor(delegation.resolution.by),
+      at: delegation.resolution.at, ...delegation.resolution.reason ? { reason: delegation.resolution.reason } : {} } } : {},
+    dispositions: (delegation.dispositions ?? []).map(item => ({ decision: item.decision, by: view.actor(item.by), at: item.at,
+      ...item.reason ? { reason: item.reason } : {} })),
+    ...delegation.merge ? { merge: { ...delegation.merge } } : {} }
+}
+
+/** Count direct children by state; a child waiting for its parent is `review`, not a person's attention. */
+function childSummaryOf(children: readonly Ticket[]): TaskChildSummary {
+  const statuses = children.map(childStatus)
+  const count = (status: ActivityStatus) => statuses.filter(item => item === status).length
+  const resolved = (kind: 'accepted' | 'cancelled' | 'failed') => children.filter(child => child.delegation?.resolution?.kind === kind).length
+  return { total: children.length, live: children.filter(child => !child.ended).length, queued: count('queued'), working: count('working'),
+    waiting: count('idle'), review: count('review'), blocked: count('blocked'), failed: count('failed'),
+    orphaned: children.filter(child => !child.ended && !!child.delegation?.orphaned).length,
+    accepted: resolved('accepted'), cancelled: resolved('cancelled'), unresolved: children.filter(childUnresolved).length }
+}
+
+/** A parent's status is aware of its live children: waiting for them is working, and a failed child blocks it. */
+function nodeStatus(ticket: Ticket, children: readonly Ticket[]): ActivityStatus {
+  if (ticket.ended || ticket.parentTicketId || ticketForm(ticket) === 'lightweight') return childStatus(ticket)
+  const live = children.filter(child => !child.ended)
+  if (!live.length) return activityStatusOf(ticket)
+  return live.some(child => childStatus(child) === 'failed' || childStatus(child) === 'blocked') ? 'blocked' : 'working'
+}
+
 /** One Ticket's flat task row; everything here is derived at request time and writes nothing. */
-function taskView(ticket: Ticket, view: Snapshot, index: OwnershipIndex, now: number, latest: ActivityRecord | undefined,
-  inlineSpans: readonly Span[]): TaskView {
+function taskView(ticket: Ticket, view: Snapshot, owners: OwnershipIndex, tree: TaskTreeIndex, now: number,
+  latest: ActivityRecord | undefined, inlineSpans: readonly Span[], triggers?: ReadonlyMap<string, Trigger>): TaskView {
   const form = ticketForm(ticket)
-  const trigger = view.store.triggers.get(ticket.origin.triggerId)
+  const trigger = triggers?.get(ticket.origin.triggerId) ?? view.store.triggers.get(ticket.origin.triggerId)
   const review = isReviewTicket(ticket)
-  const parent = review ? index.of(ticket.id).parent : undefined
-  const status = form === 'lightweight' && !ticket.ended ? 'working' : activityStatusOf(ticket)
+  const parent = review ? owners.of(ticket.id).parent : undefined
+  const children = tree.childrenOf(ticket.id)
+  const status = nodeStatus(ticket, children)
   const terminal = ticket.ended ? TERMINAL[ticket.ended.outcome] : undefined
   const start = Date.parse(ticket.createdAt), end = ticket.ended ? Date.parse(ticket.ended.at) : now
-  const reviews = index.reviewsOf(ticket.id)
-  const { review: reviewView, deliverables } = form === 'tracked' ? reviewOf(ticket, view) : { review: undefined, deliverables: [] }
+  const reviews = owners.reviewsOf(ticket.id)
+  const { review: reviewView, deliverables } = form === 'tracked' ? reviewOf(ticket, view, tree) : { review: undefined, deliverables: [] }
+  const childSummary = children.length ? childSummaryOf(children) : undefined
+  const sessionId = ticket.assignments.some(assignment => assignment.startedAt) ? workerSessionId(ticket.id) : undefined
   return {
     id: ticket.id, kind: review ? 'review' : 'ticket', ...parent ? { reviewedTicketId: parent } : {}, title: ticket.title, form, status,
-    ...terminal ? { terminal } : {}, ...form === 'tracked' && !ticket.ended && ATTENTION.has(status) ? { attention: true } : {},
-    ...index.of(ticket.id).plan ? { plan: index.of(ticket.id).plan } : {},
+    ...terminal ? { terminal } : {}, ...!ticket.parentTicketId && attentionFor(ticket, tree) ? { attention: true } : {},
+    ...owners.of(ticket.id).plan ? { plan: owners.of(ticket.id).plan } : {},
     origin: { source: trigger?.source ?? '', triggerId: ticket.origin.triggerId, preview: preview(trigger?.text ?? ''),
       at: trigger?.at ?? ticket.createdAt },
-    sources: sourcesOf(ticket, view),
+    sources: sourcesOf(ticket, view, triggers),
     ...latest ? { lastEventAt: latest.at } : {},
     ...Number.isFinite(start) && Number.isFinite(end) ? { startedAt: ticket.createdAt, durationMs: Math.max(0, end - start),
       ...ticket.ended ? { endedAt: ticket.ended.at } : {} } : {},
     ...reviews.length ? { progress: { done: reviews.filter(item => activityStatusOf(item) === 'done').length, total: reviews.length } } : {},
     execution: form === 'lightweight' ? { assignments: 0 } : { assignments: ticket.assignments.length,
-      ...ticket.assignments.some(assignment => assignment.startedAt) ? { sessionId: workerSessionId(ticket.id) } : {},
-      ...ticket.execution?.name ? { name: ticket.execution.name } : {} },
+      ...sessionId ? { sessionId } : {}, ...ticket.execution?.name ? { name: ticket.execution.name } : {} },
+    ...ticket.parentTicketId ? { parentTicketId: ticket.parentTicketId, rootTicketId: rootTicketIdOf(ticket) } : {},
+    ...ticket.parentTicketId ? { depth: depthOf(ticket, tree.get) } : { depth: 0 },
+    ...form === 'tracked' ? { owner: { role: 'owner' as const }, worker: { role: 'worker' as const, ...sessionId ? { sessionId } : {} } } : {},
+    ...ticket.parentTicketId ? { parentOwner: { role: 'owner' as const } } : {},
+    ...delegationView(ticket, view) ? { delegation: delegationView(ticket, view) } : {},
+    ...childSummary ? { childSummary } : {},
+    ...ticket.endPending ? { pendingEnd: { ...ticket.endPending } } : {},
     deliverables,
     ...reviewView ? { review: reviewView } : {},
     ...form === 'lightweight' ? { inline: inlineOf(ticket, inlineSpans) } : {},
   }
 }
 
+/** The activity and inline spans one request needs, read once for every Ticket in the projection. */
+function readContext(host: ViewHost, tickets: readonly Ticket[]): {
+  latest: Map<string, ActivityRecord>; byTrace: Map<string, Span[]>; triggers: Map<string, Trigger> } {
+  const latest = new Map<string, ActivityRecord>()
+  for (const record of host.store.activity.latestByTicket()) if (record.ticket) latest.set(record.ticket, record)
+  const lightweight = tickets.filter(ticket => ticketForm(ticket) === 'lightweight')
+  const spans = lightweight.length ? host.store.spans.byTraces(lightweight.map(ticket => traceId(ticket.origin.triggerId))) : []
+  const byTrace = new Map<string, Span[]>()
+  for (const item of spans) byTrace.set(item.traceId, [...byTrace.get(item.traceId) ?? [], item])
+  return { latest, byTrace, triggers: new Map(host.store.triggers.all().map(trigger => [trigger.id, trigger])) }
+}
+
 /** Build the board from the Store and the source facts the panel already reads. */
 export function taskBoard(host: ViewHost, now = new Date()): TaskBoardView {
   const view = snapshot(host)
-  const tickets = host.store.tickets.list()
-  const index = ownershipIndex(tickets)
+  // Read every Ticket once and index parents in memory: the board needs roots plus each root's child counts, never a query
+  // per root. `list()` would hide the children; `allList()` is the one read this projection is allowed.
+  const all = host.store.tickets.allList()
+  const tree = treeIndex(all)
+  const roots = all.filter(ticket => !ticket.parentTicketId)
+  const owners = ownershipIndex(all)
   const at = now.getTime()
   // A review that belongs to a Ticket is shown below it, never again as its own task row.
-  const { plans, unplanned } = groups(tickets.filter(ticket => index.of(ticket.id).parent === undefined), index)
+  const { plans, unplanned } = groups(roots.filter(ticket => owners.of(ticket.id).parent === undefined), owners)
   const byMilestone = new Map<string, { title: string; tasks: TaskNode[] }>()
   for (const group of plans) {
     const ordered = group.tickets.slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    const task = container('task', ordered.map(ticket => topNode(ticket, view, index, at)), at,
-      { id: group.plan.task, title: taskTitle(group, index), subtitle: group.plan.task,
+    const task = container('task', ordered.map(ticket => topNode(ticket, view, owners, at)), at,
+      { id: group.plan.task, title: taskTitle(group, owners), subtitle: group.plan.task,
         plan: { milestone: group.plan.milestone, task: group.plan.task } })
     const bucket = byMilestone.get(group.plan.milestone) ?? { title: group.plan.milestone, tasks: [] }
     bucket.tasks.push(task)
@@ -365,18 +587,40 @@ export function taskBoard(host: ViewHost, now = new Date()): TaskBoardView {
     .map(([id, bucket]) => milestoneNode(id, bucket.title, bucket.tasks, at))
   // Work no plan names still stands as one task per Ticket: a task tree that hid unplanned work would lie by omission.
   const loose = unplanned.slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .map(ticket => topNode(ticket, view, index, at))
+    .map(ticket => topNode(ticket, view, owners, at))
   if (loose.length) milestones.push(milestoneNode('unplanned', 'unplanned', loose, at))
   // The flat list is the one projection the right tab and the status page share; its order is stable for tests and people.
-  const latest = new Map<string, ActivityRecord>()
-  for (const record of host.store.activity.latestByTicket()) if (record.ticket) latest.set(record.ticket, record)
-  const lightweight = tickets.filter(ticket => ticketForm(ticket) === 'lightweight')
-  const spans = lightweight.length ? host.store.spans.byTraces(lightweight.map(ticket => traceId(ticket.origin.triggerId))) : []
-  const byTrace = new Map<string, Span[]>()
-  for (const item of spans) byTrace.set(item.traceId, [...byTrace.get(item.traceId) ?? [], item])
-  const tasks = tickets.slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
-    .map(ticket => taskView(ticket, view, index, at, latest.get(ticket.id), byTrace.get(traceId(ticket.origin.triggerId)) ?? []))
+  const { latest, byTrace, triggers } = readContext(host, all)
+  const tasks = roots.slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
+    .map(ticket => taskView(ticket, view, owners, tree, at, latest.get(ticket.id), byTrace.get(traceId(ticket.origin.triggerId)) ?? [], triggers))
+  const children = all.length - roots.length
   return { generatedAt: new Date(at).toISOString(), milestones, tasks,
     totals: { milestones: milestones.length, tasks: milestones.reduce((sum, milestone) => sum + milestone.children.length, 0),
-      tickets: tickets.length, open: tickets.filter(liveTicket).length, attention: tasks.filter(task => task.attention).length } }
+      tickets: roots.length, open: roots.filter(liveTicket).length, attention: tasks.filter(task => task.attention).length,
+      ...children ? { children } : {} } }
+}
+
+/**
+ * One Ticket's detail: its own row plus its children to `depth` levels (1 by default, at most 5), read from the root's
+ * subtree so a child's parent chain and review aggregate are available without a query per node.
+ */
+export function taskDetail(host: ViewHost, id: string, depth = 1, now = new Date()): TaskDetailView | undefined {
+  const ticket = host.store.tickets.get(id)
+  if (!ticket) return undefined
+  const root = host.store.tickets.get(rootTicketIdOf(ticket)) ?? ticket
+  const all = host.store.tickets.subtree(root.id)
+  const tree = treeIndex(all.some(item => item.id === root.id) ? all : [root, ...all])
+  const owners = ownershipIndex(tree.tickets)
+  const view = snapshot(host)
+  const at = now.getTime()
+  const { latest, byTrace, triggers } = readContext(host, tree.tickets)
+  const levels = Math.max(0, Math.min(5, depth))
+  const build = (current: Ticket, remaining: number): TaskView => {
+    const row = taskView(current, view, owners, tree, at, latest.get(current.id), byTrace.get(traceId(current.origin.triggerId)) ?? [], triggers)
+    if (remaining <= 0) return row
+    const children = tree.childrenOf(current.id).map(child => build(child, remaining - 1))
+    return children.length ? { ...row, children } : row
+  }
+  const task = build(ticket, levels)
+  return { task, children: task.children ?? [] }
 }

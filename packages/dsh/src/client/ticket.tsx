@@ -62,44 +62,65 @@ function Assignments({ ticket }: { ticket: TicketPageView }) {
         {item.endedReason && <span>{reasonLabel(t, item.endedReason)}</span>}
       </div>
     </div>
-    {item.ref && item.ref !== ticket.sessionId && <div className="dt-row-actions"><SessionButton variant="outline"
+    {!ticket.parentTicketId && item.ref && item.ref !== ticket.sessionId && <div className="dt-row-actions"><SessionButton variant="outline"
       sessionId={item.ref} /></div>}
   </li>)}</ul>
 }
 /**
- * The review stage's structural gate: render the deliverable preview, or say the Ticket cannot be reviewed. Approval is
- * offered only when that preview exists; the server refuses it otherwise.
+ * The review surface: every delivery in the aggregate, the person confirmations with their source, and one approval
+ * bound to `reviewRevision`. A child Ticket shows its own deliveries and parent acceptance but offers no approval; the
+ * final confirmation belongs to the root aggregate.
  */
 function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChanged: () => Promise<void> }) {
   const { t, call } = usePanel()
-  const approve = useAction(() => call('POST tickets/:id/approve', { id: ticket.id }), { reload: onChanged })
   const review = ticket.review
+  const approve = useAction(() => call('POST tickets/:id/approve', { id: ticket.id,
+    body: { reviewRevision: review?.reviewRevision ?? '' } }), { reload: onChanged })
   if (!review) return null
-  const deliverable = review.deliverable
-  if (!review.canReview || !deliverable) return <Section title={t('reviewSection')} icon="review">
-    <Hint>{t('reviewUnavailable')}</Hint>
-  </Section>
   const reference = (ref: string) => /^https?:\/\//.test(ref) ? <ExternalLink href={ref}>{ref}</ExternalLink>
     : <span className="dt-mono dt-clamp">{ref}</span>
-  const criteria = [
-    ...(review.criteria ?? []).map(criterion => criterion.window
-      ? t('reviewWindowedRule', { rule: valueLabel(t, 'acceptanceRule', criterion.rule), hours: criterion.window })
-      : valueLabel(t, 'acceptanceRule', criterion.rule)),
-    ...(review.confirmations ?? []).map(criterion => criterion.reason ? reasonLabel(t, criterion.reason) : t('reviewHumanConfirm')),
-  ]
+  const sourceLabel = (source: { ticketId: string }) => source.ticketId === ticket.id ? t('reviewSourceRoot') : t('reviewSourceChild')
+  const confirmationText = (criterion: NonNullable<TicketPageView['review']>['confirmations'][number]['criterion']) => criterion.reason
+    ? reasonLabel(t, criterion.reason) : t('reviewHumanConfirm')
+  if (!review.deliverables.length) return <Section title={t('reviewSection')} icon="review">
+    <Hint>{t('reviewUnavailable')}</Hint>
+  </Section>
   return <Section title={t('reviewSection')} icon="review">
-    <KeyValues rows={[
-      [t('reviewArtifact'), `${valueLabel(t, 'artifact', deliverable.artifact.kind)} · ${deliverable.artifact.ref}`],
-      [t('reviewRevision'), <span className="dt-mono">{deliverable.artifact.revision}</span>],
-      [t('reviewPreviewKind'), valueLabel(t, 'previewKind', deliverable.previewRef.kind)],
-      [t('reviewPreviewRef'), reference(deliverable.previewRef.ref)],
-      ...criteria.length > 0 ? [[t('reviewCriteria'), <ul className="dt-plain-list">{criteria.map((criterion, index) =>
-        <li key={index}>{criterion}</li>)}</ul>] as [string, ReactNode]] : [],
-    ]} />
+    <Hint>{t('reviewAggregateHint')}</Hint>
+    {review.deliverables.map((deliverable, index) => {
+      const confirmations = review.confirmations.filter(item => deliverable.sources.some(source =>
+        source.ticketId === item.source.ticketId && source.assignmentId === item.source.assignmentId))
+      const criteria = [
+        ...deliverable.criteria.map(criterion => criterion.window
+          ? t('reviewWindowedRule', { rule: valueLabel(t, 'acceptanceRule', criterion.rule), hours: criterion.window })
+          : valueLabel(t, 'acceptanceRule', criterion.rule)),
+        ...confirmations.map(item => confirmationText(item.criterion)),
+      ]
+      return <div className="dt-review-deliverable" key={deliverable.key}>
+        <KeyValues rows={[
+          [t('reviewArtifact'), `${valueLabel(t, 'artifact', deliverable.artifact.kind)} · ${deliverable.artifact.ref}`],
+          [t('reviewRevision'), <span className="dt-mono">{deliverable.artifact.revision}</span>],
+          [t('reviewPreviewKind'), valueLabel(t, 'previewKind', deliverable.previewRef.kind)],
+          [t('reviewPreviewRef'), reference(deliverable.previewRef.ref)],
+          [t('reviewSources'), deliverable.sources.map(source => sourceLabel(source)).join(t('listSeparator'))],
+          ...criteria.length > 0 ? [[t('reviewCriteria'), <ul className="dt-plain-list">{criteria.map((criterion, at) =>
+            <li key={at}>{criterion}</li>)}</ul>] as [string, ReactNode]] : [],
+        ]} />
+        {deliverable.summary && <div className="dt-row-quote"><MarkdownLite text={deliverable.summary} /></div>}
+        {deliverable.parentAccepted && <Hint>{t('reviewParentAccepted', { by: actorName(t, deliverable.parentAccepted.by) })}</Hint>}
+        {deliverable.humanAccepted && <Hint>{t('reviewHumanAccepted', { by: actorName(t, deliverable.humanAccepted.by),
+          time: when(deliverable.humanAccepted.at, t('lang')) })}</Hint>}
+      </div>
+    })}
     {review.summary && <div className="dt-row-quote"><MarkdownLite text={review.summary} /></div>}
-    {review.accepted ? <Hint>{t('reviewAccepted', { by: actorName(t, review.accepted.by), time: when(review.accepted.at, t('lang')) })}</Hint>
-      : <div className="dt-row-buttons"><Button variant="primary" size="sm" disabled={approve.busy} onClick={() => void approve.run()}>
-        {t('approve')}</Button></div>}
+    {review.staleAccepted && <Hint>{t('reviewStaleAccepted')}</Hint>}
+    {review.accepted ? <Hint>{t('reviewAccepted', { by: actorName(t, review.accepted.by),
+      time: when(review.accepted.at, t('lang')) })}</Hint>
+      : ticket.parentTicketId ? <Hint>{t('reviewChildNoApprove')}</Hint>
+        : review.canReview ? <div className="dt-row-buttons"><Button variant="primary" size="sm" disabled={approve.busy}
+          onClick={() => void approve.run()}>{t('approve')}</Button>
+          <span className="dt-hint dt-mono">{review.reviewRevision.slice(0, 8)}</span></div>
+          : <Hint>{t('reviewUnavailable')}</Hint>}
   </Section>
 }
 
@@ -256,7 +277,7 @@ function MandateDetails({ ticket, actor }: { ticket: TicketPageView; actor: stri
 }
 
 export function TicketPage({ id }: { id: string }) {
-  const { t, call } = usePanel()
+  const { t, call, navigate } = usePanel()
   const { data, error, reload } = usePoll(() => call('GET tickets/:id', { id }), [id])
   const after = async (request: Promise<unknown>) => { await request; await reload() }
   if (!data) return <><PageHead
@@ -275,6 +296,13 @@ export function TicketPage({ id }: { id: string }) {
     return reason ? t('endedAt', { time, outcome, reason }) : t('endedAtShort', { time, outcome })
   })()
   const channel = data.channels[0]
+  const delegationRows: [string, ReactNode][] = data.delegation ? [
+    [t('delegationGoal'), data.delegation.goal],
+    [t('delegationAttempt'), String(data.delegation.attempt)],
+    ...data.delegation.resolution ? [[t('delegationDecision'), `${valueLabel(t, 'delegationResolution',
+      data.delegation.resolution.kind)} · ${actorName(t, data.delegation.resolution.by)}`] as [string, ReactNode]] : [],
+    ...data.delegation.orphaned ? [[t('delegationOrphaned'), data.delegation.orphaned.reason] as [string, ReactNode]] : [],
+  ] : []
   return <>
     <PageHead title={data.title}>
       {opening?.url && <ActionLink href={opening.url}>{t('openThread', { source: valueLabel(t, 'source', opening.source) })}</ActionLink>}
@@ -282,7 +310,7 @@ export function TicketPage({ id }: { id: string }) {
         message={t('retryConfirm', { title: data.title })}
         onConfirm={() => after(call('POST tickets/:id/retry', { id }))} />}
       {data.conversationSession && <SessionButton variant="outline" sessionId={data.conversationSession} label={t('openConversation')} />}
-      {data.sessionId && <SessionButton variant="outline" sessionId={data.sessionId} />}
+      {!data.parentTicketId && data.sessionId && <SessionButton variant="outline" sessionId={data.sessionId} />}
     </PageHead>
     {error && <LoadState error={error} loading={false} />}
     <div className="dt-row-meta dt-status-line">
@@ -293,6 +321,12 @@ export function TicketPage({ id }: { id: string }) {
       <LabelValue label={t('ticketUpdatedLabel')} value={when(data.updatedAt, t('lang'))} />
     </div>
     {ended && <Hint>{ended}</Hint>}
+    {data.pendingEnd && <p className="dt-banner"><span className="dt-banner-label">{t('pendingEndLabel')}</span>
+      {t('pendingEndHint', { outcome: valueLabel(t, 'outcome', data.pendingEnd.outcome),
+        reason: data.pendingEnd.reason ? reasonLabel(t, data.pendingEnd.reason) : t('empty') })}</p>}
+    {data.parentTicketId && <Hint>
+      <button type="button" className="dt-textlink" onClick={() => navigate({ page: 'execution', id: data.parentTicketId })}>
+        {t('childOfParent')}</button> · {t('childNoMandateHint')}</Hint>}
     {data.attention && <div className="dt-banner"><span className="dt-banner-label">{t('attentionPrefix')}</span><MarkdownLite
       text={data.attention.question} />
       {channel && <div className="dt-banner-actions">
@@ -306,7 +340,26 @@ export function TicketPage({ id }: { id: string }) {
       <span className="dt-banner-label">{t('deliveryFailedPrefix')}</span>{data.deliveryError}
     </p>}
     <ReviewSection ticket={data} onChanged={reload} />
-    <MandateDetails ticket={data} actor={actor} />
+    {data.delegation && <Section title={t('delegationSection')} icon="pull">
+      <KeyValues rows={delegationRows} />
+      {data.delegation.dispositions.length > 0 && <ul className="dt-plain-list">{data.delegation.dispositions.map((item, index) =>
+        <li key={index}>{t('delegationDisposition', { decision: valueLabel(t, 'delegationDisposition', item.decision),
+          by: actorName(t, item.by), reason: item.reason ? reasonLabel(t, item.reason) : t('empty') })}</li>)}</ul>}
+    </Section>}
+    {data.children && data.children.length > 0 && <Section title={t('childTickets')} count={data.children.length}>
+      <ul className="dt-list">{data.children.map(child => <li className="dt-row" key={child.id}>
+        <div className="dt-row-main">
+          <div className="dt-row-title"><button type="button" className="dt-open" onClick={() => navigate({ page: 'execution', id: child.id })}>
+            {child.title}</button></div>
+          <div className="dt-row-meta"><span>{t(`activityStatus.${child.status}` as never)}</span>
+            {child.terminal && <span>{valueLabel(t, 'outcome', child.terminal)}</span>}
+            {child.delegation?.resolution && <span>{valueLabel(t, 'delegationResolution', child.delegation.resolution.kind)}</span>}
+            {child.review?.deliverables.length ? <span>{t('childDeliverableCount', { count: child.review.deliverables.length })}</span> : null}
+          </div>
+        </div>
+      </li>)}</ul>
+    </Section>}
+    {!data.parentTicketId && <MandateDetails ticket={data} actor={actor} />}
     <TimelineSection ticketId={data.id} />
     {undelivered.length > 0 && <Section title={t('undeliveredInputs')} count={undelivered.length}>
       <Hint>{data.deliveryError ? t('inputRetryHint') : data.paused ? t('inputPausedHint') : t('inputWaitingHint')}</Hint>
