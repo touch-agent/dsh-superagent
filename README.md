@@ -187,7 +187,7 @@ What is not wired yet, and matters when you evaluate the project:
 
 ## Documentation
 
-Read 000–010 in order; each builds only on the ones before it. 011 and 012 are a cross-referencing pair: the product and organization principles, and the platform evolution they sit above. 013 applies them to the workspace model, and 014 records the end-to-end golden path that proves the task tree and parent review.
+Read 000–010 in order; each builds only on the ones before it. 011 and 012 are a cross-referencing pair: the product and organization principles, and the platform evolution they sit above. 013 applies them to the workspace model, 014 records the end-to-end golden path that proves the task tree and parent review, and 015 designs the reusable profile layer over the two roles.
 
 - [000 Philosophy](docs/000-philosophy.md): the attention rule, and what the agent may and may not do.
 - [001 Domain model](docs/001-domain.md): Sources, Triggers, Threads, Evals, Mandates, Tickets, Assignments, Deliverables and Subscriptions.
@@ -204,6 +204,7 @@ Read 000–010 in order; each builds only on the ones before it. 011 and 012 are
 - [012 Platform evolution](docs/012-platform-evolution.zh.md): why the project has this shape, from a single-repository agent to a trustable action base (Chinese).
 - [013 Workspace model](docs/013-workspace-model.zh.md): `Execution.directory` as the single space locator, write leases, lifecycle, decision rules, read-only UI exposure and phased migration (Chinese, proposal).
 - [014 E2E golden path](docs/014-e2e-golden-path.zh.md): the one end-to-end path from an Issue to accepted, merged work, its fake-host boundary and its stability rules (Chinese).
+- [015 AgentProfile](docs/015-agent-profile.zh.md): reusable, versioned execution profiles for the two roles, with authorization kept in Policy, Eval and the action gate; current-state evidence, evolution loop, risks and a phased landing (Chinese, proposal).
 
 The design and evolution layer and the plan set are Chinese working documents, and can be ahead of, or behind, the numbered set. [docs/README.md](docs/README.md) maps the whole documentation set; [docs/plan/README.md](docs/plan/README.md) explains the plan documents and the tracking convention.
 
