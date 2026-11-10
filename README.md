@@ -100,7 +100,7 @@ Everything above serves one rule: take as little human attention as possible and
 | `examples/profile.cordis.patch.yml` | The machine configuration an operator copies into a profile. |
 | `scripts/` | `dsh-superagent` service script, the bundle-size gate, the install-e2e check. |
 | `tests/` | Unit, integration, conformance, chaos, panel and packaging tests; the repository's executable contracts. |
-| `docs/` | The numbered design and operations documents (000–012), the documentation map, runbooks and images. |
+| `docs/` | The numbered design and operations documents (000–014), the documentation map, runbooks and images. |
 | `docs/plan/` | The milestone plan, its dated kickoff and session-entry notes, and the single task tracking table. |
 | `SETUP.md` | The guided setup an agent follows with an operator. |
 
@@ -187,7 +187,7 @@ What is not wired yet, and matters when you evaluate the project:
 
 ## Documentation
 
-Read 000–010 in order; each builds only on the ones before it. 011 and 012 are a cross-referencing pair: the product and organization principles, and the platform evolution they sit above. 013 applies them to the workspace model.
+Read 000–010 in order; each builds only on the ones before it. 011 and 012 are a cross-referencing pair: the product and organization principles, and the platform evolution they sit above. 013 applies them to the workspace model, and 014 records the end-to-end golden path that proves the task tree and parent review.
 
 - [000 Philosophy](docs/000-philosophy.md): the attention rule, and what the agent may and may not do.
 - [001 Domain model](docs/001-domain.md): Sources, Triggers, Threads, Evals, Mandates, Tickets, Assignments, Deliverables and Subscriptions.
@@ -203,6 +203,7 @@ Read 000–010 in order; each builds only on the ones before it. 011 and 012 are
 - [011 Design principles](docs/011-design-principles.zh.md): attention as the budget, internalized organization, independent evolution, composable context and replaceable boundaries (Chinese).
 - [012 Platform evolution](docs/012-platform-evolution.zh.md): why the project has this shape, from a single-repository agent to a trustable action base (Chinese).
 - [013 Workspace model](docs/013-workspace-model.zh.md): `Execution.directory` as the single space locator, write leases, lifecycle, decision rules, read-only UI exposure and phased migration (Chinese, proposal).
+- [014 E2E golden path](docs/014-e2e-golden-path.zh.md): the one end-to-end path from an Issue to accepted, merged work, its fake-host boundary and its stability rules (Chinese).
 
 The design and evolution layer and the plan set are Chinese working documents, and can be ahead of, or behind, the numbered set. [docs/README.md](docs/README.md) maps the whole documentation set; [docs/plan/README.md](docs/plan/README.md) explains the plan documents and the tracking convention.
 

@@ -50,6 +50,7 @@
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "vitest run --config tests/e2e/vitest.config.ts",
     "test:install-e2e": "pnpm build && node scripts/install-e2e.mjs",
     "drill:withdraw": "vitest run tests/withdraw-drill.spec.ts",
     "check:size": "node scripts/check-bundle-size.mjs",
