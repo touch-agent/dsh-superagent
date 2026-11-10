@@ -207,6 +207,31 @@ describe('spaces in the runtime', () => {
     expect(h.runtime.store.tickets.get(ticket.id)?.execution?.directory).toBe(ticket.execution!.directory)
   })
 
+  it('releases the reservation when prepare resolves the directory to another locator', async () => {
+    const settings = h.runtime.store.settings()
+    h.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor, prepare: 'true' } })
+    let open!: () => void
+    const gate = new Promise<void>(resolve => { open = resolve })
+    h.hooks.prepare = gate
+    const trigger = feishu('1', '@bot 修一')
+    h.runtime.receive(trigger)
+    await h.runtime.idle()
+    const accepted = await h.route({ kind: 'accept', trigger_id: trigger.id, title: 'Fix 修一', worktree_name: 'fix-regression', acknowledgement: '收到，修复回归。' })
+    const ticket = h.runtime.store.tickets.get((accepted.ticket as { ticket_id: string }).ticket_id)!
+    const directory = ticket.execution!.directory
+    const running = h.runtime.idle()
+    // The prepare command is still running: replace its directory with a symlink to another prepared tree.
+    await vi.waitFor(() => expect(h.subprocess.spawn.mock.calls.some(([spec]) => spec.argv.includes('sh'))).toBe(true), { timeout: 5000 })
+    const elsewhere = join(temp(), 'elsewhere')
+    mkdirSync(elsewhere, { recursive: true })
+    rmSync(directory, { recursive: true, force: true })
+    symlinkSync(elsewhere, directory)
+    open()
+    await running
+    await vi.waitFor(() => expect(h.runtime.spaces.all().filter(row => row.ticketId === ticket.id).map(row => row.state)).toEqual(['released']), { timeout: 5000 })
+    expect(h.runtime.store.tickets.get(ticket.id)?.assignments.at(-1)?.report?.summary).toContain('resolves to')
+  })
+
   it('releases the lease when a person ends the Ticket', async () => {
     const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一'))
     expect(h.runtime.spaces.all().filter(row => row.ticketId === ticket.id).map(row => row.state)).toEqual(['active'])
@@ -221,6 +246,32 @@ describe('spaces in the runtime', () => {
     await h.runtime.idle()
     expect(dirname(child.execution!.directory)).toBe(dirname(ticket.execution!.directory))
     expect(basename(child.execution!.directory)).toBe(`${ticket.execution!.name}-child-1`)
+  })
+
+  it('gives delegated work its own space without rebinding the root', async () => {
+    const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一'))
+    const rootDirectory = ticket.execution!.directory
+    const child = h.runtime.engine.delegate(ticket.id, { goal: 'change another repository', title: 'Other repository' })
+    await h.runtime.idle()
+    // The root keeps its single write space; the child gets a sibling, so cross-repository work cannot share one space.
+    expect(h.runtime.store.tickets.get(ticket.id)?.execution?.directory).toBe(rootDirectory)
+    expect(child.execution!.directory).not.toBe(rootDirectory)
+    expect(h.runtime.spaces.all().filter(row => row.ticketId === ticket.id).map(row => row.state)).toEqual(['active'])
+    expect(h.runtime.spaces.all().filter(row => row.ticketId === child.id).map(row => row.state)).toEqual(['active'])
+  })
+
+  it('releases a child lease when its parent accepts the report', async () => {
+    const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一'))
+    const child = h.runtime.engine.delegate(ticket.id, { goal: 'separate the login helper', title: 'Login helper' })
+    await h.runtime.idle()
+    expect(h.runtime.spaces.all().filter(row => row.ticketId === child.id).map(row => row.state)).toEqual(['active'])
+    await h.runTool(`worker-${child.id}`, 'orchestrator_report', { state: 'ready', summary: 'child done' })
+    // A ready report alone does not end the child or release its space; the parent's acceptance does.
+    expect(h.runtime.spaces.all().filter(row => row.ticketId === child.id).map(row => row.state)).toEqual(['active'])
+    await h.runTool(sessionId, 'orchestrator_child', { operation: 'accept', child_ticket_id: child.id })
+    await h.runtime.idle()
+    await vi.waitFor(() => expect(h.runtime.spaces.all().filter(row => row.ticketId === child.id).map(row => row.state))
+      .toEqual(['released']), { timeout: 5000 })
   })
 
   it('keeps path-only behavior when the lease flag is off', async () => {
