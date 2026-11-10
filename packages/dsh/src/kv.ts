@@ -3,6 +3,7 @@
  * Readers and writers refer to a record by its entry here so each key is spelled once with its value type.
  */
 import type { PromptVersion } from './app/prompts.ts'
+import type { AgentProfile, ProfileHead, ProfileRunEffective } from '@superagent/kernel'
 import type { SettingsVersion } from './app/store.ts'
 import type { SettingsSave } from './policy.ts'
 import type { Retry } from './sources/github.ts'
@@ -16,6 +17,18 @@ export const record = <V>(key: string) => key as Key<V>
 /** Define a KV key family whose keys join `prefix` and name parts with `:` (or a custom `format`). */
 export function family<V, A extends unknown[] = [string]>(prefix: string, format = (...name: A) => name.join(':')): Family<V, A> {
   return Object.assign((...name: A) => `${prefix}${format(...name)}` as Key<V>, { prefix })
+}
+
+/** Independent AgentProfile flags; kept out of strict SettingsSchema so an older binary can still read the Store. */
+export interface ProfilesConfig {
+  /** Whether new tickets bind a snapshot; off by default during the Phase 1 rollout. */
+  enabled: boolean
+  /** `snapshot` resolves the selected profile; `legacy` makes new Sessions/requests use the role defaults. */
+  resolve: 'snapshot' | 'legacy'
+  /** Whether the read-only profile metrics routes answer. */
+  telemetry: boolean
+  /** The profile id code binds to new tickets; absent falls back to the built-in `worker-default`. */
+  defaultProfile?: string
 }
 
 export const KV = {
@@ -32,7 +45,18 @@ export const KV = {
   /** Runtime: the main Session's ID. */
   runtime: { masterId: record<string>('master-id') },
   /** Sessions: prompt revisions each Session has worked under, ordered oldest first; the last entry (`.at(-1)`) is its active revision. */
-  sessions: { prompts: family<number[], [session: string]>('session-prompts:') },
+  sessions: { prompts: family<number[], [session: string]>('session-prompts:'),
+    /** The actual runtime fields of a Session's latest request, used to group a moving profile by run. */
+    effective: family<ProfileRunEffective, [session: string]>('session-effective:'),
+    /** Token accounting the host reported for a Session, summed over its assistant messages. */
+    usage: family<{ input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; messages: number; at: string }, [session: string]>('session-usage:') },
+  /**
+   * AgentProfiles: the independent feature flags, the id index, one immutable definition per revision, and each profile's
+   * mutable head. None of this is in Settings: a strict SettingsSchema must keep rolling back to an older binary.
+   */
+  profiles: { config: record<ProfilesConfig>('profiles.config'), index: record<string[]>('profile-index'),
+    revision: family<AgentProfile, [id: string, revision: number]>('profile-revision:'),
+    head: family<ProfileHead, [id: string]>('profile-head:') },
   /** Schema 11 migration: legacy main-Session queues imported into the effect table. */
   queues: { relays: record<{ id: string; text: string }[]>('relay-queue'), unsubscribed: record<string[]>('subscription-results'),
     prompts: record<number | null>('prompt-notification'), settings: record<number | null>('settings-notification') },

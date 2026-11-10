@@ -16,8 +16,9 @@ const attentionReplyId = (id: string) => outboundAction({ kind: 'reply', source:
 interface Hooks {
   emit?: (event: { type: string; data: Record<string, unknown> }) => void
   prepareTicket?: EngineOptions['prepareTicket']
+  profile?: EngineOptions['profile']
 }
-function harness(policyOverrides: Partial<Policy> = {}, { emit, prepareTicket }: Hooks = {}) {
+function harness(policyOverrides: Partial<Policy> = {}, { emit, prepareTicket, profile }: Hooks = {}) {
   const repo = new MemoryRepositories()
   const outbox: OutboundMessage[] = []
   const withdrawn: string[] = []
@@ -49,7 +50,7 @@ function harness(policyOverrides: Partial<Policy> = {}, { emit, prepareTicket }:
     recall: id => { withdrawn.push(id); return 'recalled' },
   }
   const engine = new Engine({ repo, scope, policy: () => policy, assessor, executor, outbox: queued,
-    ...emit ? { emit } : {}, ...prepareTicket ? { prepareTicket } : {}, now: () => new Date(Date.UTC(2026, 8, 23, 0, 0, clock)).toISOString() })
+    ...emit ? { emit } : {}, ...prepareTicket ? { prepareTicket } : {}, ...profile ? { profile } : {}, now: () => new Date(Date.UTC(2026, 8, 23, 0, 0, clock)).toISOString() })
   /** Simulate the executor starting queued assignments (unless `launch` is false) and delivering pending ticket inputs. */
   function settle({ launch = true } = {}) {
     for (;;) {
@@ -1764,5 +1765,30 @@ describe('ignores from the card', () => {
     // Accepting an inferred candidate still takes an assessment's matched rules.
     h.engine.receive(trigger('5', { actor: guest })); h.engine.reevaluate('5'); h.pump()
     expect(() => h.engine.decide('5', { kind: 'accept', title: 'Fix', scope: 'small', reason: 'chat' })).toThrow(new UserError('notExplicit'))
+  })
+})
+
+
+describe('agent profile binding', () => {
+  const snapshot = { id: 'worker-docs', revision: 2, hash: 'sha256:content', role: 'worker' as const,
+    selection: { by: 'code' as const, source: 'manual' as const, reason: 'profile:worker-docs', moving: false, valid: true },
+    model: { mode: 'pinned' as const, provider: 'deepseek', model: 'deepseek-v4.1' },
+    tools: ['read', 'bash'], toolsMode: 'list' as const, prompt: { mode: 'pinned' as const, revision: 3, hash: 'sha256:prompt' },
+    effective: { promptRevision: 3, promptHash: 'sha256:prompt', toolsHash: 'sha256:tools',
+      model: { provider: 'deepseek', model: 'deepseek-v4.1' }, dshVersion: 'test', policyVersion: 'sha256:policy',
+      skillsHash: 'sha256:skills', hash: 'sha256:effective' }, boundAt: '2026-09-23T00:00:00.000Z', reason: 'profile:worker-docs' }
+  it('binds the snapshot without changing the Decision or Mandate', () => {
+    const h = harness({}, { profile: { bindRoot: () => snapshot, bindChild: parent => parent.profile } })
+    const decision = accepted(h)
+    const ticket = h.repo.tickets.list()[0]!
+    expect(ticket.profile).toEqual(snapshot)
+    expect(ticket.mandate).toMatchObject({ maxActionLevel: 'send', strength: 'explicit' })
+    expect(h.repo.decisions.get(decision.id)).toMatchObject({ id: decision.id, ticketId: ticket.id })
+  })
+  it('never fails an accept when the binder throws, leaving the ticket legacy', () => {
+    const h = harness({}, { profile: { bindRoot: () => { throw new Error('profile store is corrupt') }, bindChild: () => undefined } })
+    expect(() => accepted(h)).not.toThrow()
+    expect(h.repo.tickets.list()[0]!.profile).toBeUndefined()
+    expect(h.repo.tickets.list()[0]!.mandate).toBeDefined()
   })
 })

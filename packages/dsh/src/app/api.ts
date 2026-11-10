@@ -17,6 +17,8 @@ import type { TaskBoardView, TaskDetailView } from './tasks.ts'
 import type { GoalBoardView, GoalView } from './goals.ts'
 import type { ContextGroupBoardView } from './context-groups.ts'
 import type { SpaceRowsView } from './spaces.ts'
+import type { ProfileDetailView, ProfileListView } from './profiles.ts'
+import type { ProfileMetricsView } from './profile-metrics.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
@@ -38,6 +40,9 @@ export interface Api {
   'GET goals/:id': { response: { goal: GoalView } }
   'GET spaces': { response: SpaceRowsView }
   'GET contexts/groups': { response: ContextGroupBoardView }
+  'GET profiles': { response: ProfileListView }
+  'GET profiles/:id': { response: ProfileDetailView }
+  'GET profiles/:id/metrics': { response: ProfileMetricsView }
   'GET tasks/:id': { query?: { depth?: number }; response: TaskDetailView }
   'GET search': { query: { q: string }; response: SearchView }
   'GET sources': { response: SourceStatusView[] }

@@ -7,6 +7,7 @@ import { channelThread, childResolutionValid, childUnresolved, currentChildRepor
 import type { ActorRef, Assignment, ChannelRef, ChildReportDisposition, Delegation, Evaluation, Follow, Mandate, PendingEnd, PolicyEffect,
   ReportState, ThreadRef, Ticket, TicketEndBy, TicketInput, TicketOutcome, Trigger, TriggerDisposition } from './model.ts'
 import type { AssessmentOutcome, InlineResult, InlineStep } from './ports.ts'
+import { profileSpan } from './profile.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
 import { canRetry } from './stage.ts'
@@ -65,6 +66,9 @@ export class Tickets extends EnginePart {
       const channel = this.repo.triggers.get(triggerId)?.channel
       if (channel && !ticket.channels.some(item => sameChannel(item, channel))) ticket.channels.push(channel)
     }
+    // A profile binds before execution is prepared, so a re-created execution never drops the snapshot. A profile
+    // failure may leave the ticket legacy, but it must never fail the accept that created it.
+    try { ticket.profile = this.options.profile?.bindRoot(ticket) } catch { /* the ticket stays legacy */ }
     ticket = this.options.prepareTicket?.(ticket, outcome) ?? ticket
     const lightweight = ticketForm(ticket) === 'lightweight'
     // A lightweight ticket cannot wait for a Session that never starts, so the deployment must provide the inline path.
@@ -136,11 +140,13 @@ export class Tickets extends EnginePart {
       createdAt: at, updatedAt: at, origin: { ...parent.origin }, parentTicketId: parentId, rootTicketId: rootId, delegation,
       ...(childExecution ? { execution: childExecution } : {}) }
     if (request.assignment) child.execution = { ...(childExecution ?? { name: request.name ?? id, directory: request.name ?? id }), assignment: request.assignment }
+    // A child has no profile choice of its own: it copies its parent's snapshot, which makes widening impossible.
+    try { child.profile = this.options.profile?.bindChild(parent, child) } catch { /* the child stays legacy */ }
     const assignment = this.newAssignment(child, 1)
     this.repo.tickets.save(child)
     this.options.executor.start(child, assignment)
     this.stageOf(parent, 'delegation.delegate', { ref: id, at, data: { parentTicketId: parentId, childTicketId: id, attempt: 1, depth } })
-    this.stageOf(child, 'dispatch', { ref: assignment.id, at, data: { parentTicketId: parentId, rootTicketId: rootId, attempt: 1 } })
+    this.stageOf(child, 'dispatch', { ref: assignment.id, at, data: { parentTicketId: parentId, rootTicketId: rootId, attempt: 1, ...profileSpan(child) } })
     this.emit('ticket.delegated', { parentTicketId: parentId, ticketId: id, rootTicketId: rootId, attempt: 1, depth })
     if (request.replaces) this.childDecision(parentId, request.replaces, { source: 'dsh-superagent', id: 'parent-owner' }, 'reassigned',
       `Replaced by ${id}`, id, at)

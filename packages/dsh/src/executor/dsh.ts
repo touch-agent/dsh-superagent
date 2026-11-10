@@ -16,6 +16,7 @@ import type { Store } from '../app/store.ts'
 import { Later, type Effects } from '../app/effects.ts'
 import { executionRoot, type Variable } from '../app/execution-environment.ts'
 import type { Sessions } from '../app/sessions.ts'
+import { ProfileLaunchBlocked } from '../app/profiles.ts'
 import { WorktreeNameSchema } from '../app/assessment.ts'
 import type { SpaceLease, SpaceLeases } from '../app/spaces.ts'
 import type { ContextGroupView } from '../app/context-groups.ts'
@@ -90,7 +91,7 @@ export interface ExecutorHost {
   readonly machine: Pick<Machine, 'stateDir'>
   readonly lifetime: AbortSignal
   /** Session manager for worker sessions and for relaying worker reports to the main Session. */
-  readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds'>
+  readonly sessions: Pick<Sessions, 'ensure' | 'preflight' | 'prompt' | 'promptedId' | 'relay' | 'holds'>
   /** Write leases for ticket directories; it coordinates writers and grants no action. */
   readonly spaces: Pick<SpaceLeases, 'reserve' | 'activate' | 'release' | 'releaseReservation' | 'reconcile'>
   closing(): boolean
@@ -324,6 +325,8 @@ export class DshExecutor implements Executor {
       // would treat whatever a failed prepare command left behind in the directory as a prepared workspace; instead the
       // ticket is marked failed and waits until new human input or an explicit retry arrives.
       if (this.host.closing() || error instanceof Later) throw error
+      // A profile that cannot start reports blocked and waits for a person; it is not a transient failure to retry.
+      if (error instanceof ProfileLaunchBlocked) { this.blocked(ticketId, error.summary); return }
       if (!(error instanceof PrepareFailed) && this.retries(`launch:${assignmentId}`, error)) throw error
       this.launchFailed(ticketId, assignmentId, error)
     } finally {
@@ -360,7 +363,7 @@ export class DshExecutor implements Executor {
         try {
           // Recreate the worker session if it was externally deleted.
           if (!this.host.context.agents.get(sessionId as SessionId)) {
-            await this.host.sessions.ensure(sessionId, ticket.execution?.directory ?? '', ticket.title, 'worker')
+            await this.host.sessions.ensure(sessionId, ticket.execution?.directory ?? '', ticket.title, 'worker', ticket.profile)
           }
           if (input) await this.deliverInput(ticket, assignment, input)
         } catch (error) {
@@ -463,6 +466,13 @@ export class DshExecutor implements Executor {
     if (!ticket || !liveTicket(ticket) || latestAssignment(ticket)?.id !== assignmentId) return
     this.failed(ticketId, String(error))
   }
+  /** Records a `blocked` report on the ticket and relays it: a profile launch that cannot satisfy its snapshot waits for a person. */
+  private blocked(ticketId: string, summary: string): void {
+    this.host.store.atomic(() => {
+      const updated = this.host.engine.report(ticketId, { state: 'blocked', summary })
+      this.relay(resultRelay(updated, 'blocked', summary))
+    })
+  }
   /** Records a `failed` report on the ticket and relays the failure to the main Session in one transaction. */
   private failed(ticketId: string, summary: string): void {
     this.host.store.atomic(() => {
@@ -478,6 +488,10 @@ export class DshExecutor implements Executor {
       const stored = this.host.store.tickets.get(ticket.id)
       return !!stored && liveTicket(stored) && latestAssignment(stored)?.id === assignment.id
     }
+    // Profile preflight before touching the workspace: a missing pinned prompt or an invalid snapshot blocks, while a
+    // model-provider failure keeps the existing transient/failed path.
+    await this.host.sessions.preflight(ticket)
+    if (!current()) return
     const source = sourceTrigger(this.host, ticket)
     const workspace = ticket.execution?.directory ?? ''
     if (!current()) return
@@ -505,7 +519,7 @@ export class DshExecutor implements Executor {
         lease = this.host.spaces.activate(lease)
       }
       const sessionId = workerSessionId(ticket.id)
-      const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker')
+      const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker', ticket.profile)
       if (!current()) return
       // The background work of the Assignment this one replaces stops first, so its end does not clear this one's message.
       await this.stopped(ticket.id)

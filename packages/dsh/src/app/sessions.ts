@@ -6,7 +6,7 @@ import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { dirname } from 'node:path'
 import { z } from 'zod'
-import { key, liveTicket, type Ticket } from '@superagent/kernel'
+import { key, liveTicket, type ProfileSnapshot, type Ticket } from '@superagent/kernel'
 import { mandateInstructions, ticketOfSession } from '../executor/dsh.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { AgentDelivery, messageId } from './delivery.ts'
@@ -16,6 +16,8 @@ import { RetryHealth } from './retry-health.ts'
 import { initializeRoleModel } from './role-models.ts'
 import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
+import { ProfileLaunchBlocked, runEffective, type Profiles } from './profiles.ts'
+import { CHILD_DENIED, SUBAGENT_CONTROL, WORK_TOOLS } from './work-tools.ts'
 import type { Store } from './store.ts'
 import { KV } from '../kv.ts'
 import type { RegisterTool, Tool } from './tools/tool.ts'
@@ -26,6 +28,8 @@ export interface SessionsHost {
   readonly context: Context
   readonly store: Pick<Store, 'tickets' | 'settings' | 'get' | 'set' | 'keys'>
   readonly prompts: Pick<Prompts, 'current' | 'version' | 'compose' | 'skills'>
+  /** The independent profile flags, read for `resolve=legacy` and the enabled switch. */
+  readonly profiles: Pick<Profiles, 'config'>
   readonly effects: Pick<Effects, 'enqueue' | 'handle' | 'idle' | 'pending'>
   /** The `models` health entry, which reports managed sessions waiting on a model-budget retry. */
   readonly health: HealthEntry
@@ -53,16 +57,6 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 /**
- * The DSH tools an Executor Session works with: files, search, the shell and its jobs, the web, skills, its todo list and
- * subagents. It gets no other tool the profile has, whenever it was registered: none that asks or shows a person something,
- * changes the profile, schedules work or starts goals outside the worker slots, the pause and a person's hold, starts or
- * messages other Sessions, or edits documents.
- */
-const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
-  'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent']
-/** A child Ticket's owner may not start or message other Sessions: it reports only to its parent owner through the Engine. */
-const CHILD_DENIED = new Set(['subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent'])
-/**
  * A child's shell may not leave the authorization root: no GitHub write/API calls, no git network writes, no direct
  * network tools and no SQLite/state access. This is a tool-level denial, not an OS sandbox (the deployment's preset is
  * still `danger-full-access`), so the restricted-execution promise remains a parent-review guarantee for adversarial
@@ -76,6 +70,20 @@ export function childShellReason(command: string): string | undefined {
     return 'A child Ticket cannot read or write the orchestrator state or database'
   }
   return undefined
+}
+/**
+ * The work tools a Ticket's snapshot permits: the root profile's effective list, minus the tools a child cannot use, and
+ * minus subagent controls when the model is pinned (Phase 1 cannot force a subagent's model, so it does not allow one).
+ * Protocol tools are deliberately absent: the executor registers them separately and a profile never removes them.
+ */
+export function profileWorkTools(ticket: Ticket, get: (id: string) => Ticket | undefined): string[] {
+  const root = ticket.parentTicketId ? get(ticket.rootTicketId ?? ticket.parentTicketId) : ticket
+  const snapshot = root?.profile ?? ticket.profile
+  if (!snapshot) return WORK_TOOLS.filter(name => !ticket.parentTicketId || !CHILD_DENIED.has(name))
+  let names = [...snapshot.tools]
+  if (ticket.parentTicketId) names = names.filter(name => !CHILD_DENIED.has(name))
+  if (snapshot.model.mode === 'pinned') names = names.filter(name => !SUBAGENT_CONTROL.has(name))
+  return [...new Set(names)]
 }
 /** What the main Session is told when it would wait: what it waits for comes to it, and a waiting step holds back the next. */
 const NO_WAIT = 'Reports, follow_up notices, new candidates and a background job\'s end with its output arrive by themselves as messages; '
@@ -133,6 +141,7 @@ export class Sessions {
       const binding = agent && agent.session === session ? this.bindings.get(agent) : undefined
       if (!agent || !binding || binding.subagent) return
       this.retryHealth.observe(agent.id, event)
+      this.recordUsage(agent.id, event)
       this.updateModelHealth()
     })
     ctx.on('agent/created', async ({ agent }) => { await this.decorate(agent); return undefined })
@@ -151,8 +160,12 @@ export class Sessions {
       if (status === 'idle' && !this.host.closing()) { this.retryHealth.clear(agent.id); this.updateModelHealth() }
     })
   }
-  /** Resolves or creates session `id` in workspace `cwd`, initializes its role model, decorates it with prompts/skills/tools, sets `danger-full-access` permissions, and renames it to `title`. */
-  async ensure(id: string, cwd: string, title: string, role: 'orchestrator' | 'worker'): Promise<Agent> {
+  /**
+   * Resolves or creates session `id` in workspace `cwd`, initializes its role model, decorates it with prompts/skills/tools,
+   * sets `danger-full-access` permissions, and renames it to `title`. A worker's binding snapshot, when passed, supplies
+   * its model, pinned prompt and work tools; a missing explicit work tool fails closed before the first turn.
+   */
+  async ensure(id: string, cwd: string, title: string, role: 'orchestrator' | 'worker', profile?: ProfileSnapshot): Promise<Agent> {
     const ctx = this.ctx
     let result = await ctx.sessionController.resolveAgent(id as SessionId)
     if ('error' in result && result.error.code === 'session/not-found') {
@@ -164,11 +177,51 @@ export class Sessions {
     }
     if ('error' in result) throw result.error
     const settings = this.host.store.settings()
-    await initializeRoleModel(ctx, result.agent, role === 'orchestrator' ? settings.eval.model : settings.executor.model)
+    const ticket = role === 'worker' ? this.ticketOfId(id) : undefined
+    const snapshot = profile ?? ticket?.profile
+    const resolved = snapshot && this.host.profiles.config().resolve !== 'legacy' ? snapshot : undefined
+    if (resolved) {
+      if (!resolved.selection.valid) throw new ProfileLaunchBlocked(`profile ${resolved.id}@${resolved.revision} cannot launch: ${resolved.selection.reason}`)
+      if (ticket && resolved.toolsMode === 'list') {
+        const missing = profileWorkTools(ticket, ticketId => this.host.store.tickets.get(ticketId))
+          .filter(name => !result.agent.ctx.tools.get(name, scopeParentOf(result.agent)))
+        if (missing.length) throw new ProfileLaunchBlocked(`profile ${resolved.id}@${resolved.revision} requires work tools this host lacks: ${missing.join(', ')}`)
+      }
+    }
+    const pinned = resolved?.model.mode === 'pinned' ? resolved.model : undefined
+    await initializeRoleModel(ctx, result.agent, role === 'orchestrator' ? settings.eval.model : pinned ?? settings.executor.model)
     await this.decorate(result.agent)
     ctx.permissionPresets.set(result.agent.session, 'danger-full-access')
     await ctx.sessionController.rename({ sessionId: id as SessionId, title })
     return result.agent
+  }
+  /** The ticket id behind a worker Session id, read without importing the executor. */
+  private ticketOfId(id: string): Ticket | undefined { return id.startsWith('worker-') ? this.host.store.tickets.get(id.slice('worker-'.length)) : undefined }
+  /**
+   * The launch preflight for a profile-bound ticket: a snapshot that could not resolve, or a pinned prompt revision that
+   * is gone, blocks the launch with a reason instead of silently using the role defaults. The Executor reports `blocked`;
+   * accept and the Decision are already recorded and are never rolled back for a profile.
+   */
+  async preflight(ticket: Ticket): Promise<void> {
+    const snapshot = ticket.profile
+    if (!snapshot || this.host.profiles.config().resolve === 'legacy') return
+    if (!snapshot.selection.valid) throw new ProfileLaunchBlocked(`profile ${snapshot.id}@${snapshot.revision} cannot launch: ${snapshot.selection.reason}`)
+    if (snapshot.prompt.mode === 'pinned') {
+      try { this.host.prompts.version(snapshot.prompt.revision) } catch {
+        throw new ProfileLaunchBlocked(`profile ${snapshot.id}@${snapshot.revision} requires prompt revision ${snapshot.prompt.revision}, which no longer exists`)
+      }
+    }
+  }
+  /** Sum the token accounting the host reports for a worker's assistant messages, so profile metrics can show a value or `unknown`. */
+  private recordUsage(sessionId: string, event: { type: string; data?: unknown }): void {
+    if (event.type !== 'assistant/message') return
+    const usage = (event.data as { usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; reasoningTokens?: number } } | undefined)?.usage
+    if (!usage) return
+    const previous = this.host.store.get(KV.sessions.usage(sessionId))
+    this.host.store.set(KV.sessions.usage(sessionId), { input: (previous?.input ?? 0) + (usage.inputTokens ?? 0),
+      output: (previous?.output ?? 0) + (usage.outputTokens ?? 0), cacheRead: (previous?.cacheRead ?? 0) + (usage.cacheReadTokens ?? 0),
+      cacheWrite: (previous?.cacheWrite ?? 0) + (usage.cacheWriteTokens ?? 0), reasoning: (previous?.reasoning ?? 0) + (usage.reasoningTokens ?? 0),
+      messages: (previous?.messages ?? 0) + 1, at: new Date().toISOString() })
   }
   /** Returns whether `sessionId` already holds the message delivered under `requestId`, or `false` if the session does not exist. */
   async holds(sessionId: string, requestId: string): Promise<boolean> {
@@ -275,7 +328,7 @@ export class Sessions {
     const skillScope = agent.ctx.inject(['skills'], scope => {
       binding.scope = scope
       binding.skills = undefined
-      this.bindSkills(binding, host.prompts.current())
+      this.bindSkills(binding, this.versionFor(ticket))
     })
     binding.disposers.push(() => { skillScope.dispose().catch((error: unknown) => { this.ctx.logger.warn('dsh-superagent could not release a skill scope: %s', String(error)) }) })
     await skillScope
@@ -313,8 +366,18 @@ export class Sessions {
   private workOnly(agent: Agent, ticketId: string): (() => void)[] {
     const store = this.host.store
     const parent = scopeParentOf(agent)
-    const child = !!store.tickets.get(ticketId)?.parentTicketId
-    const allow = WORK_TOOLS.filter(name => !child || !CHILD_DENIED.has(name)).filter(name => agent.ctx.tools.get(name, parent))
+    const ticket = store.tickets.get(ticketId)
+    const child = !!ticket?.parentTicketId
+    // A profile narrows the role ceiling; `resolve=legacy` returns to the ceiling, and a snapshot that could not resolve
+    // keeps no work tools at all (launch should already have blocked it). Fixed protocol tools are never in this list.
+    const legacy = this.host.profiles.config().resolve === 'legacy'
+    const snapshot = legacy ? undefined : (ticket?.parentTicketId
+      ? store.tickets.get(ticket.rootTicketId ?? ticket.parentTicketId)?.profile ?? ticket.profile : ticket?.profile)
+    const names = legacy || !ticket ? WORK_TOOLS.filter(name => !child || !CHILD_DENIED.has(name))
+      : snapshot?.selection.valid === false ? []
+      : snapshot ? profileWorkTools(ticket, id => store.tickets.get(id))
+      : WORK_TOOLS
+    const allow = names.filter(name => agent.ctx.tools.get(name, parent))
     const guards = [agent.ctx.tools.guard(() => {
       const current = store.tickets.get(ticketId)
       return !current || !liveTicket(current) ? 'Ticket ended; new work needs a new authorized ticket' : undefined
@@ -358,7 +421,8 @@ export class Sessions {
   }
   /** Return the current prompt version, updating the agent's skills and recording the revision in Store when bound to a model request. */
   private promptFor(agent: Agent, bind: boolean): PromptVersion {
-    const version = this.host.prompts.current()
+    const ticket = this.ticketOf(agent)
+    const version = this.versionFor(ticket)
     if (!bind) return version
     const binding = this.bindings.get(agent)
     if (binding) this.bindSkills(binding, version)
@@ -366,7 +430,33 @@ export class Sessions {
     const revisions = store.get(KV.sessions.prompts(agent.id)) ?? []
     const bound = [...revisions.filter(revision => revision !== version.revision), version.revision]
     if (revisions.at(-1) !== version.revision) store.set(KV.sessions.prompts(agent.id), bound)
+    this.recordRunEffective(agent, ticket, version)
     return version
+  }
+  /** Resolve the prompt a worker runs under: a pinned snapshot revision, or the live revision (and legacy always live). */
+  private versionFor(ticket: Ticket | undefined): PromptVersion {
+    const snapshot = ticket?.profile
+    if (!snapshot || this.host.profiles.config().resolve === 'legacy' || snapshot.prompt.mode === 'live') return this.host.prompts.current()
+    return this.host.prompts.version(snapshot.prompt.revision)
+  }
+  /**
+   * Record the actual runtime fields of this request, so a `moving` profile can be grouped by its run hash instead of a
+   * stable binding hash. A pinned model that differs from the Session's actual model is recorded as non-compliant, which
+   * is the alternative to rebuilding a live Session that already has a request header.
+   */
+  private recordRunEffective(agent: Agent, ticket: Ticket | undefined, version: PromptVersion): void {
+    if (!ticket?.profile) return
+    const store = this.host.store
+    const root = ticket.parentTicketId ? store.tickets.get(ticket.rootTicketId ?? ticket.parentTicketId) : ticket
+    const snapshot = root?.profile ?? ticket.profile
+    if (!snapshot) return
+    const legacy = this.host.profiles.config().resolve === 'legacy'
+    const tools = legacy ? WORK_TOOLS.filter(name => !ticket.parentTicketId || !CHILD_DENIED.has(name))
+      : snapshot.selection.valid === false ? [] : profileWorkTools(ticket, id => store.tickets.get(id))
+    const header = agent.session.requestHeader()?.config
+    const actual = header ? { provider: header.provider, model: header.model,
+      ...(header.reasoningEffort ? { reasoningEffort: String(header.reasoningEffort) } : {}) } : undefined
+    store.set(KV.sessions.effective(agent.id), runEffective(snapshot, version, this.host.prompts, store.settings(), tools, actual))
   }
   /** Releases registrations for `agent` in reverse order (LIFO); disposing its skill scope releases its skills as well. */
   private release(agent: Agent): void {

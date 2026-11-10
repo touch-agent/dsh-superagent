@@ -38,6 +38,8 @@ import { goalBoard, goalDetail } from './goals.ts'
 import { spaceRows } from './spaces.ts'
 import { contextGroupBoard } from './context-groups.ts'
 import type { SpaceLeases } from './spaces.ts'
+import type { Profiles } from './profiles.ts'
+import { profileMetrics } from './profile-metrics.ts'
 
 export interface HttpHost {
   readonly store: Store
@@ -51,6 +53,8 @@ export interface HttpHost {
   readonly executor: Pick<DshExecutor, 'activeCount' | 'isLive'>
   /** Write-lease read model; E2 lists spaces and never authorizes from them. */
   readonly spaces: Pick<SpaceLeases, 'processEpoch'>
+  /** Read-only profile registry and head; profile writing is not a panel or worker operation in Phase 1. */
+  readonly profiles: Pick<Profiles, 'list' | 'detail' | 'config'>
   readonly outbox: Pick<Outbox, 'recall' | 'reconcile'>
   readonly health: Record<string, Health>
   readonly machine: Machine
@@ -187,6 +191,17 @@ function routes(runtime: HttpHost): Routes {
     'GET spaces': async () => ({ generatedAt: new Date().toISOString(),
       rows: await spaceRows(store, runtime.spaces.processEpoch, id => runtime.executor.isLive(id)) }),
     'GET contexts/groups': () => contextGroupBoard(runtime),
+    'GET profiles': () => ({ generatedAt: new Date().toISOString(), profiles: runtime.profiles.list() }),
+    'GET profiles/:id': ({ params }) => {
+      const detail = runtime.profiles.detail(params.id)
+      if (!detail) throw new RouteError(404, 'Profile not found')
+      return { profile: detail.profile, head: detail.head, revisions: detail.revisions }
+    },
+    'GET profiles/:id/metrics': ({ params }) => {
+      if (!runtime.profiles.config().telemetry) throw new RouteError(404, 'Profile telemetry is disabled')
+      if (!runtime.profiles.detail(params.id)) throw new RouteError(404, 'Profile not found')
+      return profileMetrics(runtime.store, params.id, new Date())
+    },
     'GET tasks/:id': ({ params, query }) => {
       const detail = taskDetail(views(runtime), params.id, TasksQuery.parse(query).depth)
       if (!detail) throw new RouteError(404, 'Ticket not found')

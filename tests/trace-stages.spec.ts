@@ -101,7 +101,7 @@ describe('the stages of one Trigger', () => {
     expect(byKind('assess').evalId).toBe(evaluating)
     expect(byKind('decide').data).toEqual({ kind: 'accept' })
     expect(byKind('attach').data).toEqual({ ticketId, created: true })
-    expect(byKind('dispatch').data).toEqual({ ticketId, assignmentId })
+    expect(byKind('dispatch').data).toEqual({ ticketId, assignmentId, profile: 'legacy' })
     expect(byKind('report').data).toEqual({ ticketId, state: 'ready' })
     // Every stage of the journey stays in the Trigger's one trace, after the Decision included.
     expect(new Set(spans.map(span => span.traceId))).toEqual(new Set([traceId('1')]))

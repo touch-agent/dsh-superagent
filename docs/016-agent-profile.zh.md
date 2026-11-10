@@ -176,6 +176,7 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
   "selection": { "by": "code", "source": "manual", "reason": "profile:worker-docs", "moving": false, "valid": true },
   "model": { "mode": "pinned", "provider": "deepseek", "model": "deepseek-v4.1", "reasoningEffort": "medium" },
   "tools": ["read", "write", "edit", "glob", "grep", "bash", "skill", "todo_write"],
+  "toolsMode": "list",
   "prompt": { "mode": "pinned", "revision": 42, "hash": "sha256:…" },
   "effective": {
     "promptRevision": 42,
@@ -492,6 +493,14 @@ flowchart LR
 - **特性开关**：新增独立 KV 配置 `profiles.config`（`enabled`、`resolve: snapshot|legacy`、`telemetry`），**不加入 strict `SettingsSchema`**；`enabled=false` 时新工单绑定 legacy，已绑定工单保留快照；`resolve=legacy` 只影响新 Session/新请求（§6.5）。
 - **文档**：更新 004（prompt 绑定语义）、003（Session 解析）、007（模块/测试表，若新增文件）、本文件。
 
+**实现落点（2026-11-10）**：
+
+- `packages/kernel/src/profile.ts` 只放 `AgentProfile`/`ProfileSnapshot`/`ProfileBinder` 与 `profileSpan` 纯类型；`Ticket.profile` 是顶层可选字段，`Tickets.create` 绑定、`Tickets.delegate` 复制父快照，绑定异常只留 legacy，不抛给 accept。`dispatch` span 写 profile id/revision/hash、`effectiveHash`、实际 prompt revision 与 `toolsHash`。
+- `packages/dsh/src/app/profiles.ts` 是注册表与校验边界：`.strict()` 拒绝 `maxActionLevel`、`approval`、`permissionPreset`、`mandateMinutes`、`sources`、凭据等字段；revision 不可变，`baseRevision` 冲突显式报错；`contentHash` 覆盖 revision 内容，`effective.hash` 只覆盖运行时字段。`problem()` 把内置 profile 的启动问题交给 `profiles` health entry。
+- `packages/dsh/src/app/sessions.ts` 从快照取 prompt/模型/工作工具：pinned prompt 用 `version(revision)`，pinned 模型在新建 Session 时应用、已存在 Session 不匹配时记录 `modelCompliant=false`；子 Ticket 与 subagent 从根快照解析并继续减 `CHILD_DENIED`；pinned 模型不开放 subagent 控制工具。协议工具仍由 `tools/executor.ts` 固定注册。
+- `packages/dsh/src/app/profile-metrics.ts` 按 `effective.hash`（冻结）或 `run.effectiveHash`（moving）聚合；n<5 只把 rate 置空，计数保留；token 可得/unknown 两态，货币成本恒为 unknown；fallback、censored、closed、child、lightweight 分开计数。`GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics` 只读，不新增表、不改 `SCHEMA_VERSION`。
+- `profiles.config` 仍在独立 KV：`enabled=false` 默认、`resolve=snapshot|legacy`、`telemetry=true`；不在 strict `SettingsSchema` 中。
+
 **明确不做**：自动选择 profile、自动晋升、profile 市场、运行时动态 preset、货币成本估算、per-profile 模型价格表、跨租户、orchestrator profile 激活。
 
 ### 6.3 对现有 assembly/executor/session 的影响
@@ -687,6 +696,7 @@ flowchart LR
   "selection": { "by": "code", "source": "manual", "reason": "profile:worker-docs", "moving": false, "valid": true },
   "model": { "mode": "pinned", "provider": "deepseek", "model": "deepseek-v4.1", "reasoningEffort": "medium" },
   "tools": ["read", "write", "edit", "glob", "grep", "bash", "skill", "todo_write"],
+  "toolsMode": "list",
   "prompt": { "mode": "pinned", "revision": 42, "hash": "sha256:…" },
   "effective": {
     "promptRevision": 42, "promptHash": "sha256:…", "toolsHash": "sha256:…",
