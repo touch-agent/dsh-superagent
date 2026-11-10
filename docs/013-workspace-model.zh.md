@@ -239,6 +239,8 @@
 
 **跨仓库/跨项目任务**：一个 Ticket 仍只有一个写空间。Phase 2 **不提供改绑**：同时要提交两个仓库，就拆成两个子 Ticket（各一写空间），父 owner 负责整合；只需读另一个仓库时读基线/snapshot，不新建写空间。多仓库 `project` 与自动改绑留到后续；确需改绑时，必须结束当前 Assignment、重建 Session、重新 prepare，并明确上下文损失，不能只改 `execution.directory`。
 
+**强制边界**：运行时没有「目标仓库」声明，也不会从 worker 的 shell 推断仓库；这条是 owner/worker 的流程规则，结构上由「没有改绑入口、子 Ticket 新建兄弟目录」保证。worker 自行 `cd` 到另一个本地仓库写文件时，租约仍只覆盖原 `Execution.directory`，不会拦截；需要第二个写空间时只能委派子 Ticket。
+
 ### 3.3 子任务默认继承父空间还是另开
 
 **默认另开**，这是本设计对现状的明确修正：

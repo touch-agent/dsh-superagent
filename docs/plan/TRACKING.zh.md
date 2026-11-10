@@ -54,14 +54,14 @@
 | T3-10 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/40 | Phase 2a 子 Ticket 运行时、父 owner 审阅链、结束门与 schema 15；`tests/delegation*.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/store.spec.ts`、`tests/migration.spec.ts` 通过，typecheck/build/check:size 通过 | 2026-11-09 |
 | T3-11 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/42 | `tests/review-aggregate.spec.ts`、`tests/tasks-children.spec.ts`、`tests/panel-tasks.spec.tsx`；500 根/2000 子投影 p95 ≤400ms；360px 右栏无横向滚动（359px `scrollWidth=clientWidth`）；同场景 Before/After 见 `docs/images/tasks-view/phase2b-{before,after}-tasks-360.png` 与 `phase2b-{before,after}-review.png` | 2026-11-09 |
 | T3-12 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/43 | 合并 `fe9e62a`。Phase 1 空间只读投影与 E2 列表：`tests/spaces.spec.ts`、`tests/panel-spaces.spec.tsx`；E1/E2 同场景 Before/After 见 `docs/images/spaces/{before,after}-{e1-ticket,e2-execution}.png` | 2026-11-10 |
-| T3-13 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/46 | Phase 2 写租约/子 Ticket 平铺/重启 stale 已在 #43 合入；收尾 E2 按目录批量预热 + 15 秒缓存、600 行 p95、E1 目录字段收敛：`tests/spaces.spec.ts`（23 项空间/面板测试）与全量 105 文件/1716 测试串行通过；E1 同场景 Before/After 见 `docs/images/spaces/phase2-{before,after}-e1-directory.png` | 2026-11-10 |
+| T3-13 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/46 | 合并 #43 `fe9e62a` + #46 `54a6b28`。写租约：同 locator 第二个排队、同工单重入、prepare 失败释放、结束释放、stale/epoch 恢复；子工单接受/孤儿均释放租约，重启按深度父先子后（用例覆盖父已结束的孤儿）（`tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`）；跨仓只能新建兄弟子空间且无改绑入口，运行时不做仓库推断（docs/013 §3.2）；E1 无 `directory`，E2 600 行批量预热 + 15 秒缓存 p95；全量串行与 CI 通过；E1 同场景 Before/After 见 `docs/images/spaces/phase2-{before,after}-e1-directory.png` | 2026-11-10 |
 | T4-01 | 未开始 | — | — | 2026-11-08 |
 | T4-02 | 未开始 | — | — | 2026-11-08 |
 | T4-03 | 未开始 | — | — | 2026-11-08 |
 | T4-04 | 未开始 | — | — | 2026-11-08 |
 | T4-05 | 未开始 | — | — | 2026-11-08 |
 | T4-06 | 未开始 | — | — | 2026-11-08 |
-| T5-01 | 未开始 | — | — | 2026-11-08 |
+| T5-01 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/45 | `packages/kernel/src/goal.ts`、`packages/dsh/src/app/goals.ts`、`GET goals`/`GET goals/:id`；`tests/goals.spec.ts` 覆盖空态、无交付、需决定、子 Ticket 等父 owner、最近一次 Assignment、同一投影、E0 无内部 id、删除不影响 Ticket；10 秒走查记录见 `../015-goal-projection.zh.md` 附录 | 2026-11-10 |
 | T5-02 | 未开始 | — | — | 2026-11-08 |
 | T5-03 | 未开始 | — | — | 2026-11-08 |
 | T5-04 | 未开始 | — | — | 2026-11-08 |

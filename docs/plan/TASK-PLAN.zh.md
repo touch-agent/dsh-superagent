@@ -492,7 +492,7 @@ graph LR
 - **交付**：只加 **`space_lease`** 表（`locator_key`、holder、`processEpoch`、`epoch`、state、时间；只加表/索引，不建 `space` 表、不改旧记录）；执行器在 **prepare 前预留、prepare 后校验/激活** 写租约；Ticket 结束时释放；`spaceLeaseHeld` 排队与 stale/epoch 恢复；租约按 Ticket 持有，Assignment 只更新当前 holder 元数据；规范 locator `realpath(dirname)+basename`，prepare 后 `realpath(directory)` 必须匹配；子 Ticket 新空间放执行根下的兄弟目录（平铺，名字含父名）；旧嵌套按 legacy 标记，不搬迁；prepare cwd 变化要迁移并演练；kernel 继续拥有目录布局（`delegate` 一处改）；prepare 后置校验（目录、locator、git 工作树、凭据卫生）；**不做** E2 释放/回收/复用、不做 TTL/心跳、不做 read claim、不做 provider 抽象、不做跨仓库改绑；两个 flag `workspace.lease`/`workspace.childSibling`；`docs/003`、`docs/006` 更新；`tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`。
 - **验收**：两个 Ticket 指向同一目录（同 `locatorKey`）时第二个在 prepare 前排队、不覆盖；同一 Ticket 重入；prepare 失败/locator 不匹配时释放预留，不留下 active 租约；父子默认不同目录且父清理不删子空间；子空间 prepare cwd 为执行根；重启后按 `processEpoch`/活 Session 标 stale，不静默抢占，父先于子恢复；Ticket 结束后释放，resume 重新获取，Phase 2 不把旧目录自动给别的 Ticket；子 Ticket 仍不能推送/开 PR；旧库/旧 worktree 迁移演练无重复 prepare；`pnpm check`。
 - **估时**：5 人日。**依赖**：T3-12、[docs/013](../013-workspace-model.zh.md) 的 Phase 2。**回退**：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留，但旧二进制拒绝 schema 16，二进制回滚需升级前备份或停服删表降 schema。
-- **泳道**：Kernel + Runtime。**实现**：PR [#43](https://github.com/touch-agent/dsh-superagent/pull/43)；schema 16 `space_lease`、两个 `workspace` flag、结束释放与 stale 恢复；`tests/spaces.spec.ts` 覆盖并发预留、prepare 失败释放、结束释放、重启 stale。**收尾**：E2 的 `GET spaces` 按目录去重并发预热并缓存 15 秒，`tests/spaces.spec.ts` 以 600 行覆盖冷读/热读与 p95 门槛；E1 票据负载移除 `directory`，绝对路径只在 E2；见 PR [#46](https://github.com/touch-agent/dsh-superagent/pull/46)。
+- **泳道**：Kernel + Runtime。**实现**：PR [#43](https://github.com/touch-agent/dsh-superagent/pull/43)；schema 16 `space_lease`、两个 `workspace` flag、结束释放与 stale 恢复；`tests/spaces.spec.ts` 覆盖并发预留、prepare 失败释放、结束释放、重启 stale。**收尾**：E2 的 `GET spaces` 按目录去重并发预热并缓存 15 秒，`tests/spaces.spec.ts` 以 600 行覆盖冷读/热读与 p95 门槛；E1 票据负载移除 `directory`，绝对路径只在 E2；见 PR [#46](https://github.com/touch-agent/dsh-superagent/pull/46)。**合并与验收补测（2026-11-10）**：#43 `fe9e62a`、#46 `54a6b28` 已合入 `main`；`tests/spaces.spec.ts` 增加「委派只新建兄弟空间、不回写根目录」与「父接受子报告后释放子租约」，`tests/runtime-concurrency.spec.ts` 的父先子后恢复/孤儿用例断言孤儿租约释放。跨仓拆单仍是 owner/worker 流程规则，结构上由无改绑入口保证；运行时不能推断 worker 的 `cd`，见 docs/013 §3.2「强制边界」。
 
 ## 6.2 M5 原则落地（T5-01…07）
 
@@ -535,17 +535,9 @@ graph LR
 - **目标**：按原则 C.1 建一条独立于执行 worker 的进化闭环：观察决策/报告/验收/阻塞/返工，产出带证据的版本化提案，人工验证后才可能应用；不自动改授权、代码或生产配置。profile 维度只做**预登记对照实验**，不把「默认 profile 的统计」当成收益证据。
 - **交付**：`scripts/evolution/` 离线流程：样本集（脱敏、只读）、提案格式（证据/置信度/范围/版本/回滚）、人工批准队列（先 KV/文档，不接生产写入）、前后指标（验收率、返工率、阻塞、审阅时长、每结果通知数）；首轮用最近 10 个可复核的历史 Ticket 跑通（不足则全部；这 10 个只用于跑通流程，不作为价值证据）。profile 切片另含：eval set manifest/holdout、同工单配对回放或并发随机分配、预登记主指标/MDE/样本量/统计方法、回归门与停止规则；不能只做描述性报表。
 - **验收**：产出 ≥1 条带证据与范围的提案，或一份「证据不足/无差异」的结论；提案不含私密全文；没有自动应用路径；`tests/evolution.spec.ts` 或等价脚本测试；C3.1/C3.2/C3.5/C3.6。profile 切片还须证明「有对照、样本量按 MDE 算过、legacy 与 worker-default 基线分开、成本不伪造成本门」；允许结论是「没有可测差异」。
-- **设计约束**：profile 维度见 [AgentProfile 设计](../015-agent-profile.zh.md) §4；T5-05 的 profile 切片依赖 T5-07 的 `effective.hash` 遥测；不另开任务，但本任务估时从 5 调到 8，避免用「并入」掩盖范围。评测集必须与观察集分离，回归门预登记，人工批准，允许「不采纳」。
+- **设计约束**：profile 维度见 [AgentProfile 设计](../016-agent-profile.zh.md) §4；T5-05 的 profile 切片依赖 T5-07 的 `effective.hash` 遥测；不另开任务，但本任务估时从 5 调到 8，避免用「并入」掩盖范围。评测集必须与观察集分离，回归门预登记，人工批准，允许「不采纳」。
 - **估时**：8 人日（含 profile 对照实验 3 人日）。**依赖**：T5-02、M0 指标（已完成）；profile 维度另需 T5-07。**回退**：纯离线脚本，删除即回退。
 - **泳道**：Platform。
-
-### T5-07 AgentProfile Phase 1：注册表、绑定快照与遥测 · Kernel + Runtime · 7 人日
-
-- **目标**：给现有 worker 角色加一层薄的、可版本化的执行配置，使每个新工单能回答「用了哪个 profile 的哪一版、有效 prompt/model/工具/DSH 版本是什么、结果如何」；不改变授权路径，不做自动 profile 选择或晋升，Phase 1 不激活 orchestrator profile。
-- **交付**：`Profiles` 注册表（不可变 revision、head 的 active/retired 指针、`contentHash`、严格 schema、内置 `worker-default@1` 兼容 profile）；`Tickets.create`/`delegate` 绑定 `Ticket.profile` 有效快照（顶层，不放 `execution`，避免 `prepare` 重建时丢失；`effective.hash`；旧工单按 legacy，不重写；子 Ticket 只复制根快照，`delegate` 不加 profile 参数）；`Sessions`/`DshExecutor` 从快照解析模型、pinned/live prompt 与工作工具，协议工具固定，子 Ticket/subagent 有效工作工具 ⊆ 根，subagent 在 pinned 模型时禁用 `modelSelection` 或强制父模型；缺工具/缺 prompt 在 launch `blocked`（不在 accept 失败，不静默回退）；`dispatch` span 记录 profile/effective hash，不写 `Decision.audit`；`GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics` 只读；独立 KV `profiles.config`（`enabled`/`resolve`/`telemetry`），**不新增 settings 块**；token 用量尝试采集，货币成本 `unknown`；`tests/profiles.spec.ts`、`tests/profile-binding.spec.ts`、`tests/profile-metrics.spec.ts`；更新 `004`、`003`、`007`（如新增模块）与本文。
-- **验收**：注册表版本不可变、head 回滚、禁止字段拒绝、并发冲突可解释；新工单有快照、旧工单 legacy、子 Ticket 继承、subagent 不越权、fallback 单列；active 变更不影响运行中工单；有效工作工具 ⊆ 角色上限、子/子代理 ⊆ 根；`tools: []` 仍有协议工具，不宣称只读；accept 不因 profile 失败；旧二进制读带快照 Ticket 仍按 legacy 运行；缺工具/缺 prompt 在 launch `blocked`；`Decision`/`Mandate`/`Action`/`Approval` 测试不变；指标按 `effective.hash` 聚合、n<5 只抑制展示、token 两态、成本 `unknown`、closed/child/lightweight/重试口径可复核；`pnpm check`；用 `worker-default@1` 产出基线，但**不声称收益**。
-- **估时**：7 人日。**依赖**：T3-10（子 Ticket，已完成）、[AgentProfile 设计](../015-agent-profile.zh.md)；面板 E2 另需 T5-02。**回退**：`profiles.config.enabled=false` 停新绑定；`resolve=legacy` 只影响新 Session/新请求，运行中工具/模型不变；Phase 1 无数据库 schema 迁移、无 settings 块。
-- **泳道**：Kernel + Runtime。
 
 ### T5-06 组织观测与替换演练 · Platform · 3 人日
 
@@ -554,6 +546,14 @@ graph LR
 - **验收**：指标可从 trace/activity/metrics 独立读取，不依赖被替换 UI；C4.2/C4.3/C4.4；演练报告含任务、前后结果、通知数、验收；删除类别/子 Ticket 后 Ticket 仍可解释。
 - **估时**：3 人日。**依赖**：T3-10（子 Ticket 数据）、T5-02。**回退**：只读指标与演练，不改代码。
 - **泳道**：Platform。
+
+### T5-07 AgentProfile Phase 1：注册表、绑定快照与遥测 · Kernel + Runtime · 7 人日
+
+- **目标**：给现有 worker 角色加一层薄的、可版本化的执行配置，使每个新工单能回答「用了哪个 profile 的哪一版、有效 prompt/model/工具/DSH 版本是什么、结果如何」；不改变授权路径，不做自动 profile 选择或晋升，Phase 1 不激活 orchestrator profile。
+- **交付**：`Profiles` 注册表（不可变 revision、head 的 active/retired 指针、`contentHash`、严格 schema、内置 `worker-default@1` 兼容 profile）；`Tickets.create`/`delegate` 绑定 `Ticket.profile` 有效快照（顶层，不放 `execution`，避免 `prepare` 重建时丢失；`effective.hash`；旧工单按 legacy，不重写；子 Ticket 只复制根快照，`delegate` 不加 profile 参数）；`Sessions`/`DshExecutor` 从快照解析模型、pinned/live prompt 与工作工具，协议工具固定，子 Ticket/subagent 有效工作工具 ⊆ 根，subagent 在 pinned 模型时禁用 `modelSelection` 或强制父模型；缺工具/缺 prompt 在 launch `blocked`（不在 accept 失败，不静默回退）；`dispatch` span 记录 profile/effective hash，不写 `Decision.audit`；`GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics` 只读；独立 KV `profiles.config`（`enabled`/`resolve`/`telemetry`），**不新增 settings 块**；token 用量尝试采集，货币成本 `unknown`；`tests/profiles.spec.ts`、`tests/profile-binding.spec.ts`、`tests/profile-metrics.spec.ts`；更新 `004`、`003`、`007`（如新增模块）与本文。
+- **验收**：注册表版本不可变、head 回滚、禁止字段拒绝、并发冲突可解释；新工单有快照、旧工单 legacy、子 Ticket 继承、subagent 不越权、fallback 单列；active 变更不影响运行中工单；有效工作工具 ⊆ 角色上限、子/子代理 ⊆ 根；`tools: []` 仍有协议工具，不宣称只读；accept 不因 profile 失败；旧二进制读带快照 Ticket 仍按 legacy 运行；缺工具/缺 prompt 在 launch `blocked`；`Decision`/`Mandate`/`Action`/`Approval` 测试不变；指标按 `effective.hash` 聚合、n<5 只抑制展示、token 两态、成本 `unknown`、closed/child/lightweight/重试口径可复核；`pnpm check`；用 `worker-default@1` 产出基线，但**不声称收益**。
+- **估时**：7 人日。**依赖**：T3-10（子 Ticket，已完成）、[AgentProfile 设计](../016-agent-profile.zh.md)；面板 E2 另需 T5-02。**回退**：`profiles.config.enabled=false` 停新绑定；`resolve=legacy` 只影响新 Session/新请求，运行中工具/模型不变；Phase 1 无数据库 schema 迁移、无 settings 块。
+- **泳道**：Kernel + Runtime。
 
 ---
 

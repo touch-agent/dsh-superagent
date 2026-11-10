@@ -974,4 +974,7 @@ it('resumes parents first and orphans a child whose parent ended instead of rest
   expect(stored.delegation?.orphaned).toBeDefined()
   expect(stored.ended).toBeUndefined()
   expect(stored.attention?.question).toContain(child.id)
+  // Orphaning also releases the child's write lease, so a child that can no longer report does not hold a space.
+  await vi.waitFor(() => expect(h.runtime.spaces.all().filter(row => row.ticketId === child.id).map(row => row.state)).toEqual(['released']),
+    { timeout: 5000 })
 })
