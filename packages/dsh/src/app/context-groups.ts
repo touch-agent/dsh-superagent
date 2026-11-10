@@ -84,7 +84,7 @@ function channelsOf(host: ContextGroupReadHost, ticket: Ticket): Pick<ChannelRef
     channels.push(channel)
   }
   add(host.store.triggers.get(ticket.origin.triggerId)?.channel)
-  for (const channel of ticket.channels) add(channel)
+  for (const channel of ticket.channels ?? []) add(channel)
   return channels
 }
 

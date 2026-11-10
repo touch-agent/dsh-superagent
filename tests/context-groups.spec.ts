@@ -117,6 +117,12 @@ it('reads the subscription list once for the whole board', () => {
   expect(reads).toBe(1)
 })
 
+it('treats a legacy Ticket with no channels as having no group', () => {
+  const legacy = { ...ticket('legacy', [], []), channels: undefined } as unknown as Ticket
+  expect(contextGroupOf(host([legacy]), legacy)).toBeUndefined()
+  expect(contextGroupBoard(host([legacy])).groups).toEqual([])
+})
+
 it('carries no member list and no authorization field', () => {
   const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
   const group = contextGroupOf(host([item], [thread('feishu:oc_team:om_1', ['a'])]), item)!
