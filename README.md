@@ -187,7 +187,7 @@ What is not wired yet, and matters when you evaluate the project:
 
 ## Documentation
 
-Read 000–010 in order; each builds only on the ones before it. 011 and 012 are a cross-referencing pair: the product and organization principles, and the platform evolution they sit above. 013 applies them to the workspace model, 014 records the end-to-end golden path that proves the task tree and parent review, and 015 gives E0 the read-only Goal projection those principles ask for, and 016 designs the reusable profile layer over the worker role (router reserved for a later phase).
+Read 000–010 in order; each builds only on the ones before it. 011 and 012 are a cross-referencing pair: the product and organization principles, and the platform evolution they sit above. 013 applies them to the workspace model, 014 records the end-to-end golden path that proves the task tree and parent review, 015 gives E0 the read-only Goal projection those principles ask for, and 016 designs the reusable profile layer over the worker role (router reserved for a later phase).
 
 - [000 Philosophy](docs/000-philosophy.md): the attention rule, and what the agent may and may not do.
 - [001 Domain model](docs/001-domain.md): Sources, Triggers, Threads, Evals, Mandates, Tickets, Assignments, Deliverables and Subscriptions.
