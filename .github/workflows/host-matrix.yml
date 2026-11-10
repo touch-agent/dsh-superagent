@@ -34,30 +34,37 @@ jobs:
       # One broken host must not hide the others. The summary job below still fails the workflow when
       # any leg is red; fail-fast would make a platform-wide break look like a single flaky runner.
       fail-fast: false
-      # Every supported combination is written out. There is no cross-product expansion to reason about,
+      # Every gated combination is written out. There is no cross-product expansion to reason about,
       # no `exclude`, and no conditional leg: adding or removing a row is the only way to change coverage.
+      # Windows/Node 22 is excluded for the documented cost reason; Node 22 is still gated on Linux and macOS.
       matrix:
         include:
           - os: ubuntu-latest
+            arch: x64
             node: '22'
             dsh: '0.2.1-rc.5'
           - os: ubuntu-latest
+            arch: x64
             node: '24'
             dsh: '0.2.1-rc.5'
           - os: macos-latest
+            arch: arm64
             node: '22'
             dsh: '0.2.1-rc.5'
           - os: macos-latest
+            arch: arm64
             node: '24'
             dsh: '0.2.1-rc.5'
           - os: windows-latest
+            arch: x64
             node: '24'
             dsh: '0.2.1-rc.5'
-          # The pinned host is what `engines.dsh` and the devDependencies name. The second host is the
-          # current release that also satisfies the range; it proves the install/run boundary survives a
-          # host upgrade without changing the workspace dependency graph. Pin it explicitly: `latest`
-          # would move the gate without a commit.
+          # This is a forward probe, not a support claim. `0.2.2-rc.1` is outside `engines.dsh`'s
+          # `^0.2.1-rc.5`: a semver prerelease only satisfies a range with the same
+          # major.minor.patch tuple. The pinned rows define support; this one gives early warning
+          # about the next host line. Pin it explicitly so the probe cannot move without a commit.
           - os: ubuntu-latest
+            arch: x64
             node: '24'
             dsh: '0.2.2-rc.1'
     steps:
@@ -72,12 +79,13 @@ jobs:
         shell: bash
         env:
           EXPECTED_OS: ${{ matrix.os }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
           EXPECTED_NODE: ${{ matrix.node }}
         run: |
-          node -e 'const os = { "ubuntu-latest": "linux", "macos-latest": "darwin", "windows-latest": "win32" }[process.env.EXPECTED_OS]; if (process.platform !== os || process.versions.node.split(".")[0] !== process.env.EXPECTED_NODE) { console.error("expected " + os + " on Node " + process.env.EXPECTED_NODE + ", got " + process.platform + " on " + process.versions.node); process.exit(1) } console.log("host matrix leg: " + os + " Node " + process.versions.node)'
+          node -e 'const os = { "ubuntu-latest": "linux", "macos-latest": "darwin", "windows-latest": "win32" }[process.env.EXPECTED_OS]; if (process.platform !== os || process.arch !== process.env.EXPECTED_ARCH || process.versions.node.split(".")[0] !== process.env.EXPECTED_NODE) { console.error("expected " + os + "/" + process.env.EXPECTED_ARCH + " on Node " + process.env.EXPECTED_NODE + ", got " + process.platform + "/" + process.arch + " on " + process.versions.node); process.exit(1) } console.log("host matrix leg: " + os + "/" + process.arch + " Node " + process.versions.node)'
       - run: pnpm install --frozen-lockfile
       # The host the temporary profile boots. Keep this pinned and in sync with the support table in
-      # docs/006-deployment.md; the forward-compatibility leg above is the only exception.
+      # docs/006-deployment.md; the forward-probe leg above is the only exception.
       - name: Install the DSH host
         run: npm install --global --no-audit --no-fund @deepseek-ai/dsh@${{ matrix.dsh }}
       - name: Install, boot and remove the bundle
