@@ -1,0 +1,22 @@
+name: e2e
+
+# X-03: the one end-to-end golden path. It uses a local fake host and fixture CLIs, so this job needs no DSH profile,
+# GitHub token or Feishu account. It is a separate workflow because `pnpm check` stays the fast unit/契约 gate; the path
+# runs on every pull request and on main, and a failure is a real failure: the test does not retry.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  golden-path:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:e2e

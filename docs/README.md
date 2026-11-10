@@ -6,7 +6,7 @@ evolution set, then the plan set when you are picking up work.
 | Layer | Where | What it answers |
 | --- | --- | --- |
 | Numbered mechanism and operations | `docs/000`–`docs/010` | How the system works, how it is authorized, operated and extended. |
-| Design and evolution | `docs/011`–`docs/013` | Why it has this shape, the product/organization principles above the mechanism, and the workspace model they imply. |
+| Design and evolution | `docs/011`–`docs/014` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, and the end-to-end evidence path. |
 | Plans | [`plan/`](plan/README.md) | What to build, in what order, and the current status of every task. |
 | Runbooks and evidence | [`runbooks/`](runbooks/why-not-sent.md), [`images/`](images/) | What to do when something is stuck; the before/after captures the documents cite. |
 
@@ -30,16 +30,18 @@ Read 000–010 in order; each builds only on the ones before it.
 
 ## Design and evolution
 
-These three are written in Chinese. 011 and 012 are a cross-referencing pair:
+These four are written in Chinese. 011 and 012 are a cross-referencing pair:
 read 011 for the principles and their cross-check against the existing
 documents, then 012 for the evolution story. 013 applies them to the workspace
-model (space as an execution reference, orthogonal to the task tree).
+model (space as an execution reference, orthogonal to the task tree). 014
+records the golden-path E2E and the boundary of its fake host.
 
 | # | Document | Role |
 | --- | --- | --- |
 | 011 | [Design principles](011-design-principles.zh.md) | Attention as the budget, internalized organization, independent evolution, composable context and replaceable boundaries; each principle has a status and landing checkpoints. |
 | 012 | [Platform evolution](012-platform-evolution.zh.md) | The problem definition, target architecture, domain model v2, mechanisms and migration path that the principles sit above. |
 | 013 | [Workspace model](013-workspace-model.zh.md) | `Execution.directory` as the single space locator, write lease, lifecycle, decision rules, read-only UI exposure and phased migration for the workspace (proposal, not implemented). |
+| 014 | [E2E golden path](014-e2e-golden-path.zh.md) | The one end-to-end path from a GitHub Issue to accepted, merged work: what it asserts, its local fake-host boundary, and its no-retry stability rules. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both. 011 §6
