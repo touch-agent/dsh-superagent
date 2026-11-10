@@ -128,12 +128,15 @@ it('shows the E1 selected detail with the E0 goal, decision and result, and no w
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   expect(item.textContent).toContain(zh.tasksGoal)
   expect(item.textContent).toContain('修复登录回归')
+  expect(item.textContent).toContain(zh['activityStatus.working'])
   expect(item.textContent).toContain(zh.tasksDecision)
   expect(item.textContent).toContain(zh['stage.review'])
   expect(item.textContent).toContain(zh.tasksResult)
   expect(item.textContent).toContain(`${zh['artifact.file']} · docs/report.md · r7`)
   expect(item.textContent).toContain(zh['tasksRole.parentWorker'])
   expect(item.textContent).not.toMatch(/worker-|Assignment|sessionId|assignmentId|workerId/)
+  const blocked = row('整理迁移说明')!
+  expect(blocked.textContent).toContain(zh['activityStatus.blocked'])
 })
 
 it('rolls back to the plan tree with taskView.v1=off and offers no list view', async () => {
