@@ -47,7 +47,7 @@
 
 ### 1.2 每工单目录与 prepare
 
-- 每个**根** tracked Ticket 在受理时得到 `execution: { name, directory, assignment }`：`name = <worktree name>-<ticket id 前 12 位>`，`directory = <execution root>/<name>`。子 Ticket 不走这条路径：它在委派时直接得到 `<父目录>/child-<n>`（见 1.3）。
+- 每个**根** tracked Ticket 在受理时得到 `execution: { name, directory, assignment }`：`name = <worktree name>-<ticket id 前 12 位>`，`directory = <execution root>/<name>`。子 Ticket 不走这条路径：默认得到根目录所在目录下的平铺兄弟目录 `<root 目录所在目录>/<root name>-child-<n>`；`executor.workspace.childSibling = false` 时保留旧的 `<父目录>/child-<n>`（见 1.3）。
 - 首次启动前，如果目录不存在，执行器在 **`dirname(directory)`** 运行一次 `executor.prepare`，带 `DSH_SUPERAGENT_DIR` 等执行变量，10 分钟超时：根 Ticket 的 cwd 是执行根；平铺子 Ticket 的 cwd 也是根 Ticket 目录所在目录，旧嵌套子 Ticket 保持父目录。典型部署命令用 `git worktree add` 创建检出和分支。
 - **已存在的目录一律视为已准备**：这是当前最重要的隐含契约。它让重启/重试不必重复 prepare，但也意味着半成品、手工目录、上一次失败留下的非空目录都可能被当作准备好的空间。
 - prepare 失败会直接让 Ticket 失败并记录输出，不自动重试；空目录会被删除，非空目录保留。
@@ -57,9 +57,9 @@
 
 ### 1.3 父子工单的目录关系
 
-- 子 Ticket 由父 owner 委派创建，`execution.directory = <父目录>/child-<n>`，`name = <父 name>-child-<n>`。
-- 子 Ticket 有自己的 `worker-<childTicketId>` Session 和 Assignment，但它的目录**物理嵌套在父目录内部**；首次启动时 prepare 在父目录里运行，在子目录这个位置创建检出（若配置了 prepare 命令）。
-- 这带来三个具体问题：
+- 子 Ticket 由父 owner 委派创建。默认 `execution.directory = <root 目录所在目录>/<root name>-child-<n>`，`name = <父 name>-child-<n>`，与父目录平级；`executor.workspace.childSibling = false` 时保留旧布局 `execution.directory = <父目录>/child-<n>`。
+- 子 Ticket 有自己的 `worker-<childTicketId>` Session 和 Assignment。默认平铺后，首次启动时 prepare 在根目录所在目录运行，在兄弟位置创建子目录；旧嵌套布局仍在父目录里 prepare。
+- 旧嵌套布局带来三个具体问题（默认平铺已消除，旧目录只读标记为 `legacy`）：
   1. 父目录的 VCS 会把子目录看成未跟踪内容；父 worker 执行 `git clean -fdx`、`git stash -u` 或删除目录时可能连带毁掉子空间；
   2. 父/子同时工作时，相对路径、递归搜索、打包和文件监听会把两边的工作混在一起；
   3. 目录层级看起来像任务层级，读者容易把「子目录」误读为「子任务的空间所有权」，而实际上授权关系在 Ticket/Delegation，不在目录。
