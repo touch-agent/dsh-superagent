@@ -750,9 +750,9 @@ graph LR
 ## 14. X-03 E2E golden path（2026-11-10 落地）
 
 - **入口**：`pnpm test:e2e`（`vitest run --config tests/e2e/vitest.config.ts`）；CI 独立工作流 `.github/workflows/e2e.yml`，跑 PR 与 main，不进 `pnpm check`，保持领域测试的秒级反馈。
-- **路径**：本地 fake host 启动真实 `Runtime`/`Store`/`Engine`/执行器/HTTP 路由；GitHub Issue 由 `issueTrigger` 构造并经 Eval 接受 → 根 Ticket 获得显式 Mandate → 父 owner 委派两个子 Ticket → 一个子交付被退回并重做、两个子交付被父 owner 接受 → 父报告 PR 并交付带人工确认的结果 → 面板按当前 `reviewRevision` 批准 → Source 观察到 PR merged，Ticket 以 `merged` 结束且批准仍覆盖同一交付。
-- **覆盖**：Mandate/Decision、任务树父子契约、父审阅与 `unfinishedChildTickets` 结束门、PR 分支绑定、父子交付去重与 `HumanCriterion` 聚合、review revision 过期、人工批准与人工合并的先后语义；断言的契约与边界见 [docs/014](../014-e2e-golden-path.zh.md)。
-- **稳定与限制**：用例不重试，无网络、真实 GitHub/Feishu 凭据或 DSH 全局安装；fake host 不覆盖真实宿主版本矩阵（X-10）、安装/卸载（X-08）、真实 Git/PR 页面与浏览器面板渲染；lightweight 路径有自己的测试，不在这一条故事里。
+- **路径**：本地 fake host 启动真实 `Runtime`/`Store`/`Engine`/执行器/HTTP 路由；GitHub Issue 由 `issueTrigger` 构造并经 Eval 接受 → 根 Ticket 获得显式 Mandate → 父 owner 委派两个子 Ticket → 父 owner 接受两个子交付、退回其中一个已接受交付重做并再次接受 → 父报告 PR 并交付带人工确认的结果 → Source 先观察到 PR merged，Ticket 记 `endPending`/`end-gate` → 面板按当前 `reviewRevision` 批准并应用 pending end，Ticket 以 `merged` 结束且批准仍覆盖同一交付。
+- **覆盖**：Mandate/Decision、任务树父子契约（含子报告进入父输入、子不能被面板批准）、父审阅与 `unfinishedChildTickets` 结束门、PR 分支绑定、父子交付去重与 `HumanCriterion` 聚合、真实内容变化导致的 review revision 过期、PR 先合并的 pending end 与人工批准；断言的契约与边界见 [docs/014](../014-e2e-golden-path.zh.md)。
+- **稳定与限制**：用例不重试，无网络、真实 GitHub/Feishu 凭据或 DSH 全局安装；fake host 不驱动 worker 的模型回合，也不覆盖真实宿主版本矩阵（X-10）、安装/卸载（X-08）、真实 Git/PR 页面与浏览器面板渲染；lightweight 路径有自己的测试，不在这一条故事里。
 
 ---
 

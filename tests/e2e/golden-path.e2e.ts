@@ -5,9 +5,10 @@
  * arrives through the Source's own trigger builder. No network, credential or real GitHub/Feishu account participates.
  *
  * The path: an Issue from an allowed account mentions the agent → the Eval admits an explicit Mandate and the main Session
- * routes an accept → the root worker delegates two child Tickets → one child's work is returned and redone, both are
- * accepted by the parent owner → the root reports a PR, a delivery with a person confirmation → the panel approves the
- * aggregate revision → a person merges the PR → the Ticket ends `merged` with the approval still describing it.
+ * routes an accept → the root worker delegates two child Tickets → the parent owner accepts both, returns one accepted
+ * child for a redo and accepts it again → the root reports a PR and a delivery with a person confirmation → a person
+ * merges the PR first (a pending end) → the panel approves the aggregate revision → the Ticket ends `merged` with the
+ * approval still describing it.
  */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { latestAssignment, reviewAggregate, reviewApproved, type AcceptanceCriterionInput, type Ticket } from '@superagent/kernel'
@@ -22,6 +23,7 @@ const REPOSITORY = 'acme/widgets'
 const ISSUE_NUMBER = 101
 const PULL_NUMBER = 42
 const PULL_URL = `https://github.com/${REPOSITORY}/pull/${PULL_NUMBER}`
+const MERGED_AT = '2026-11-10T06:00:00.000Z'
 
 /** The Issue a person opened, as the GitHub Source's own trigger builder reads it. */
 const issue = issueTrigger({
@@ -48,7 +50,7 @@ beforeEach(async () => {
     if (path.endsWith(`/pulls/${PULL_NUMBER}`)) return pull('open')
     if (args.includes('--paginate')) return [[]]
     if (args.includes('--method')) return {}
-    return { default_branch: 'main', permissions: { push: true } }
+    return { default_branch: 'master', permissions: { push: true } }
   })
 })
 
@@ -133,28 +135,39 @@ it('takes an Issue through authorization, child delegation and parent review, de
   const childApproval = await host.api('POST', `tickets/${childA.id}/approve`, { reviewRevision: 'any' })
   expect(childApproval).toMatchObject({ status: 400, body: { code: 'childRequiresParent' } })
 
-  // 4. Parent review: one child report is returned and redone; both are then accepted by the parent owner, not by a person.
+  // 4. Parent review: each child report arrives as a child-report input on the parent. The parent owner accepts both,
+  //    then returns one accepted child for a redo: its delivery leaves the aggregate and the review revision changes.
   await run(`worker-${childA.id}`, 'orchestrator_report', { state: 'ready', summary: 'Copy rewritten',
     deliverable: deliverable('docs/empty-state.md', 'copy-a1', 'text/diff',
       [{ kind: 'human', who: { source: 'github', id: 'alice' }, reason: 'Read the child copy' }]) })
   await run(`worker-${childB.id}`, 'orchestrator_report', { state: 'ready', summary: 'Action added',
     deliverable: deliverable('src/empty-state.ts', 'action-b1', 'text/diff',
       [{ kind: 'rule', rule: 'artifact.unchanged', window: 24 }]) })
-  const returned = await run(parentSession, 'orchestrator_child', { operation: 'return', child_ticket_id: childB.id,
-    reason: 'The action is not the one the copy names; redo it.' })
-  expect(returned).toMatchObject({ returned: true, ticket_id: childB.id })
-  expect(ticket(childB.id)).toMatchObject({ delegation: expect.objectContaining({ attempt: 2 }) })
-  expect(ticket(childB.id).delegation?.resolution).toBeUndefined()
-  // A returned child's earlier delivery leaves the parent's review aggregate until the next attempt is accepted.
-  expect(aggregateOf(root.id)?.deliverables ?? []).toHaveLength(0)
-  await run(`worker-${childB.id}`, 'orchestrator_report', { state: 'ready', summary: 'Action corrected',
-    deliverable: deliverable('src/empty-state.ts', 'action-b2', 'text/diff',
-      [{ kind: 'rule', rule: 'artifact.unchanged', window: 24 }]) })
+  const inbox = ticket(root.id)
+  const reports = inbox.inputs.flatMap(input => input.kind === 'child-report' ? [input] : [])
+  expect(reports.map(input => input.childTicketId).sort()).toEqual([childA.id, childB.id].sort())
+  expect(reports.every(input => input.state === 'ready')).toBe(true)
   const acceptedChildA = await run(parentSession, 'orchestrator_child', { operation: 'accept', child_ticket_id: childA.id })
   expect(aggregateOf(root.id)?.deliverables).toHaveLength(1)
   const acceptedChildB = await run(parentSession, 'orchestrator_child', { operation: 'accept', child_ticket_id: childB.id })
   expect(aggregateOf(root.id)?.deliverables).toHaveLength(2)
-  expect([acceptedChildA, acceptedChildB].map(result => result.accepted)).toEqual([true, true])
+  const acceptedRevision = aggregateOf(root.id)!.reviewRevision
+  const returned = await run(parentSession, 'orchestrator_child', { operation: 'return', child_ticket_id: childB.id,
+    reason: 'The accepted action is not the one the copy names; redo it.' })
+  expect(returned).toMatchObject({ returned: true, ticket_id: childB.id })
+  const redone = ticket(childB.id)
+  expect(redone.ended).toBeUndefined()
+  expect(redone.delegation).toMatchObject({ attempt: 2 })
+  expect(redone.delegation?.resolution).toBeUndefined()
+  // The returned child's accepted delivery leaves the aggregate and changes the revision.
+  expect(aggregateOf(root.id)?.deliverables).toHaveLength(1)
+  expect(aggregateOf(root.id)?.reviewRevision).not.toBe(acceptedRevision)
+  await run(`worker-${childB.id}`, 'orchestrator_report', { state: 'ready', summary: 'Action corrected',
+    deliverable: deliverable('src/empty-state.ts', 'action-b2', 'text/diff',
+      [{ kind: 'rule', rule: 'artifact.unchanged', window: 24 }]) })
+  const acceptedChildBAgain = await run(parentSession, 'orchestrator_child', { operation: 'accept', child_ticket_id: childB.id })
+  expect(aggregateOf(root.id)?.deliverables).toHaveLength(2)
+  expect([acceptedChildA, acceptedChildB, acceptedChildBAgain].map(result => result.accepted)).toEqual([true, true, true])
   for (const child of [childA, childB]) {
     const ended = ticket(child.id)
     expect(ended).toMatchObject({ ended: expect.objectContaining({ outcome: 'completed', by: 'executor' }),
@@ -203,31 +216,34 @@ it('takes an Issue through authorization, child delegation and parent review, de
     confirmations: expect.any(Array) })
   expect(task.review.accepted).toBeUndefined()
   expect(approved(root.id)).toBe(false)
-
-  // 7. A person approves exactly this revision from the panel. An older revision is refused, so a stale approval cannot
-  //    cover the later aggregate; approval covers the child confirmations too, but the open PR means the Ticket waits,
-  //    because accepting a review is not merging the work.
-  const stale = await host.api('POST', `tickets/${root.id}/approve`, { reviewRevision: `${before.reviewRevision}-stale` })
+  // The revision from before the redo is genuinely stale now that the full review is ready.
+  expect(before.reviewRevision).not.toBe(acceptedRevision)
+  const stale = await host.api('POST', `tickets/${root.id}/approve`, { reviewRevision: acceptedRevision })
   expect(stale).toMatchObject({ status: 409, body: { code: 'reviewStale' } })
-  const approval = await host.api('POST', `tickets/${root.id}/approve`, { reviewRevision: before.reviewRevision })
-  expect(approval).toEqual({ status: 200, body: { approved: true, reviewRevision: before.reviewRevision } })
-  expect(approved(root.id)).toBe(true)
-  expect(ticket(root.id).ended).toBeUndefined()
-  expect(latestAssignment(ticket(root.id))!.report!.accepted).toMatchObject({ by: { source: 'panel', id: 'local' },
-    reviewRevision: before.reviewRevision })
 
-  // 8. A person merges the PR outside this system; the Source observes it. That is the ending fact, and the Ticket keeps the
-  //    approval that covers the delivered revision.
-  const mergedAt = new Date().toISOString()
-  await observePull(host.runtime.context(githubKind), pull('closed', mergedAt))
-  const merged = ticket(root.id)
-  expect(merged.ended).toEqual({ at: mergedAt, by: 'executor', outcome: 'merged' })
+  // 7. A person merges the PR before the final review. The merge is an ending fact, but the person confirmations are not
+  //    approved yet, so the Ticket records a pending end instead of ending silently.
+  await observePull(host.runtime.context(githubKind), pull('closed', MERGED_AT))
+  const pending = ticket(root.id)
+  expect(pending.ended).toBeUndefined()
+  expect(pending.endPending).toMatchObject({ outcome: 'merged', at: MERGED_AT })
+  expect(pending.inputs).toContainEqual(expect.objectContaining({ kind: 'end-gate',
+    pending: expect.objectContaining({ outcome: 'merged', at: MERGED_AT }) }))
+
+  // 8. A person now approves exactly this revision from the panel; approval applies the pending end. The approval keeps
+  //    covering the delivered revision, and the tree keeps that accepted revision as its terminal review.
+  const approval = await host.api('POST', `tickets/${root.id}/approve`, { reviewRevision: before.reviewRevision })
+  expect(approval).toMatchObject({ status: 200, body: { approved: true, reviewRevision: before.reviewRevision } })
   expect(approved(root.id)).toBe(true)
+  const merged = ticket(root.id)
+  expect(merged.ended).toMatchObject({ at: MERGED_AT, by: 'executor', outcome: 'merged' })
+  expect(latestAssignment(merged)!.report!.accepted).toMatchObject({ by: { source: 'panel', id: 'local' },
+    reviewRevision: before.reviewRevision })
   expect(aggregateOf(root.id)!.reviewRevision).toBe(before.reviewRevision)
   expect(children(root.id).map(child => child.ended?.outcome)).toEqual(['completed', 'completed'])
   // The tree now reads the root as done and still shows the accepted review, not a second confirmation or a live task.
   const after = await host.api('GET', `tasks/${root.id}?depth=1`)
-  expect((after.body.task as { status: string; terminal?: string; review: { accepted?: { reviewRevision: string } } }).status).toBe('done')
+  expect((after.body.task as { status: string }).status).toBe('done')
   expect((after.body.task as { review: { accepted?: { reviewRevision: string } } }).review.accepted).toMatchObject({
     reviewRevision: before.reviewRevision })
 })
