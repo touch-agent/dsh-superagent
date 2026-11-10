@@ -61,7 +61,7 @@
 | T4-04 | 未开始 | — | — | 2026-11-08 |
 | T4-05 | 未开始 | — | — | 2026-11-08 |
 | T4-06 | 未开始 | — | — | 2026-11-08 |
-| T5-01 | 未开始 | — | — | 2026-11-08 |
+| T5-01 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/45 | `packages/kernel/src/goal.ts`、`packages/dsh/src/app/goals.ts`、`GET goals`/`GET goals/:id`；`tests/goals.spec.ts` 覆盖空态、无交付、需决定、子 Ticket 等父 owner、最近一次 Assignment、同一投影、E0 无内部 id、删除不影响 Ticket；10 秒走查记录见 `../015-goal-projection.zh.md` 附录 | 2026-11-10 |
 | T5-02 | 未开始 | — | — | 2026-11-08 |
 | T5-03 | 未开始 | — | — | 2026-11-08 |
 | T5-04 | 未开始 | — | — | 2026-11-08 |

@@ -13,7 +13,7 @@ import { EventsTab } from '@superagent/dsh/client/system.tsx'
 import { ActivityFeedClient } from '@superagent/dsh/client/activity-feed.ts'
 import { MasterStore } from '@superagent/dsh/client/master.ts'
 import { usePanel, mount, click, all, text, at, translator } from './fixtures/panel.tsx'
-import { server, taskBoardView } from './fixtures/panel-server.ts'
+import { goalFixture, server, taskBoardView } from './fixtures/panel-server.ts'
 
 usePanel()
 
@@ -23,7 +23,7 @@ const row = (titlePart: string) => all('.dt-tasks-item').find(item => item.textC
 const light = (): TaskView => ({ id: 'light', kind: 'ticket', title: '改一句文案', form: 'lightweight', status: 'working',
   attention: false, origin: { source: 'conversation', triggerId: 'tr-light', preview: '改一下文案', at: '2026-09-22T00:00:00Z' },
   sources: [{ source: 'conversation', label: '主会话' }], startedAt: '2026-09-22T00:00:00Z', execution: { assignments: 0 },
-  deliverables: [], inline: { steps: 2, traceId: 'trace-light' } })
+  goal: goalFixture('light', { statement: '改一句文案' }), deliverables: [], inline: { steps: 2, traceId: 'trace-light' } })
 
 async function render(element: ReactNode) {
   const container = document.createElement('div')
@@ -140,7 +140,7 @@ it('shows one child Ticket layer with its parent decision and the pending end of
   const child: TaskView = { id: 'c1', kind: 'ticket', title: '子任务：补齐迁移说明', form: 'tracked', status: 'review',
     parentTicketId: 't1', rootTicketId: 't1', depth: 1, parentOwner: { role: 'owner' }, delegation: { parentTicketId: 't1', rootTicketId: 't1',
       goal: '补齐迁移说明', attempt: 1, dispositions: [] }, origin: { source: 'conversation', triggerId: 'tr-child', preview: '', at: '2026-09-23T00:00:00Z' },
-    sources: [], execution: { assignments: 1 }, deliverables: [] }
+    sources: [], execution: { assignments: 1 }, goal: goalFixture('c1', { statement: '补齐迁移说明' }), deliverables: [] }
   const waiting: TaskView = { ...child, id: 'c2', title: '核对审计日志格式', status: 'idle',
     delegation: { ...child.delegation!, goal: '核对审计日志格式' } }
   root.children = [child, waiting]

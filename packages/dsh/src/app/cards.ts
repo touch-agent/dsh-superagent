@@ -2,6 +2,7 @@
 import { latestReport, reasonText, threadKey, ticketStage, type Decision, type Mandate, type Thread, type Ticket, type TicketInput,
   type Trigger, type TriggerDisposition } from '@superagent/kernel'
 import { pullOf } from '../sources/github-pull.ts'
+import { goalView } from './goals.ts'
 import { batchLine, inputResource } from '../executor/dsh.ts'
 
 /** Collapses whitespace and truncates text for display previews while keeping code, angle brackets, and links intact for model readers. */
@@ -33,7 +34,7 @@ function cardState(ticket: Ticket): TicketCardState {
 export function ticketCard(ticket: Ticket) {
   const ended = ticket.ended && { at: ticket.ended.at, by: ticket.ended.by, reason: ticket.ended.reason ?? ticket.ended.outcome }
   const { attention } = ticket
-  return { ticket_id: ticket.id, title: ticket.title, state: cardState(ticket), ...(ticket.mandate ? { strength: ticket.mandate.strength } : {}),
+  return { ticket_id: ticket.id, title: ticket.title, state: cardState(ticket), goal: goalView(ticket), ...(ticket.mandate ? { strength: ticket.mandate.strength } : {}),
     ...(ticket.parentTicketId ? { parent_ticket_id: ticket.parentTicketId } : {}),
     ...(pullOf(ticket) ? { pr_number: pullOf(ticket) } : {}), ...(ended ? { ended } : {}),
     ...(attention ? { attention: { question: attention.question, ...attention.triggerId ? { trigger_id: attention.triggerId } : {} } } : {}),
@@ -66,8 +67,9 @@ export function newestPage<T, L>(items: readonly T[], offset: number, size: numb
 export interface TicketThread { thread: string; context?: true; bound?: true }
 /** Projects a ticket with its linked triggers, threads, and first pages of assignments and inputs, omitting decision IDs for workers. */
 export function ticketDetails(ticket: Ticket, threads: TicketThread[], batch: readonly Trigger[], worker = false, origin?: Trigger) {
-  // Drop card preview because the latest report's preview is already shown on the first assignment entry.
-  const { preview: _preview, ...card } = ticketCard(ticket)
+  // Drop card preview because the latest report's preview is already shown on the first assignment entry, and the Goal because
+  // the detail view already carries the fields the main Session's card needs; keeping it here would grow the worker's bounded read.
+  const { preview: _preview, goal: _goal, ...card } = ticketCard(ticket)
   return { ...card, trigger_id: ticket.origin.triggerId, ...conversationSource(origin), ...batch.length ? { batch: batch.map(batchLine) } : {},
     ...worker || !ticket.decisionId ? {} : { decision_id: ticket.decisionId }, threads, directory: ticket.execution?.directory,
     ...ticket.mandate ? { scope: ticket.mandate.scope, requested_by: ticket.mandate.actor.id } : {},
