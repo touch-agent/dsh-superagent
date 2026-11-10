@@ -67,7 +67,7 @@
 | T5-04 | 未开始 | — | — | 2026-11-08 |
 | T5-05 | 未开始 | — | — | 2026-11-08 |
 | T5-06 | 未开始 | — | — | 2026-11-08 |
-| T5-07 | 未开始 | — | — | 2026-11-10 |
+| T5-07 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/51 | `packages/kernel/src/profile.ts`、`packages/dsh/src/app/profiles.ts`、`packages/dsh/src/app/profile-metrics.ts`、`packages/dsh/src/app/work-tools.ts`；Ticket 顶层快照与子 Ticket 复制、Session 模型/prompt/工具解析、`dispatch` span、`GET profiles`/`:id`/`:id/metrics`；`tests/profiles.spec.ts` 与 `tests/core-engine.spec.ts` 覆盖注册表、回滚、禁止字段、fallback、工具收紧、pinned 非合规、聚合与 accept 不变；无 schema 迁移、SettingsSchema 不变、`profiles.config` 默认关闭 | 2026-11-10 |
 | X-01 | 未开始 | — | — | 2026-11-08 |
 | X-02 | 未开始 | — | — | 2026-11-08 |
 | X-03 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/44 | `tests/e2e/golden-path.e2e.ts`；`pnpm test:e2e`；CI `e2e` workflow | 2026-11-10 |

@@ -11,7 +11,6 @@ import type { Assignment, ProfileSnapshot, Ticket } from '@superagent/kernel'
 import { KV } from '../kv.ts'
 import type { Store } from './store.ts'
 
-const HOUR = 3_600_000
 /** Seconds between two stored timestamps, or null when missing or unreadable. */
 function seconds(from: string | undefined, to: string | undefined): number | null {
   if (!from || !to) return null
@@ -24,8 +23,6 @@ function quantile(values: number[], fraction: number): number | null {
   const sorted = [...values].sort((left, right) => left - right)
   return Math.round(sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(fraction * sorted.length) - 1))]!)
 }
-/** The assignment reasons that are operational retries, not rework a person caused. */
-const OPS_RETRY = new Set(['restarted', 'interrupted', 'retried', 'replaced', 'orphaned', 'launchFailed'])
 /** A group's success sample: roots, child resolutions and lightweight runs each follow their own ending rule. */
 interface Success { n: number; successes: number }
 /** One effective configuration's telemetry. */
@@ -204,4 +201,3 @@ export function profileSummary(store: Store, definition: { id: string }): { tick
   const view = profileMetrics(store, definition.id)
   return { tickets: view.totals.tickets, successRate: view.totals.success.rate, censored: view.totals.censored, fallback: view.totals.fallback }
 }
-export { HOUR }

@@ -17,7 +17,7 @@ import { initializeRoleModel } from './role-models.ts'
 import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import { ProfileLaunchBlocked, runEffective, type Profiles } from './profiles.ts'
-import { CHILD_DENIED, WORK_TOOLS } from './work-tools.ts'
+import { CHILD_DENIED, SUBAGENT_CONTROL, WORK_TOOLS } from './work-tools.ts'
 import type { Store } from './store.ts'
 import { KV } from '../kv.ts'
 import type { RegisterTool, Tool } from './tools/tool.ts'
@@ -56,8 +56,6 @@ declare module '@deepseek-ai/cordis' {
     'agent-preset/selected'(sessionId: string, agentPreset: string): void
   }
 }
-/** Session-control tools a pinned model profile cannot safely delegate, so it does not get them. */
-const SUBAGENT_CONTROL = new Set(['subagent', 'list_subagent_models', 'list_agents', 'interrupt_agent'])
 /**
  * A child's shell may not leave the authorization root: no GitHub write/API calls, no git network writes, no direct
  * network tools and no SQLite/state access. This is a tool-level denial, not an OS sandbox (the deployment's preset is
@@ -375,7 +373,7 @@ export class Sessions {
     const legacy = this.host.profiles.config().resolve === 'legacy'
     const snapshot = legacy ? undefined : (ticket?.parentTicketId
       ? store.tickets.get(ticket.rootTicketId ?? ticket.parentTicketId)?.profile ?? ticket.profile : ticket?.profile)
-    const names = legacy || !ticket ? WORK_TOOLS
+    const names = legacy || !ticket ? WORK_TOOLS.filter(name => !child || !CHILD_DENIED.has(name))
       : snapshot?.selection.valid === false ? []
       : snapshot ? profileWorkTools(ticket, id => store.tickets.get(id))
       : WORK_TOOLS

@@ -16,7 +16,7 @@ import { KV, type ProfilesConfig } from '../kv.ts'
 import { policyVersion, type Settings } from '../policy.ts'
 import type { PromptVersion, Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
-import { WORK_TOOL_NAMES } from './work-tools.ts'
+import { SUBAGENT_CONTROL, WORK_TOOL_NAMES } from './work-tools.ts'
 
 const require = createRequire(import.meta.url)
 /** The installed DSH version, recorded in every effective hash; `unknown` when the host package exposes no package.json. */
@@ -379,8 +379,10 @@ function movingPolicy(definition: Pick<AgentProfile, 'model' | 'tools' | 'prompt
   return definition.model.mode === 'inherit' || definition.tools.mode === 'inherit' || definition.prompt.mode === 'live'
 }
 /** The effective work tools: the role ceiling for `inherit`, or the listed subset. Protocol tools are never here. */
-function effectiveTools(definition: Pick<AgentProfile, 'tools'>): string[] {
-  return definition.tools.mode === 'inherit' ? [...WORK_TOOL_NAMES] : [...new Set(definition.tools.names)].sort()
+function effectiveTools(definition: Pick<AgentProfile, 'tools' | 'model'>): string[] {
+  const names = definition.tools.mode === 'inherit' ? [...WORK_TOOL_NAMES] : [...new Set(definition.tools.names)].sort()
+  // A pinned model cannot force a subagent's model, so those control tools are not effective work tools.
+  return definition.model.mode === 'pinned' ? names.filter(name => !SUBAGENT_CONTROL.has(name)) : names
 }
 /** The actual model a snapshot records; `host-default` is honest when the role settings name none. */
 function resolvedModel(definition: { model: ProfileModelPolicy }, settings: Settings): ProfileResolvedModel {
@@ -396,6 +398,7 @@ function skillsHashOf(prompts: Pick<Prompts, 'skills'>, version: PromptVersion |
 }
 /** Why a definition cannot run, or undefined. It is recorded on the snapshot but does not fail the binding. */
 function runtimeProblem(definition: AgentProfile, prompts: Pick<Prompts, 'version'>): string | undefined {
+  if (!AgentProfileSchema.safeParse(definition).success) return 'contentInvalid'
   if (definition.role !== 'worker') return `roleUnsupported:${definition.role}`
   if (definition.model.mode === 'pinned' && (!definition.model.provider.trim() || !definition.model.model.trim())) return 'modelIncomplete'
   if (definition.tools.mode === 'list') {

@@ -135,9 +135,11 @@ it('copies the root snapshot to a child and resolves the same effective tools fo
     expect(profileWorkTools(child, id => id === 'r1' ? root : child)).not.toContain('subagent')
     expect(profileWorkTools(child, id => id === 'r1' ? root : child)).not.toContain('send_message')
     // A pinned model removes subagent controls at the root too, because Phase 1 cannot pin a subagent's model.
-    profiles.save(draft(), 0, { by: 'local-user', source: 'panel', reason: 'pinned' })
+    profiles.save(draft({ tools: { mode: 'list', names: ['read', 'bash', 'subagent'] } }), 0,
+      { by: 'local-user', source: 'panel', reason: 'pinned' })
     profiles.saveConfig({ defaultProfile: 'worker-docs' })
     const pinned = ticket('p1', profiles.bindRoot(ticket('p1'))!)
+    expect(pinned.profile?.tools).toEqual(['bash', 'read'])
     expect(profileWorkTools(pinned, id => id === 'p1' ? pinned : undefined)).not.toContain('subagent')
     // An empty list keeps protocol tools; it never claims read-only.
     const empty = ticket('e1', { ...pinned.profile!, tools: [], toolsMode: 'list' })
@@ -187,6 +189,19 @@ it('groups metrics by effective hash, suppresses small rates, and reports unknow
     expect(view.groups.every(group => group.success.n < 5)).toBe(true)
     // The display is suppressed for a small group, while its counts remain visible.
     for (const group of view.groups) { expect(group.success.rate).toBeNull(); expect(group.success.suppressed).toBe(true) }
+  })
+})
+
+it('keeps a fallback ticket visible under the profile it could not resolve', () => {
+  withProfiles((store, profiles) => {
+    profiles.seed()
+    profiles.saveConfig({ enabled: true, defaultProfile: 'worker-default' })
+    const fallback = profiles.bindRoot(ticket('f1'))!
+    const legacy = { ...fallback, id: 'legacy', revision: 0, selection: { ...fallback.selection, fallback: true as const, reason: 'profileUnavailable:worker-default' } }
+    store.tickets.save({ ...ticket('f1', legacy), ended: { outcome: 'completed', at: NOW, by: 'executor' } } as unknown as Ticket)
+    const view = profileMetrics(store, 'worker-default', new Date(NOW))
+    expect(view.totals).toMatchObject({ tickets: 1, fallback: 1, success: { n: 1, successes: 1 } })
+    expect(view.groups[0]?.fallback).toBe(1)
   })
 })
 

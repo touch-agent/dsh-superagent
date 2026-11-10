@@ -8,4 +8,5 @@ export const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep'
 /** A child Ticket's owner may not start or message other Sessions: it reports only to its parent owner through the Engine. */
 export const CHILD_DENIED = new Set(['subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent'])
 /** The work tools a profile may list: the role ceiling, sorted and de-duplicated for a stable schema and hash. */
-export const WORK_TOOL_NAMES: readonly string[] = [...new Set(WORK_TOOLS)].sort()
+export const WORK_TOOL_NAMES: readonly string[] = [...new Set(WORK_TOOLS)].sort()/** Session-control work tools a pinned model cannot safely delegate, because its subagent's model cannot be forced. */
+export const SUBAGENT_CONTROL = new Set(['subagent', 'list_subagent_models', 'list_agents', 'interrupt_agent'])
