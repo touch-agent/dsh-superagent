@@ -62,7 +62,6 @@ export interface ContextDimensionEntry {
 }
 
 const groupKey = (source: string, space: string): string => `${source}:${space}`
-const textOf = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value : undefined
 /**
  * The live Threads of `ticket` that belong to `space`: only Threads whose subscription list still names the ticket, so a
  * dropped subscription (unsubscribe, leaving the space, or a closed collaboration) removes the group dimension. The Ticket's
@@ -100,10 +99,9 @@ export function contextGroupOf(host: ContextGroupReadHost, ticket: Ticket): Cont
     if (!space) continue
     const threads = liveThreads(host, ticket, space)
     if (!threads.length) continue
-    const label = space.label ?? threads.map(thread => textOf(thread.meta.label)).find(Boolean)
-    const url = space.url ?? threads.map(thread => textOf(thread.meta.url)).find(Boolean)
     return { key: groupKey(space.source, space.space), source: space.source, space: space.space,
-      ...(label ? { label } : {}), ...(url ? { url } : {}), visibility: 'source', conventions: threads.map(thread => thread.key) }
+      ...(space.label ? { label: space.label } : {}), ...(space.url ? { url: space.url } : {}),
+      visibility: 'source', conventions: threads.map(thread => thread.key) }
   }
   return undefined
 }

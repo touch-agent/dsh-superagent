@@ -74,7 +74,7 @@ T5-04 的装配表要求每个条目有 `key/source/scope/strength/inheritance/t
 
 | 场景 | 断言 |
 | --- | --- |
-| 同组 / 异组 / 无组 | 同群两个话题 key 相同；不同群 key 不同；conversation 无维度；`GET contexts/groups` 聚合正确 |
+| 同组 / 异组 / 无组 | 飞书同群两个话题 key 相同、不同群 key 不同；GitHub 同仓库两个 Issue key 相同；conversation 无维度；`GET contexts/groups` 聚合正确 |
 | 私聊 / 群聊 | 飞书 `direct` 私聊缺席；群聊出现；缺 `direct` 标志但带群 `chatId` 视为群聊（Source 的显式标记优先） |
 | 退订后失效 | Thread 订阅移除后 `contextGroupOf` 缺席、列表移除该 Ticket，Ticket 的 JSON 不变 |
 | 群组不等于授权 | 投影没有成员/名单/授权字段；读取不修改 Mandate；T5-04 条目 shape 可核对 |

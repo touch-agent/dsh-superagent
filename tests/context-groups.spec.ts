@@ -35,7 +35,7 @@ const sources: ContextGroupReadHost['sources'] = {
       if (channel.address.direct === 'true' || !channel.address.chatId) return undefined
       return { source: 'feishu', space: channel.address.chatId, label: 'Team' }
     }
-    if (channel.source === 'github' && channel.address.repository) return { source: 'github', space: channel.address.repository }
+    if (channel.source === 'github') return { source: 'github', space: 'acme/widgets', label: 'acme/widgets', url: 'https://github.com/acme/widgets' }
     return undefined
   },
   threadSpace: ref => {
@@ -71,6 +71,16 @@ it('derives the same group for one chat and different groups across chats', () =
     expect.objectContaining({ key: 'feishu:oc_team', tickets: ['a', 'b'], conventions: ['feishu:oc_team:om_1', 'feishu:oc_team:om_2'] }),
   ])
   expect(board.totals).toEqual({ groups: 2, tickets: 3 })
+})
+
+it('groups GitHub issues by repository, like the adapter hook that reads the configured repository', () => {
+  const a = ticket('a', [githubChannel(12)], ['github:12'])
+  const b = ticket('b', [githubChannel(13)], ['github:13'])
+  const read = host([a, b], [thread('github:12', ['a']), thread('github:13', ['b'])])
+  expect(contextGroupOf(read, a)).toMatchObject({ key: 'github:acme/widgets', source: 'github', space: 'acme/widgets',
+    label: 'acme/widgets', url: 'https://github.com/acme/widgets', conventions: ['github:12'] })
+  expect(contextGroupOf(read, b)!.key).toBe(contextGroupOf(read, a)!.key)
+  expect(contextGroupBoard(read).totals).toEqual({ groups: 1, tickets: 2 })
 })
 
 it('is absent for a private conversation and for a direct Feishu chat, present for a group chat', () => {
