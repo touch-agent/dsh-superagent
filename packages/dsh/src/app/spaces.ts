@@ -258,6 +258,15 @@ export class SpaceLeases {
       WHERE locator_key=? AND ticket_id=? AND ${CURRENT_LEASE}`).run(at, at, locatorKey, ticketId)
   }
 
+  /** Release one never-activated reservation, but only while it still belongs to the same Assignment. */
+  releaseReservation(lease: SpaceLease): void {
+    if (lease.state !== 'reserved' || !lease.assignmentId) return
+    const at = now()
+    this.store.db.prepare(`UPDATE space_lease SET state='released', released_at=?, updated_at=?
+      WHERE locator_key=? AND epoch=? AND ticket_id=? AND assignment_id=? AND state='reserved'`)
+      .run(at, at, lease.locatorKey, lease.epoch, lease.ticketId, lease.assignmentId)
+  }
+
   /** Release by Ticket id alone, for a stop callback whose Execution was already removed. */
   releaseTicket(ticketId: string): void {
     const at = now()

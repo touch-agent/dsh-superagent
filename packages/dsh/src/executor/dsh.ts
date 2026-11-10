@@ -91,7 +91,7 @@ export interface ExecutorHost {
   /** Session manager for worker sessions and for relaying worker reports to the main Session. */
   readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds'>
   /** Write leases for ticket directories; it coordinates writers and grants no action. */
-  readonly spaces: Pick<SpaceLeases, 'reserve' | 'activate' | 'release' | 'reconcile'>
+  readonly spaces: Pick<SpaceLeases, 'reserve' | 'activate' | 'release' | 'releaseReservation' | 'reconcile'>
   closing(): boolean
   /** Whether processing is paused, which holds launches and input deliveries. */
   paused(): boolean
@@ -477,9 +477,9 @@ export class DshExecutor implements Executor {
       // Prepare the workspace directory once; an existing directory counts as already prepared, including worktrees created before `prepare` commands existed.
       if (!await stat(workspace).then(() => true, () => false)) {
         await this.prepareDirectory(ticket)
-        if (!current()) { this.releaseReserved(lease, ticket.id, workspace); return }
+        if (!current()) { this.releaseReserved(lease); return }
       }
-      if (!current()) { this.releaseReserved(lease, ticket.id, workspace); return }
+      if (!current()) { this.releaseReserved(lease); return }
       // Verify after prepare: the real directory must still be the reserved locator, and a checkout must belong to this path.
       if (lease) {
         await this.verifySpace(ticket, lease)
@@ -518,13 +518,13 @@ export class DshExecutor implements Executor {
       this.host.engine.assignmentStarted(ticket.id, assignment.id)
     } catch (error) {
       // A reservation that never became active leaves no holder behind; an active lease on a failed live Ticket is kept for retry.
-      if (lease?.state === 'reserved') this.host.spaces.release(ticket.id, workspace)
+      this.releaseReserved(lease)
       throw error
     }
   }
-  /** Drops a reservation that never became active, so a pause or stop during prepare leaves no holder behind. */
-  private releaseReserved(lease: SpaceLease | undefined, ticketId: string, directory: string): void {
-    if (lease?.state === 'reserved') this.host.spaces.release(ticketId, directory)
+  /** Drops a reservation that never became active, so a pause, stop or newer Assignment leaves no holder behind. */
+  private releaseReserved(lease: SpaceLease | undefined): void {
+    if (lease?.state === 'reserved') this.host.spaces.releaseReservation(lease)
   }
   /** Release the Ticket's directory lease at its end, including a Ticket whose last Assignment had already ended. */
   release(ticket: Ticket): void {

@@ -83,6 +83,17 @@ describe('space leases', () => {
     expect(leases.all()).toHaveLength(1)
   })
 
+  it('does not release a reservation a newer Assignment has taken over', async () => {
+    const leases = new SpaceLeases(store, 10), target = join(directory, 'regrant')
+    const old = (await leases.reserve({ ticket: fake('t1', target), assignmentId: 'a1', live: () => false })).lease!
+    const next = (await leases.reserve({ ticket: fake('t1', target), assignmentId: 'a2', live: () => false })).lease!
+    expect(next).toMatchObject({ epoch: old.epoch, assignmentId: 'a2' })
+    leases.releaseReservation(old)
+    expect(leases.current(await locatorKeyOf(target))).toMatchObject({ state: 'reserved', assignmentId: 'a2' })
+    leases.releaseReservation(next)
+    expect(leases.current(await locatorKeyOf(target))).toBeUndefined()
+  })
+
   it('reserves a locator once under concurrent launches', async () => {
     const leases = new SpaceLeases(store, 10), target = join(directory, 'shared')
     const results = await Promise.all([leases.reserve({ ticket: fake('a', target), live: () => false }),
