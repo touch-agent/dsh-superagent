@@ -62,7 +62,7 @@
 | T4-05 | 未开始 | — | — | 2026-11-08 |
 | T4-06 | 未开始 | — | — | 2026-11-08 |
 | T5-01 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/45 | `packages/kernel/src/goal.ts`、`packages/dsh/src/app/goals.ts`、`GET goals`/`GET goals/:id`；`tests/goals.spec.ts` 覆盖空态、无交付、需决定、子 Ticket 等父 owner、最近一次 Assignment、同一投影、E0 无内部 id、删除不影响 Ticket；10 秒走查记录见 `../015-goal-projection.zh.md` 附录 | 2026-11-10 |
-| T5-02 | 未开始 | — | — | 2026-11-08 |
+| T5-02 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/53 | `docs/018-exposure-levels.zh.md`：E0–E3 逐项清单、注意力成本/替代/回退；`tests/panel-overview.spec.tsx`、`tests/panel-settings.spec.tsx`、`tests/panel-tasks.spec.tsx`、`tests/client.spec.tsx` 覆盖 E0 无 Session/未送达、审批技术折叠、显示组默认关闭、E1 目标区、事件自动打开三路径；全量 1775 测试通过；同场景 Before/After 见 `docs/images/exposure-levels/{before,after}-{overview,tasks,ticket,settings}.png`；10 秒自查记录见 018 §5.1 | 2026-11-10 |
 | T5-03 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/50 | `packages/dsh/src/app/context-groups.ts`；`tests/context-groups.spec.ts` 覆盖同组/异组/无组、私聊/群聊、退订后失效、无成员名单/无授权字段、T5-04 条目形状与 `GET contexts/groups`；C3.3/C3.4 走查见 `../017-context-groups.zh.md` | 2026-11-10 |
 | T5-04 | 未开始 | — | — | 2026-11-08 |
 | T5-05 | 未开始 | — | — | 2026-11-08 |
