@@ -129,7 +129,8 @@ export function ticketSummary(ticket: Ticket) {
     // Every started Assignment of a Ticket runs in its one shared worker Session.
     deliveryError: attribute(ticket.delivery?.error), sessionId: ticket.assignments.some(item => item.startedAt)
       ? workerSessionId(ticket.id) : '',
-    directory: attribute(ticket.execution?.directory), summary: latestReport(ticket)?.summary ?? '', createdAt: ticket.createdAt,
+    // E1 carries no absolute locator: the space projection names it, and the path stays on E2's Spaces list.
+    summary: latestReport(ticket)?.summary ?? '', createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt }
 }
 export type TicketSummaryView = ReturnType<typeof ticketSummary>

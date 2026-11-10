@@ -5,7 +5,8 @@ import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Ticket } from '@superagent/kernel'
 import { Store } from '@superagent/dsh/app/store.ts'
-import { SpaceLeases, locatorKeyOf, spaceName, spaceOf } from '@superagent/dsh/app/spaces.ts'
+import { SpaceFactsCache, SpaceLeases, locatorKeyOf, spaceName, spaceOf, spaceRows } from '@superagent/dsh/app/spaces.ts'
+import { ticketSummary } from '@superagent/dsh/app/views/records.ts'
 import { feishu, startRuntime, type Host } from './fixtures/host.ts'
 
 const roots: string[] = []
@@ -122,6 +123,70 @@ describe('space leases', () => {
     expect((await resumed.reserve({ ticket: fake('t1', target), live: () => false })).lease).toMatchObject({ ticketId: 't1', epoch: 2, state: 'reserved' })
     expect(resumed.current(await locatorKeyOf(target))).toMatchObject({ ticketId: 't1', epoch: 2, state: 'reserved' })
     expect(resumed.all().map(row => row.state).sort()).toEqual(['reserved', 'stale'])
+  })
+})
+
+describe('space list reads and E1 boundaries', () => {
+  it('keeps the absolute locator out of the E1 ticket payload', () => {
+    const store = new Store(join(temp(), 'state.sqlite'))
+    const summary = ticketSummary(fake('t1', '/srv/work/t1-abc123def456'))
+    expect(summary).not.toHaveProperty('directory')
+    expect(summary).not.toHaveProperty('locator')
+    store.close()
+  })
+
+  it('dedupes the warm-up, reads distinct directories concurrently, and refreshes after the TTL', async () => {
+    let clock = 0, inFlight = 0, peak = 0
+    const facts = new SpaceFactsCache({ ttlMs: 10, now: () => clock, read: async () => {
+      inFlight++; peak = Math.max(peak, inFlight)
+      await new Promise(resolve => setTimeout(resolve, 1))
+      inFlight--
+      return { kind: 'scratch' }
+    } })
+    await facts.load(['/a', '/b', '/a', '/c'])
+    expect(facts.reads).toBe(3)
+    expect(peak).toBeGreaterThan(1)
+    await facts.load(['/a', '/b', '/c'])
+    expect(facts.reads).toBe(3)
+    clock = 11
+    await facts.load(['/a'])
+    expect(facts.reads).toBe(4)
+  })
+
+  it('warms the E2 list once for a cold poll and serves the next poll without a filesystem read', async () => {
+    const store = new Store(join(temp(), 'state.sqlite'))
+    const tickets = Array.from({ length: 40 }, (_, index) => fake(`t${index}`, join(temp(), `work-${index}`)))
+    for (const ticket of tickets) store.tickets.save(ticket)
+    const facts = new SpaceFactsCache({ read: async () => ({ kind: 'checkout', branch: 'agent/t' }) })
+    expect(await spaceRows(store, 1, () => false, facts)).toHaveLength(40)
+    expect(facts.reads).toBe(40)
+    expect((await spaceRows(store, 1, () => false, facts)).map(row => row.branch)).toEqual(Array(40).fill('agent/t'))
+    expect(facts.reads).toBe(40)
+    store.close()
+  })
+
+  it('projects 600 spaces without a per-row filesystem read within the p95 budget', async () => {
+    const store = new Store(join(temp(), 'state.sqlite'))
+    const parent = temp()
+    for (let index = 0; index < 600; index++) store.tickets.save(fake(`p${index}`, join(parent, `space-${index}`)))
+    const facts = new SpaceFactsCache({ read: async () => ({ kind: 'scratch' }) })
+    const view = () => spaceRows(store, 1, () => false, facts)
+    expect(await view()).toHaveLength(600)
+    expect(facts.reads).toBe(600)
+    const durations: number[] = []
+    // Warm the connection and the process, then measure 12 projections; the interpolated 95th percentile tolerates one
+    // scheduler hiccup without adding enough load to perturb the other p95 tests that run in parallel.
+    for (let run = 0; run < 12; run++) {
+      const started = performance.now()
+      expect(await view()).toHaveLength(600)
+      durations.push(performance.now() - started)
+    }
+    durations.sort((left, right) => left - right)
+    const rank = 0.95 * (durations.length - 1), low = Math.floor(rank), high = Math.ceil(rank)
+    const p95 = durations[low]! + (durations[high]! - durations[low]!) * (rank - low)
+    expect(p95, `p95 ${p95.toFixed(1)}ms`).toBeLessThanOrEqual(250)
+    expect(facts.reads).toBe(600)
+    store.close()
   })
 })
 

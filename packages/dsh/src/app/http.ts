@@ -176,8 +176,8 @@ function routes(runtime: HttpHost): Routes {
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
     'GET metrics': () => metrics(store),
     'GET tasks': () => taskBoard(views(runtime)),
-    'GET spaces': () => ({ generatedAt: new Date().toISOString(),
-      rows: spaceRows(store, runtime.spaces.processEpoch, id => runtime.executor.isLive(id)) }),
+    'GET spaces': async () => ({ generatedAt: new Date().toISOString(),
+      rows: await spaceRows(store, runtime.spaces.processEpoch, id => runtime.executor.isLive(id)) }),
     'GET tasks/:id': ({ params, query }) => {
       const detail = taskDetail(views(runtime), params.id, TasksQuery.parse(query).depth)
       if (!detail) throw new RouteError(404, 'Ticket not found')
