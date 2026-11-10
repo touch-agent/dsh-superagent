@@ -76,7 +76,7 @@
 | X-06 | 未开始 | — | — | 2026-11-08 |
 | X-07 | 已完成 | — | `packages/dsh` 与根 meta 切包；`PLUGIN-PACKAGING.zh.md` §3 | 2026-11-08 |
 | X-08 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/20 | `pnpm test:install-e2e`；临时 `DSH_HOME` 安装/卸载 | 2026-11-08 |
-| X-09 | 未开始 | — | — | 2026-11-08 |
+| X-09 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/52 | 三区入口、侧边栏注意点与 `entry.threeZones.v1` 回退；PR #52 待评审合并 | 2026-11-10 |
 | X-10 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/49 | `.github/workflows/host-matrix.yml` 显式 6 条宿主/Node/DSH 组合（含前向宿主腿）；`scripts/install-e2e.mjs` 跨平台；支持矩阵、排除项、平台限制与超时见 `../006-deployment.md`；本地 macOS 两条宿主通过，PR CI 运行中 | 2026-11-10 |
 | X-11 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/19 | `tests/dump-config.spec.ts`；六行齐全 | 2026-11-08 |
 | X-12 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/31 | PR #31 合并（`19b8c3d`）；`tests/docs.spec.ts` 文档结构与跟踪表校验、计划文档迁入 `docs/plan/` | 2026-11-08 |
