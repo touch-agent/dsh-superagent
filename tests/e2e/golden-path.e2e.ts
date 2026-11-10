@@ -116,9 +116,11 @@ it('takes an Issue through authorization, child delegation and parent review, de
   const childB = ticket(String(second.ticket_id))
   expect(children(root.id).map(child => child.id).sort()).toEqual([childA.id, childB.id].sort())
   for (const child of [childA, childB]) {
-    expect(child).toMatchObject({ parentTicketId: root.id, rootTicketId: root.id, form: 'tracked' })
+    expect(child).toMatchObject({ parentTicketId: root.id, rootTicketId: root.id, form: 'tracked', channels: [] })
     expect(child.decisionId).toBeUndefined()
     expect(child.mandate).toBeUndefined()
+    expect(child.follows).toBeUndefined()
+    expect(child.attention).toBeUndefined()
     expect(child.delegation).toMatchObject({ parentTicketId: root.id, rootTicketId: root.id, attempt: 1 })
     expect(child.execution?.directory).not.toBe(root.execution?.directory)
     expect(host.agents.has(`worker-${child.id}`)).toBe(true)
@@ -127,6 +129,9 @@ it('takes an Issue through authorization, child delegation and parent review, de
   await expect(host.runTool(parentSession, 'orchestrator_report', { state: 'ready', summary: 'the root is done' }))
     .rejects.toMatchObject({ code: 'unfinishedChildTickets' })
   expect(host.runtime.store.tickets.list().map(value => value.id)).toEqual([root.id])
+  // A child is not an authorization subject: the panel cannot approve it, even with a revision.
+  const childApproval = await host.api('POST', `tickets/${childA.id}/approve`, { reviewRevision: 'any' })
+  expect(childApproval).toMatchObject({ status: 400, body: { code: 'childRequiresParent' } })
 
   // 4. Parent review: one child report is returned and redone; both are then accepted by the parent owner, not by a person.
   await run(`worker-${childA.id}`, 'orchestrator_report', { state: 'ready', summary: 'Copy rewritten',
