@@ -79,8 +79,6 @@ export interface SpaceRow extends SpaceView {
 /** The `GET spaces` payload E2 reads: every tracked Ticket's space, newest activity first. */
 export interface SpaceRowsView { generatedAt: string; rows: SpaceRow[] }
 
-interface LeaseRecord extends SpaceLease {}
-
 const now = (): string => new Date().toISOString()
 const CURRENT_LEASE = "state IN ('reserved', 'active', 'stale')"
 
@@ -105,7 +103,7 @@ export function locatorKeySync(directory: string, cache?: Map<string, string>): 
 /** The display name: `fix-<ticket id>` becomes `fix`, and a child keeps its `-child-n` suffix. */
 export function spaceName(name: string | undefined, directory: string): string {
   const raw = name?.trim() || basename(directory)
-  return raw.replace(/-[0-9a-f]{12}(?=-|$)/, '') || raw
+  return raw.replace(/-[0-9a-f]{12}(?=-child-\d+$|$)/, '') || raw
 }
 
 /** Read the branch (or short commit) a prepared checkout has checked out, without trusting a stale API field. */
@@ -156,20 +154,21 @@ export function spaceOf(store: Store, ticket: Ticket, options: {
   if (!directory) return undefined
   const locator = locatorKeySync(directory, options.cache)
   const lease = options.leases ? options.leases.get(locator) : currentLease(store, locator)
-  const exists = kindOf(directory) !== 'unknown'
+  const kind = kindOf(directory)
+  const exists = kind !== 'unknown'
   const legacy = !!options.parent?.execution?.directory
     && directory.startsWith(`${options.parent.execution.directory.replace(/\/$/, '')}/`)
   const running = runningAssignment(ticket)
-  const holderId = lease && lease.state !== 'released' ? lease.ticketId : running ? ticket.id : undefined
+  const holderId = lease && (lease.state === 'reserved' || lease.state === 'active') ? lease.ticketId : running ? ticket.id : undefined
   const failed = liveTicket(ticket) && latestReport(ticket)?.state === 'failed'
   const state: SpaceState = failed ? 'failed'
     : lease?.state === 'reserved' ? 'preparing'
       : lease?.state === 'active' || (!lease && running) ? 'active'
         : legacy ? 'legacy'
-          : exists || ticket.ended ? 'ready' : 'planned'
+          : exists ? 'ready' : 'planned'
   const branch = branchOf(directory)
   return {
-    kind: kindOf(directory),
+    kind,
     name: spaceName(ticket.execution?.name, directory),
     ...branch ? { branch } : {},
     state,
@@ -245,7 +244,11 @@ export class SpaceLeases {
     const at = now()
     this.store.db.prepare(`UPDATE space_lease SET state='active', activated_at=COALESCE(activated_at, ?), updated_at=?
       WHERE locator_key=? AND epoch=? AND ticket_id=? AND state='reserved'`).run(at, at, lease.locatorKey, lease.epoch, lease.ticketId)
-    return this.current(lease.locatorKey) ?? { ...lease, state: 'active', activatedAt: lease.activatedAt ?? at, updatedAt: at }
+    const current = this.current(lease.locatorKey)
+    // A row released, staled or taken over between reserve and activation must not be treated as owned.
+    if (!current || current.epoch !== lease.epoch || current.ticketId !== lease.ticketId || current.state !== 'active')
+      throw new Error('The write lease was lost before activation')
+    return current
   }
 
   /** Release a Ticket's current lease for its directory; repeated release is a no-op. */
@@ -265,13 +268,6 @@ export class SpaceLeases {
     this.store.db.prepare(`UPDATE space_lease SET state='released', released_at=?, updated_at=?
       WHERE locator_key=? AND epoch=? AND ticket_id=? AND assignment_id=? AND state='reserved'`)
       .run(at, at, lease.locatorKey, lease.epoch, lease.ticketId, lease.assignmentId)
-  }
-
-  /** Release by Ticket id alone, for a stop callback whose Execution was already removed. */
-  releaseTicket(ticketId: string): void {
-    const at = now()
-    this.store.db.prepare(`UPDATE space_lease SET state='released', released_at=?, updated_at=?
-      WHERE ticket_id=? AND ${CURRENT_LEASE}`).run(at, at, ticketId)
   }
 
   /** Mark old-process rows whose holder has no live Session stale, without preempting a possibly live writer. */
@@ -336,6 +332,8 @@ export class SpaceProjection {
   }
 
   leaseView(ticket: Ticket): SpaceLeaseView | undefined {
+    // The E1 projection is built without a process epoch; never mark a live lease stale from that read path.
+    if (!this.processEpoch) return undefined
     const lease = this.lease(ticket)
     if (!lease) return undefined
     const state = deriveLeaseState(lease, this.processEpoch, this.live)

@@ -206,6 +206,8 @@ export class Tickets extends EnginePart {
     child.updatedAt = at
     this.repo.tickets.save(child)
     for (const assignment of stopping) this.options.executor.stop(child, assignment, 'orphaned')
+    // An orphaned child no longer writes; its space must not stay held as if it could.
+    this.options.executor.release?.(child)
     // The nearest live node carries the one attention; a child never pages anyone itself and is not resumed silently.
     const root = this.repo.tickets.get(rootTicketIdOf(child))
     const carrier = root && liveTicket(root) ? root : child
@@ -358,6 +360,7 @@ export class Tickets extends EnginePart {
     this.repo.tickets.save(child)
     this.emit('ticket.ended', { ticketId: child.id, by: 'executor', outcome, reason })
     for (const assignment of stopping) this.options.executor.stop(child, assignment, reason)
+    this.options.executor.release?.(child)
     this.stageOf(child, 'report', { ref: `${at}:${outcome}`, at, data: { outcome, reason, childTicketId: child.id } })
   }
   /** Cancel a child subtree depth first, so no descendant is left live under an ended parent. */
@@ -868,9 +871,9 @@ export class Tickets extends EnginePart {
     this.repo.tickets.save(ticket)
     this.letGo(ticketId, waiting, left)
     this.emit('ticket.ended', { ticketId, by, outcome, ...why })
-    // Release ticket-scoped resources even when every Assignment had already ended, such as a ready report a merge ends.
-    this.options.executor.release?.(ticket)
+    // Stop the Assignments first, then release ticket-scoped resources even when every Assignment had already ended.
     for (const assignment of stopping) this.options.executor.stop(ticket, assignment, reason ?? outcome)
+    this.options.executor.release?.(ticket)
     // A lightweight ticket's run has no Assignment; only a person's stop cancels it, since a normal finish already ended it.
     if (ticketForm(ticket) === 'lightweight') {
       if (by === 'human') this.options.inline?.stop(ticket, reason ?? outcome)

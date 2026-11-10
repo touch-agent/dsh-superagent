@@ -2,7 +2,7 @@
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Ticket } from '@superagent/kernel'
 import { Store } from '@superagent/dsh/app/store.ts'
 import { SpaceLeases, locatorKeyOf, spaceName, spaceOf } from '@superagent/dsh/app/spaces.ts'
@@ -147,7 +147,7 @@ describe('spaces in the runtime', () => {
     expect(h.runtime.spaces.all().filter(row => row.ticketId === ticket.id).map(row => row.state)).toEqual(['active'])
     await h.runtime.engine.stopTicket(ticket.id)
     await h.runtime.idle()
-    expect(h.runtime.spaces.all().filter(row => row.ticketId === ticket.id).map(row => row.state)).toEqual(['released'])
+    await vi.waitFor(() => expect(h.runtime.spaces.all().filter(row => row.ticketId === ticket.id).map(row => row.state)).toEqual(['released']), { timeout: 5000 })
   })
 
   it('places a child directory beside its root, not inside its parent', async () => {
@@ -156,6 +156,24 @@ describe('spaces in the runtime', () => {
     await h.runtime.idle()
     expect(dirname(child.execution!.directory)).toBe(dirname(ticket.execution!.directory))
     expect(basename(child.execution!.directory)).toBe(`${ticket.execution!.name}-child-1`)
+  })
+
+  it('keeps path-only behavior when the lease flag is off', async () => {
+    const settings = h.runtime.store.settings()
+    h.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor,
+      workspace: { ...settings.executor.workspace, lease: false } } })
+    await h.acceptedTicket(feishu('1', '@bot 修一'))
+    await h.runtime.idle()
+    expect(h.runtime.spaces.all()).toEqual([])
+  })
+
+  it('restores the nested child layout when the childSibling flag is off', async () => {
+    const settings = h.runtime.store.settings()
+    h.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor,
+      workspace: { ...settings.executor.workspace, childSibling: false } } })
+    const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一'))
+    const child = h.runtime.engine.delegate(ticket.id, { goal: 'legacy nested child', title: 'Nested child' })
+    expect(child.execution!.directory).toBe(join(ticket.execution!.directory, 'child-1'))
   })
 
   it('marks an old-process lease stale on restart when its holder is not live', async () => {

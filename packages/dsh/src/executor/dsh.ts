@@ -248,6 +248,10 @@ export class DshExecutor implements Executor {
   private readonly settling = new Map<string, AbortController>()
   /** The stops of tickets' background work that run, by ticket, which a launch or a delivery of the ticket waits for. */
   private readonly stopping = new Map<string, Promise<void>>()
+  /** Launches in flight, by ticket, so an end releases the lease only after the launch can no longer write. */
+  private readonly launching = new Map<string, Promise<void>>()
+  /** The prepare commands in flight, by ticket, aborted when the Ticket ends or its Assignment is replaced. */
+  private readonly preparing = new Map<string, AbortController>()
   /** The jobs workers left to a person when they handed off, by ticket, and the collecting of their ends. */
   private readonly left = new Map<string, { jobs: Set<string>; collect: AbortController }>()
   /** When a person's message typed into a worker's Session last started a turn, by ticket. */
@@ -280,15 +284,21 @@ export class DshExecutor implements Executor {
     const command = this.host.store.settings().executor.prepare.trim()
     const env = Object.fromEntries(this.host.environment(ticket).map(variable => [variable.key, variable.value]))
     // Enforce a timeout so a hung prepare command (such as on a credential prompt) fails the ticket instead of holding a worker slot indefinitely.
-    const signal = AbortSignal.any([this.host.lifetime, AbortSignal.timeout(PREPARE_TIMEOUT_MS)])
-    if (command) await runAsWorker(this.host.context.subprocess, ['sh', '-c', command], dirname(directory), signal, env)
-      .catch(async (error: unknown) => {
-        // Remove an empty directory left by a failed prepare command so a later retry does not treat it as already prepared.
-        await rmdir(directory).catch(() => { /* Absent, or holding what the command wrote, which the output explains. */ })
-        throw new PrepareFailed(`The prepare command failed: ${error instanceof Error ? error.message : String(error)}`)
-      })
-    await mkdir(directory, { recursive: true })
-    await verifyDirectory(directory, this.host.context.subprocess, this.host.lifetime)
+    const abort = new AbortController()
+    this.preparing.set(ticket.id, abort)
+    const signal = AbortSignal.any([this.host.lifetime, abort.signal, AbortSignal.timeout(PREPARE_TIMEOUT_MS)])
+    try {
+      if (command) await runAsWorker(this.host.context.subprocess, ['sh', '-c', command], dirname(directory), signal, env)
+        .catch(async (error: unknown) => {
+          // Remove an empty directory left by a failed prepare command so a later retry does not treat it as already prepared.
+          await rmdir(directory).catch(() => { /* Absent, or holding what the command wrote, which the output explains. */ })
+          throw new PrepareFailed(`The prepare command failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
+      await mkdir(directory, { recursive: true })
+      await verifyDirectory(directory, this.host.context.subprocess, signal)
+    } finally {
+      if (this.preparing.get(ticket.id) === abort) this.preparing.delete(ticket.id)
+    }
   }
   /** Enqueues a `launch` effect for an accepted or resumed assignment; launches start in queue order as worker slots free up. */
   start(ticket: Ticket, assignment: Assignment): void {
@@ -302,7 +312,9 @@ export class DshExecutor implements Executor {
     const assignment = ticket && latestAssignment(ticket)
     if (!ticket || !liveTicket(ticket) || assignment?.id !== assignmentId || assignment.state !== 'pending') return
     this.slots.reserve(ticketId, 'launch')
-    try { await this.launch(ticket, assignment); this.transient.delete(`launch:${assignmentId}`) }
+    const work = this.launch(ticket, assignment)
+    this.launching.set(ticketId, work)
+    try { await work; this.transient.delete(`launch:${assignmentId}`) }
     catch (error) {
       // Shutdown or pause re-queues the launch for resume, and transient network/provider errors retry with backoff.
       // A failed prepare command is not retried automatically because an existing directory counts as prepared, so retrying
@@ -311,7 +323,10 @@ export class DshExecutor implements Executor {
       if (this.host.closing() || error instanceof Later) throw error
       if (!(error instanceof PrepareFailed) && this.retries(`launch:${assignmentId}`, error)) throw error
       this.launchFailed(ticketId, assignmentId, error)
-    } finally { this.slots.free(ticketId) }
+    } finally {
+      if (this.launching.get(ticketId) === work) this.launching.delete(ticketId)
+      this.slots.free(ticketId)
+    }
   }
   /**
    * Delivers queued inputs to a running assignment one by one, re-reading ticket state before each delivery so delivery
@@ -386,14 +401,14 @@ export class DshExecutor implements Executor {
    */
   stop(ticket: Ticket, assignment: Assignment, reason: string): void {
     this.transient.delete(assignment.id); this.transient.delete(`launch:${assignment.id}`)
+    // A replaced or ended Assignment must not keep writing through a prepare command it no longer owns.
+    this.preparing.get(ticket.id)?.abort()
     const report = assignment.report
     const busy = !!assignment.deliveredAt && !!report && assignment.deliveredAt >= report.at
     const ownTurn = (report?.state === 'ready' || report?.state === 'dropped') && !busy
     const sessionId = workerSessionId(ticket.id)
     this.host.store.afterCommit(() => {
       this.settling.get(ticket.id)?.abort()
-      // A Ticket that ended releases its write lease; an Assignment stop on a live Ticket keeps it for a retry.
-      if (ticket.ended) this.host.spaces.release(ticket.id, ticket.execution?.directory)
       if (!ownTurn) this.host.context.agents.get(sessionId as SessionId)?.cancel({ kind: 'user' }, { keepInbox: false })
       // Its shell jobs and subagents stop with it, also those of a worker that ends its own turn.
       this.stopWork(ticket.id, reason)
@@ -472,7 +487,7 @@ export class DshExecutor implements Executor {
           live: id => this.isLive(id) })
         if (!reserved.lease) throw new Later(`The space is held by ${reserved.heldBy.ticketTitle || 'another Ticket'}`)
         lease = reserved.lease
-        if (!current()) { this.host.spaces.release(ticket.id, workspace); return }
+        if (!current()) { this.releaseReserved(lease); return }
       }
       // Prepare the workspace directory once; an existing directory counts as already prepared, including worktrees created before `prepare` commands existed.
       if (!await stat(workspace).then(() => true, () => false)) {
@@ -526,9 +541,19 @@ export class DshExecutor implements Executor {
   private releaseReserved(lease: SpaceLease | undefined): void {
     if (lease?.state === 'reserved') this.host.spaces.releaseReservation(lease)
   }
-  /** Release the Ticket's directory lease at its end, including a Ticket whose last Assignment had already ended. */
+  /** Release the Ticket's directory lease at its end, after its launch and stopped work can no longer write. */
   release(ticket: Ticket): void {
-    this.host.spaces.release(ticket.id, ticket.execution?.directory)
+    // Abort a prepare still running so its command cannot write after the lease is handed to another Ticket.
+    this.preparing.get(ticket.id)?.abort()
+    this.host.store.afterCommit(() => this.releaseAfterWork(ticket))
+  }
+  /** Release only after the in-flight launch (including prepare/verification) and any stop of background work settles. */
+  private releaseAfterWork(ticket: Ticket): void {
+    const waits = [this.launching.get(ticket.id), this.stopping.get(ticket.id)]
+      .filter((work): work is Promise<void> => !!work)
+    const release = (): void => { this.host.spaces.release(ticket.id, ticket.execution?.directory) }
+    if (!waits.length) { release(); return }
+    void Promise.allSettled(waits).then(release)
   }
   /** Whether this ticket's worker Session still runs a turn, the only live writer that blocks a stale-lease takeover. */
   isLive(ticketId: string): boolean {

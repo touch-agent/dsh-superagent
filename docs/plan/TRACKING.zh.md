@@ -54,7 +54,7 @@
 | T3-10 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/40 | Phase 2a 子 Ticket 运行时、父 owner 审阅链、结束门与 schema 15；`tests/delegation*.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/store.spec.ts`、`tests/migration.spec.ts` 通过，typecheck/build/check:size 通过 | 2026-11-09 |
 | T3-11 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/42 | `tests/review-aggregate.spec.ts`、`tests/tasks-children.spec.ts`、`tests/panel-tasks.spec.tsx`；500 根/2000 子投影 p95 ≤400ms；360px 右栏无横向滚动（359px `scrollWidth=clientWidth`）；同场景 Before/After 见 `docs/images/tasks-view/phase2b-{before,after}-tasks-360.png` 与 `phase2b-{before,after}-review.png` | 2026-11-09 |
 | T3-12 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/43 | Phase 1 空间只读投影与 E2 列表：`tests/spaces.spec.ts`、`tests/panel-spaces.spec.tsx`；E1/E2 同场景 Before/After 见 `docs/images/spaces/{before,after}-{e1-ticket,e2-execution}.png` | 2026-11-10 |
-| T3-13 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/43 | Phase 2 写租约/子 Ticket 平铺/重启 stale：`space_lease` schema 16、prepare 前预留、校验后激活、Ticket 结束释放；并发预留、prepare 失败释放、结束释放、重启 stale、子目录平铺测试通过；`pnpm check` | 2026-11-10 |
+| T3-13 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/43 | Phase 2 写租约/子 Ticket 平铺/重启 stale：`space_lease` schema 16、prepare 前预留、校验后激活、Ticket 结束释放；并发预留、prepare 失败释放、结束释放、重启 stale、子目录平铺、schema 15→16 加法迁移测试通过；`pnpm check` | 2026-11-10 |
 | T4-01 | 未开始 | — | — | 2026-11-08 |
 | T4-02 | 未开始 | — | — | 2026-11-08 |
 | T4-03 | 未开始 | — | — | 2026-11-08 |

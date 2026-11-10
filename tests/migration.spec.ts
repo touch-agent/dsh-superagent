@@ -538,6 +538,19 @@ it('delivers the candidate of an Eval in progress at the upgrade again, so its d
   store.close()
 })
 
+it('opens a schema-15 database and adds the additive space lease table', () => {
+  const path = join(directory, 'db.sqlite')
+  new Store(path).close()
+  const legacy = new DatabaseSync(path)
+  legacy.exec('DROP TABLE space_lease')
+  legacy.prepare('UPDATE kv SET value=? WHERE key=?').run('15', KV.store.schema)
+  legacy.close()
+  const opened = new Store(path)
+  expect(opened.get(KV.store.schema)).toBe(SCHEMA_VERSION)
+  expect(opened.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='space_lease'").get()).toEqual({ name: 'space_lease' })
+  opened.close()
+})
+
 it('opens a schema-12 database at the current schema and records activity there', () => {
   const path = join(directory, 'db.sqlite')
   new Store(path).close()

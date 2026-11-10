@@ -67,9 +67,14 @@ function SpacesSection() {
   if (!workspaceView()) return null
   const rows = data?.rows ?? []
   const isStale = (row: SpaceRow) => !!row.lease?.stale
-  const kinds = new Set(['checkout', 'scratch', 'unknown'])
-  const shown = rows.filter(row => filter === 'all' ? true : filter === 'stale' ? isStale(row)
-    : kinds.has(filter) ? row.kind === filter : row.state === filter)
+  const shown = rows.filter(row => {
+    if (filter === 'all') return true
+    if (filter === 'stale') return isStale(row)
+    if (filter === 'active') return row.state === 'active' && !isStale(row)
+    if (filter === 'legacy') return !!row.legacy
+    if (filter === 'checkout' || filter === 'scratch' || filter === 'unknown') return row.kind === filter
+    return row.state === filter
+  })
   const order = ['preparing', 'active', 'legacy', 'planned', 'ready', 'failed']
   const grouped = [...new Set(shown.map(row => isStale(row) ? 'stale' : row.state))]
     .sort((left, right) => (order.indexOf(left) + 1 || 99) - (order.indexOf(right) + 1 || 99))
