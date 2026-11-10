@@ -1,0 +1,101 @@
+name: host-matrix
+
+# X-10: every supported host and Node combination must install, boot, answer and uninstall the bundle.
+# The job below runs the same required command on every leg: there is no `if`, no `continue-on-error`
+# and no excluded matrix entry, so an unsupported platform turns the workflow red rather than skipping.
+# The summary job makes that rule explicit even when one leg fails and the others still run.
+#
+# `check` remains the single fast gate on ubuntu/Node 24. This workflow spends its budget only on the
+# install/run boundary, where OS and Node differences actually live, and cancels superseded PR runs so a
+# force-push does not pay for the old matrix.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Runner images and the pinned host package change without a repository commit; one weekly run is the
+    # drift check. It is off the pull-request critical path.
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  install-e2e:
+    name: install-e2e (${{ matrix.os }}, Node ${{ matrix.node }}, dsh ${{ matrix.dsh }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # One broken host must not hide the others. The summary job below still fails the workflow when
+      # any leg is red; fail-fast would make a platform-wide break look like a single flaky runner.
+      fail-fast: false
+      # Every supported combination is written out. There is no cross-product expansion to reason about,
+      # no `exclude`, and no conditional leg: adding or removing a row is the only way to change coverage.
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: '22'
+            dsh: '0.2.1-rc.5'
+          - os: ubuntu-latest
+            node: '24'
+            dsh: '0.2.1-rc.5'
+          - os: macos-latest
+            node: '22'
+            dsh: '0.2.1-rc.5'
+          - os: macos-latest
+            node: '24'
+            dsh: '0.2.1-rc.5'
+          - os: windows-latest
+            node: '22'
+            dsh: '0.2.1-rc.5'
+          - os: windows-latest
+            node: '24'
+            dsh: '0.2.1-rc.5'
+          # The pinned host is what `engines.dsh` and the devDependencies name. The second host is the
+          # current release that also satisfies the range; it proves the install/run boundary survives a
+          # host upgrade without changing the workspace dependency graph. Pin it explicitly: `latest`
+          # would move the gate without a commit.
+          - os: ubuntu-latest
+            node: '24'
+            dsh: '0.2.2-rc.1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      # Make the leg say which host it really is, instead of trusting a label and a matrix value.
+      - name: Confirm the runner
+        shell: bash
+        env:
+          EXPECTED_OS: ${{ matrix.os }}
+          EXPECTED_NODE: ${{ matrix.node }}
+        run: |
+          node -e 'const os = { "ubuntu-latest": "linux", "macos-latest": "darwin", "windows-latest": "win32" }[process.env.EXPECTED_OS]; if (process.platform !== os || process.versions.node.split(".")[0] !== process.env.EXPECTED_NODE) { console.error("expected " + os + " on Node " + process.env.EXPECTED_NODE + ", got " + process.platform + " on " + process.versions.node); process.exit(1) } console.log("host matrix leg: " + os + " Node " + process.versions.node)'
+      - run: pnpm install --frozen-lockfile
+      # The host the temporary profile boots. Keep this pinned and in sync with the support table in
+      # docs/006-deployment.md; the forward-compatibility leg above is the only exception.
+      - name: Install the DSH host
+        run: npm install --global --no-audit --no-fund @deepseek-ai/dsh@${{ matrix.dsh }}
+      - name: Install, boot and remove the bundle
+        run: pnpm test:install-e2e
+
+  summary:
+    name: host matrix summary
+    needs: install-e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every host and Node combination
+        run: |
+          echo "install-e2e matrix: ${{ needs.install-e2e.result }}"
+          if [ "${{ needs.install-e2e.result }}" != "success" ]; then
+            echo "::error::the host matrix has a failed or skipped leg; fix it, or remove the combination from the matrix and update the support table in docs/006-deployment.md"
+            exit 1
+          fi

@@ -12,7 +12,8 @@
  * with `link:` as the guide's install block does; the packages are private, so the registry path is not covered here.
  *
  * Usage: `pnpm test:install-e2e` (which builds first), or `node scripts/install-e2e.mjs` after `pnpm build`.
- * `DSH_BIN` selects the `dsh` executable, and `KEEP=1` leaves the temporary home for inspection.
+ * `DSH_BIN` selects the `dsh` executable (on Windows, point it at the package's `lib/bin.js`), and `KEEP=1`
+ * leaves the temporary home for inspection.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -22,7 +23,6 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const dsh = process.env.DSH_BIN || 'dsh'
 const profile = 'install-e2e'
 const temporary = mkdtempSync(join(tmpdir(), 'dsh-superagent-install-e2e-'))
 const home = join(temporary, 'home')
@@ -30,6 +30,33 @@ const stateDir = join(temporary, 'state')
 const keep = process.env.KEEP === '1'
 const env = { ...process.env, DSH_HOME: home, NO_COLOR: '1' }
 const results = []
+
+/**
+ * Resolve the host CLI. On Windows the npm shim is `dsh.cmd`, which Node cannot spawn without a shell;
+ * spawning through a shell would also make the long-running host a grandchild that `child.kill` cannot
+ * stop. Run the global package entry with the current Node instead, so every platform kills the real host.
+ * `DSH_BIN` may name another executable, or its `lib/bin.js` on Windows.
+ */
+function resolveDsh() {
+  const configured = process.env.DSH_BIN
+  if (configured !== undefined && configured !== '') {
+    if (process.platform === 'win32' && !/\.[cm]?js$/i.test(configured))
+      throw new Error(`DSH_BIN=${configured}: on Windows point it at the dsh JavaScript entry (…/@deepseek-ai/dsh/lib/bin.js)`)
+    return process.platform === 'win32' ? { file: process.execPath, prefix: [configured] } : { file: configured, prefix: [] }
+  }
+  if (process.platform !== 'win32') return { file: 'dsh', prefix: [] }
+
+  // `npm root --global` is the same npm the CI install step used, so it locates the host that install put there.
+  const found = spawnSync('npm', ['root', '--global'], { encoding: 'utf8', shell: true, timeout: 60_000 })
+  if (found.error !== undefined) throw new Error(`cannot locate the global npm root: ${found.error.message}`)
+  if (found.status !== 0) throw new Error(`npm root --global exited ${found.status}\n${found.stdout}\n${found.stderr}`)
+  const entry = join(found.stdout.trim(), '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  if (!existsSync(entry)) throw new Error(`cannot find the dsh host entry at ${entry}; install @deepseek-ai/dsh or set DSH_BIN`)
+  return { file: process.execPath, prefix: [entry] }
+}
+
+/** The host executable and its fixed leading arguments, resolved after the temporary home exists. */
+let dsh
 
 /** Record one assertion; the run fails if any is false. */
 function check(name, ok, detail = '') {
@@ -39,7 +66,7 @@ function check(name, ok, detail = '') {
 
 /** Run the dsh CLI in this checkout's temporary home, and refuse a nonzero exit. */
 function run(args) {
-  const result = spawnSync(dsh, args, { cwd: root, env, encoding: 'utf8', timeout: 180_000 })
+  const result = spawnSync(dsh.file, [...dsh.prefix, ...args], { cwd: root, env, encoding: 'utf8', timeout: 180_000 })
   const command = `dsh ${args.join(' ')}`
   if (result.error) throw new Error(`${command} could not run: ${result.error.message}`)
   if (result.status !== 0) throw new Error(`${command} exited ${result.status}\n${result.stdout}\n${result.stderr}`)
@@ -125,6 +152,8 @@ const failed = () => results.filter(result => !result.ok)
 let child
 
 try {
+  dsh = resolveDsh()
+
   // The install uses the built packages (`lib/`), so a missing build is a setup error, not an assertion about the bundle.
   for (const file of ['lib/index.js', join('packages', 'dsh', 'lib', 'index.js')])
     if (!existsSync(join(root, file))) throw new Error(`${file} is missing; run \`pnpm build\` (or \`pnpm test:install-e2e\`) first`)
@@ -154,7 +183,9 @@ try {
   ].join('\n'))
 
   // 2. Install the bundle the way the deployment guide does: the built checkout as a linked package.
-  run(['plugin', '--profile', profile, 'add', `link:${root}`])
+  // pnpm accepts forward slashes on Windows; keeping the drive-letter path absolute avoids a profile-relative link.
+  const linkTarget = process.platform === 'win32' ? root.replaceAll('\\', '/') : root
+  run(['plugin', '--profile', profile, 'add', `link:${linkTarget}`])
   const installed = JSON.parse(readFileSync(join(profileDir, 'package.json'), 'utf8'))
   check('the bundle is a profile dependency', String(installed.dependencies?.['dsh-superagent'] ?? '').startsWith('link:'),
     String(installed.dependencies?.['dsh-superagent'] ?? 'missing'))
@@ -170,7 +201,7 @@ try {
   check('composing the profile reports no missing entry', missing.length === 0, missing[0] ?? '')
 
   // 4. Start the real host and prove the panel half is mounted: the management API answers and the page loads its client.
-  child = spawn(dsh, ['--profile', profile, '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  child = spawn(dsh.file, [...dsh.prefix, '--profile', profile, '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
   child.output = ''
   child.stdout.on('data', chunk => { child.output += chunk })
   child.stderr.on('data', chunk => { child.output += chunk })
@@ -197,10 +228,14 @@ try {
   check('the dsh-superagent client is served', client?.status === 200 && /javascript/.test(client.type) && client.body.length > 0,
     client === undefined ? 'not fetched' : `HTTP ${client.status} ${client.type} ${client.body.length} bytes`)
 
-  // 5. Stop the host gracefully; an uninstall is only meaningful against a stopped process.
+  // 5. Stop the host gracefully; an uninstall is only meaningful against a stopped process. Windows has no
+  // POSIX SIGINT delivery: Node terminates the process, so this leg asserts the exit and the surviving data,
+  // not the graceful-drain semantics that the Linux and macOS legs cover.
   child.kill('SIGINT')
   const stopped = await withTimeout(exited, 30_000, `dsh did not stop within 30 s\n${child.output}`)
-  check('the host stops on SIGINT', stopped.code === 130, `${stopped.code ?? stopped.signal}`)
+  const stoppedOk = process.platform === 'win32' ? (stopped.code !== null || stopped.signal !== null) : stopped.code === 130
+  check(process.platform === 'win32' ? 'the host exits when stopped (Windows has no graceful SIGINT)' : 'the host stops on SIGINT',
+    stoppedOk, `${stopped.code ?? stopped.signal}`)
 
   const database = join(stateDir, 'orchestrator.sqlite')
   const databaseBytes = existsSync(database) ? statSync(database).size : 0
@@ -236,7 +271,7 @@ catch (error) {
   process.exitCode = 1
 }
 finally {
-  if (child !== undefined && child.exitCode === null) {
+  if (child !== undefined && child.exitCode === null && child.signalCode === null) {
     child.kill('SIGKILL')
     // Do not leave the host behind when a failed step skips the graceful stop above.
     await withTimeout(new Promise(resolve => child.once('exit', resolve)), 5_000, 'dsh did not die').catch(() => {})

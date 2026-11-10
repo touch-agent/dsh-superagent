@@ -751,7 +751,7 @@ graph LR
 
 ## 13. X-08 安装/卸载 E2E（2026-11-08 落地）
 
-- **入口**：`pnpm test:install-e2e`（先 build，再跑 `scripts/install-e2e.mjs`）；CI 独立 job `install-e2e`（`.github/workflows/install-e2e.yml`，跑 PR 与 main），不进 `pnpm check`，保持领域测试的秒级反馈。
+- **入口**：`pnpm test:install-e2e`（先 build，再跑 `scripts/install-e2e.mjs`）；CI 独立 job `install-e2e`（现由 X-10 的 `.github/workflows/host-matrix.yml` 在多个宿主上跑 PR 与 main），不进 `pnpm check`，保持领域测试的秒级反馈。
 - **流程**：临时 `DSH_HOME` 建 Web profile → 写 machine 配置 → `dsh plugin add "link:$PWD"` → 断言依赖与 `dsh.profile.bundles` 自动登记、`--dump-config` 6 行齐全 → 起 `dsh` → `/orchestrator/api/state` 200、`stateDir` 生效、页面引用并可取到 `dsh-superagent/client.js` → SIGINT 停止 → `dsh plugin remove` → 断言依赖/行消失、`stateDir/orchestrator.sqlite` 仍在。
 - **限制**：两个包仍 private，测的是文档里的 `link:` 安装（构建后的 checkout），registry/tarball 路径等发布后补；未配 GitHub 账号，setup 只到 `repositoryUnset`，不覆盖 Source/Session/投递；宿主版本矩阵归 X-10；卸载后用户 patch 仍引用已移除 entry，`--dump-config` 告警但退出 0（故意保留，便于重装恢复），但 E2E 到卸载为止，重装恢复路径未实测。
 
@@ -763,6 +763,16 @@ graph LR
 - **路径**：本地 fake host 启动真实 `Runtime`/`Store`/`Engine`/执行器/HTTP 路由；GitHub Issue 由 `issueTrigger` 构造并经 Eval 接受 → 根 Ticket 获得显式 Mandate → 父 owner 委派两个子 Ticket → 父 owner 接受两个子交付、退回其中一个已接受交付重做并再次接受 → 父报告 PR 并交付带人工确认的结果 → Source 先观察到 PR merged，Ticket 记 `endPending`/`end-gate` → 面板按当前 `reviewRevision` 批准并应用 pending end，Ticket 以 `merged` 结束且批准仍覆盖同一交付。
 - **覆盖**：Mandate/Decision、任务树父子契约（含子报告进入父输入、子不能被面板批准）、父审阅与 `unfinishedChildTickets` 结束门、PR 分支绑定、父子交付去重与 `HumanCriterion` 聚合、真实内容变化导致的 review revision 过期、PR 先合并的 pending end 与人工批准；断言的契约与边界见 [docs/014](../014-e2e-golden-path.zh.md)。
 - **稳定与限制**：用例不重试，无网络、真实 GitHub/Feishu 凭据或 DSH 全局安装；fake host 不驱动 worker 的模型回合，也不覆盖真实宿主版本矩阵（X-10）、安装/卸载（X-08）、真实 Git/PR 页面与浏览器面板渲染；lightweight 路径有自己的测试，不在这一条故事里。
+
+---
+
+## 15. X-10 宿主矩阵（2026-11-10 落地）
+
+- **入口**：`.github/workflows/host-matrix.yml`（由原 `install-e2e.yml` 演进，仍调用 `pnpm test:install-e2e`）。显式 7 条组合：Linux/macOS/Windows × Node 22/24 × DSH `0.2.1-rc.5`，加一条 ubuntu/24 × DSH `0.2.2-rc.1` 前向腿。计划原句的「两个 alpha 版本」即由钉住版本 + 前向版本两条腿落地，不是所有 0.2.x alpha 的笛卡尔积；换更多主机版本仍需改 devDependencies/peerDependencies，不属于本任务「只改 CI/脚本/docs」。
+- **流程**：`pnpm install --frozen-lockfile` → 全局安装钉住的 DSH → `pnpm test:install-e2e`（build → 临时 `DSH_HOME` → Web profile → `dsh plugin add link:` → 六行齐全 → 起真实宿主 → 面板 API/页面/客户端 → 停止 → `plugin remove` → stateDir 与 SQLite 保留）。
+- **显式失败**：matrix 不使用 `if`/`exclude`/`continue-on-error`/重试；每个 leg 先断言实际 `process.platform` 与 Node major；`fail-fast: false` 只让其它 leg 继续报告，不掩盖失败；`host matrix summary` 在 matrix 结果不是 `success` 时红。超时：job 30 分钟；单次 `dsh` 调用 180 秒；等 Web URL 与面板各 90 秒；优雅停止 30 秒。超时是失败 leg，不是跳过。
+- **覆盖与限制**：Node 22/24 为受支持线（22 需 ≥22.19.0）；Node 20/23 被 `engines` 排除，25+ 未门禁。架构覆盖 x64 Linux/Windows、arm64 macOS，其余未跑。Windows 无 POSIX SIGINT，检查只断言进程退出与数据保留，不测优雅 drain；`scripts/dsh-superagent`（POSIX shell + tmux）在 Windows 不支持，需直接 `dsh --profile ...` 或系统服务；`/bin/sh` 账号包装脚本也需 Windows 等价物。macOS 的服务脚本路径需要 tmux，CI 不安装也不测。E2E 仍是 `link:` 安装、无真实账号/模型、停在 `repositoryUnset`，不覆盖 Source/Session/投递、浏览器渲染、重装恢复。完整矩阵、排除项与超时见 [docs/006](../006-deployment.md#supported-hosts-and-the-ci-matrix) 的「Supported hosts and the CI matrix」。
+- **成本**：7 条小 leg，单条约数分钟、并行执行；macOS 计费乘数较高。`concurrency` 取消被取代的 PR run；全量 `pnpm check` 仍是 ubuntu/24 单 job，不复制到所有宿主。要缩矩阵就删行并同步 006 的表，不得把 leg 改成 no-op、`continue-on-error` 或静默跳过。
 
 ---
 
