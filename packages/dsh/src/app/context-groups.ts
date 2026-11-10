@@ -63,13 +63,12 @@ export interface ContextDimensionEntry {
 
 const groupKey = (source: string, space: string): string => `${source}:${space}`
 /**
- * The live Threads of `ticket` that belong to `space`: only Threads whose subscription list still names the ticket, so a
- * dropped subscription (unsubscribe, leaving the space, or a closed collaboration) removes the group dimension. The Ticket's
- * `follows` record is not enough on its own: it is history, and an ended subscription must not keep the group alive.
+ * The live Threads among `threads` that belong to `space`, newest activity first. Callers pass only Threads whose subscription
+ * list still names the Ticket, so a dropped subscription (unsubscribe, leaving the space, or a closed collaboration) removes the
+ * group dimension. The Ticket's `follows` record is not enough on its own: it is history, not liveness.
  */
-function liveThreads(host: ContextGroupReadHost, ticket: Ticket, space: ContextSpaceRef & { source: string }): Thread[] {
-  return host.store.read.subscribedThreads().filter(thread => thread.subscriptions.includes(ticket.id)
-    && thread.ref.source === space.source && host.sources.threadSpace(thread.ref) === space.space)
+function liveThreads(host: ContextGroupReadHost, threads: Thread[], space: ContextSpaceRef & { source: string }): Thread[] {
+  return threads.filter(thread => thread.ref.source === space.source && host.sources.threadSpace(thread.ref) === space.space)
     .sort((left, right) => (right.lastAt ?? right.createdAt).localeCompare(left.lastAt ?? left.createdAt) || left.key.localeCompare(right.key))
 }
 
@@ -94,14 +93,20 @@ function channelsOf(host: ContextGroupReadHost, ticket: Ticket): Pick<ChannelRef
  * Ticket no longer follows any Thread of that space. It reads only; it never writes a Ticket, Thread or Mandate.
  */
 export function contextGroupOf(host: ContextGroupReadHost, ticket: Ticket): ContextGroupView | undefined {
+  const threads = host.store.read.subscribedThreads().filter(thread => thread.subscriptions.includes(ticket.id))
+  return contextGroupAmong(host, ticket, threads)
+}
+
+/** Derives one Ticket's group from the live Threads a caller already read; the board uses it to keep the read to one query. */
+function contextGroupAmong(host: ContextGroupReadHost, ticket: Ticket, threads: Thread[]): ContextGroupView | undefined {
   for (const channel of channelsOf(host, ticket)) {
     const space = host.sources.contextGroup(channel)
     if (!space) continue
-    const threads = liveThreads(host, ticket, space)
-    if (!threads.length) continue
+    const live = liveThreads(host, threads, space)
+    if (!live.length) continue
     return { key: groupKey(space.source, space.space), source: space.source, space: space.space,
       ...(space.label ? { label: space.label } : {}), ...(space.url ? { url: space.url } : {}),
-      visibility: 'source', conventions: threads.map(thread => thread.key) }
+      visibility: 'source', conventions: live.map(thread => thread.key) }
   }
   return undefined
 }
@@ -109,8 +114,15 @@ export function contextGroupOf(host: ContextGroupReadHost, ticket: Ticket): Cont
 /** Every group the existing Tickets derive, by key, with the Tickets that currently belong to it. */
 export function contextGroupBoard(host: ContextGroupReadHost, now = new Date()): ContextGroupBoardView {
   const groups = new Map<string, ContextGroupBoardEntry>()
+  // One subscription query for the whole board, indexed by Ticket, rather than one query per Ticket on the read route.
+  const byTicket = new Map<string, Thread[]>()
+  for (const thread of host.store.read.subscribedThreads()) for (const id of thread.subscriptions) {
+    const list = byTicket.get(id)
+    if (list) list.push(thread)
+    else byTicket.set(id, [thread])
+  }
   for (const ticket of host.store.tickets.allList()) {
-    const group = contextGroupOf(host, ticket)
+    const group = contextGroupAmong(host, ticket, byTicket.get(ticket.id) ?? [])
     if (!group) continue
     const existing = groups.get(group.key)
     if (!existing) {

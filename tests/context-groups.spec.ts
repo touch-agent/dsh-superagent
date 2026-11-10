@@ -106,6 +106,17 @@ it('drops the group after the Ticket leaves the shared space, without rewriting 
   expect(contextGroupBoard(host([item], [left])).groups).toEqual([])
 })
 
+it('reads the subscription list once for the whole board', () => {
+  const tickets = [ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1']),
+    ticket('b', [feishuChannel('oc_team', 'om_2')], ['feishu:oc_team:om_2'])]
+  const threads = [thread('feishu:oc_team:om_1', ['a']), thread('feishu:oc_team:om_2', ['b'])]
+  const base = host(tickets, threads)
+  let reads = 0
+  const counted = { ...base, store: { ...base.store, read: { subscribedThreads: () => { reads++; return threads } } } }
+  expect(contextGroupBoard(counted).totals).toEqual({ groups: 1, tickets: 2 })
+  expect(reads).toBe(1)
+})
+
 it('carries no member list and no authorization field', () => {
   const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
   const group = contextGroupOf(host([item], [thread('feishu:oc_team:om_1', ['a'])]), item)!

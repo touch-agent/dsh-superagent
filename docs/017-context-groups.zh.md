@@ -47,7 +47,7 @@ interface ContextGroupView {
 }
 ```
 
-`contextGroupOf(host, ticket)` 返回可选维度；`contextGroupBoard(host)` 把所有 Ticket 的群组按 key 聚合成 `GET contexts/groups` 的只读列表（`groups[].tickets` 是任务，不是成员）。`GET contexts/groups` 返回 `generatedAt`、`groups` 与 `totals: {groups, tickets}`；没有任何写方法。可选维度同时出现在：
+`contextGroupOf(host, ticket)` 返回可选维度；`contextGroupBoard(host)` 把所有 Ticket 的群组按 key 聚合成 `GET contexts/groups` 的只读列表（`groups[].tickets` 是任务，不是成员），整张表只读一次订阅列表并按 Ticket 建索引，不逐 Ticket 查询。`GET contexts/groups` 返回 `generatedAt`、`groups` 与 `totals: {groups, tickets}`；没有任何写方法。可选维度同时出现在：
 
 - `orchestrator_read ticket/<id>` 的 `context_group` 字段（worker 只能读自己的 Ticket）；
 - worker 第一条 Assignment 消息的 `context_group` 字段（后续消息不重复未变化的维度）；
