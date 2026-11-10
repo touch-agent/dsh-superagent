@@ -30,9 +30,9 @@ The runtime stores a Deliverable carried by a `ready` Report (`orchestrator_repo
 
 ## The Executor
 
-Each tracked Ticket gets an Executor Session named `worker-<ticket id>` and a directory named after the Ticket's short name. Directories are created under the configured execution root, which defaults to `<stateDir>/system/work`. A lightweight Ticket gets no Assignment, Session or directory: its actions run inline, as [Lightweight tickets](#lightweight-tickets) describes.
+Each tracked Ticket gets an Executor Session named `worker-<ticket id>` and a directory named after the Ticket's short name. Root Ticket directories are created under the configured execution root, which defaults to `<stateDir>/system/work`; a child Ticket's directory is nested under its parent as `child-<n>` (a workspace-model proposal changes this to a flat sibling under the execution root). A lightweight Ticket gets no Assignment, Session or directory: its actions run inline, as [Lightweight tickets](#lightweight-tickets) describes.
 
-The main Session works in the system root, `<stateDir>/system`, which dsh-superagent creates on startup. One process is one system: the main Session's directory is the context root, and every worker directory is a tier below it. A configured execution root may point elsewhere; it still separates Tickets by directory only and is not a security boundary.
+The main Session works in the system root, `<stateDir>/system`, which dsh-superagent creates on startup. One process is one system: the main Session's directory is the context root; worker directories are below it by default, or under the configured execution root when that points elsewhere. It still separates Tickets by directory only and is not a security boundary.
 
 Executor Sessions run commands without approval as the operator's OS user. Their `dsh-superagent-worker` preset contains the tools needed for work and moves foreground shell commands to background jobs after 5 seconds. This lets a worker receive new messages at the next step instead of waiting for a long command to finish.
 
@@ -70,7 +70,7 @@ Worker subagents, including nested ones, use DeepSeek Harness's `standard` prese
 
 ### Preparing a Ticket directory
 
-Before the first Assignment, if the Ticket directory does not exist, the prepare command runs once with `sh` in the execution root. It has ten minutes to finish. Without a prepare command, the worker starts in an empty directory.
+Before the first Assignment, if the Ticket directory does not exist, the prepare command runs once with `sh` in the parent directory of the Ticket directory: the execution root for a root Ticket, and the parent Ticket's directory for a child. It has ten minutes to finish. Without a prepare command, the worker starts in an empty directory.
 
 A failed command fails the Ticket and records its output. A retry or a person's message on one of the Ticket's Threads tries preparation again. A typical command uses `git worktree` to create a checkout. A pull request belongs to the Ticket when its branch's last path segment matches the Ticket's short name.
 
