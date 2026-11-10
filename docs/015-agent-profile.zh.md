@@ -145,7 +145,7 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
 | `model` | 是 | `{ mode: 'inherit' \| 'pinned', provider?, model?, reasoningEffort? }` | `inherit` 只允许兼容 profile；`pinned` 必须完整且命中部署已批准的 provider/model 列表；缺失/未批准/不可用在 launch 时 fail closed，不阻塞 accept |
 | `tools` | 是 | **工作工具**策略：`{ mode: 'inherit' \| 'list', names?: string[] }` | `inherit` 只允许兼容 profile，跟随角色工作上限；`list` 必须是角色工作上限的子集，空数组只表示没有工作工具，**不等于只读**；协议工具不由 profile 控制；不得出现授权字段 |
 | `prompt` | 是 | `{ mode: 'live' \| 'pinned', revision? }` | `live` 只允许兼容 profile；`pinned` 必须指向存在的 prompt revision |
-| `evalBaseline` | 否 | 默认评测基准引用 | `{ evalSet: string, revision: number }`；只是声明，不是激活门；实验用自己的 manifest，见 §4.4 |
+| `evalBaseline` | 否 | 默认评测基准引用 | `{ evalSet: string, revision: number }`；只是声明，不是激活门；实验用自己的 manifest，见 §4.4；修改它产生新 `contentHash` 供审计，但不改变 `effective.hash` 或运行配置 |
 | `provenance` | 是 | 创建来源与理由 | `{ by, at, reason, source: 'builtin' \| 'panel' \| 'tool' \| 'import' }` |
 | `contentHash` | 是 | 规范化内容的 hash | 只覆盖 revision 内容；不覆盖运行时环境，后者见快照的 `effective.hash` |
 
@@ -161,7 +161,7 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
 - **退役不删除**：从 active 指针撤下并写入 `retiredRevisions`；历史快照仍可解析，保证审计可读。退役不是修改 revision。
 - **内置 profile**：Phase 1 只播种 `worker-default@1`，它是**兼容 profile**（`model.mode=inherit`、`prompt.mode=live`、`tools.mode=inherit`），逐字复现今天 worker 的行为；`tools.mode=inherit` 跟随 `WORK_TOOLS` 的未来变化，而不是冻结一份今天工具名清单。`orchestrator-default` 在 Phase 1 不播种、不绑定；主 Session 的工具与模型仍按现有角色配置固定，避免把 `orchestrator_route`/`eval_decide`/`settings_save` 当成可被 profile 选择的“能力”。
 - **自定义 profile 必须 pin 模型与 prompt，并用 `tools.mode=list` 显式列出工作工具**；兼容 profile 是唯一允许 `inherit`/`live` 的例外，且被标记为 `moving`（见 §2.4）。
-- **内容 hash**：对规范化 JSON（键排序、去空白、排除 `contentHash` 自身）计算；`contentHash` 包含 `provenance.at/by/reason` 与 `evalBaseline`，以便审计变更可追踪。`effective.hash` 只覆盖运行时字段（model/tools/prompt），**不包含** title/description、`provenance`、`evalBaseline`，避免换评测声明被误判成执行配置漂移。`prompt.hash` 由 prompt revision 的内置文本计算，不只 hash revision 号。
+- **内容 hash**：对规范化 JSON（键排序、去空白、排除 `contentHash` 自身；`tools.names` 先排序）计算；`contentHash` 包含 `provenance.at/by/reason` 与 `evalBaseline`，以便审计变更可追踪。`effective.hash` 只覆盖运行时字段（model/tools/prompt），**不包含** title/description、`provenance`、`evalBaseline`，避免换评测声明被误判成执行配置漂移。`prompt.hash` 由 prompt revision 的内置文本计算，不只 hash revision 号。
 
 ### 2.4 绑定快照
 
@@ -484,7 +484,7 @@ flowchart LR
 
 ### 6.2 Phase 1（T5-07）范围
 
-- **注册表**：`Profiles` 服务，存储 profile revision 内容与 head 元数据（`activeRevision`、`retiredRevisions`、`lastBoundAt`）；Phase 1 只播种 `worker-default@1`（`model/prompt/tools` 均为继承模式）；schema 严格拒绝禁止字段；`contentHash`；乐观并发（`baseRevision`）。
+- **注册表**：`Profiles` 服务，存储 profile revision 内容与 head 元数据（`activeRevision`、`retiredRevisions`、`lastBoundAt`）；Phase 1 只播种 `worker-default@1`（`model/prompt/tools` 均为继承模式）；schema 严格拒绝禁止字段；`contentHash`；乐观并发（`baseRevision`）。`source=import` 的 `id/title/description` 需人工审核，不把个人身份写进 id，也不进入 prompt。
 - **绑定**：在 `Tickets.create` 与 `Tickets.delegate` 解析 profile 并写 `Ticket.profile` 快照；子 Ticket 只复制根快照；旧工单无字段即 `legacy`。选中的 profile **整体**缺失/未激活时回退 `legacy` 并记录 fallback；profile 存在但内容无效（缺 prompt/tool/model）时保留绑定并写 `selection.valid=false`，把错误写进 `selection.reason`，留给 launch fail closed；两种都不回滚 Decision。
 - **Session 解析**：`Sessions.ensure`/`decorate` 接受可选快照；模型、prompt、工作工具从快照解析；协议工具固定；角色 preset 不变；子 Ticket/subagent 使用根快照的有效工作工具；缺工具/缺 prompt 在 launch 时 `blocked`。**pinned 必须真的 pin**：pinned prompt 要按 revision 读取（不能静默用 `current()`），pinned 模型若与已存在的 Session 不符，要么新建 Session，要么记录实际模型并标 non-compliant；做不到就在激活时拒绝该 profile，不能只把 pin 写进快照。
 - **trace/审计**：`dispatch` span data 写 profile id/revision/hash、`effective.hash`、实际 prompt revision、`toolsHash`；不新增 span kind；不写 `Decision.audit`。
@@ -662,7 +662,7 @@ flowchart LR
   "title": "文档与设计任务",
   "description": "读写仓库文档、运行 docs 测试；不包含 web fetch 与 subagent",
   "model": { "mode": "pinned", "provider": "deepseek", "model": "deepseek-v4.1", "reasoningEffort": "medium" },
-  "tools": ["read", "write", "edit", "glob", "grep", "bash", "skill", "todo_write"],
+  "tools": { "mode": "list", "names": ["read", "write", "edit", "glob", "grep", "bash", "skill", "todo_write"] },
   "prompt": { "mode": "pinned", "revision": 42 },
   "evalBaseline": { "evalSet": "docs-v1", "revision": 2 },
   "provenance": { "by": "local-user", "at": "2026-11-10T06:00:00.000Z", "reason": "docs 任务需要比默认 worker 更窄的工具面", "source": "panel" },
@@ -684,7 +684,7 @@ flowchart LR
   "revision": 3,
   "hash": "sha256:…",
   "role": "worker",
-  "selection": { "by": "code", "source": "manual", "reason": "profile:worker-docs", "moving": false },
+  "selection": { "by": "code", "source": "manual", "reason": "profile:worker-docs", "moving": false, "valid": true },
   "model": { "mode": "pinned", "provider": "deepseek", "model": "deepseek-v4.1", "reasoningEffort": "medium" },
   "tools": ["read", "write", "edit", "glob", "grep", "bash", "skill", "todo_write"],
   "prompt": { "mode": "pinned", "revision": 42, "hash": "sha256:…" },
@@ -704,7 +704,7 @@ flowchart LR
 - 授权字段：`maxActionLevel`、`approval`、`allowed`、`mandateMinutes`、`undoWindowSeconds`、`sources`、`permissionPreset`。
 - 身份字段：`actor`、`userId`、`roleLevel`、`admin`。
 - 凭据字段：任何 `token`、`secret`、`key`、`password`、`env`。
-- 工具：不在角色上限内的名字；重复工具；空字符串。
+- 工具：`mode=list` 但缺 `names`；不在角色上限内的名字；重复工具；空字符串；自定义 profile 用 `mode=inherit`。
 - prompt：`pinned` 但缺 `revision`；revision 不存在；`live` 用于自定义 profile。
 - model：`pinned` 但缺 provider/model；`inherit` 用于自定义 profile。
 - 版本：`revision` 与已存在 revision 冲突；`baseRevision` 过期（乐观并发冲突）。
@@ -718,8 +718,8 @@ flowchart LR
 - [ ] 子 Ticket/subagent 的工作工具 ⊆ 根 profile；pinned 模型不被 subagent 另选；协议工具固定。
 - [ ] `live`/`inherit` 标 `moving`，有 `effective.hash`，不进入因果比较。
 - [ ] accept 不因 profile 失败；launch 缺工具/prompt fail closed。
-- [ ] 指标按 `effective.hash` 聚合，有分母/censoring/fallback；closed/child/lightweight/重试分开；token 缺失标 unknown。
+- [ ] 指标冻结配置按 `effective.hash`、moving 按 `run.effectiveHash` 聚合，有分母/censoring/fallback；closed/child/lightweight/重试分开；token 缺失标 unknown。
 - [ ] 评测集与 holdout 分离；回归门预登记；人工批准；可回滚。
 - [ ] Phase 1 只过可观测性门；Phase 2 有预登记 MDE/样本量/随机或配对分配；允许「不采纳」。
 - [ ] 没有把 `Decision.audit` 或模型输出当作绑定事实。
-- [ ] 计划/TRACKING 与本文一致；Phase 1 没有新增 schema。
+- [ ] 计划/TRACKING 与本文一致；Phase 1 没有新增数据库 schema/表，只有可选 Ticket JSON 字段。
