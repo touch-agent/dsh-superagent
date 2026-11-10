@@ -38,7 +38,12 @@ export interface ProfileMetricsGroup {
   fallback: number
   censored: number
   closed: number
+  /** Root tracked success only: `completed`/`merged` over ended roots, excluding dropped/stopped. */
   success: { n: number; successes: number; rate: number | null; suppressed: boolean }
+  /** Child success: the parent owner accepted the report; never added to root success. */
+  childSuccess: { n: number; successes: number; rate: number | null; suppressed: boolean }
+  /** Lightweight success: its own ended outcome; no Assignment or Session. */
+  lightweightSuccess: { n: number; successes: number; rate: number | null; suppressed: boolean }
   blocked: { blocked: number; failed: number; stopped: number; dropped: number }
   rework: { tickets: number; rate: number | null; suppressed: boolean }
   latency: { decisionToDispatch: { samples: number; p50Seconds: number | null; p90Seconds: number | null }
@@ -76,11 +81,6 @@ function hashOf(store: Store, ticket: Ticket, snapshot: ProfileSnapshot): string
   if (!snapshot.selection.moving) return snapshot.effective.hash
   return store.get(KV.sessions.effective(`worker-${ticket.id}`))?.hash ?? snapshot.effective.hash
 }
-/** Whether a ticket ended successfully under its own rule: root/lightweight completion or merge, child parent acceptance. */
-function succeeded(ticket: Ticket): boolean {
-  if (ticket.parentTicketId) return ticket.delegation?.resolution?.kind === 'accepted'
-  return ticket.ended?.outcome === 'completed' || ticket.ended?.outcome === 'merged'
-}
 /** Whether a ticket contributes a decided success sample (open tickets are censored, closed-unmerged roots are failures). */
 function decided(ticket: Ticket): boolean {
   if (ticket.parentTicketId) return !!ticket.delegation?.resolution
@@ -96,7 +96,8 @@ function statusOf(ticket: Ticket): { blocked: number; failed: number; stopped: n
 function emptyGroup(effectiveHash: string, snapshot: ProfileSnapshot): ProfileMetricsGroup {
   return { effectiveHash, promptRevision: snapshot.effective.promptRevision, model: snapshot.effective.model, moving: snapshot.selection.moving,
     tickets: 0, roots: 0, children: 0, lightweight: 0, fallback: 0, censored: 0, closed: 0,
-    success: { n: 0, successes: 0, rate: null, suppressed: false }, blocked: { blocked: 0, failed: 0, stopped: 0, dropped: 0 },
+    success: { n: 0, successes: 0, rate: null, suppressed: false }, childSuccess: { n: 0, successes: 0, rate: null, suppressed: false },
+    lightweightSuccess: { n: 0, successes: 0, rate: null, suppressed: false }, blocked: { blocked: 0, failed: 0, stopped: 0, dropped: 0 },
     rework: { tickets: 0, rate: null, suppressed: false },
     latency: { decisionToDispatch: { samples: 0, p50Seconds: null, p90Seconds: null },
       dispatchToReady: { samples: 0, p50Seconds: null, p90Seconds: null },
@@ -125,12 +126,25 @@ export function profileMetrics(store: Store, profile: string, now = new Date()):
     const group = entry.group
     group.tickets += 1
     if (ticket.parentTicketId) group.children += 1
+    else if (isLightweight(ticket)) group.lightweight += 1
     else group.roots += 1
-    if (isLightweight(ticket)) group.lightweight += 1
     if (snapshot.selection.fallback) group.fallback += 1
     if (!decided(ticket)) group.censored += 1
     if (ticket.ended?.outcome === 'closed') group.closed += 1
-    if (decided(ticket)) { group.success.n += 1; if (succeeded(ticket)) group.success.successes += 1 }
+    // Root success has its own denominator; child and lightweight successes are reported beside it, never added in.
+    if (!ticket.parentTicketId && !isLightweight(ticket) && ticket.ended) {
+      const outcome = ticket.ended.outcome
+      if (outcome !== 'dropped' && outcome !== 'stopped') {
+        group.success.n += 1
+        if (outcome === 'completed' || outcome === 'merged') group.success.successes += 1
+      }
+    } else if (ticket.parentTicketId && ticket.delegation?.resolution) {
+      group.childSuccess.n += 1
+      if (ticket.delegation.resolution.kind === 'accepted') group.childSuccess.successes += 1
+    } else if (isLightweight(ticket) && ticket.ended) {
+      group.lightweightSuccess.n += 1
+      if (ticket.ended.outcome === 'completed' || ticket.ended.outcome === 'merged') group.lightweightSuccess.successes += 1
+    }
     const status = statusOf(ticket)
     group.blocked.blocked += status.blocked; group.blocked.failed += status.failed
     group.blocked.stopped += status.stopped; group.blocked.dropped += status.dropped
@@ -156,6 +170,11 @@ export function profileMetrics(store: Store, profile: string, now = new Date()):
     const group = entry.group
     group.success.suppressed = group.success.n < 5
     group.success.rate = group.success.suppressed ? null : rate(group.success.successes / group.success.n)
+    group.childSuccess.suppressed = group.childSuccess.n < 5
+    group.childSuccess.rate = group.childSuccess.suppressed ? null : rate(group.childSuccess.successes / group.childSuccess.n)
+    group.lightweightSuccess.suppressed = group.lightweightSuccess.n < 5
+    group.lightweightSuccess.rate = group.lightweightSuccess.suppressed ? null
+      : rate(group.lightweightSuccess.successes / group.lightweightSuccess.n)
     group.rework.suppressed = (group.tickets - group.lightweight) < 5
     group.rework.rate = group.rework.suppressed || group.tickets === group.lightweight ? null
       : rate(group.rework.tickets / (group.tickets - group.lightweight))
@@ -169,6 +188,8 @@ export function profileMetrics(store: Store, profile: string, now = new Date()):
     tickets: sum.tickets + group.tickets, roots: sum.roots + group.roots, children: sum.children + group.children,
     lightweight: sum.lightweight + group.lightweight, fallback: sum.fallback + group.fallback, censored: sum.censored + group.censored,
     closed: sum.closed + group.closed, successN: sum.successN + group.success.n, successes: sum.successes + group.success.successes,
+    childSuccessN: sum.childSuccessN + group.childSuccess.n, childSuccesses: sum.childSuccesses + group.childSuccess.successes,
+    lightSuccessN: sum.lightSuccessN + group.lightweightSuccess.n, lightSuccesses: sum.lightSuccesses + group.lightweightSuccess.successes,
     blocked: sum.blocked + group.blocked.blocked, failed: sum.failed + group.blocked.failed, stopped: sum.stopped + group.blocked.stopped,
     dropped: sum.dropped + group.blocked.dropped, rework: sum.rework + group.rework.tickets,
     reworkSamples: sum.reworkSamples + group.tickets - group.lightweight,
@@ -176,6 +197,7 @@ export function profileMetrics(store: Store, profile: string, now = new Date()):
     tokenOutput: sum.tokenOutput + (group.tokens.state === 'available' ? group.tokens.output ?? 0 : 0),
     tokenSamples: sum.tokenSamples + (group.tokens.state === 'available' ? 1 : 0),
   }), { tickets: 0, roots: 0, children: 0, lightweight: 0, fallback: 0, censored: 0, closed: 0, successN: 0, successes: 0,
+    childSuccessN: 0, childSuccesses: 0, lightSuccessN: 0, lightSuccesses: 0,
     blocked: 0, failed: 0, stopped: 0, dropped: 0, rework: 0, reworkSamples: 0, tokenInput: 0, tokenOutput: 0, tokenSamples: 0 })
   // A total is available only when every tracked ticket contributed usage; one silent group makes it unknown.
   const tokenComplete = result.every(group => group.lightweight === group.tickets || group.tokens.state === 'available')
@@ -184,6 +206,10 @@ export function profileMetrics(store: Store, profile: string, now = new Date()):
       fallback: totals.fallback, censored: totals.censored, closed: totals.closed,
       success: { n: totals.successN, successes: totals.successes,
         rate: totals.successN >= 5 ? rate(totals.successes / totals.successN) : null, suppressed: totals.successN < 5 },
+      childSuccess: { n: totals.childSuccessN, successes: totals.childSuccesses,
+        rate: totals.childSuccessN >= 5 ? rate(totals.childSuccesses / totals.childSuccessN) : null, suppressed: totals.childSuccessN < 5 },
+      lightweightSuccess: { n: totals.lightSuccessN, successes: totals.lightSuccesses,
+        rate: totals.lightSuccessN >= 5 ? rate(totals.lightSuccesses / totals.lightSuccessN) : null, suppressed: totals.lightSuccessN < 5 },
       blocked: { blocked: totals.blocked, failed: totals.failed, stopped: totals.stopped, dropped: totals.dropped },
       rework: { tickets: totals.rework, rate: totals.reworkSamples >= 5 ? rate(totals.rework / totals.reworkSamples) : null,
         suppressed: totals.reworkSamples < 5 },

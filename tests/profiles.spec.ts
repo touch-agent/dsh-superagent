@@ -216,6 +216,7 @@ it('counts child, lightweight, fallback and closed tickets separately from root 
       delegation: { attempt: 1, resolution: { kind: 'accepted' } }, assignments: [] } as unknown as Ticket)
     store.tickets.save({ ...ticket('l', root), form: 'lightweight', assignments: [], ended: { outcome: 'completed', at: NOW, by: 'executor' } } as Ticket)
     const view = profileMetrics(store, 'worker-default', new Date(NOW))
-    expect(view.totals).toMatchObject({ roots: 2, children: 1, lightweight: 1, closed: 1, success: { n: 3, successes: 2 } })
+    expect(view.totals).toMatchObject({ roots: 1, children: 1, lightweight: 1, closed: 1,
+      success: { n: 1, successes: 0 }, childSuccess: { n: 1, successes: 1 }, lightweightSuccess: { n: 1, successes: 1 } })
   })
 })
