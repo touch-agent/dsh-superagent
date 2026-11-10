@@ -768,11 +768,11 @@ graph LR
 
 ## 15. X-10 宿主矩阵（2026-11-10 落地）
 
-- **入口**：`.github/workflows/host-matrix.yml`（由原 `install-e2e.yml` 演进，仍调用 `pnpm test:install-e2e`）。显式 7 条组合：Linux/macOS/Windows × Node 22/24 × DSH `0.2.1-rc.5`，加一条 ubuntu/24 × DSH `0.2.2-rc.1` 前向腿。计划原句的「两个 alpha 版本」即由钉住版本 + 前向版本两条腿落地，不是所有 0.2.x alpha 的笛卡尔积；换更多主机版本仍需改 devDependencies/peerDependencies，不属于本任务「只改 CI/脚本/docs」。
+- **入口**：`.github/workflows/host-matrix.yml`（由原 `install-e2e.yml` 演进，仍调用 `pnpm test:install-e2e`）。显式 6 条组合：Linux/macOS × Node 22/24 × DSH `0.2.1-rc.5`、Windows/24 × DSH `0.2.1-rc.5`，加一条 ubuntu/24 × DSH `0.2.2-rc.1` 前向腿；Windows 只跑 Node 24，因为其全局 npm 安装约 10 分钟/leg，Node 22 已由 Linux/macOS 覆盖。计划原句的「两个 alpha 版本」即由钉住版本 + 前向版本两条腿落地，不是所有 0.2.x alpha 的笛卡尔积；换更多主机版本仍需改 devDependencies/peerDependencies，不属于本任务「只改 CI/脚本/docs」。
 - **流程**：`pnpm install --frozen-lockfile` → 全局安装钉住的 DSH → `pnpm test:install-e2e`（build → 临时 `DSH_HOME` → Web profile → `dsh plugin add link:` → 六行齐全 → 起真实宿主 → 面板 API/页面/客户端 → 停止 → `plugin remove` → stateDir 与 SQLite 保留）。
 - **显式失败**：matrix 不使用 `if`/`exclude`/`continue-on-error`/重试；每个 leg 先断言实际 `process.platform` 与 Node major；`fail-fast: false` 只让其它 leg 继续报告，不掩盖失败；`host matrix summary` 在 matrix 结果不是 `success` 时红。超时：job 30 分钟；单次 `dsh` 调用 180 秒；等 Web URL 与面板各 90 秒；优雅停止 30 秒。超时是失败 leg，不是跳过。
 - **覆盖与限制**：Node 22/24 为受支持线（22 需 ≥22.19.0）；Node 20/23 被 `engines` 排除，25+ 未门禁。架构覆盖 x64 Linux/Windows、arm64 macOS，其余未跑。Windows 无 POSIX SIGINT，检查只断言进程退出与数据保留，不测优雅 drain；且 `stateDir` 必须写成 POSIX 风格绝对路径（如 `/Users/me/.dsh/state`），当前 schema 拒绝 `C:\…` 盘符路径，E2E 用前者并靠 Node 的当前盘符解析；接受盘符路径属于本任务范围外的产品改动。`scripts/dsh-superagent`（POSIX shell + tmux）在 Windows 不支持，需直接 `dsh --profile ...` 或系统服务；`/bin/sh` 账号包装脚本也需 Windows 等价物。macOS 的服务脚本路径需要 tmux，CI 不安装也不测。E2E 仍是 `link:` 安装、无真实账号/模型、停在 `repositoryUnset`，不覆盖 Source/Session/投递、浏览器渲染、重装恢复。完整矩阵、排除项与超时见 [docs/006](../006-deployment.md#supported-hosts-and-the-ci-matrix) 的「Supported hosts and the CI matrix」。
-- **成本**：7 条小 leg，单条约数分钟、并行执行；macOS 计费乘数较高。`concurrency` 取消被取代的 PR run；全量 `pnpm check` 仍是 ubuntu/24 单 job，不复制到所有宿主。要缩矩阵就删行并同步 006 的表，不得把 leg 改成 no-op、`continue-on-error` 或静默跳过。
+- **成本**：2026-11-10 run 的 Linux 腿约 48–61 秒、macOS 腿约 88–99 秒、Windows 腿约 10 分钟（其中全局 `npm install` 约 9–10 分钟，E2E 只占小头）。6 条并行，PR 墙钟约 10 分钟、runner 分钟约 20；macOS 计费乘数较高。`concurrency` 取消被取代的 PR run；全量 `pnpm check` 仍是 ubuntu/24 单 job，不复制到所有宿主。Windows 安装成本成为问题时优先缓存全局安装；不得把 leg 改成 no-op、`continue-on-error` 或静默跳过。
 
 ---
 

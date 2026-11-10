@@ -218,8 +218,10 @@ try {
 
   const panel = await waitFor(() => panelState(base), 90_000, 'the panel management API answers', child)
   check('the panel management API answers', panel.status === 200, `${base}/orchestrator/api/state`)
-  check('the panel is configured with the temporary stateDir', panel.body.setup?.machine?.stateDir === stateDir,
-    String(panel.body.setup?.machine?.stateDir ?? 'missing'))
+  // A host may keep the configured spelling or report the same directory resolved; both name the throwaway stateDir.
+  const reportedState = panel.body.setup?.machine?.stateDir
+  check('the panel is configured with the temporary stateDir', reportedState === stateDir || reportedState === statePath,
+    String(reportedState ?? 'missing'))
   check('the runtime mounted and waits for setup', panel.body.health?.runtime?.state === 'paused',
     String(panel.body.health?.runtime?.state ?? 'missing'))
   check('setup reports only the expected missing repository', panel.body.setup?.problem?.code === 'repositoryUnset',
@@ -242,9 +244,9 @@ try {
   check(process.platform === 'win32' ? 'the host exits when stopped (Windows has no graceful SIGINT)' : 'the host stops on SIGINT',
     stoppedOk, `${stopped.code ?? stopped.signal}`)
 
-  const database = join(stateDir, 'orchestrator.sqlite')
+  const database = join(statePath, 'orchestrator.sqlite')
   const databaseBytes = existsSync(database) ? statSync(database).size : 0
-  check('the state directory exists after the first run', existsSync(stateDir), stateDir)
+  check('the state directory exists after the first run', existsSync(statePath), statePath)
   check('the first run created its SQLite database', existsSync(database) && databaseBytes > 0, `${databaseBytes} bytes`)
   check('the database is SQLite', existsSync(database) && readFileSync(database).subarray(0, 16).toString('latin1') === 'SQLite format 3\u0000')
 
@@ -264,7 +266,7 @@ try {
     after.stderr.trim().split('\n')[0] ?? 'no warning')
   check('the profile still composes after uninstall', after.status === 0)
 
-  check('the state directory survives uninstall', existsSync(stateDir), stateDir)
+  check('the state directory survives uninstall', existsSync(statePath), statePath)
   const keptBytes = existsSync(database) ? statSync(database).size : 0
   check('the SQLite database survives uninstall', existsSync(database) && keptBytes > 0, `${keptBytes} bytes`)
 
@@ -281,6 +283,10 @@ finally {
     // Do not leave the host behind when a failed step skips the graceful stop above.
     await withTimeout(new Promise(resolve => child.once('exit', resolve)), 5_000, 'dsh did not die').catch(() => {})
   }
-  if (!keep) rmSync(temporary, { recursive: true, force: true })
+  if (!keep) {
+    // A killed host can still hold SQLite handles on Windows; cleanup is best-effort and never hides a check.
+    try { rmSync(temporary, { recursive: true, force: true }) }
+    catch (error) { console.warn(`warning: could not remove ${temporary}: ${error instanceof Error ? error.message : String(error)}`) }
+  }
   else console.log(`kept the temporary home: ${temporary}`)
 }

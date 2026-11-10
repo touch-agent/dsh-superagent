@@ -51,9 +51,6 @@ jobs:
             node: '24'
             dsh: '0.2.1-rc.5'
           - os: windows-latest
-            node: '22'
-            dsh: '0.2.1-rc.5'
-          - os: windows-latest
             node: '24'
             dsh: '0.2.1-rc.5'
           # The pinned host is what `engines.dsh` and the devDependencies name. The second host is the
