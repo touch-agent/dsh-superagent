@@ -488,7 +488,7 @@ Phase 2 有租约后，才增加：
 | **A 注意力是瓶颈** | 空间是执行细节；E0 不出现；E1 只给审查所需的一块；E2 才给全量；冲突是例外 | 不新增默认通知；空间视图默认关闭；「一个结果一条通知」不变 |
 | **B 组织与执行默认内部** | 空间是内部执行事实，不是组织架构；任务树/空间图都不该成为默认叙事 | 空间视图放 E2；不把「按空间分组」做成默认任务树；Phase 1/2 只读 |
 | **C 可组合的六层上下文** | 空间是「agent」维度里工作目录的载体，不是第七层；`subdir` 是路径视图，不是新维度；轻量无空间时该维度缺席 | 不新增上下文维度；空间不参与授权装配；子 Ticket 只拿根上下文 + 子目标 |
-| **D 可替换边界** | `Execution.directory` 是最小 locator；租约是 runtime 协调；provider 是 Phase 4 | 不把目录布局写进领域契约；不提前造 provider 抽象 |
+| **D 可替换边界** | `Execution.directory` 是最小 locator；租约是 runtime 协调；provider 是 Phase 4。Phase 2 的子目录布局仍由 kernel 的 `delegate` 计算，这是已知的一处布局耦合，等布局移到 runtime 时再收敛 | 不提前造 provider 抽象；不声称布局已经完全可替换 |
 | **安全与授权不变量** | 空间/租约不改变 Mandate、Action、Approval、Acceptance | 目录不是安全边界；真正的隔离是 OS/租户，不在本设计 |
 | **可观测性优先** | 空间事件进 trace/activity；E2 可查；默认不推送 | 记录优先，展示分级 |
 
