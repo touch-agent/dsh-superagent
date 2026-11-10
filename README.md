@@ -100,7 +100,7 @@ Everything above serves one rule: take as little human attention as possible and
 | `examples/profile.cordis.patch.yml` | The machine configuration an operator copies into a profile. |
 | `scripts/` | `dsh-superagent` service script, the bundle-size gate, the install-e2e check. |
 | `tests/` | Unit, integration, conformance, chaos, panel and packaging tests; the repository's executable contracts. |
-| `docs/` | The numbered design and operations documents (000–014), the documentation map, runbooks and images. |
+| `docs/` | The numbered design and operations documents (000–015), the documentation map, runbooks and images. |
 | `docs/plan/` | The milestone plan, its dated kickoff and session-entry notes, and the single task tracking table. |
 | `SETUP.md` | The guided setup an agent follows with an operator. |
 

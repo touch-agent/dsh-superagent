@@ -167,7 +167,7 @@ graph LR
   M2 --> M3
   M3 --> M35["M3.5 任务视图<br/>16 人日"]
   M35 --> M36["M3.6 工作空间<br/>9 人日"]
-  M36 --> M5["M5 原则落地<br/>25 人日"]
+  M36 --> M5["M5 原则落地<br/>35 人日"]
   M5 --> M4["M4 多租户<br/>22 人日（最后）"]
   X["横向 X"] -.贯穿.-> M0 & M1 & M2 & M3 & M35 & M36 & M5
 ```
@@ -181,10 +181,10 @@ graph LR
 | M3 交付 | review 真可审；小活不付 Session 冷启动 | T3-01…08 | 36 人日 | M1、M2 | 小活 p50 < 10s；review 页必有 preview | §6.4–6.6 |
 | M3.5 任务视图 | 右栏任务视图；子 Ticket 树与父 owner 审查链（任务视图 Phase 1/2） | T3-09…11 | 16 人日 | M3 | tracked 任务在右栏可读；父 owner 可拆/审/停子 Ticket；子 Ticket 不是授权主体 | 任务视图 §9 |
 | M3.6 工作空间 | 空间可观测；同一空间写者唯一；子 Ticket 独立空间 | T3-12…13 | 9 人日 | M3.5 | 空间投影/E2 视图可用；两个 Ticket 不并发写同一空间；旧 worktree 可继续使用 | 013 §8 |
-| M5 原则落地 | 目标层、E0–E3、群组/六层上下文、profile 绑定与遥测、进化闭环、替换演练 | T5-01…07 | 31 人日 | M3.6 | E0 只给目标/状态/决定/结果；装配快照可审查；profile 可追溯且不授权；进化只提案；替换演练等价 | 原则 §8 |
+| M5 原则落地 | 目标层、E0–E3、群组/六层上下文、profile 绑定与遥测、进化闭环、替换演练 | T5-01…07 | 35 人日 | M3.6 | E0 只给目标/状态/决定/结果；装配快照可审查；profile 可追溯且不授权；进化只提案；替换演练等价 | 原则 §8 |
 | M4 多租户 | 能卖团队版/私有化 | T4-01…06 | 22 人日 | M5 | 单租户故障不影响他人；删除演练可验证 | §6.7 |
 
-> 重排后约 208 人日（新增 58 人日；M1 剩余两个源与 M4 计入但后置）≈ 10 周（4 人）。这是「机制可用」的估算，不含 30 个源、产品化打磨与合规认证；方案 §8 的「5–6 个月」含这些。
+> 重排后约 212 人日（新增 62 人日；M1 剩余两个源与 M4 计入但后置）≈ 10.5 周（4 人）。这是「机制可用」的估算，不含 30 个源、产品化打磨与合规认证；方案 §8 的「5–6 个月」含这些。
 
 ---
 
@@ -530,21 +530,21 @@ graph LR
 - **估时**：6 人日。**依赖**：T5-03、T5-01、T3-10（子 Ticket 维度）。**回退**：装配层 feature flag，关闭回现有 prompt。
 - **泳道**：Runtime。
 
-### T5-05 观察→总结→进化→验证闭环（离线）· Platform · 5 人日
+### T5-05 观察→总结→进化→验证闭环（离线）· Platform · 8 人日
 
-- **目标**：按原则 C.1 建一条独立于执行 worker 的进化闭环：观察决策/报告/验收/阻塞/返工，产出带证据的版本化提案，人工验证后才可能应用；不自动改授权、代码或生产配置。
-- **交付**：`scripts/evolution/` 离线流程：样本集（脱敏、只读）、提案格式（证据/置信度/范围/版本/回滚）、人工批准队列（先 KV/文档，不接生产写入）、前后指标（验收率、返工率、阻塞、审阅时长、每结果通知数）；首轮用最近 10 个可复核的历史 Ticket 跑通（不足则全部）。
-- **验收**：产出 ≥1 条带证据与范围的提案；提案不含私密全文；没有自动应用路径；`tests/evolution.spec.ts` 或等价脚本测试；C3.1/C3.2/C3.5/C3.6。
-- **设计约束**：profile 维度见 [AgentProfile 设计](../015-agent-profile.zh.md) §4；第一轮可以只做 Ticket 级聚合，按 profile revision 的提案要等 T5-07 的遥测，届时并入本任务而不另开任务；评测集必须与观察集分离，回归门预登记，人工批准，允许「不采纳」。
-- **估时**：5 人日（profile 切片在 T5-07 后重估）。**依赖**：T5-02、M0 指标（已完成）；profile 维度另需 T5-07。**回退**：纯离线脚本，删除即回退。
+- **目标**：按原则 C.1 建一条独立于执行 worker 的进化闭环：观察决策/报告/验收/阻塞/返工，产出带证据的版本化提案，人工验证后才可能应用；不自动改授权、代码或生产配置。profile 维度只做**预登记对照实验**，不把「默认 profile 的统计」当成收益证据。
+- **交付**：`scripts/evolution/` 离线流程：样本集（脱敏、只读）、提案格式（证据/置信度/范围/版本/回滚）、人工批准队列（先 KV/文档，不接生产写入）、前后指标（验收率、返工率、阻塞、审阅时长、每结果通知数）；首轮用最近 10 个可复核的历史 Ticket 跑通（不足则全部；这 10 个只用于跑通流程，不作为价值证据）。profile 切片另含：eval set manifest/holdout、同工单配对回放或并发随机分配、预登记主指标/MDE/样本量/统计方法、回归门与停止规则；不能只做描述性报表。
+- **验收**：产出 ≥1 条带证据与范围的提案，或一份「证据不足/无差异」的结论；提案不含私密全文；没有自动应用路径；`tests/evolution.spec.ts` 或等价脚本测试；C3.1/C3.2/C3.5/C3.6。profile 切片还须证明「有对照、样本量按 MDE 算过、legacy 与 worker-default 基线分开、成本不伪造成本门」；允许结论是「没有可测差异」。
+- **设计约束**：profile 维度见 [AgentProfile 设计](../015-agent-profile.zh.md) §4；T5-05 的 profile 切片依赖 T5-07 的 `effective.hash` 遥测；不另开任务，但本任务估时从 5 调到 8，避免用「并入」掩盖范围。评测集必须与观察集分离，回归门预登记，人工批准，允许「不采纳」。
+- **估时**：8 人日（含 profile 对照实验 3 人日）。**依赖**：T5-02、M0 指标（已完成）；profile 维度另需 T5-07。**回退**：纯离线脚本，删除即回退。
 - **泳道**：Platform。
 
-### T5-07 AgentProfile Phase 1：注册表、绑定快照与遥测 · Kernel + Runtime · 6 人日
+### T5-07 AgentProfile Phase 1：注册表、绑定快照与遥测 · Kernel + Runtime · 7 人日
 
-- **目标**：给现有 router/worker 两个角色加一层薄的、可版本化的执行配置，使每个新工单能回答「用了哪个 profile 的哪一版、什么模型/prompt/工具、结果如何」；不改变授权路径，不做自动 profile 选择或晋升。
-- **交付**：`Profiles` 注册表（不可变 revision、active 指针、内容 hash、严格 schema、内置 `orchestrator-default@1`/`worker-default@1` 兼容 profile）；accept 时绑定 `Ticket.execution.profile` 快照（旧工单按 legacy，不重写）；`Sessions`/`DshExecutor` 从快照解析模型、prompt 与工具白名单，工具必须是角色上限子集，缺工具/缺 prompt 时 fail closed；`dispatch` span 与 `Decision.audit` 记录 profile/fallback；`GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics` 只读；`profile` 设置块（`enabled`/`resolve`/`telemetry`）；`tests/profiles.spec.ts`、`tests/profile-binding.spec.ts`、`tests/profile-metrics.spec.ts`；更新 `004`、`003`、`007`（如新增模块）与本文。
-- **验收**：注册表版本不可变、禁止字段拒绝、并发冲突可解释；新工单有快照、旧工单 legacy、子 Ticket 继承、fallback 单列；active 变更不影响运行中工单；有效工具 ⊆ 角色上限；缺工具/缺 prompt/默认 profile 不可用 fail closed；`Decision`/`Mandate`/`Action`/`Approval` 测试不变；指标按 `(id,revision)` 聚合、n<5 抑制、成本 `null`；`pnpm check`；用 `worker-default@1` 产出基线。
-- **估时**：6 人日。**依赖**：T3-10（子 Ticket，已完成）、[AgentProfile 设计](../015-agent-profile.zh.md)；面板 E2 另需 T5-02。**回退**：`profile.enabled=false` 停新绑定，`profile.resolve=legacy` 全量回退；Phase 1 无 schema 迁移。
+- **目标**：给现有 worker 角色加一层薄的、可版本化的执行配置，使每个新工单能回答「用了哪个 profile 的哪一版、有效 prompt/model/工具/DSH 版本是什么、结果如何」；不改变授权路径，不做自动 profile 选择或晋升，Phase 1 不激活 orchestrator profile。
+- **交付**：`Profiles` 注册表（不可变 revision、head 的 active/retired 指针、`contentHash`、严格 schema、内置 `worker-default@1` 兼容 profile）；`Tickets.create`/`delegate` 绑定 `Ticket.execution.profile` 有效快照（`effective.hash`；旧工单按 legacy，不重写；子 Ticket 只复制根快照，`delegate` 不加 profile 参数）；`Sessions`/`DshExecutor` 从快照解析模型、pinned/live prompt 与工作工具，协议工具固定，子 Ticket/subagent 有效工作工具 ⊆ 根，subagent 在 pinned 模型时禁用 `modelSelection` 或强制父模型；缺工具/缺 prompt 在 launch `blocked`（不在 accept 失败，不静默回退）；`dispatch` span 记录 profile/effective hash，不写 `Decision.audit`；`GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics` 只读；独立 KV `profiles.config`（`enabled`/`resolve`/`telemetry`），**不新增 settings 块**；token 用量尝试采集，货币成本 `unknown`；`tests/profiles.spec.ts`、`tests/profile-binding.spec.ts`、`tests/profile-metrics.spec.ts`；更新 `004`、`003`、`007`（如新增模块）与本文。
+- **验收**：注册表版本不可变、head 回滚、禁止字段拒绝、并发冲突可解释；新工单有快照、旧工单 legacy、子 Ticket 继承、subagent 不越权、fallback 单列；active 变更不影响运行中工单；有效工作工具 ⊆ 角色上限、子/子代理 ⊆ 根；`tools: []` 仍有协议工具，不宣称只读；accept 不因 profile 失败；旧二进制读带快照 Ticket 仍按 legacy 运行；缺工具/缺 prompt 在 launch `blocked`；`Decision`/`Mandate`/`Action`/`Approval` 测试不变；指标按 `effective.hash` 聚合、n<5 只抑制展示、token 两态、成本 `unknown`、closed/child/lightweight/重试口径可复核；`pnpm check`；用 `worker-default@1` 产出基线，但**不声称收益**。
+- **估时**：7 人日。**依赖**：T3-10（子 Ticket，已完成）、[AgentProfile 设计](../015-agent-profile.zh.md)；面板 E2 另需 T5-02。**回退**：`profiles.config.enabled=false` 停新绑定；`resolve=legacy` 只影响新 Session/新请求，运行中工具/模型不变；Phase 1 无数据库 schema 迁移、无 settings 块。
 - **泳道**：Kernel + Runtime。
 
 ### T5-06 组织观测与替换演练 · Platform · 3 人日
