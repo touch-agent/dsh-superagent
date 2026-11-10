@@ -142,8 +142,8 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
 | `revision` | 是 | 单调递增的版本号 | 从 1 开始；一个 revision 一个不可变内容 |
 | `role` | 是 | Phase 1 只接受 `worker` | `orchestrator` 保留类型位，但 Phase 1 不激活、不绑定；见 Q5 |
 | `title` / `description` | 是 | 给人看的名字与用途 | 不进入 prompt；只用于面板与审计 |
-| `model` | 是 | `{ mode: 'inherit' \| 'pinned', provider?, model?, reasoningEffort? }` | `inherit` 只允许兼容 profile；`pinned` 必须完整；缺失/不可用在 launch 时 fail closed，不阻塞 accept |
-| `tools` | 是 | **工作工具**白名单 | 只能是角色工作能力上限的子集；协议工具不由 profile 控制；空数组只表示没有工作工具，**不等于只读**；不得出现授权字段 |
+| `model` | 是 | `{ mode: 'inherit' \| 'pinned', provider?, model?, reasoningEffort? }` | `inherit` 只允许兼容 profile；`pinned` 必须完整且命中部署已批准的 provider/model 列表；缺失/未批准/不可用在 launch 时 fail closed，不阻塞 accept |
+| `tools` | 是 | **工作工具**策略：`{ mode: 'inherit' \| 'list', names?: string[] }` | `inherit` 只允许兼容 profile，跟随角色工作上限；`list` 必须是角色工作上限的子集，空数组只表示没有工作工具，**不等于只读**；协议工具不由 profile 控制；不得出现授权字段 |
 | `prompt` | 是 | `{ mode: 'live' \| 'pinned', revision? }` | `live` 只允许兼容 profile；`pinned` 必须指向存在的 prompt revision |
 | `evalBaseline` | 否 | 默认评测基准引用 | `{ evalSet: string, revision: number }`；只是声明，不是激活门；实验用自己的 manifest，见 §4.4 |
 | `provenance` | 是 | 创建来源与理由 | `{ by, at, reason, source: 'builtin' \| 'panel' \| 'tool' \| 'import' }` |
@@ -159,8 +159,8 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
 - **head 是可变元数据**：`activeRevision(id)` 指向当前对外提供的 revision；`retiredRevisions` 记录被撤下的 revision；`lastBoundAt` 用于运维提示。head 不是 profile 内容，不参与 `contentHash`。
 - **激活是人的动作**：通过管理面保存，记录 `by`、`at`、`reason`、`baseRevision`；不做自动晋升，不允许 worker 工具改 profile。
 - **退役不删除**：从 active 指针撤下并写入 `retiredRevisions`；历史快照仍可解析，保证审计可读。退役不是修改 revision。
-- **内置 profile**：Phase 1 只播种 `worker-default@1`，它是**兼容 profile**（`model.mode=inherit`、`prompt.mode=live`），逐字复现今天 worker 的行为。`orchestrator-default` 在 Phase 1 不播种、不绑定；主 Session 的工具与模型仍按现有角色配置固定，避免把 `orchestrator_route`/`eval_decide`/`settings_save` 当成可被 profile 选择的“能力”。
-- **自定义 profile 必须 pin 模型与 prompt**；兼容 profile 是唯一允许 `inherit`/`live` 的例外，且被标记为 `moving`（见 §2.4）。
+- **内置 profile**：Phase 1 只播种 `worker-default@1`，它是**兼容 profile**（`model.mode=inherit`、`prompt.mode=live`、`tools.mode=inherit`），逐字复现今天 worker 的行为；`tools.mode=inherit` 跟随 `WORK_TOOLS` 的未来变化，而不是冻结一份今天工具名清单。`orchestrator-default` 在 Phase 1 不播种、不绑定；主 Session 的工具与模型仍按现有角色配置固定，避免把 `orchestrator_route`/`eval_decide`/`settings_save` 当成可被 profile 选择的“能力”。
+- **自定义 profile 必须 pin 模型与 prompt，并用 `tools.mode=list` 显式列出工作工具**；兼容 profile 是唯一允许 `inherit`/`live` 的例外，且被标记为 `moving`（见 §2.4）。
 - **内容 hash**：对规范化 JSON（键排序、去空白、排除 `contentHash` 自身）计算；`contentHash` 包含 `provenance.at/by/reason` 与 `evalBaseline`，以便审计变更可追踪。`effective.hash` 只覆盖运行时字段（model/tools/prompt），**不包含** title/description、`provenance`、`evalBaseline`，避免换评测声明被误判成执行配置漂移。`prompt.hash` 由 prompt revision 的内置文本计算，不只 hash revision 号。
 
 ### 2.4 绑定快照
@@ -169,9 +169,11 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
 
 ```json
 {
-  "profile": { "id": "worker-docs", "revision": 3, "hash": "sha256:…" },
+  "id": "worker-docs",
+  "revision": 3,
+  "hash": "sha256:…",
   "role": "worker",
-  "selection": { "by": "code", "source": "manual", "reason": "profile:worker-docs", "moving": false },
+  "selection": { "by": "code", "source": "manual", "reason": "profile:worker-docs", "moving": false, "valid": true },
   "model": { "mode": "pinned", "provider": "deepseek", "model": "deepseek-v4.1", "reasoningEffort": "medium" },
   "tools": ["read", "write", "edit", "glob", "grep", "bash", "skill", "todo_write"],
   "prompt": { "mode": "pinned", "revision": 42, "hash": "sha256:…" },
@@ -197,7 +199,7 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
 - **子 Ticket 只继承、不覆盖**：`delegate` 不增加 profile 参数；子 Ticket 复制根 Ticket 的快照。Phase 1 不允许父 owner 给子 Ticket 换 profile。若 Phase 2 要允许，必须满足「子有效工作工具 ⊆ 父有效工作工具」且模型/prompt 不更宽；这是能力收紧，不是扩权。
 - **subagent**：它没有自己的 profile；`limitSubagent` 必须从根/父 Ticket 的快照解析有效工作工具，而不是固定 `WORK_TOOLS`。如果 profile 是 `pinned` 模型，则 subagent 的 `modelSelection` 必须关闭或强制使用父模型；做不到就不允许该 profile 使用 `subagent`。
 - **trace**：复用已有 `dispatch` span 的 `data`，写入 `profile.id`、`profile.revision`、`profile.hash`、`effective.hash`、`prompt.revision`、`toolsHash`；Phase 1 不新增 span kind。
-- **Session 记录**：现有 `KV.sessions.prompts` 继续记录每个 Session 实际用过的 prompt revision；`effective` 快照记录绑定时的起点。每次 Session/请求还要记录 `run.effectiveHash`（用实际 prompt revision/model 重算）；`moving` 工单按 run hash 分组，且不进入因果比较。
+- **Session 记录**：现有 `KV.sessions.prompts` 继续记录每个 Session 实际用过的 prompt revision；`effective` 快照记录绑定时的起点。每次 Session/请求还要记录 `run.effectiveHash`（用实际 prompt revision/model/工作工具/DSH/Policy/skills 重算）；`moving` 工单按 run hash 分组，且不进入因果比较。
 
 **有效配置与比较单位。** 两个工单只有在 `effective.hash` 一致时才可归为同一配置；仅 `(profile.id, revision)` 一致不够。`effective.hash` 覆盖：
 
@@ -207,7 +209,7 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
 - 实际模型标识与 `reasoningEffort`；
 - DSH 版本、Policy 版本、skills hash。
 
-`live`/`inherit` 的兼容 profile 在绑定后仍可能移动：prompt 每请求读最新版本，模型在新 Session 重建时可能变。快照必须标记 `selection.moving=true`，记录**实际** prompt revision/model；这类工单只用于基线描述，不进入因果比较（见 §4.5）。DSH 版本、仓库基线与任务难度是分层维度，不是 profile 版本内容；但必须随运行记录保存，否则会把宿主升级或任务难度误算成 profile 效果。
+`live`/`inherit` 的兼容 profile 在绑定后仍可能移动：prompt 每请求读最新版本，模型在新 Session 重建时可能变，`tools.mode=inherit` 也可能随宿主工具集变化。快照必须标记 `selection.moving=true`，记录**实际** prompt revision/model/工具集；这类工单只用于基线描述，不进入因果比较（见 §4.5）。DSH 版本、仓库基线与任务难度是分层维度，不是 profile 版本内容；但必须随运行记录保存，否则会把宿主升级或任务难度误算成 profile 效果。
 
 ### 2.5 复用语义
 
@@ -229,7 +231,7 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
 | 这个 agent 用哪个模型、哪版 prompt | Profile | 是 |
 | 这个 agent 的评测基准 | Profile 的声明引用 | 是，但不是运行时授权 |
 
-**有效工作工具 = 角色工作能力上限 ∩ profile 工作白名单 ∩ 宿主实际可用工具。** 再加上一组**固定的协议工具**（如 `orchestrator_ack`、`orchestrator_report`、`orchestrator_child` 与 thread/trigger 相关工具），它们由 executor 注册、不可被 profile 移除，因为 worker 必须有办法汇报和结束。具体名单以 `tools/executor.ts` 为准，文档不把主 Session 专用工具算进来。`tools: []` 只表示没有工作工具，不表示只读；只读要通过真正的只读工具集/权限实现。
+**有效工作工具 = 角色工作能力上限 ∩ profile 工作策略（inherit 取上限，list 取名单）∩ 宿主实际可用工具。** 再加上一组**固定的协议工具**（如 `orchestrator_ack`、`orchestrator_report`、`orchestrator_child` 与 thread/trigger 相关工具），它们由 executor 注册、不可被 profile 移除，因为 worker 必须有办法汇报和结束。具体名单以 `tools/executor.ts` 为准，文档不把主 Session 专用工具算进来。`tools.names: []` 只表示没有工作工具，不表示只读；只读要通过真正的只读工具集/权限实现。
 
 Phase 1 **只激活 worker profile**；`orchestrator_route`、`orchestrator_eval_decide`、`orchestrator_settings_save`、`orchestrator_prompts_save` 等主 Session 工具不进入 profile 白名单，仍由角色固定。子 Ticket 的有效工作工具必须 ⊆ 根 profile 的有效工作工具；subagent 同理。任何一层都不能通过 profile 获得角色上限之外的工具，也不能改变 `Mandate`、`maxActionLevel`、审批或验收。工具缺失时在 launch 阶段 fail closed（见 §6.6），不静默降级。
 
@@ -389,7 +391,7 @@ flowchart LR
 - `evalSetId` + `revision`；
 - 任务条目：输入 fixture、任务类别、期望验收（规则或人评 rubric）、回放允许的动作等级（这是测试沙箱约束，不是生产授权）、超时、是否 holdout；
 - 环境指纹：DSH 版本、模型 provider/model、工具清单、仓库基线；
-- 私密与副作用限制：不包含不应进入 Git 的私密内容；回放不得对外发送、推送、合并或改共享文档。
+- 私密与副作用限制：不包含不应进入 Git 的私密内容；回放不得对外发送、推送、合并或改共享文档。评测集的存放位置、访问权限与保留期必须在 manifest 中写明；`source=import` 的 profile 不得把仓库/飞书内容路由到未批准的 provider。
 
 **回放模式**（按风险从低到高）：
 
@@ -460,7 +462,7 @@ flowchart LR
 - 「profile 里写组织/群组上下文」：越过 T5-04 的装配表。
 - 「自动晋升」：一周指标好看就自动切 active。
 - 「用单价估算成本」：没有 token 数据就写 `unknown`，不要伪造；货币成本不作为价值门。
-- 「`tools: []` = 只读」：协议工具仍在，只读要靠真正的只读工具集/权限。
+- 「`tools.names: []` = 只读」：协议工具仍在，只读要靠真正的只读工具集/权限。
 - 「把 `live`/`inherit` 当稳定坐标」：它们只能做兼容基线，不能做 A/B 的处理组。
 - 「把 subagent 当第三角色」：subagent 没有独立 profile；它继承 worker 的工具上限。
 - 「运行时动态生成 DSH preset」：宿主能注册，但本设计选择不做；它会把配置治理变成插件管理。
@@ -482,11 +484,11 @@ flowchart LR
 
 ### 6.2 Phase 1（T5-07）范围
 
-- **注册表**：`Profiles` 服务，存储 profile revision 内容与 head 元数据（`activeRevision`、`retiredRevisions`、`lastBoundAt`）；Phase 1 只播种 `worker-default@1`（兼容模式）；schema 严格拒绝禁止字段；`contentHash`；乐观并发（`baseRevision`）。
-- **绑定**：在 `Tickets.create` 与 `Tickets.delegate` 解析 profile 并写 `Ticket.profile` 快照；子 Ticket 只复制根快照；旧工单无字段即 `legacy`；绑定失败回退 `legacy` 并记录 fallback，**不为 profile 失败回滚 Decision**。
+- **注册表**：`Profiles` 服务，存储 profile revision 内容与 head 元数据（`activeRevision`、`retiredRevisions`、`lastBoundAt`）；Phase 1 只播种 `worker-default@1`（`model/prompt/tools` 均为继承模式）；schema 严格拒绝禁止字段；`contentHash`；乐观并发（`baseRevision`）。
+- **绑定**：在 `Tickets.create` 与 `Tickets.delegate` 解析 profile 并写 `Ticket.profile` 快照；子 Ticket 只复制根快照；旧工单无字段即 `legacy`。选中的 profile **整体**缺失/未激活时回退 `legacy` 并记录 fallback；profile 存在但内容无效（缺 prompt/tool/model）时保留绑定并写 `selection.valid=false`，把错误写进 `selection.reason`，留给 launch fail closed；两种都不回滚 Decision。
 - **Session 解析**：`Sessions.ensure`/`decorate` 接受可选快照；模型、prompt、工作工具从快照解析；协议工具固定；角色 preset 不变；子 Ticket/subagent 使用根快照的有效工作工具；缺工具/缺 prompt 在 launch 时 `blocked`。**pinned 必须真的 pin**：pinned prompt 要按 revision 读取（不能静默用 `current()`），pinned 模型若与已存在的 Session 不符，要么新建 Session，要么记录实际模型并标 non-compliant；做不到就在激活时拒绝该 profile，不能只把 pin 写进快照。
 - **trace/审计**：`dispatch` span data 写 profile id/revision/hash、`effective.hash`、实际 prompt revision、`toolsHash`；不新增 span kind；不写 `Decision.audit`。
-- **遥测**：`GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics` 只读；聚合从 Ticket/Assignment/Report/Review/trace 派生；token 用量从宿主 session event 尝试采集，采不到标 `unknown`；货币成本 `unknown`；n<5 只抑制展示；不新增表。
+- **遥测**：`GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics` 只读，读取权限与设置/审计面一致；聚合从 Ticket/Assignment/Report/Review/trace 派生；token 用量从宿主 session event 尝试采集，采不到标 `unknown`；货币成本 `unknown`；n<5 只抑制展示；不新增表。
 - **特性开关**：新增独立 KV 配置 `profiles.config`（`enabled`、`resolve: snapshot|legacy`、`telemetry`），**不加入 strict `SettingsSchema`**；`enabled=false` 时新工单绑定 legacy，已绑定工单保留快照；`resolve=legacy` 只影响新 Session/新请求（§6.5）。
 - **文档**：更新 004（prompt 绑定语义）、003（Session 解析）、007（模块/测试表，若新增文件）、本文件。
 
@@ -517,7 +519,7 @@ flowchart LR
 - **prompt 编辑**：兼容 profile 保持 `live`，团队编辑 prompt 仍立即影响后续模型请求（今天的行为）。自定义 profile 必须 `pinned`；编辑 prompt 不会自动改自定义 profile，需要新建 profile revision 或显式 repin，面板/工具应显示「当前 prompt revision 与 profile 引用不一致」。
 - **模型设置**：兼容 profile `inherit` 继续跟随 `eval.model`/`executor.model`；自定义 profile `pinned` 不随设置变化。切换设置只影响兼容 profile 的新 Session。
 - **无数据库 schema 迁移**：Phase 1 只用 KV（profile 定义/head/flags）与 Ticket JSON（可选快照），`SCHEMA_VERSION` 不变；**不新增 settings 块**，所以旧二进制不会因 strict `SettingsSchema` 解析失败。旧二进制读到带顶层 `profile` 的 Ticket 会忽略未知字段并按 legacy 运行；这是行为回退，不是数据损坏。
-- **健康与失败**：注册表损坏、active revision 缺失、prompt revision 不存在、工具不在宿主时，启动/激活报 health error；新工单绑定回退 `legacy` 并记录；运行中缺工具/缺 prompt 才 `blocked`（§6.6）。
+- **健康与失败**：注册表损坏、active revision 缺失、prompt revision 不存在、工具不在宿主时，启动/激活报 health error；只有选中的 profile 整体不可用时新工单才绑定 `legacy`，内容无效的 profile 保留绑定并在 launch `blocked`（§6.6）。
 
 ### 6.5 回退
 
@@ -537,8 +539,8 @@ flowchart LR
 
 | 阶段 | profile 整体不可用 | 快照要求的工作工具缺失 | prompt revision 缺失 | 模型不可用 |
 | --- | --- | --- | --- | --- |
-| accept/Decision | **不失败**；绑定 legacy 并记录 fallback | 不检查 | 不检查 | 不检查 |
-| Ticket 创建 | 绑定 legacy；若 legacy 也异常，写 `unresolved` 并允许 Ticket 存在 | 允许创建，launch 再判 | 允许创建，launch 再判 | 允许创建，launch 再判 |
+| accept/Decision | **不失败，也不解析 profile** | 不检查 | 不检查 | 不检查 |
+| Ticket 创建 | 绑定 legacy 并记录 fallback；若 legacy 解析也异常，记录错误，Ticket 仍存在 | 保留绑定并写 `selection.valid=false`，允许创建，launch 再判 | 保留绑定并写 `selection.valid=false`，允许创建，launch 再判 | 保留绑定并写 `selection.valid=false`，允许创建，launch 再判 |
 | launch | legacy 解析 | `blocked`，原因「profile 要求 X，宿主没有」 | `blocked`，不拿当前 revision 顶替 | 沿用现有 transient/failed，不静默换模型 |
 | 运行中 | 快照固定；active 变更不影响 | 不中途换工具 | prompt `live` 可继续读新版本；pinned 不变 | 现有重试/失败路径 |
 | 重试/重建 | 同一快照；不重新解析 active | 同一快照；仍缺则再次 `blocked` | 同一快照 | 人可改 profile 新 revision 或回退 legacy |
@@ -553,7 +555,7 @@ flowchart LR
 
 - **注册表/head**：revision 不可变；head 的 active/retired 指针可回滚；`contentHash`/`effective.hash` 可复算；禁止字段拒绝；并发保存冲突可解释；只播种 `worker-default@1`。
 - **绑定/继承**：新根工单有快照；旧工单 legacy；子 Ticket 复制根快照且不增加 profile 参数；subagent 从根快照解析；fallback 记录；运行中工单在 active 变更后不变。
-- **Session/工具**：模型/prompt/工作工具来自快照；pinned prompt 按 revision 读取，pinned 模型与现有 Session 不符时新建或标 non-compliant；协议工具固定；有效工作工具 ⊆ 角色上限；子/子代理 ⊆ 根；`tools: []` 仍有协议工具，不宣称只读；缺工具/缺 prompt 在 launch `blocked`。
+- **Session/工具**：模型/prompt/工作工具来自快照；pinned prompt 按 revision 读取，pinned 模型与现有 Session 不符时新建或标 non-compliant；协议工具固定；有效工作工具 ⊆ 角色上限；子/子代理 ⊆ 根；`tools.names: []` 仍有协议工具，不宣称只读；缺工具/缺 prompt 在 launch `blocked`。
 - **授权不被绕过**：`Decision`/`Mandate`/`Action`/`Approval` 测试不变；profile 不能改变 `maxActionLevel`、审批、允许发送者；`Decision.audit` 不参与绑定；模型不能写 `selection`。
 - **兼容/回退**：旧二进制 settings 解析不因 profile 失败；旧 Ticket 无快照按 legacy；`resolve=legacy` 只影响新 Session/新请求；重启后 pinned 不变。
 - **遥测**：冻结配置按 `effective.hash`、moving 按 `run.effectiveHash` 聚合；n<5 只抑制展示；token 用量可得/unknown 两态；货币成本 unknown；fallback 单列；censored/closed/child/lightweight 口径可复核。
@@ -678,7 +680,9 @@ flowchart LR
 ```json
 // 工单快照：绑定后不可变
 {
-  "profile": { "id": "worker-docs", "revision": 3, "hash": "sha256:…" },
+  "id": "worker-docs",
+  "revision": 3,
+  "hash": "sha256:…",
   "role": "worker",
   "selection": { "by": "code", "source": "manual", "reason": "profile:worker-docs", "moving": false },
   "model": { "mode": "pinned", "provider": "deepseek", "model": "deepseek-v4.1", "reasoningEffort": "medium" },
