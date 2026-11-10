@@ -503,6 +503,8 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-tasks-delivery { min-width: 0; overflow-wrap: anywhere; color: var(--dsw-alias-label-secondary); }
 .dt-tasks-detail { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 10px 10px; border-top: 0.5px solid var(--dsw-alias-border-l3); }
 .dt-tasks-detail .dt-hint { flex: 1 1 100%; min-width: 0; }
+/* E1's selected detail repeats the E0 goal in stable words; it never exposes a worker or Session id. */
+.dt-tasks-goal { display: flex; flex: 1 1 100%; flex-direction: column; gap: 2px; min-width: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
 /* A selected root reveals one child layer; the nested list stays inside the pane and never scrolls sideways. */
 .dt-tasks-children { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; padding: 0 8px 8px; list-style: none; }
 .dt-tasks-child { margin-inline-start: 8px; border-inline-start-width: 2px; border-inline-start-color: var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-1); }
@@ -514,6 +516,10 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-ticket-tree-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .dt-ticket-tree-row .dt-task-title { flex: 1 1 160px; max-width: none; }
 .dt-ticket-tree-children { display: flex; flex-direction: column; gap: 2px; min-width: 0; margin: 0; padding: 0; list-style: none; }
+/* An E0 row keeps audit facts folded: the object id and action kind are one click away, not on the default row. */
+.dt-e0-technical { margin-top: 2px; }
+.dt-e0-technical > summary { cursor: pointer; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
+.dt-e0-technical[open] > summary { margin-bottom: 4px; }
 /* A review aggregate can hold several deliveries; each stays a readable block in the detail page. */
 .dt-review-deliverable { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 0; }
 .dt-review-deliverable + .dt-review-deliverable { border-top: 0.5px solid var(--dsw-alias-border-l3); }

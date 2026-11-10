@@ -170,7 +170,7 @@ export function ThreadPage({ id, target }: { id: string; target?: string }) {
     </p>}
     {data.pollError && <p className="dt-error dt-clamp">{t('pollFailed', { error: data.pollError })}</p>}
     {data.tickets.length > 0 && <Section title={t('subscribedTickets')} count={data.tickets.length}>
-      <ul className="dt-list">{data.tickets.map(ticket => <TicketLine key={ticket.id} ticket={ticket}
+      <ul className="dt-list">{data.tickets.map(ticket => <TicketLine key={ticket.id} ticket={ticket} surface="e2"
         context={data.context.includes(ticket.id)} />)}</ul>
     </Section>}
     {data.decisions.length > 0 && <DisclosureRow icon={<Icon name="decision" />} title={t('threadDecisions',

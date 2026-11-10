@@ -131,7 +131,7 @@
 
 - 注册 `sidebar.right.pane.tab`：`{id:'system-events', label:{zh:'事件',en:'Events'}}`。
 - 标题插槽显示未读数（`notice` 级事件中未读的条数），打开后清零并持久化 `lastSeenSeq`。
-- 首次收到 `notice` 级事件时自动打开一次；之后由用户关闭/展开，宿主记住面板状态。
+- 默认**不自动打开**（T5-02，稳定期默认）。信任期如需首次收到 `notice` 级事件时自动打开一次，由设置 › 显示显式开启；`events.autoOpen.v1` 可整机禁用。打开/关闭后由宿主记住面板状态，之后不再自动打开。
 - 列表按 `seq` 倒序，显示时间、级别、摘要、工单链接；点击条目打开对应工单（`openTicket` 或面板路由）。
 - 加载：首屏 `GET activity?level=feed&limit=50`；轮询 `?after=<next>&level=feed`，若返回的 `next < latest` 说明同一级别下还有积压，立即再拉一页；`latest` 是该 `level` 下最新一条的 `seq`（不是全局），未读数用 `level=notice` 的 `latest` 比较。SSE 升级时同一协议。
 
@@ -183,7 +183,7 @@ domain event ──► ActivityLog（全部入库）
 | S-03 | 目录分级：`systemRoot`、默认 `<stateDir>/system/work`、启动创建、设置文案/文档 | 1 | **本 PR 完成** |
 | S-04 | 主会话入口：hero option + 会话行标记 + `openSession` + 回退按钮 | 2 | **本 PR 完成** |
 | S-05 | 页内「状态」页：`conversation.view`、仅主会话、直接复用管理页 | 3 | **本 PR 完成** |
-| S-06 | 右侧「事件」栏：tab + 未读标题 + 轮询 + 自动打开一次 | 3 | **本 PR 完成** |
+| S-06 | 右侧「事件」栏：tab + 未读标题 + 轮询 + 自动打开一次 | 3 | **本 PR 完成**；T5-02 把自动打开改为默认关闭、设置中显式开启 |
 | S-07 | SSE 推送：exact 路由、`Last-Event-ID` 补拉、心跳、同源校验 | 1.5 | **本 PR 完成** |
 | S-08 | 端到端与宿主版本矩阵：slot 存在性守卫、截图/演示、操作手册 | 2 | **本 PR 完成**（截图见 `../images/session-entry/`） |
 
@@ -199,7 +199,7 @@ domain event ──► ActivityLog（全部入库）
 | `sidebar.session.row.leading` | 会话行「主」标记 | 无标记；主会话仍可从入口打开 |
 | `conversation.view` | 主会话页内「状态」页，直接复用管理页 | 管理面板仍提供同一页面 |
 | `sidebar.right.pane.tab` / `.title` | 右侧「事件」tab 与未读标题 | 无事件栏；页内视图仍显示最近事件 |
-| `conversation.session.header.utilities` | 无渲染的自动打开桥 | 不自动打开，仍可从右侧栏手动打开 |
+| `conversation.session.header.utilities` | 无渲染的自动打开桥 | 仅当部署开关与显示偏好都开启时，首次未读打开一次；默认不自动打开，仍可从右侧栏手动打开 |
 
 rc.5 的会话行只有 leading 装饰，没有 `sidebar.session.row.trailing`，因此「主」标记落在 leading；这是有意的宿主适配，不新增未声明的 slot。
 会话页内的视图/侧栏位于管理面板之外，样式表因此在插件加载时挂到 `document.head`（仅 `.dt-` 命名空间），不只注入管理面板。

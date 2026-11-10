@@ -1,7 +1,7 @@
 /** Entry page: X-09's three zones (waiting for a person, running, recent history) with flow and health folded as E2. */
 import { useState, type ReactNode } from 'react'
 import { usePoll, type ApprovalRow, type OverviewView, type Problem } from './api.ts'
-import { Button, Icon } from './controls.tsx'
+import { Button, Icon, Tag } from './controls.tsx'
 import { entryThreeZones } from './features.ts'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
@@ -73,11 +73,19 @@ function ApprovalLine({ approval, onChanged }: { approval: ApprovalRow; onChange
       <div className="dt-row-title"><button type="button" className="dt-open" onClick={() => navigate({ page: 'execution',
         id: approval.ticket.id })}>{approval.ticket.title}</button></div>
       <div className="dt-row-meta">
-        <LabelValue label={t('approvalAction')} value={`${approval.action.kind} · ${valueLabel(t, 'level', approval.action.level)}`} />
-        <LabelValue label={t('approvalObject')} value={`${valueLabel(t, 'source', approval.action.source)} ${approval.action.objectId} · ${approval.action.revision}`} />
+        <Tag tone="warning">{t('approvalNeedsYou')}</Tag>
+        <LabelValue label={t('approvalAction')} value={valueLabel(t, 'level', approval.action.level)} />
         <LabelValue label={t('approvalConsequence')} value={consequence} />
         <LabelValue label={t('approvalExpires')} value={<When at={approval.expiresAt} />} />
       </div>
+      {/* The object id and action kind are audit facts: available on request, never part of the E0 default row. */}
+      <details className="dt-details dt-e0-technical">
+        <summary>{t('approvalTechnical')}</summary>
+        <div className="dt-row-meta">
+          <LabelValue label={t('approvalActionKind')} value={approval.action.kind} />
+          <LabelValue label={t('approvalObject')} value={`${valueLabel(t, 'source', approval.action.source)} ${approval.action.objectId} · ${approval.action.revision}`} />
+        </div>
+      </details>
       <div className="dt-row-meta dt-row-buttons">
         {approval.levels.length > 1 && <select className="dt-select dt-approval-level"
           aria-label={`${t('approvalLevel')} · ${approval.ticket.title}`} title={t('approvalLevel')} value={level}

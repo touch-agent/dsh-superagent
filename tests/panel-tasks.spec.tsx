@@ -115,6 +115,26 @@ it('shares one selected task with Events, narrows to the reviewed Ticket, and cl
 })
 
 
+it('shows the E1 selected detail with the E0 goal, decision and result, and no worker or Session id', async () => {
+  const board = taskBoardView()
+  const root = board.tasks.find(task => task.id === 't1')!
+  root.goal = goalFixture('t1', { statement: '修复登录回归', decision: { kind: 'review', reviewable: true },
+    results: [{ key: 'file:docs/report.md:r7', at: '2026-09-23T00:00:00Z', artifact: { kind: 'file', ref: 'docs/report.md', revision: 'r7' },
+      previewRef: { kind: 'text/diff', ref: 'fixture://r7', revision: 'r7' } }], acceptance: { criteria: 1, confirmations: 1 } })
+  server.tasks = board
+  await openTasks()
+  const item = row('修复回归（T2-03）')!
+  await click(item.querySelector('.dt-tasks-row')!)
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+  expect(item.textContent).toContain(zh.tasksGoal)
+  expect(item.textContent).toContain('修复登录回归')
+  expect(item.textContent).toContain(zh.tasksDecision)
+  expect(item.textContent).toContain(zh['stage.review'])
+  expect(item.textContent).toContain(zh.tasksResult)
+  expect(item.textContent).toContain(`${zh['artifact.file']} · docs/report.md · r7`)
+  expect(item.textContent).not.toMatch(/worker-|Assignment/)
+})
+
 it('rolls back to the plan tree with taskView.v1=off and offers no list view', async () => {
   localStorage.setItem('taskView.v1', 'off')
   await openTasks()

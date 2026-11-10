@@ -3,12 +3,13 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Fields } from '@superagent/dsh/client/settings-kit.tsx'
-import { expect, it, onTestFinished } from 'vitest'
+import { afterEach, expect, it, onTestFinished } from 'vitest'
 import { zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, settle, all, find, tab, click, type, text, field } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
 
 usePanel()
+afterEach(() => localStorage.clear())
 it('keeps a person\'s own value where another save changed the same setting, and says so', async () => {
   await mount()
   await click(zh['tab.execution'])
@@ -129,7 +130,7 @@ it('lists the settings groups stages first, opens each stage\'s group from its s
   async () => {
   await mount()
   await click(tab(zh['tab.settings']))
-  expect(all('.dt-settings-link').map(link => link.textContent)).toEqual(['来源', '评估', '执行', '提示词', '部署'])
+  expect(all('.dt-settings-link').map(link => link.textContent)).toEqual(['来源', '评估', '执行', '显示', '提示词', '部署'])
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['term.source'])
   for (const [tab, group] of [['来源', '来源'], ['评估', '评估'], ['执行', '执行']] as const) {
     await click(find(tab, '[role="tab"]'))
@@ -145,4 +146,19 @@ it('lists the settings groups stages first, opens each stage\'s group from its s
   await remount()
   await click(tab(zh['tab.settings']))
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['promptPart.runtime/work'])
+})
+
+it('keeps the Events auto-open preference off by default and stores an explicit trust-phase opt-in', async () => {
+  await mount()
+  await click(tab(zh['tab.settings']))
+  await click(find(zh['settingsGroup.display'], '.dt-settings-link'))
+  const toggle = find(zh.eventsAutoOpenSetting, '[role="switch"]')
+  expect(toggle.getAttribute('aria-checked')).toBe('false')
+  expect(text()).toContain(zh.eventsAutoOpenStable)
+  await click(toggle)
+  expect(toggle.getAttribute('aria-checked')).toBe('true')
+  expect(localStorage.getItem('dsh-superagent/events-auto-open')).toBe('on')
+  await click(toggle)
+  expect(toggle.getAttribute('aria-checked')).toBe('false')
+  expect(localStorage.getItem('dsh-superagent/events-auto-open')).toBe('off')
 })
