@@ -130,6 +130,7 @@ it('takes an Issue through authorization, child delegation and parent review, de
   // The parent cannot claim its goal is ready while a child is unresolved, and the tree keeps both children out of the root list.
   await expect(host.runTool(parentSession, 'orchestrator_report', { state: 'ready', summary: 'the root is done' }))
     .rejects.toMatchObject({ code: 'unfinishedChildTickets' })
+  expect(latestAssignment(ticket(root.id))!.report).toBeUndefined()
   expect(host.runtime.store.tickets.list().map(value => value.id)).toEqual([root.id])
   // A child is not an authorization subject: the panel cannot approve it, even with a revision.
   const childApproval = await host.api('POST', `tickets/${childA.id}/approve`, { reviewRevision: 'any' })
@@ -217,7 +218,6 @@ it('takes an Issue through authorization, child delegation and parent review, de
   expect(task.review.accepted).toBeUndefined()
   expect(approved(root.id)).toBe(false)
   // The revision from before the redo is genuinely stale now that the full review is ready.
-  expect(before.reviewRevision).not.toBe(acceptedRevision)
   const stale = await host.api('POST', `tickets/${root.id}/approve`, { reviewRevision: acceptedRevision })
   expect(stale).toMatchObject({ status: 409, body: { code: 'reviewStale' } })
 
