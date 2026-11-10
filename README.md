@@ -202,7 +202,7 @@ Read 000–010 in order; each builds only on the ones before it. 011 and 012 are
 - [010 Adding a Source in 30 minutes](docs/010-adding-a-source.md): the fast path from an empty checkout to a registered, panel-visible Source.
 - [011 Design principles](docs/011-design-principles.zh.md): attention as the budget, internalized organization, independent evolution, composable context and replaceable boundaries (Chinese).
 - [012 Platform evolution](docs/012-platform-evolution.zh.md): why the project has this shape, from a single-repository agent to a trustable action base (Chinese).
-- [013 Workspace model](docs/013-workspace-model.zh.md): spaces as execution references orthogonal to the task tree, write leases, lifecycle, decision rules, UI exposure and phased migration (Chinese, proposal).
+- [013 Workspace model](docs/013-workspace-model.zh.md): `Execution.directory` as the single space locator, write leases, lifecycle, decision rules, read-only UI exposure and phased migration (Chinese, proposal).
 
 The design and evolution layer and the plan set are Chinese working documents, and can be ahead of, or behind, the numbered set. [docs/README.md](docs/README.md) maps the whole documentation set; [docs/plan/README.md](docs/plan/README.md) explains the plan documents and the tracking convention.
 

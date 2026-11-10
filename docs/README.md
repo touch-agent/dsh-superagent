@@ -39,7 +39,7 @@ model (space as an execution reference, orthogonal to the task tree).
 | --- | --- | --- |
 | 011 | [Design principles](011-design-principles.zh.md) | Attention as the budget, internalized organization, independent evolution, composable context and replaceable boundaries; each principle has a status and landing checkpoints. |
 | 012 | [Platform evolution](012-platform-evolution.zh.md) | The problem definition, target architecture, domain model v2, mechanisms and migration path that the principles sit above. |
-| 013 | [Workspace model](013-workspace-model.zh.md) | The space reference, write lease, lifecycle, decision rules, UI exposure and phased migration for the workspace (proposal, not implemented). |
+| 013 | [Workspace model](013-workspace-model.zh.md) | `Execution.directory` as the single space locator, write lease, lifecycle, decision rules, read-only UI exposure and phased migration for the workspace (proposal, not implemented). |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both. 011 §6
