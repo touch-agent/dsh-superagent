@@ -34,6 +34,7 @@ import { ticketTimeline } from './views/timeline.ts'
 import { triggerTrace } from './views/trace.ts'
 import { activityFeed, activityLookup } from './activity.ts'
 import { taskBoard, taskDetail } from './tasks.ts'
+import { goalBoard, goalDetail } from './goals.ts'
 import { spaceRows } from './spaces.ts'
 import type { SpaceLeases } from './spaces.ts'
 
@@ -176,6 +177,12 @@ function routes(runtime: HttpHost): Routes {
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
     'GET metrics': () => metrics(store),
     'GET tasks': () => taskBoard(views(runtime)),
+    'GET goals': () => goalBoard(runtime),
+    'GET goals/:id': ({ params }) => {
+      const goal = goalDetail(runtime, params.id)
+      if (!goal) throw new RouteError(404, 'Goal not found')
+      return { goal }
+    },
     'GET spaces': async () => ({ generatedAt: new Date().toISOString(),
       rows: await spaceRows(store, runtime.spaces.processEpoch, id => runtime.executor.isLive(id)) }),
     'GET tasks/:id': ({ params, query }) => {

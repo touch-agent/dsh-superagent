@@ -11,6 +11,7 @@ import { SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInPart, buil
 import type { ApprovalRow, DroppedReply, HistoryView, Problem, PromptsView, SetupView, SourceStatusRow, SourceView, StateView,
   ThreadPageView, ThreadRow, TicketPageView, TicketRow, TicketStage, TicketTimelineView, TriggerRow } from '@superagent/dsh/client/api.ts'
 import type { TaskBoardView, TaskView } from '@superagent/dsh/app/tasks.ts'
+import type { GoalBoardView, GoalView } from '@superagent/dsh/app/goals.ts'
 import type { SpaceRowsView } from '@superagent/dsh/app/spaces.ts'
 import { SETUP_FIELDS } from '@superagent/dsh/deployment.ts'
 import { DispatchConfigSchema, EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSchema } from '@superagent/dsh/policy.ts'
@@ -122,6 +123,8 @@ export interface PanelServer {
   dropped: DroppedReply[]
   /** The Tickets board the tab polls; a test may replace it to exercise a shape. */
   tasks: TaskBoardView
+  /** The read-only Goals list `GET goals` serves; the panel does not poll it yet. */
+  goals: GoalBoardView
   /** The read-only spaces list E2 polls; a test may replace it. */
   spaces: SpaceRowsView
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
@@ -294,6 +297,12 @@ function threadPage(key: string, { before, around }: { before?: string; around?:
     trigger('e4', '2026-09-23T00:01:00Z', { disposition: { filtered: { code: 'not_a_member' } } })] }
 }
 /** A small Tickets board with one milestone, one task, a reviewed Ticket, a pull request and a second unplanned Ticket. */
+export const goalFixture = (id: string, fields: Partial<GoalView> = {}): GoalView => ({ id, statement: id === 't9' ? '整理迁移说明' : '修复回归',
+  source: id === 't9' ? 'conversation' : 'feishu', state: { stage: 'working' }, results: [], read: `ticket/${id}`, ...fields })
+const goalBoardView = (): GoalBoardView => ({ generatedAt: '2026-09-23T12:00:00Z',
+  goals: [goalFixture('t1'), goalFixture('t9', { state: { stage: 'person', action: 'blocked' }, decision: { kind: 'blocked' } })],
+  totals: { goals: 2, open: 2, attention: 1 } })
+
 export function taskBoardView(): TaskBoardView {
   const pull = { kind: 'pull' as const, id: 'github:42', title: '#42 Fix login', subtitle: 'github', status: 'working' as const,
     href: { url: 'https://github.com/acme/widgets/pull/42' },
@@ -311,15 +320,18 @@ export function taskBoardView(): TaskBoardView {
     plan: { milestone: 'M2', task: 'T2-03', title: '修复回归' }, origin: { source: 'feishu', triggerId: 'tr1', preview: '修一下登录回归',
       at: '2026-09-22T00:00:00Z' }, sources: [{ source: 'feishu', threadKey: 'feishu:oc_team:om_1', label: '登录回归' }],
     startedAt: '2026-09-22T00:00:00Z', lastEventAt: '2026-09-23T11:00:00Z', progress: { done: 0, total: 1 },
-    execution: { assignments: 1, name: 't1' }, deliverables: [] }
+    execution: { assignments: 1, name: 't1' }, goal: goalFixture('t1'), deliverables: [] }
   const reviewTask: TaskView = { id: 'r1', kind: 'review', reviewedTicketId: 't1', title: 'review PR #42：修复回归',
     form: 'tracked', status: 'review', attention: true, origin: { source: 'github', triggerId: 'tr2', preview: '请审查 PR #42',
       at: '2026-09-22T02:00:00Z' }, sources: [{ source: 'github', threadKey: 'github:42', label: '#42 Fix login' }],
-    startedAt: '2026-09-22T02:00:00Z', lastEventAt: '2026-09-23T10:00:00Z', execution: { assignments: 1 }, deliverables: [] }
+    startedAt: '2026-09-22T02:00:00Z', lastEventAt: '2026-09-23T10:00:00Z', execution: { assignments: 1 },
+    goal: goalFixture('r1', { statement: 'review PR #42：修复回归', source: 'github', state: { stage: 'person', action: 'review' } }),
+    deliverables: [] }
   const blockedTask: TaskView = { id: 't9', kind: 'ticket', title: '整理迁移说明', form: 'tracked', status: 'blocked',
     attention: true, origin: { source: 'conversation', triggerId: 'tr3', preview: '补一下迁移说明', at: '2026-09-23T00:00:00Z' },
     sources: [{ source: 'conversation', label: '主会话' }], startedAt: '2026-09-23T00:00:00Z',
-    lastEventAt: '2026-09-23T01:00:00Z', execution: { assignments: 1 }, deliverables: [] }
+    lastEventAt: '2026-09-23T01:00:00Z', execution: { assignments: 1 },
+    goal: goalFixture('t9', { state: { stage: 'person', action: 'blocked' }, decision: { kind: 'blocked' } }), deliverables: [] }
   return { generatedAt: '2026-09-23T12:00:00Z', totals: { milestones: 2, tasks: 2, tickets: 2, open: 2, attention: 2 },
     tasks: [ticketTask, reviewTask, blockedTask], milestones: [
     { kind: 'milestone', id: 'M2', title: 'M2', status: 'working', progress: { done: 0, total: 2 }, durationMs: 86_400_000,
@@ -359,7 +371,7 @@ function initial(): PanelServer {
       defaults: defaultPrompts(), parts: Object.entries(builtInParts()).map(([key, part]) => ({ key, ...part, base: builtInBase(part.text) })),
       defaultChanged: [], revisions: [{ ...defaults, changed: [] }], sessions: [], notificationPending: false, next_offset: null },
     tickets: { open: [ticketSummary()], ended: [ended] }, ticketDetails: { t1: ticketDetail() },
-    ticketTimelines: { t1: ticketTimeline() }, tasks: taskBoardView(),
+    ticketTimelines: { t1: ticketTimeline() }, tasks: taskBoardView(), goals: goalBoardView(),
     spaces: { generatedAt: '2026-09-23T12:00:00Z', rows: [{ kind: 'checkout', name: 't1', branch: 'fix-login', state: 'active',
       ticket: { id: 't1', title: '修复回归', status: 'working' }, locator: '/srv/work/t1-abc123def456',
       lease: { state: 'active', epoch: 1, processEpoch: 1, stale: false, reservedAt: '2026-09-22T00:00:00Z',
@@ -403,6 +415,11 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET metrics': { answer: () => overviewView().metrics },
   'GET activity': { query: ['after', 'limit', 'level'], answer: () => ({ items: [], latest: 0, next: 0 }) },
   'GET tasks': { answer: () => server.tasks },
+  'GET goals': { answer: () => server.goals },
+  'GET goals/:id': { answer: ({ params }) => {
+    const goal = server.goals.goals.find(item => item.id === params.id)
+    return goal ? { goal } : refuse(404, 'Goal not found')
+  } },
   'GET spaces': { answer: () => server.spaces },
   'GET tasks/:id': { query: ['depth'], answer: ({ params }) => {
     const task = server.tasks.tasks.find(item => item.id === params.id)

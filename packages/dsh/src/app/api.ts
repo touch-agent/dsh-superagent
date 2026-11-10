@@ -14,6 +14,7 @@ import type { TicketTimelineView } from './views/timeline.ts'
 import type { TriggerTraceView } from './views/trace.ts'
 import type { ActivityFeed, ActivityLevel } from './activity.ts'
 import type { TaskBoardView, TaskDetailView } from './tasks.ts'
+import type { GoalBoardView, GoalView } from './goals.ts'
 import type { SpaceRowsView } from './spaces.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
@@ -32,6 +33,8 @@ export interface Api {
   'GET metrics': { response: MetricsView }
   'GET activity': { query?: { after?: number; limit?: number; level?: ActivityLevel }; response: ActivityFeed }
   'GET tasks': { response: TaskBoardView }
+  'GET goals': { response: GoalBoardView }
+  'GET goals/:id': { response: { goal: GoalView } }
   'GET spaces': { response: SpaceRowsView }
   'GET tasks/:id': { query?: { depth?: number }; response: TaskDetailView }
   'GET search': { query: { q: string }; response: SearchView }

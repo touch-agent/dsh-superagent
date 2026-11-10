@@ -4,6 +4,7 @@ export * from './action.ts'
 export * from './approval.ts'
 export * from './deliverable.ts'
 export * from './review.ts'
+export * from './goal.ts'
 export * from './ports.ts'
 export * from './manifest.ts'
 export { Engine, type EngineForExecutor, type EngineForInline, type EngineForMainSession, type EngineForPeople, type EngineForSettings,

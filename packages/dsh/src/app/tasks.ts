@@ -14,6 +14,7 @@ import { snapshot, threadFacts, type ActorView, type Snapshot, type ViewHost } f
 import { markdown, preview } from './views/text.ts'
 import { workerSessionId } from '../executor/dsh.ts'
 import { SpaceProjection, type SpaceView } from './spaces.ts'
+import { goalView, type GoalView } from './goals.ts'
 
 /** What a node stands for: a planning milestone, a planned task, a Ticket, a review Ticket, or a pull request. */
 export type TaskNodeKind = 'milestone' | 'task' | 'ticket' | 'review' | 'pull'
@@ -197,6 +198,8 @@ export interface TaskView {
   pendingEnd?: { by: 'thread' | 'follows'; outcome: 'merged' | 'closed'; at: string; reason?: string; ref?: string }
   /** Children expanded on demand for a detail tree; the root list never carries them. */
   children?: TaskView[]
+  /** The E0 goal, the same projection the main Session's result card carries. */
+  goal: GoalView
   /** Deduplicated deliveries; empty for a lightweight Ticket and for a Ticket with no reviewable report. */
   deliverables: TaskDeliverableSummary[]
   /** Present when the latest report recorded a review with a preview; never an empty card. */
@@ -549,6 +552,7 @@ function taskView(ticket: Ticket, view: Snapshot, owners: OwnershipIndex, tree: 
     ...delegationView(ticket, view) ? { delegation: delegationView(ticket, view) } : {},
     ...childSummary ? { childSummary } : {},
     ...ticket.endPending ? { pendingEnd: { ...ticket.endPending } } : {},
+    goal: goalView(ticket),
     deliverables,
     ...reviewView ? { review: reviewView } : {},
     ...form === 'lightweight' ? { inline: inlineOf(ticket, inlineSpans) } : {},

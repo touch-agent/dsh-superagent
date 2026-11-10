@@ -73,7 +73,7 @@ The concepts above and their rules are reusable. The Source implementations, the
 
 ## Glossary
 
-A reference list of the terms this and the later documents use, with their Chinese names; the later documents explain the terms not introduced above. The panel shows one language at a time; its (?) button opens this glossary with both languages. The messages agents send to people on GitHub and Feishu use plain language, not these terms.
+A reference list of the terms this and the later documents use, with their Chinese names; the later documents explain the terms not introduced above. The panel shows one language at a time; its (?) button opens this glossary with both languages. The messages agents send to people on GitHub and Feishu use plain language, not these terms. Goal is a projection, not an aggregate: it stores nothing and grants nothing (see docs/015).
 
 | Term | 中文 | Meaning |
 | --- | --- | --- |
@@ -93,6 +93,7 @@ A reference list of the terms this and the later documents use, with their Chine
 | Decision | 决定 | The result of Eval |
 | Mandate | 授权 | What an accept grants: strength, scope and the Policy version it relied on |
 | Ticket | 工单 | A unit of authorized work |
+| Goal | 目标 | A read-only projection of one Ticket: what it is for, where it stands, whether a person must decide, and where its result is; not a domain entity and never an authorization |
 | Lightweight ticket | 轻量工单 | A Ticket that runs inline, without an Assignment or a Session, audited by its action sequence |
 | Assignment | 派工 | The binding of a Ticket to one Executor instance |
 | Deliverable | 交付物 | What a Ticket's work produced: an artifact at one revision, its preview, and its acceptance criteria |
