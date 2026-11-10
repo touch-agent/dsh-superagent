@@ -66,7 +66,7 @@ const board = { generatedAt: '2026-09-23T12:00:00Z', totals: { milestones: 1, ta
 const serve = (activity: ActivityRecord[] = [feedItem]) => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
   const path = new URL(url, 'http://127.0.0.1').pathname.replace('/orchestrator/api/', '')
   if (path === 'tasks') return Response.json(board)
-  if (path === 'overview') return Response.json({ approvals: [], problems: [], person: [], executor: { running: 0, queued: 0, maxWorkers: 3, idle: 0 }, flow: { triggers: 0, filtered: 0, judged: 0, accepted: 0, evaluating: 0 }, metrics: { window: { since: '', hours: 24 }, ttfa: { samples: 0, medianSeconds: null, p90Seconds: null }, duplicates: { sends: 0, repeated: 0 }, recovery: { interrupted: 0, recovered: 0, medianSeconds: null }, throughput: { decisions: 0, perHour: 0 }, approval: { samples: 0, medianSeconds: null, p90Seconds: null } }, policyVersion: 'v' })
+  if (path === 'overview') return Response.json({ approvals: [], problems: [], person: [], running: [], recent: [], executor: { running: 0, queued: 0, maxWorkers: 3, idle: 0 }, flow: { triggers: 0, filtered: 0, judged: 0, accepted: 0, evaluating: 0 }, metrics: { window: { since: '', hours: 24 }, ttfa: { samples: 0, medianSeconds: null, p90Seconds: null }, duplicates: { sends: 0, repeated: 0 }, recovery: { interrupted: 0, recovered: 0, medianSeconds: null }, throughput: { decisions: 0, perHour: 0 }, approval: { samples: 0, medianSeconds: null, p90Seconds: null } }, policyVersion: 'v' })
   if (path === 'tickets') return Response.json({ items: [], total: 0, offset: 0, limit: 20 })
   if (path === 'activity') {
     const level = new URL(url, 'http://127.0.0.1').searchParams.get('level')
@@ -91,6 +91,31 @@ it('registers a localized main panel, sidebar entry and Plugin Manager row page,
   expect(nav.options.label?.()).toBe('Superagent')
 })
 
+
+it('marks the sidebar icon when something waits for a person, and stops polling when the three-zone entry is off', async () => {
+  serve()
+  const first = fixture([])
+  const idle = await render(first.nav, { size: 24 })
+  expect(idle.container.querySelector('.dt-nav-badge')).toBeNull()
+  idle.dispose()
+
+  const fetchMock = vi.fn(async () => Response.json({ approvals: [], problems: [], person: [{}], running: [], recent: [] }))
+  vi.stubGlobal('fetch', fetchMock)
+  const waiting = fixture([])
+  const marked = await render(waiting.nav, { size: 24 })
+  await vi.waitFor(() => expect(marked.container.querySelector('.dt-nav-badge')).not.toBeNull())
+  expect(marked.container.querySelector('.dt-nav-badge title')?.textContent).toBe('1 件待你处理')
+  marked.dispose()
+
+  localStorage.setItem('entry.threeZones.v1', 'off')
+  const fetchAgain = vi.fn(async () => Response.json({ approvals: [], problems: [], person: [{}], running: [], recent: [] }))
+  vi.stubGlobal('fetch', fetchAgain)
+  const off = fixture([])
+  const dark = await render(off.nav, { size: 24 })
+  expect(dark.container.querySelector('.dt-nav-badge')).toBeNull()
+  expect(fetchAgain).not.toHaveBeenCalled()
+  dark.dispose()
+})
 
 it('rolls the Task tab and its Events task scope back when taskView.v1 is off', () => {
   localStorage.setItem('taskView.v1', 'off')

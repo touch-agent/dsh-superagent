@@ -103,15 +103,17 @@ dsh-superagent           meta：bundle patch + 2 个 preset + locale
 | `sidebar.panellist` | 侧边栏图标（order 10） | 锤子图标 | 不知道「有没有事等我」 |
 | `plugins.row.config` | 插件管理里的一行配置 | Sources / Eval / Execution / Prompts / Deployment 五组 | 与主面板 Settings 重复（栈一处即可，方案 §10.4 的债） |
 
-### 4.2 建议的信息架构（M3 前完成）
+### 4.2 已落地的信息架构（X-09，本 PR）
 
 主面板首页只留三区，其余降为二级页：
 
-1. **待我处理**（`stage = person` 的工单）：`answer / review / blocked / failed / delivery` 五种动作，一行一条，点进去看 preview（M3 的 T3-07）。
-2. **正在跑**（`working`）：工单、执行器、最近一条 trace 的当前段。
-3. **最近历史**：按 `ticket.ended` 倒序，一条一行。
+1. **待我处理**（`stage = person` 的工单与待决审批）：`answer / review / blocked / failed / delivery` 五种动作与系统问题，一行一条，点进去看 preview（M3 的 T3-07）。
+2. **正在跑**（`working`/`queued`/`idle`）：工单、执行器计数，链接到 Tasks（E1）与 Execution 的 Working 过滤（E2）。
+3. **最近历史**：按 `ticket.ended` 倒序，最多八条，链接到 Execution 的 Ended 过滤。
 
-侧边栏图标上要能看出「有没有事」——这是 `sidebar.panellist` 是否支持角标的问题，**待验证**；若不支持，退而求其次：图标 order 提前 + 首页数字。
+24 小时流量与健康指标折叠在「24 小时运行健康」下，不占首屏；tab、过滤器和 E2/E3 记录一个不删。整页由 `entry.threeZones.v1` 开关控制，关闭后恢复旧 Overview。
+
+侧边栏图标上能看出「有没有事」：`sidebar.panellist` 的宿主契约只给 `{size, active}`，没有 badge 子槽，因此角标画在 panel icon 的 SVG 里（`dt-nav-badge`，warning 点）。它每 60 秒读一次 `GET overview`，计数为审批、`person` 工单与系统问题之和；轮询失败时静默不显示。若宿主以后提供 native badge，改用宿主槽即可，首页三区数字仍是稳定回退。
 
 ### 4.3 可选的三个更深入口（先不做，记下来）
 
@@ -177,7 +179,7 @@ COREPACK_HOME=$PWD/.corepack pnpm install     # store 也留在工作区内
 
 ## 8. 待验证清单（不要当成已确认）
 
-1. `sidebar.panellist` 是否支持角标/未读数——未验证。
+1. `sidebar.panellist` 是否支持角标/未读数——**已验证（X-09，2026-11-10）**：宿主只给 `{size, active}`，没有 badge 子槽；X-09 因此在图标 SVG 内画点，并保留首页数字作为回退。
 2. `sidebar.panellist.actions` 的契约（能注册什么、作用域）——未验证。
 3. `@deepseek-ai/dsh-client-ui-deliverables` 能否被第三方插件复用——未验证；若不能，T3-02…04 的工作量不变。
 4. `bundle.patch` 的 `insert` 锚点在两个相邻 alpha 版本间是否稳定——需要 X-11 的实测数据。

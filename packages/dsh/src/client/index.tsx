@@ -19,8 +19,9 @@ import { openKnownSession, SessionNavigationError } from '../navigation.ts'
 import { ActivityFeedClient } from './activity-feed.ts'
 import { App } from './app.tsx'
 import { caller } from './api.ts'
+import { AttentionStore, useAttention } from './attention.ts'
 import { PluginConfig, usePageForm } from './deployment.tsx'
-import { taskViewV1 } from './features.ts'
+import { entryThreeZones, taskViewV1 } from './features.ts'
 import { en, zh, type DshSuperagentKey } from './locales.ts'
 import { MasterStore } from './master.ts'
 import { openPanelRoute, PANEL_ID } from './panel.ts'
@@ -40,9 +41,16 @@ const EVENTS_KIND = 'system-events'
 const TASKS_ID = 'dsh-superagent-tasks'
 const TASKS_KIND = 'task-list'
 
-function HammerIcon({ size }: SidebarPanelIconOwnerProps) {
+/** The sidebar dot; a child component so the hook runs only when the three-zone entry (and its poll) is on. */
+function AttentionDot({ store, label }: { store: AttentionStore; label: (count: number) => string }) {
+  const count = useAttention(store)
+  return count > 0 ? <circle className="dt-nav-badge" cx="20" cy="4" r="4"><title>{label(count)}</title></circle> : null
+}
+function HammerIcon({ size, attention, badge }: SidebarPanelIconOwnerProps & { attention?: AttentionStore
+  badge?: (count: number) => string }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <path d="M6 3.5h9l3.5 1.75v2.5L15 9.5H6a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" /><path d="M10 9.5v10.25a1.75 1.75 0 0 0 3.5 0V9.5" /><path d="M10 15.5h3.5" />
+    {attention && badge && <AttentionDot store={attention} label={badge} />}
   </svg>
 }
 
@@ -63,8 +71,10 @@ export function apply(ctx: ClientContext): void {
   const master = new MasterStore(call)
   const activity = new ActivityFeedClient(call)
   const tasks = new TasksViewClient(call)
+  const attention = new AttentionStore(call)
   const autoOpen = { done: false }
-  ctx.effect(() => () => { master.dispose(); activity.dispose(); tasks.dispose() }, 'dsh-superagent: session surfaces')
+  ctx.effect(() => () => { master.dispose(); activity.dispose(); tasks.dispose(); attention.dispose() },
+    'dsh-superagent: session surfaces')
   const openSession = async (id: string) => {
     try {
       await openKnownSession(ctx.sessions, id as SessionId, target => { ctx.uiWorkspace.openSession(target) }, new AbortController().signal)
@@ -83,7 +93,8 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({}) },
     (props: { t: T }) => <Mounted ctx={ctx} t={props.t} openSession={openSession} tasks={tasks} />))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 10, label: () => t('panel'), locale: NS },
-    HammerIcon))
+    (props: SidebarPanelIconOwnerProps) => <HammerIcon {...props} attention={entryThreeZones() ? attention : undefined}
+      badge={count => t('entryBadge', { count })} />))
   // The New Session row's right-aligned option: open the process's existing main Session rather than start a second router Session.
   ctx.slots.inject('conversation.hero.options', () => ctx.slots.register({ name: 'conversation.hero.options', id: 'system-master', order: 10,
     locale: NS }, (props: { t: T }) => <MasterEntry t={props.t} master={master} onOpen={openSession} />))

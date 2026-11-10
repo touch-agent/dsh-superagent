@@ -1,7 +1,8 @@
-/** Overview page: Approvals waiting for a person, pending Tickets, active system problems, 24-hour flow counts and Executor load. */
+/** Entry page: X-09's three zones (waiting for a person, running, recent history) with flow and health folded as E2. */
 import { useState, type ReactNode } from 'react'
-import { usePoll, type ApprovalRow, type Problem } from './api.ts'
+import { usePoll, type ApprovalRow, type OverviewView, type Problem } from './api.ts'
 import { Button, Icon } from './controls.tsx'
+import { entryThreeZones } from './features.ts'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
 import { TicketLine } from './rows.tsx'
@@ -95,11 +96,98 @@ function ApprovalLine({ approval, onChanged }: { approval: ApprovalRow; onChange
   </li>
 }
 
-export function OverviewPage() {
-  const { t, call, navigate } = usePanel()
+function ZoneLinks({ links }: { links: { label: string; route: Route }[] }) {
+  const { navigate } = usePanel()
+  return <span className="dt-zone-links">{links.map(link => <button key={link.label} type="button" className="dt-textlink dt-more-link"
+    onClick={() => navigate(link.route)}>{link.label}</button>)}</span>
+}
+
+/** The two figures the entry page shares with the old Overview: 24-hour flow and health metrics, folded away by default. */
+function HealthFold({ data }: { data: OverviewView }) {
+  const { t, navigate } = usePanel()
+  const stat = (label: string, value: ReactNode, route?: Route) => <span className="dt-stat">
+    <span className="dt-stat-label">{label}</span>
+    {route ? <button type="button" className="dt-textlink dt-stat-value" onClick={() => navigate(route)}>{value}</button> : <span
+      className="dt-stat-value">{value}</span>}
+  </span>
+  const duration = (value: number | null): ReactNode => value === null ? t('empty')
+    : value < 60 ? `${Math.round(value * 10) / 10} s` : `${Math.round(value / 60)} min`
+  return <details className="dt-details dt-entry-health">
+    <summary className="dt-entry-health-summary"><span>{t('entryHealth')}</span><span className="dt-hint">{t('entryHealthHint')}</span></summary>
+    <div className="dt-entry-health-body">
+      <Section title={t('lastDay')} action={<button type="button" className="dt-textlink dt-more-link"
+        onClick={() => navigate({ page: 'trigger', query: { filter: 'recent' } })}>{t('details')}</button>}>
+        <div className="dt-stats">
+          {stat(t('flowReceivedLabel'), data.flow.received)}
+          {stat(t('flowFilteredLabel'), data.flow.filtered, data.flow.filtered ? { page: 'source' } : undefined)}
+          {stat(t('flowJudgedLabel'), data.flow.judged)}
+          {stat(t('flowAcceptedLabel'), data.flow.accepted, { page: 'eval', query: { window: '24h' } })}
+          {data.flow.dropped > 0 && stat(t('flowDroppedLabel'), data.flow.dropped, { page: 'source' })}
+        </div>
+      </Section>
+      <Section title={t('metricsTitle')}>
+        {/* Read-only figures: a missing sample stays `—`, so an empty Store never looks like a healthy zero. */}
+        <div className="dt-stats">
+          {stat(t('metricTtfaLabel'), <span title={t('metricTtfaHint', { samples: data.metrics.ttfa.samples })}>
+            {duration(data.metrics.ttfa.medianSeconds)} / {duration(data.metrics.ttfa.p90Seconds)}</span>)}
+          {stat(t('metricDuplicatesLabel'), data.metrics.duplicates.repeated)}
+          {stat(t('metricRecoveryLabel'), data.metrics.recovery.recovered
+            ? duration(data.metrics.recovery.medianSeconds) : t('empty'))}
+          {stat(t('metricThroughputLabel'), data.metrics.throughput.perHour)}
+          {stat(t('metricApprovalLabel'), <span title={t('metricApprovalHint', { samples: data.metrics.approval.samples })}>
+            {duration(data.metrics.approval.medianSeconds)} / {duration(data.metrics.approval.p90Seconds)}</span>)}
+        </div>
+        <Hint>{t('metricHint', { interrupted: data.metrics.recovery.interrupted, recovered: data.metrics.recovery.recovered })}</Hint>
+      </Section>
+    </div>
+  </details>
+}
+
+/**
+ * X-09's entry page: what waits for a person, what is running, and what ended recently. Flow and health figures stay
+ * reachable but folded (E2); no tab, record or E2/E3 path is removed.
+ */
+function EntryPage({ data, error, reload }: { data: OverviewView; error?: Error; reload: () => Promise<void> }) {
+  const { t } = usePanel()
   const { setup } = usePanelData()
-  const { data, error, reload } = usePoll(() => call('GET overview'), [])
-  if (!data) return <LoadState error={error} loading />
+  const stat = (label: string, value: ReactNode) => <span className="dt-stat">
+    <span className="dt-stat-label">{label}</span><span className="dt-stat-value">{value}</span>
+  </span>
+  const needs = data.approvals.length + data.person.length + data.problems.length
+  return <>
+    {error && <LoadState error={error} loading={false} />}
+    <Section title={t('entryNeeds')} count={needs} icon="inbox" hint={t('entryNeedsHint')}>
+      {needs ? <ul className="dt-list dt-cards">
+        {data.approvals.map(approval => <ApprovalLine key={approval.id} approval={approval} onChanged={reload} />)}
+        {data.person.map(ticket => <TicketLine key={ticket.id} ticket={ticket} question onChanged={reload} />)}
+        {data.problems.map((problem, index) => <ProblemLine key={`problem-${index}`} problem={problem} onChanged={reload} />)}
+      </ul> : <Hint>{t('entryNeedsNone')}</Hint>}
+    </Section>
+    <Section title={t('entryRunning')} count={data.running.length} icon="running" hint={t('entryRunningHint')}
+      action={<ZoneLinks links={[{ label: t('tab.tasks'), route: { page: 'tasks' } },
+        { label: t('details'), route: { page: 'execution', query: { filter: 'working' } } }]} />}>
+      {/* A pause is already a problem above, so these counts keep their meaning in both states. */}
+      {setup?.problem ? <Hint>{t('executorWaitingSetup')}</Hint> : <div className="dt-stats">
+        {stat(t('executingLabel'), `${data.executor.running} / ${data.executor.maxWorkers}`)}
+        {stat(t('queuedLabel'), data.executor.queued)}
+        {stat(t('idleLabel'), data.executor.idle)}
+      </div>}
+      {data.running.length ? <ul className="dt-list dt-cards">{data.running.map(ticket => <TicketLine key={ticket.id} ticket={ticket}
+        onChanged={reload} />)}</ul> : <Hint>{t('entryRunningNone')}</Hint>}
+    </Section>
+    <Section title={t('entryRecent')} count={data.recent.length} icon="history" hint={t('entryRecentHint')}
+      action={<ZoneLinks links={[{ label: t('details'), route: { page: 'execution', query: { filter: 'ended' } } }]} />}>
+      {data.recent.length ? <ul className="dt-list dt-cards">{data.recent.map(ticket => <TicketLine key={ticket.id} ticket={ticket} />)}</ul>
+        : <Hint>{t('entryRecentNone')}</Hint>}
+    </Section>
+    <HealthFold data={data} />
+  </>
+}
+
+/** The pre-X-09 Overview, kept as the `entry.threeZones.v1` fallback; it hides nothing either. */
+function LegacyOverview({ data, error, reload }: { data: OverviewView; error?: Error; reload: () => Promise<void> }) {
+  const { t, navigate } = usePanel()
+  const { setup } = usePanelData()
   const stat = (label: string, value: ReactNode, route?: Route) => <span className="dt-stat">
     <span className="dt-stat-label">{label}</span>
     {route ? <button type="button" className="dt-textlink dt-stat-value" onClick={() => navigate(route)}>{value}</button> : <span
@@ -158,4 +246,12 @@ export function OverviewPage() {
       </div>}
     </Section>
   </>
+}
+
+export function OverviewPage() {
+  const { call } = usePanel()
+  const { data, error, reload } = usePoll(() => call('GET overview'), [])
+  if (!data) return <LoadState error={error} loading />
+  return entryThreeZones() ? <EntryPage data={data} error={error} reload={reload} />
+    : <LegacyOverview data={data} error={error} reload={reload} />
 }

@@ -9,13 +9,13 @@ usePanel()
 it('keeps the overview quiet while no Approval waits for a person', async () => {
   await mount()
   expect(document.querySelector('.dt-approval')).toBeNull()
-  expect(all('.dt-section-title').map(title => title.textContent)[0]).toBe(`${zh.pendingTickets}2`)
+  expect(all('.dt-section-title').map(title => title.textContent)[0]).toBe(`${zh.entryNeeds}4`)
 })
 
 it('leads with each pending Approval: the Action, its object, its revision, its consequence and one-click approve', async () => {
   server.approvals = [approvalSummary()]
   await mount()
-  expect(all('.dt-section-title').map(title => title.textContent)[0]).toBe(`${zh.approvalsTitle}1`)
+  expect(all('.dt-section-title').map(title => title.textContent)[0]).toBe(`${zh.entryNeeds}5`)
   const row = document.querySelector('.dt-approval')!
   expect(row.textContent).toContain('修复回归')
   expect(row.textContent).toContain('mail.reply')
@@ -71,7 +71,7 @@ it('denies an Approval only after the confirmation, without granting anything', 
 it('shows the approval queue and its latency figure in English', async () => {
   server.approvals = [approvalSummary()]
   await mount(en)
-  expect(all('.dt-section-title').map(title => title.textContent)[0]).toBe(`${en.approvalsTitle}1`)
+  expect(all('.dt-section-title').map(title => title.textContent)[0]).toBe(`${en.entryNeeds}5`)
   expect(textOf(find(en.approve))).toBe(en.approve)
   expect(all('.dt-stat-label').map(label => label.textContent)).toContain(en.metricApprovalLabel)
 })

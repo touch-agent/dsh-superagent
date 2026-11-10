@@ -1,32 +1,44 @@
 // @vitest-environment jsdom
 // The overview.
-import { expect, it } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { en, zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, all, find, tab, click, text } from './fixtures/panel.tsx'
 import { server, droppedReply, threadSummary } from './fixtures/panel-server.ts'
 
 usePanel()
-it('leads the overview with the pending Tickets, then problems, the last day and the Executor, each linking to its stage', async () => {
+afterEach(() => localStorage.clear())
+it('opens with the three zones and keeps health as a folded E2 path', async () => {
   await mount()
   expect(tab(zh['tab.overview']).getAttribute('aria-selected')).toBe('true')
   expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['概览', '任务', '来源', '触发', '评估', '执行', '设置'])
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '系统问题2', '过去 24 小时详情 ›', '运行健康',
-    '执行器详情 ›'])
-  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败'])
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待我处理4', '正在跑1任务详情 ›', '最近历史1详情 ›',
+    '过去 24 小时详情 ›', '运行健康'])
+  // Waiting for a person first, then the running Ticket and the recently ended one; each carries its own stage.
+  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败', '执行中', '人工停止'])
   expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
   // Actions sit below the title and Threads, apart from the stage, each with its icon.
   expect(all('.dt-ticket').every(row => row.querySelector('.dt-ticket-stage button, .dt-ticket-stage a') === null
     && [...row.querySelectorAll('.dt-ticket-actions button, .dt-ticket-actions a')].every(action => action.querySelector('svg')))).toBe(true)
   expect(text()).toContain('来源会在每次轮询时自动重试')
   expect(text()).toContain('需要确认按钮颜色')
-  expect(all('.dt-stat').map(stat => stat.textContent)).toEqual(['到达12', '被过滤2', '已评估5', '接单或续做1',
-    `${zh.metricTtfaLabel}4 s / 9 s`, `${zh.metricDuplicatesLabel}0`, `${zh.metricRecoveryLabel}30 s`, `${zh.metricThroughputLabel}0.2`,
-    `${zh.metricApprovalLabel}20 s / 1 min`, '执行中2 / 3', '排队0', '等待新触发1'])
+  expect(all('.dt-stat').map(stat => stat.textContent)).toEqual(['执行中2 / 3', '排队0', '等待新触发1', '到达12', '被过滤2', '已评估5',
+    '接单或续做1', `${zh.metricTtfaLabel}4 s / 9 s`, `${zh.metricDuplicatesLabel}0`, `${zh.metricRecoveryLabel}30 s`,
+    `${zh.metricThroughputLabel}0.2`, `${zh.metricApprovalLabel}20 s / 1 min`])
   expect(all('.dt-chip').map(chip => chip.textContent)[0]).toBe('GitHub#42CI 失败1')
   expect(document.querySelector('.dt-chip-problem')?.textContent).toBe('CI 失败1')
   expect(document.querySelector<HTMLAnchorElement>('a.dt-chip-link')?.href).toBe('https://github.com/acme/widgets/pull/42')
-  await click(all('.dt-more-link').at(-1)!)
+  // Running links to the task view (E1) and to the working filter of the Execution page (E2).
+  expect(all('.dt-zone-links button').map(link => link.textContent)).toEqual(['任务', '详情 ›', '详情 ›'])
+  await click(all('.dt-zone-links button')[0]!)
+  expect(tab(zh['tab.tasks']).getAttribute('aria-selected')).toBe('true')
+  await click(tab(zh['tab.overview']))
+  await click(all('.dt-zone-links button')[1]!)
   expect(tab(zh['tab.execution']).getAttribute('aria-selected')).toBe('true')
+  expect(text()).toContain(zh['ticketFilter.working'])
+  await click(tab(zh['tab.overview']))
+  await click(all('.dt-zone-links button')[2]!)
+  expect(tab(zh['tab.execution']).getAttribute('aria-selected')).toBe('true')
+  expect(text()).toContain(zh['ticketFilter.ended'])
 })
 
 it('re-evaluates or dismisses an unjudged Eval from the problem list', async () => {
@@ -67,7 +79,8 @@ it('offers each Ticket that needs a person its actions on the overview: answer i
   expect(server.requests.some(request => request.path === 'tickets/t4/retry' && request.method === 'POST')).toBe(true)
   await click(all('.dt-ticket-actions button').find(button => button.textContent === '打开 Session')!)
   expect(server.opened).toEqual(['worker-t4'])
-  await click(all('.dt-ticket-actions button').filter(button => button.textContent === '停止').at(-1)!)
+  const row = all('.dt-ticket').find(item => item.textContent?.includes('截图工具'))!
+  await click([...row.querySelectorAll<HTMLButtonElement>('.dt-ticket-actions button')].find(button => button.textContent === '停止')!)
   await click(zh.confirm)
   expect(server.requests.some(request => request.path === 'tickets/t4/stop' && request.method === 'POST')).toBe(true)
   expect(text()).not.toContain('截图工具')
@@ -126,14 +139,25 @@ it('words a refused retry in the interface language by its code', async () => {
   expect(text()).not.toContain('Only an open ticket can be retried, and only when its worker last reported failed or blocked and no person has sent a message since, or when delivering an Input to its worker failed')
 })
 
-it('shows the overview in English', async () => {
+it('shows the three zones in English', async () => {
   await mount(en)
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${en.pendingTickets}2`, `${en.problems}2`,
-    `${en.lastDay}${en.details}`, en.metricsTitle, `${en['term.executor']}${en.details}`])
-  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual([en['stage.answer'], en['stage.failed']])
-  expect(all('.dt-stat-label').map(label => label.textContent)).toEqual([en.flowReceivedLabel, en.flowFilteredLabel, en.flowJudgedLabel,
-    en.flowAcceptedLabel, en.metricTtfaLabel, en.metricDuplicatesLabel, en.metricRecoveryLabel, en.metricThroughputLabel,
-    en.metricApprovalLabel, en.executingLabel, en.queuedLabel, en.idleLabel])
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${en.entryNeeds}4`, `${en.entryRunning}1TasksDetails ›`,
+    `${en.entryRecent}1Details ›`, `${en.lastDay}${en.details}`, en.metricsTitle])
+  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual([en['stage.answer'], en['stage.failed'],
+    en['stage.working'], en['outcome.stopped']])
+  expect(all('.dt-stat-label').map(label => label.textContent)).toEqual([en.executingLabel, en.queuedLabel, en.idleLabel,
+    en.flowReceivedLabel, en.flowFilteredLabel, en.flowJudgedLabel, en.flowAcceptedLabel, en.metricTtfaLabel, en.metricDuplicatesLabel,
+    en.metricRecoveryLabel, en.metricThroughputLabel, en.metricApprovalLabel])
+})
+
+it('restores the pre-X-09 Overview, and hides no record, when entry.threeZones.v1 is off', async () => {
+  localStorage.setItem('entry.threeZones.v1', 'off')
+  await mount()
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${zh.pendingTickets}2`, `${zh.problems}2`,
+    `${zh.lastDay}${zh.details}`, zh.metricsTitle, `${zh['term.executor']}${zh.details}`])
+  // The old sections still lead to the same records and tabs.
+  await click(all('.dt-more-link').at(-1)!)
+  expect(tab(zh['tab.execution']).getAttribute('aria-selected')).toBe('true')
 })
 
 it('lists the unavailable Evals one by one, without the health entry that counts them as a failure of dsh-superagent', async () => {

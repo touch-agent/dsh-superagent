@@ -240,6 +240,26 @@ it('orders the approval queue by request time and falls back to the Ticket id wh
   expect(queue[0]?.ticket).toEqual({ id: 't-missing-too', title: 't-missing-too' })
 })
 
+it('splits the entry into running and recently ended Tickets, newest ending first and at most eight', () => {
+  const host = views()
+  live('t-run')
+  const base = store.tickets.get('t-run')!
+  store.tickets.save({ ...base, id: 't-idle', title: 't-idle', assignments: [{ id: 'a-idle', state: 'ended', createdAt: at,
+    startedAt: at }] })
+  const close = (id: string, endedAt: string) => store.tickets.save({ ...base, id, title: id,
+    ended: { at: endedAt, by: 'executor', outcome: 'completed' } })
+  close('t-old', '2026-01-01T00:00:00.000Z')
+  for (let index = 0; index < 9; index++) close(`t-${index}`, `2026-02-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`)
+  const view = overview(host, {}, 'v1', load)
+  // Only `working` (queued or running) is in the zone; an idle Ticket is counted by the Executor and stays in Execution.
+  expect(view.running.map(ticket => ticket.id)).toEqual(['t-run'])
+  expect(view.executor.idle).toBe(1)
+  expect(view.recent).toHaveLength(8)
+  expect(view.recent[0]!.id).toBe('t-8')
+  expect(view.recent[0]).toMatchObject({ stage: 'ended', ended: { outcome: 'completed' } })
+  expect(view.recent.map(ticket => ticket.id)).not.toContain('t-old')
+})
+
 it('lists an Eval past its deadline, and as dsh-superagent\'s own errors only parts no Source or Policy sync reports', () => {
   const host = views()
   const evaluating = { id: 'e1', threadKey: 'github:1', triggerIds: ['t1'], strength: 'explicit' as const, actor: { source: 'github',

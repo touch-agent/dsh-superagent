@@ -1,6 +1,6 @@
 # 005 Panel
 
-Open **Superagent** in the DeepSeek Harness Web sidebar to supervise the agent. The panel prioritizes work that needs a person, then system health and history. This document builds on [000 Philosophy](000-philosophy.md) through [004 Prompts](004-prompts.md).
+Open **Superagent** in the DeepSeek Harness Web sidebar to supervise the agent. The panel opens on three zones — what waits for a person, what is running, and what ended recently — and keeps health, flow and raw records one step away. This document builds on [000 Philosophy](000-philosophy.md) through [004 Prompts](004-prompts.md).
 
 ## Three questions
 
@@ -16,7 +16,7 @@ The tabs follow the workflow: **Overview**, **Tasks** (任务), **Source**, **Tr
 
 | Tab | Shows |
 | --- | --- |
-| Overview | Approvals waiting for a person, Tickets needing action, system problems, activity counts and health figures for the last 24 hours, and Executor load. Each block links to its detailed page |
+| Overview | Three zones: **Waiting for you** (Approvals, Tickets needing action, system problems), **Running** (Tickets in flight and Executor load), **Recently ended** (the last ended Tickets). 24-hour flow and health figures are folded at the bottom. Each zone links to its detailed page |
 | Tasks | The task tree: milestones and plan tasks above the Tickets, reviews and pull requests they contain, with state, child completion and elapsed time, plus an optional graph of parallel branches and their merge points |
 | Source | Source state, setup problems and non-zero counts. Filtered Triggers and dropped messages cover the same 24-hour window as Overview |
 | Trigger | Threads filtered by Subscribed, Evaluating, New Triggers in 24 h, or All Threads. Each Thread shows its Triggers newest first, Decisions and Subscriptions |
@@ -36,6 +36,24 @@ Every row shows a state dot and label, a progress ratio over the work below it, 
 | — | ![The graph view of the same milestones](images/tasks-board/after-graph.png) |
 
 Same 1440×900 viewport, light theme, collapsed left sidebar and one sanitized demo state: synthetic Tickets carrying `（T2-0x）` plan tags and descriptions such as `事件栏按任务分组`, synthetic pull request labels and no work content. Both captures read the same state database, unchanged between the runs. Before is `59b912c`, where the only way to see these Tickets was the flat Execution list and there was no Tasks tab; after is this branch, with the Tasks tab open and the same Tickets folded by milestone and plan task. The graph row is the same after capture with **图** selected.
+
+### The three entry zones
+
+X-09 replaces the flat Overview with three zones whose order follows the attention budget: a person's decisions first, work in flight second, history last. The zones are a projection over the same records, not new state: ending a Ticket moves it from **Running** to **Recently ended**, and answering, approving or retrying removes it from **Waiting for you** on the next poll. The home page's numbers are the zone counts, and the sidebar icon shows a warning dot while **Waiting for you** is non-empty.
+
+| Zone | E0 default | E1 on demand | E2/E3 |
+| --- | --- | --- | --- |
+| **Waiting for you** | Approvals with their Action, object and expiry; Tickets whose stage is `person` (delivery, answer, review, blocked, failed), with the question or error note; actionable system problems | The Ticket page for the full Assignment, inputs and review preview | Trigger, Eval, Execution and the Timeline remain reachable from the row's links and tabs |
+| **Running** | Open Tickets that are queued, working or waiting for a Trigger, with Executor running/queued/idle counts; links to the Tasks tab (E1) and the Execution **Working** filter (E2) | The task tree, or a Ticket's Assignments and timeline | Session/log views stay under the Ticket and Execution pages |
+| **Recently ended** | The eight most recently ended Tickets, newest ending first, each with its outcome and end time; link to the Execution **Ended** filter | The Ticket page and its audit timeline | All ended records stay in Execution and the Store; nothing is deleted |
+
+Flow counts and the five health figures keep their old links but start folded under **24-hour health**, so they cost no attention until opened. The tab bar, Execution filters and every E2/E3 record remain unchanged. The whole page is behind the `entry.threeZones.v1` feature switch (default on): setting it to `off` in `localStorage` and refreshing restores the previous Overview and removes the sidebar dot, without hiding any tab or record.
+
+| Before (main `567ac43`) | After (this change) |
+| --- | --- |
+| ![The flat Overview with pending Tickets, flow, health and Executor sections](images/entry-three-zones/before.png) | ![The same state in the three entry zones with health folded and a sidebar dot](images/entry-three-zones/after.png) |
+
+Same 1280×900 viewport, light theme, left sidebar expanded and one sanitized demo state: three person-stage tickets, one queued ticket, one ended ticket, synthetic titles and no work content. Both runs start from a byte-identical copy of the same `orchestrator.sqlite`. Before is main `567ac43`, where the home page is the flat Overview and the panel icon carries no dot; after is this branch, with **Waiting for you / Running / Recently ended**, the health figures folded, and the warning dot on the Superagent icon.
 
 ### Approvals
 

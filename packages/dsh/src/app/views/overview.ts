@@ -67,13 +67,21 @@ export function overview(host: ViewHost, health: HealthMap, policyVersionValue: 
       attempts: item.attempts, error: item.error } })),
   ]
   const open = store.tickets.open().sort(newestFirst)
+  const person = open.filter(ticket => ticketStage(ticket).stage === 'person')
+  // `working` is queued or running; an `idle` Ticket waits for a new Trigger and stays in the Execution filter.
+  const runningTickets = open.filter(ticket => ticketStage(ticket).stage === 'working')
+  const endedAt = (ticket: (typeof open)[number]) => ticket.ended?.at ?? ticket.updatedAt
+  const recentTickets = store.tickets.list().filter(ticket => ticketStage(ticket).stage === 'ended')
+    .sort((a, b) => endedAt(b).localeCompare(endedAt(a))).slice(0, 8)
   const stats = Object.values(store.read.triggerStats(since))
   const received = stats.reduce((sum, item) => sum + item.received, 0), filtered = stats.reduce((sum, item) => sum + item.filtered, 0)
   const judgement = store.read.flow(since)
   return {
     approvals: approvalQueue(store),
     problems,
-    person: open.filter(ticket => ticketStage(ticket).stage === 'person').map(ticket => ticketRow(view, ticket)),
+    person: person.map(ticket => ticketRow(view, ticket)),
+    running: runningTickets.map(ticket => ticketRow(view, ticket)),
+    recent: recentTickets.map(ticket => ticketRow(view, ticket)),
     executor: { ...load, maxWorkers: settings.executor.maxWorkers, idle: open.filter(ticket => ticketStage(ticket).stage === 'idle').length },
     flow: { received, filtered, triggers: received - filtered, judged: judgement.judged, accepted: judgement.accepted,
       evaluating: evaluating.length, dropped: store.read.droppedSince(since) },

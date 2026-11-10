@@ -104,7 +104,8 @@ export interface PanelServer {
   ticketTimelines: Record<string, TicketTimelineView>
   threads: ThreadRow[]
   threadPages: (key: string, query: { before?: string; around?: string }) => ThreadPageView | undefined
-  person: TicketRow[]; search: Pick<ApiResponse<'GET search'>, 'items' | 'threads'>; history: HistoryView
+  person: TicketRow[]; running: TicketRow[]; recent: TicketRow[]
+  search: Pick<ApiResponse<'GET search'>, 'items' | 'threads'>; history: HistoryView
   /** Approvals the overview queue shows; a decision removes the row. */
   approvals: ApprovalRow[]
   requests: { path: string; method: string; body?: unknown }[]
@@ -221,7 +222,8 @@ const overviewView = (): ApiResponse<'GET overview'> => {
         .map(([name, item]) => ({ kind: 'runtime-error' as const, name, detail: item.detail })),
       ...Object.values(server.settings.policy.sources).some(part => part.allowed.length) ? [] : [{ kind: 'no-allowed' as const }],
       ...server.failing.map(outgoing => ({ kind: 'outgoing' as const, outgoing }))],
-    person: server.person, executor: { running: 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers, idle: 1 },
+    person: server.person, running: server.running, recent: server.recent,
+    executor: { running: 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers, idle: 1 },
     flow: { received: 12, filtered: 2, triggers: 10, judged: 5, accepted: 1, evaluating: 0,
       dropped: server.dropped.filter(item => item.dropped.at >= dayAgo()).length },
     metrics: { window: { since: dayAgo(), hours: 24 },
@@ -382,6 +384,8 @@ function initial(): PanelServer {
       ticketSummary({ id: 't4', title: '截图工具', actions: { retry: true, stop: true }, sessionId: 'worker-t4',
         summary: 'LlmError: no adapter registered for provider "provider-a"',
         note: { text: 'LlmError: no adapter registered for provider "provider-a"', error: true } }, { stage: 'person', action: 'failed' })],
+    running: [ticketSummary({ id: 't2', title: '更新依赖', actions: { retry: false, stop: true } }, { stage: 'working' })],
+    recent: [ended],
     search: { items: [], threads: [] },
     history: { current: 3, policyVersion: 'abcdef1234567890', items: [
       { revision: 4, savedAt: '2026-09-23T00:00:00Z', source: 'panel', policyVersion: '9876543210fedcba', policyChanged: true, notified: [],

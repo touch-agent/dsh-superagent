@@ -136,6 +136,12 @@ div.dt-preview-head { color: var(--dsw-alias-label-secondary); }
 .dt-status-line { margin-top: -16px; }
 .dt-plain-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 20px; }
 .dt-details { display: flex; flex-direction: column; gap: 2px; border-top: 0.5px solid var(--dsw-alias-border-l2); padding-top: 8px; }
+.dt-zone-links { display: flex; align-items: baseline; gap: 10px; }
+.dt-entry-health { margin-top: 4px; }
+.dt-entry-health-summary { cursor: pointer; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-caption); }
+.dt-entry-health-summary .dt-hint { display: inline; margin-left: 8px; font-size: 12px; }
+.dt-entry-health-body { display: flex; flex-direction: column; gap: 16px; padding: 10px 0 0 20px; }
+.dt-nav-badge { fill: var(--dsw-alias-state-warning-primary, #d97706); stroke: var(--dsw-alias-bg-base, #fff); stroke-width: 1.4; }
 .dt-danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 16px; border-top: 0.5px solid var(--dsw-alias-border-l2); }
 .dt-danger-zone .dt-btn { color: var(--dsw-alias-state-error-primary); }
 .dt-md { display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
