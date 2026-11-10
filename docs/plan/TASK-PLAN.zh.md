@@ -483,7 +483,7 @@ graph LR
 - **交付**：`Execution` 的只读投影 `space`（`kind`/`name`/`locator`/`branch`/`state`/`holder`/`legacy`，从 execution、Assignment 与 Session 派生；`project` 可缺省，`kind` 允许 `unknown`，lightweight 不伪造）；不建注册表、不新增 schema；`GET spaces` 只读端点（管理 API）；E1 任务详情「空间」区块与 E2 管理面板「空间」只读列表（筛选、按空间分组）；feature flag `workspace.view`；`docs/003`、`docs/006` 补「目录即空间 locator」与配置说明；`tests/spaces.spec.ts`、`tests/panel-spaces.spec.tsx`。
 - **验收**：根/子/旧嵌套/lightweight 四类投影正确；E0 不出现空间，360px 右栏不出现空间视图；无 schema 变化、无写接口、无租约行为；E2 只有只读「复制路径」；`pnpm check`；实现 UI 时 PR 附同场景 Before/After。
 - **估时**：4 人日。**依赖**：T3-09、T3-10（均已完成）、[docs/013](../013-workspace-model.zh.md) 的 Phase 1。**回退**：feature flag `workspace.view`，关闭即回旧界面。
-- **泳道**：Runtime。
+- **泳道**：Runtime。**实现**：PR [#43](https://github.com/touch-agent/dsh-superagent/pull/43)；`tests/spaces.spec.ts`、`tests/panel-spaces.spec.tsx`；Before/After 见 `docs/images/spaces/`。
 
 ### T3-13 工作空间模型 Phase 2：写租约与子 Ticket 独立空间 · Kernel + Runtime · 5 人日
 
@@ -491,7 +491,7 @@ graph LR
 - **交付**：只加 **`space_lease`** 表（`locator_key`、holder、`processEpoch`、`epoch`、state、时间；只加表/索引，不建 `space` 表、不改旧记录）；执行器在 **prepare 前预留、prepare 后校验/激活** 写租约；Ticket 结束时释放；`spaceLeaseHeld` 排队与 stale/epoch 恢复；租约按 Ticket 持有，Assignment 只更新当前 holder 元数据；规范 locator `realpath(dirname)+basename`，prepare 后 `realpath(directory)` 必须匹配；子 Ticket 新空间放执行根下的兄弟目录（平铺，名字含父名）；旧嵌套按 legacy 标记，不搬迁；prepare cwd 变化要迁移并演练；kernel 继续拥有目录布局（`delegate` 一处改）；prepare 后置校验（目录、locator、git 工作树、凭据卫生）；**不做** E2 释放/回收/复用、不做 TTL/心跳、不做 read claim、不做 provider 抽象、不做跨仓库改绑；两个 flag `workspace.lease`/`workspace.childSibling`；`docs/003`、`docs/006` 更新；`tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`。
 - **验收**：两个 Ticket 指向同一目录（同 `locatorKey`）时第二个在 prepare 前排队、不覆盖；同一 Ticket 重入；prepare 失败/locator 不匹配时释放预留，不留下 active 租约；父子默认不同目录且父清理不删子空间；子空间 prepare cwd 为执行根；重启后按 `processEpoch`/活 Session 标 stale，不静默抢占，父先于子恢复；Ticket 结束后释放，resume 重新获取，Phase 2 不把旧目录自动给别的 Ticket；子 Ticket 仍不能推送/开 PR；旧库/旧 worktree 迁移演练无重复 prepare；`pnpm check`。
 - **估时**：5 人日。**依赖**：T3-12、[docs/013](../013-workspace-model.zh.md) 的 Phase 2。**回退**：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留，不影响旧读。
-- **泳道**：Kernel + Runtime。
+- **泳道**：Kernel + Runtime。**实现**：PR [#43](https://github.com/touch-agent/dsh-superagent/pull/43)；schema 16 `space_lease`、两个 `workspace` flag、结束释放与 stale 恢复；`tests/spaces.spec.ts` 覆盖并发预留、prepare 失败释放、结束释放、重启 stale。
 
 ## 6.2 M5 原则落地（T5-01…06）
 

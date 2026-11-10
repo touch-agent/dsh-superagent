@@ -102,6 +102,16 @@ describe('space leases', () => {
     const other = new SpaceLeases(store, 3)
     expect((await other.reserve({ ticket: fake('third', target), live: () => true })).lease).toBeUndefined()
   })
+
+  it('gives a resuming Ticket a fresh lease after its own lease went stale', async () => {
+    const target = join(directory, 'resume')
+    const old = new SpaceLeases(store, 1)
+    expect((await old.reserve({ ticket: fake('t1', target), live: () => false })).lease).toMatchObject({ epoch: 1 })
+    const resumed = new SpaceLeases(store, 2)
+    expect((await resumed.reserve({ ticket: fake('t1', target), live: () => false })).lease).toMatchObject({ ticketId: 't1', epoch: 2, state: 'reserved' })
+    expect(resumed.current(await locatorKeyOf(target))).toMatchObject({ ticketId: 't1', epoch: 2, state: 'reserved' })
+    expect(resumed.all().map(row => row.state).sort()).toEqual(['reserved', 'stale'])
+  })
 })
 
 describe('spaces in the runtime', () => {

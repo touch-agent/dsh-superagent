@@ -224,8 +224,12 @@ export class SpaceLeases {
     return this.store.atomic(() => {
       const existing = this.current(locatorKey)
       if (existing) {
-        if (existing.ticketId === input.ticket.id) return { lease: this.updateHolder(existing, input.assignmentId, input.sessionId) }
-        if (deriveLeaseState(existing, this.processEpoch, input.live) === 'stale') this.markStale(existing, locatorKey)
+        const stale = deriveLeaseState(existing, this.processEpoch, input.live) === 'stale'
+        // The same Ticket re-enters a live lease, but a lease from an older process is stale even for its old holder.
+        if (existing.ticketId === input.ticket.id && !stale) {
+          return { lease: this.updateHolder(existing, input.assignmentId, input.sessionId) }
+        }
+        if (stale) this.markStale(existing, locatorKey)
         else {
           const holder = holderOf(this.store, existing.ticketId, input.ticket.id)
           if (holder) return { heldBy: holder }
