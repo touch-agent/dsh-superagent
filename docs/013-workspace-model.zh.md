@@ -2,7 +2,9 @@
 
 > 状态：**设计 v1.2（2026-11-10）；Phase 1 只读投影与 Phase 2 写租约/独立子空间已实现（T3-12/T3-13）**。按方案 A 精简：`Execution.directory` 是空间的唯一 locator，只增加写租约，不建空间注册表。Phase 3 复用/回收与 Phase 4 provider 仍不在本次范围。
 >
-> 实现备注：schema 16 增加 `space_lease`（additive，旧读忽略）；`packages/dsh/src/app/spaces.ts` 负责 locator、投影和 `SpaceLeases`；执行器在 prepare 前预留、校验后激活、Ticket 结束释放；`executor.workspace.lease` 与 `childSibling` 两个 flag 可分别回退路径模式与旧嵌套布局；E1 的空间区块、E2 的只读列表和 `workspace.view` 客户端开关已落地。租约不进入 Mandate/Action/Approval/Acceptance，任何界面都不把它显示成授权。
+> 实现备注：schema 16 增加 `space_lease`；`packages/dsh/src/app/spaces.ts` 负责 locator、投影和 `SpaceLeases`；执行器在 prepare 前预留、校验后激活、Ticket 结束释放；`executor.workspace.lease` 与 `childSibling` 两个 flag 可分别回退路径模式与旧嵌套布局；E1 的空间区块、E2 的只读列表和 `workspace.view` 客户端开关已落地。租约不进入 Mandate/Action/Approval/Acceptance，任何界面都不把它显示成授权。
+>
+> 回退：行为回退先关两个 `workspace` flag；二进制回退到 schema 15 及更早版本时，旧构建会拒绝打开 schema 16，需按 [006 部署](006-deployment.md) 恢复升级前备份（或在停服后删除 `space_lease` 并把 `kv.schema` 改回 15）。`space_lease` 没有外键、也不改写旧记录，删除它不影响其他表。
 >
 > 依据：2026-11-09 的工作空间模型设计请求与 2026-11-10 的「按 A 精简」决定；现状以 `origin/main`（`e4125e9`，子 Ticket Phase 2a/2b 合入后）为准。
 >
