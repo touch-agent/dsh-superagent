@@ -264,10 +264,22 @@ it('relays an explicit member mention as a candidate and creates the ticket, ack
   expect(reply[reply.indexOf('--markdown') + 1]!.startsWith('收到，修复回归。')).toBe(true)
   // The first message holds the request itself: an explicit ticket has no assignment text beyond it, and nothing to read first.
   const first = relays(sessionId)[0]!
-  expect(first).toEqual({ ticket_id: ticket.id, title: '修复回归', trigger: expect.objectContaining({ trigger_id: trigger.id, from: MEMBER,
-    thread: `feishu:${CHAT}:om_1`, text: trigger.text }) })
+  expect(first).toEqual({ ticket_id: ticket.id, title: '修复回归',
+    // The optional group dimension is derived from the Channel and the Thread the Ticket follows; it grants nothing.
+    context_group: expect.objectContaining({ key: `feishu:${CHAT}`, source: 'feishu', space: CHAT, visibility: 'source',
+      conventions: [`feishu:${CHAT}:om_1`] }),
+    trigger: expect.objectContaining({ trigger_id: trigger.id, from: MEMBER, thread: `feishu:${CHAT}:om_1`, text: trigger.text }) })
   expect(first.trigger).not.toHaveProperty('read')
   expect(await route({ kind: 'accept', trigger_id: trigger.id, title: 'again', worktree_name: worktreeName, acknowledgement: 'x' })).toMatchObject({ ticket: { ticket_id: ticket.id } })
+})
+
+it('serves the derived context groups as a read-only list', async () => {
+  const { ticket } = await acceptedTicket()
+  const { status, body } = await api('GET', 'contexts/groups')
+  expect(status).toBe(200)
+  expect(body).toMatchObject({ generatedAt: expect.any(String),
+    groups: [expect.objectContaining({ key: `feishu:${CHAT}`, source: 'feishu', space: CHAT, visibility: 'source', tickets: [ticket.id],
+      conventions: [`feishu:${CHAT}:om_1`] })], totals: { groups: 1, tickets: 1 } })
 })
 
 it('fans a person\'s later thread message out to the live worker as context and tells the orchestrator, without an Eval', async () => {

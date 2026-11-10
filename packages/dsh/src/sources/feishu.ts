@@ -78,6 +78,15 @@ export const feishuAdapter: SourceAdapter<FeishuConfig> = {
     send: sendFeishu, probe: probeFeishu, withdraw: withdrawFeishu, link: feishuLink,
   },
   threadContext: feishuThreadContext,
+  // A group chat is a shared space; a direct chat is not. IDs are `oc_` for both, so only the explicit flag separates them.
+  contextGroup: (address, config) => {
+    const chatId = address.chatId ?? ''
+    if (!chatId || address.direct === 'true') return undefined
+    const name = config.chats.find(chat => chat.chatId === chatId)?.name
+    return { space: chatId, ...name ? { label: name } : {} }
+  },
+  // A chat Thread's ID is `<chatId>:<root or message>`; a chat-level Thread is just the chat ID.
+  threadSpace: thread => thread.source === SOURCE && thread.id ? thread.id.split(':')[0] : undefined,
   find: query => ({ threads: [], terms: [...new Set(query.match(/om_[A-Za-z0-9_-]+/g) ?? [])] }),
   // A message's Trigger is named after the message, so the one it answers is named after its parent.
   repliesTo: trigger => typeof trigger.meta.parentId === 'string' ? feishuTriggerId(trigger.meta.parentId) : undefined,

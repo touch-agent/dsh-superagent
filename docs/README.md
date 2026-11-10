@@ -30,14 +30,16 @@ Read 000–010 in order; each builds only on the ones before it.
 
 ## Design and evolution
 
-These six are written in Chinese. 011 and 012 are a cross-referencing pair:
+These seven are written in Chinese. 011 and 012 are a cross-referencing pair:
 read 011 for the principles and their cross-check against the existing
 documents, then 012 for the evolution story. 013 applies them to the workspace
 model (space as an execution reference, orthogonal to the task tree). 014
 records the golden-path E2E and the boundary of its fake host; 015 defines the
 Goal read model that gives E0 a stable answer to the four questions without
 adding a second authorization aggregate. 016 designs the reusable profile
-layer over the worker role, keeping authorization in Policy/Eval.
+layer over the worker role, keeping authorization in Policy/Eval. 017 defines
+the derived context group (shared space) dimension, which adds no membership
+table and no authorization.
 
 | # | Document | Role |
 | --- | --- | --- |
@@ -47,11 +49,12 @@ layer over the worker role, keeping authorization in Policy/Eval.
 | 014 | [E2E golden path](014-e2e-golden-path.zh.md) | The one end-to-end path from a GitHub Issue to accepted, merged work: what it asserts, its local fake-host boundary, and its no-retry stability rules. |
 | 015 | [Goal projection](015-goal-projection.zh.md) | One Ticket's read-only Goal (statement, source, state, decision, results, acceptance) shared by the main Session's result card and the task row; no schema, no authorization, no second aggregate. |
 | 016 | [AgentProfile](016-agent-profile.zh.md) | Reusable, versioned execution profiles for the worker role, with authorization kept in Policy, Eval and the action gate; current-state evidence, evolution loop, risks and phased landing (proposal, not implemented). |
+| 017 | [Context groups](017-context-groups.zh.md) | The optional group dimension derived from Channel addresses and live Thread subscriptions: read-only context and display, no membership table, no member list, no authorization. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
 is the golden-path E2E; 015 is the E0 read model that follows from 011's
-attention principle. 011 §6
+attention principle; 017 provides the group dimension T5-04 assembles. 011 §6
 cross-checks the existing documents; conflicts are resolved in 011 §7.
 
 ## Plans

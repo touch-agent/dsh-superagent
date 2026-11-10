@@ -1,10 +1,10 @@
 /** Registry of installed Source kinds, their configured instances, and the Engine's SourceScope implementation. */
-import type { ChannelRef, OutboundMessage, ScopeResult, SourceManifest, SourceScope, Trigger } from '@superagent/kernel'
+import type { ChannelRef, OutboundMessage, ScopeResult, SourceManifest, SourceScope, ThreadRef, Trigger } from '@superagent/kernel'
 import type { Commands } from '../infra/commands.ts'
 import type { ConversationHost } from './host.ts'
 import { HealthBoard, type HealthEntry } from '../infra/health.ts'
 import { AdmissionTableSchema, type Settings } from '../policy.ts'
-import type { ChannelLink, ChannelLinks, ProbeAnswer, SourceAdapter, SourceDefinition, SourceInstance, SourceKind, TriggerContext, VariableSpec, Withdrawal } from './kind.ts'
+import type { ChannelLink, ChannelLinks, ContextSpaceRef, ProbeAnswer, SourceAdapter, SourceDefinition, SourceInstance, SourceKind, TriggerContext, VariableSpec, Withdrawal } from './kind.ts'
 import { manifestForm, type SourceForm } from './manifest-form.ts'
 import { parseSourceManifest } from './manifest-schema.ts'
 
@@ -129,6 +129,24 @@ export class SourceRegistry implements SourceScope {
     const { admission, ...rest } = settings.policy.sources[id] ?? {}
     const parsed = policy.schema.safeParse(rest)
     return { ...parsed.success ? parsed.data : policy.schema.parse({}), admission: AdmissionTableSchema.safeParse(admission ?? {}).data ?? {} }
+  }
+  /**
+   * The shared space a Channel address belongs to, from its Source's `contextGroup` hook. This is a read-only context and
+   * display projection: it neither lists members nor grants any action, and an uninstalled Source yields none.
+   */
+  contextGroup(channel: Pick<ChannelRef, 'source' | 'address'>, settings = this.settings()): (ContextSpaceRef & { source: string }) | undefined {
+    const registration = this.registrations.get(channel.source)
+    if (!registration?.adapter.contextGroup) return undefined
+    const instance = this.resolve(registration, settings.sources[channel.source])
+    const space = registration.adapter.contextGroup(channel.address, instance.config)
+    return space ? { source: channel.source, ...space } : undefined
+  }
+  /** The shared space a Thread belongs to, from its Source's `threadSpace` hook; undefined when it carries none. */
+  threadSpace(thread: ThreadRef, settings = this.settings()): string | undefined {
+    const registration = this.registrations.get(thread.source)
+    if (!registration?.adapter.threadSpace) return undefined
+    const instance = this.resolve(registration, settings.sources[thread.source])
+    return registration.adapter.threadSpace(thread, instance.config)
   }
   /** Whether a kind is a built-in local Source whose authenticated user needs no roster. */
   trusted(id: string): boolean {

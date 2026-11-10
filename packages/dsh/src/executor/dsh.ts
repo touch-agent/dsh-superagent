@@ -18,6 +18,7 @@ import { executionRoot, type Variable } from '../app/execution-environment.ts'
 import type { Sessions } from '../app/sessions.ts'
 import { WorktreeNameSchema } from '../app/assessment.ts'
 import type { SpaceLease, SpaceLeases } from '../app/spaces.ts'
+import type { ContextGroupView } from '../app/context-groups.ts'
 import { resultRelay } from '../app/notices.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { cancelled, collectJob, killJobs, runningJobs, stopBackground, stopSubagents, until, untilQuiet } from './background.ts'
@@ -97,6 +98,8 @@ export interface ExecutorHost {
   paused(): boolean
   /** Execution environment variables for `ticket`, passed to its workspace prepare command. */
   environment(ticket: Ticket): Variable[]
+  /** The Ticket's optional context group at launch, derived from its Channels and live Threads; it grants nothing. */
+  contextGroup(ticket: Ticket): ContextGroupView | undefined
   sourceLink(trigger: Trigger, signal?: AbortSignal): Promise<{ source_url?: string; source_url_read?: string }>
   /** Stored Trigger of the message `trigger` replies to, when it replies to one. */
   repliedTo(trigger: Trigger): Trigger | undefined
@@ -522,10 +525,12 @@ export class DshExecutor implements Executor {
       const card = told || !source ? undefined : await this.triggerCard(ticket, source.id)
       if (!current()) return
       const batch = told ? [] : batchOf(this.host, ticket).map(batchLine)
+      // The group dimension is part of the first message's context, so a later message does not repeat an unchanged dimension.
+      const group = told ? undefined : this.host.contextGroup(ticket)
       const text = told ? JSON.stringify({ ticket_id: ticket.id, assignment: ticket.assignments.length, ...retried })
         : JSON.stringify({ ticket_id: ticket.id, title: ticket.title, ...(brief ? { assignment: brief } : {}),
           ...(read ? { assignment_chars: chars, assignment_read: read } : {}), ...(card ? { trigger: card } : {}),
-          ...(batch.length ? { batch } : {}), ...retried })
+          ...(batch.length ? { batch } : {}), ...(group ? { context_group: group } : {}), ...retried })
       const requestId = later ? `assignment:${ticket.id}:${assignment.id}` : first
       await this.host.sessions.prompt(sessionId, requestId, text, 'queue',
         () => { if (!current()) throw new Error('Launch authorization changed before worker delivery') },

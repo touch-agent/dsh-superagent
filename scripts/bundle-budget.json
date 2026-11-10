@@ -1,7 +1,7 @@
 {
   "files": {
-    "packages/dsh/lib/index.js": 730000,
+    "packages/dsh/lib/index.js": 733000,
     "lib/client.js": 545000
   },
-  "total": 1470000
+  "total": 1472000
 }
