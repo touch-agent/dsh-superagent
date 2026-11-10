@@ -1,0 +1,221 @@
+import { expect, it } from 'vitest'
+import type { ChannelRef, Thread, Ticket } from '@superagent/kernel'
+import { contextGroupBoard, contextGroupDimension, contextGroupOf, type ContextGroupReadHost } from '@superagent/dsh/app/context-groups.ts'
+import { ticketDetails, type TicketThread } from '@superagent/dsh/app/cards.ts'
+import { registerHttp } from '@superagent/dsh/app/http.ts'
+import type { HttpHost } from '@superagent/dsh/app/http.ts'
+import { feishuKind } from '@superagent/dsh/sources/feishu.ts'
+import { githubKind } from '@superagent/dsh/sources/github.ts'
+
+const AT = '2026-11-10T00:00:00Z'
+
+const feishuChannel = (chatId: string, messageId = 'om_1', direct = false): ChannelRef =>
+  ({ source: 'feishu', thread: `feishu:${chatId}`, address: { chatId, messageId, ...direct ? { direct: 'true' } : {} } })
+const githubChannel = (number = 12): ChannelRef => ({ source: 'github', thread: `github:${number}`, address: { number: String(number) } })
+const conversationChannel: ChannelRef = { source: 'conversation', thread: 'conversation:root', address: {} }
+
+const thread = (key: string, subscriptions: string[], extra: Partial<Thread> = {}): Thread => {
+  const colon = key.indexOf(':')
+  return { key, ref: { source: key.slice(0, colon), id: key.slice(colon + 1) }, createdAt: AT, subscriptions, correlated: [], pending: [],
+    meta: {}, ...extra }
+}
+
+const ticket = (id: string, channels: ChannelRef[], follows: string[], fields: Partial<Ticket> = {}): Ticket => ({
+  id, title: `Ticket ${id}`, decisionId: 'd1', channels, assignments: [], inputs: [], undelivered: [], createdAt: AT, updatedAt: AT,
+  origin: { triggerId: `trigger-${id}`, triggerIds: [`trigger-${id}`] },
+  mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou_alice' }, scope: '' },
+  follows: follows.map(thread => ({ thread, own: true })),
+  ...fields,
+})
+
+/** The Source hooks as the registry exposes them: Feishu groups are chats, GitHub groups are repositories. */
+const sources: ContextGroupReadHost['sources'] = {
+  contextGroup: channel => {
+    if (channel.source === 'feishu') {
+      if (channel.address.direct === 'true' || !channel.address.chatId) return undefined
+      return { source: 'feishu', space: channel.address.chatId, label: 'Team' }
+    }
+    if (channel.source === 'github') return { source: 'github', space: 'acme/widgets', label: 'acme/widgets', url: 'https://github.com/acme/widgets' }
+    return undefined
+  },
+  threadSpace: ref => {
+    if (ref.source === 'feishu') return ref.id.split(':')[0]
+    if (ref.source === 'github') return 'acme/widgets'
+    return undefined
+  },
+}
+
+const host = (tickets: Ticket[], threads: Thread[] = []): ContextGroupReadHost => ({
+  store: {
+    tickets: { allList: () => tickets },
+    triggers: { get: () => undefined },
+    read: { subscribedThreads: () => threads.filter(item => item.subscriptions.length > 0) },
+  },
+  sources,
+})
+
+it('derives the same group for one chat and different groups across chats', () => {
+  const threads = [thread('feishu:oc_team:om_1', ['a']), thread('feishu:oc_team:om_2', ['b']), thread('feishu:oc_other:om_3', ['c'])]
+  const a = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  const b = ticket('b', [feishuChannel('oc_team', 'om_2')], ['feishu:oc_team:om_2'])
+  const c = ticket('c', [feishuChannel('oc_other', 'om_3')], ['feishu:oc_other:om_3'])
+  const read = host([a, b, c], threads)
+  expect(contextGroupOf(read, a)).toMatchObject({ key: 'feishu:oc_team', source: 'feishu', space: 'oc_team', label: 'Team', visibility: 'source',
+    conventions: ['feishu:oc_team:om_1'] })
+  expect(contextGroupOf(read, b)).toMatchObject({ key: 'feishu:oc_team', conventions: ['feishu:oc_team:om_2'] })
+  expect(contextGroupOf(read, c)).toMatchObject({ key: 'feishu:oc_other' })
+  expect(contextGroupOf(read, a)!.key).not.toBe(contextGroupOf(read, c)!.key)
+  const board = contextGroupBoard(read, new Date('2026-11-10T12:00:00Z'))
+  expect(board.groups).toEqual([
+    expect.objectContaining({ key: 'feishu:oc_other', tickets: ['c'] }),
+    expect.objectContaining({ key: 'feishu:oc_team', tickets: ['a', 'b'], conventions: ['feishu:oc_team:om_1', 'feishu:oc_team:om_2'] }),
+  ])
+  expect(board.totals).toEqual({ groups: 2, tickets: 3 })
+})
+
+it('groups GitHub issues by repository, like the adapter hook that reads the configured repository', () => {
+  const a = ticket('a', [githubChannel(12)], ['github:12'])
+  const b = ticket('b', [githubChannel(13)], ['github:13'])
+  const read = host([a, b], [thread('github:12', ['a']), thread('github:13', ['b'])])
+  expect(contextGroupOf(read, a)).toMatchObject({ key: 'github:acme/widgets', source: 'github', space: 'acme/widgets',
+    label: 'acme/widgets', url: 'https://github.com/acme/widgets', conventions: ['github:12'] })
+  expect(contextGroupOf(read, b)!.key).toBe(contextGroupOf(read, a)!.key)
+  expect(contextGroupBoard(read).totals).toEqual({ groups: 1, tickets: 2 })
+})
+
+it('is absent for a private conversation and for a direct Feishu chat, present for a group chat', () => {
+  const privateTicket = ticket('private', [conversationChannel], ['conversation:root'])
+  const directTicket = ticket('direct', [feishuChannel('oc_dm', 'om_9', true)], ['feishu:oc_dm:om_9'])
+  const groupTicket = ticket('group', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  const read = host([privateTicket, directTicket, groupTicket], [thread('conversation:root', ['private']),
+    thread('feishu:oc_dm:om_9', ['direct']), thread('feishu:oc_team:om_1', ['group'])])
+  expect(contextGroupOf(read, privateTicket)).toBeUndefined()
+  expect(contextGroupOf(read, directTicket)).toBeUndefined()
+  expect(contextGroupOf(read, groupTicket)).toMatchObject({ key: 'feishu:oc_team' })
+  expect(contextGroupBoard(read).totals).toEqual({ groups: 1, tickets: 1 })
+})
+
+it('drops the group after the Ticket leaves the shared space, without rewriting the Ticket', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  const subscribed = thread('feishu:oc_team:om_1', ['a'])
+  expect(contextGroupOf(host([item], [subscribed]), item)).toBeDefined()
+  const before = JSON.stringify(item)
+  const left = thread('feishu:oc_team:om_1', [])
+  expect(contextGroupOf(host([item], [left]), item)).toBeUndefined()
+  expect(JSON.stringify(item)).toBe(before)
+  expect(contextGroupBoard(host([item], [left])).groups).toEqual([])
+})
+
+it('reads the subscription list once for the whole board', () => {
+  const tickets = [ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1']),
+    ticket('b', [feishuChannel('oc_team', 'om_2')], ['feishu:oc_team:om_2'])]
+  const threads = [thread('feishu:oc_team:om_1', ['a']), thread('feishu:oc_team:om_2', ['b'])]
+  const base = host(tickets, threads)
+  let reads = 0
+  const counted = { ...base, store: { ...base.store, read: { subscribedThreads: () => { reads++; return threads } } } }
+  expect(contextGroupBoard(counted).totals).toEqual({ groups: 1, tickets: 2 })
+  expect(reads).toBe(1)
+})
+
+it('does not borrow another Ticket subscription in the same shared space', () => {
+  const mine = ticket('mine', [feishuChannel('oc_team', 'om_1')], [])
+  const other = ticket('other', [feishuChannel('oc_team', 'om_2')], ['feishu:oc_team:om_2'])
+  const read = host([mine, other], [thread('feishu:oc_team:om_2', ['other'])])
+  expect(contextGroupOf(read, mine)).toBeUndefined()
+  expect(contextGroupBoard(read).groups).toEqual([expect.objectContaining({ key: 'feishu:oc_team', tickets: ['other'] })])
+})
+
+it('does not count a subscription in another shared space', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_other:om_9'])
+  expect(contextGroupOf(host([item], [thread('feishu:oc_other:om_9', ['a'])]), item)).toBeUndefined()
+})
+
+it('counts a context-only Thread the Ticket is still subscribed to', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  const contextOnly = thread('feishu:oc_team:om_1', ['a'], { context: ['a'] })
+  expect(contextGroupOf(host([item], [contextOnly]), item)).toMatchObject({ key: 'feishu:oc_team',
+    conventions: ['feishu:oc_team:om_1'] })
+})
+
+it('keeps the group while a closed follow still has a live subscription', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  item.follows![0]!.closed = { at: AT, outcome: 'closed' }
+  expect(contextGroupOf(host([item], [thread('feishu:oc_team:om_1', ['a'])]), item)).toMatchObject({ key: 'feishu:oc_team' })
+})
+
+it('has no group for a child Ticket even when it carries a Channel and subscription', () => {
+  const child = ticket('child', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'], { parentTicketId: 'parent', rootTicketId: 'parent' })
+  expect(contextGroupOf(host([child], [thread('feishu:oc_team:om_1', ['child'])]), child)).toBeUndefined()
+  expect(contextGroupBoard(host([child], [thread('feishu:oc_team:om_1', ['child'])] )).groups).toEqual([])
+})
+
+it('sorts a board group conventions by newest Thread activity', () => {
+  const items = [ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1']),
+    ticket('b', [feishuChannel('oc_team', 'om_2')], ['feishu:oc_team:om_2'])]
+  const threads = [thread('feishu:oc_team:om_1', ['a'], { lastAt: '2026-11-10T01:00:00Z' }),
+    thread('feishu:oc_team:om_2', ['b'], { lastAt: '2026-11-10T02:00:00Z' })]
+  expect(contextGroupBoard(host(items, threads)).groups[0]!.conventions).toEqual(['feishu:oc_team:om_2', 'feishu:oc_team:om_1'])
+})
+
+it('treats a legacy Ticket with no channels as having no group', () => {
+  const legacy = { ...ticket('legacy', [], []), channels: undefined } as unknown as Ticket
+  expect(contextGroupOf(host([legacy]), legacy)).toBeUndefined()
+  expect(contextGroupBoard(host([legacy])).groups).toEqual([])
+})
+
+it('carries no member list and no authorization field', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  const group = contextGroupOf(host([item], [thread('feishu:oc_team:om_1', ['a'])]), item)!
+  expect(Object.keys(group).sort()).toEqual(['conventions', 'key', 'label', 'source', 'space', 'visibility'])
+  expect(JSON.stringify(group)).not.toMatch(/member|users|mandate|actionLevel|approval|policy|permission/i)
+  // Reading the projection does not change the Ticket's authorization facts.
+  expect(item.mandate?.strength).toBe('explicit')
+  expect(JSON.stringify(item)).not.toContain('context_group')
+})
+
+it('yields the T5-04 dimension entry without adding a group to the authorization path', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  const entry = contextGroupDimension(contextGroupOf(host([item], [thread('feishu:oc_team:om_1', ['a'])]), item)!)
+  expect(entry).toMatchObject({ key: 'group:feishu:oc_team', source: 'feishu', scope: 'feishu:oc_team', strength: 'default',
+    inheritance: 'inherit', truncation: 800 })
+  expect(entry.text).toContain('feishu:oc_team:om_1')
+  expect(entry).not.toHaveProperty('members')
+})
+
+it('projects the optional dimension into the ticket read model', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  const group = contextGroupOf(host([item], [thread('feishu:oc_team:om_1', ['a'])]), item)
+  const threads: TicketThread[] = [{ thread: 'feishu:oc_team:om_1', bound: true }]
+  expect(ticketDetails(item, threads, [], false, undefined, group).context_group).toEqual(group)
+  expect(ticketDetails(item, threads, [], false).context_group).toBeUndefined()
+})
+
+it('serves GET contexts/groups as a read-only projection', async () => {
+  const handlers = new Map<string, (req: unknown, res: unknown) => Promise<void>>()
+  const ctx = { webServer: { host: '127.0.0.1', port: 3082, register: (route: { path: string; handler: (req: unknown, res: unknown) => Promise<void> }) => {
+    handlers.set(route.path, route.handler); return () => {} } } }
+  const read = host([ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])],
+    [thread('feishu:oc_team:om_1', ['a'])])
+  registerHttp(ctx as never, { ready: Promise.resolve(), ...read } as unknown as HttpHost)
+  let status = 0, text = ''
+  await handlers.get('/orchestrator')!({ method: 'GET', url: '/orchestrator/api/contexts/groups',
+    headers: { host: '127.0.0.1:3082', 'x-orchestrator-request': '1' } }, { writeHead: (code: number) => { status = code },
+    end: (data: string) => { text = data } })
+  expect(status).toBe(200)
+  expect(JSON.parse(text)).toMatchObject({ generatedAt: expect.any(String),
+    groups: [{ key: 'feishu:oc_team', tickets: ['a'], conventions: ['feishu:oc_team:om_1'], visibility: 'source' }],
+    totals: { groups: 1, tickets: 1 } })
+})
+
+it('derives Feishu group vs direct and the GitHub repository in the real Source adapters', () => {
+  const feishu = feishuKind.schema.parse({ chats: [{ chatId: 'oc_team', name: 'Team', listen: 'mentions' }] })
+  expect(feishuKind.contextGroup!({ chatId: 'oc_team' }, feishu)).toEqual({ space: 'oc_team', label: 'Team' })
+  expect(feishuKind.contextGroup!({ chatId: 'oc_dm', direct: 'true' }, feishu)).toBeUndefined()
+  expect(feishuKind.threadSpace!({ source: 'feishu', id: 'oc_team:om_1' }, feishu)).toBe('oc_team')
+  const github = githubKind.schema.parse({ repository: 'acme/widgets' })
+  expect(githubKind.contextGroup!({ number: '12' }, github)).toEqual({ space: 'acme/widgets', label: 'acme/widgets',
+    url: 'https://github.com/acme/widgets' })
+  expect(githubKind.threadSpace!({ source: 'github', id: '12' }, github)).toBe('acme/widgets')
+  expect(githubKind.contextGroup!({ number: '12' }, githubKind.schema.parse({}))).toBeUndefined()
+  expect(conversationChannel.source).toBe('conversation')
+})

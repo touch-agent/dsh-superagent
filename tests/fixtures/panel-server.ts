@@ -421,6 +421,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     return goal ? { goal } : refuse(404, 'Goal not found')
   } },
   'GET spaces': { answer: () => server.spaces },
+  'GET contexts/groups': { answer: () => ({ generatedAt: '2026-09-23T12:00:00Z', groups: [], totals: { groups: 0, tickets: 0 } }) },
   'GET tasks/:id': { query: ['depth'], answer: ({ params }) => {
     const task = server.tasks.tasks.find(item => item.id === params.id)
     if (!task) return refuse(404, 'Ticket not found')

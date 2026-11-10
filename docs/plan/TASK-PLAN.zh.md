@@ -521,6 +521,7 @@ graph LR
 - **验收**：私聊 Ticket 无群组维度；进入群组后才出现；离开后不把群组内容带入后续私聊；群组不进类别、不进 `TaskPlacement`；`tests/context-groups.spec.ts`；C3.3/C3.4 走查。
 - **估时**：3 人日。**依赖**：T1-17（已完成）、M3。**回退**：纯派生，关闭即回到仅组织/用户/任务维度。
 - **泳道**：Connector + Runtime。
+- **实现状态（2026-11-10，PR #50）**：已落地群组维度派生。`packages/dsh/src/app/context-groups.ts` 从来源/绑定 Channel 的 Source `contextGroup` hook 与仍订阅的 Thread 派生可选 `contextGroup`；飞书非 direct 群与 GitHub repository 为共享空间，私聊、本地会话与文档评论缺席；退订后维度移除且不改写 Ticket。读模型接入 `orchestrator_read ticket/<id>` 与 worker 首条 Assignment 的 `context_group`，并新增只读 `GET contexts/groups`；`contextGroupDimension` 提供 T5-04 的 `key/source/scope/strength/inheritance/truncation` 条目形状。无 schema/迁移、无成员名单、无授权变更。`tests/context-groups.spec.ts` 覆盖同组/异组/无组、私聊/群聊、退订后失效、无成员/授权字段、条目形状与路由；`tests/runtime.spec.ts`、`tests/tools.spec.ts` 覆盖消息与读资源接线。C3.3 的完整装配快照与子 Ticket 继承仍归 T5-04。独立 review 结论写在 PR #50 的 review 评论。
 
 ### T5-04 可组合六层上下文装配 · Runtime · 6 人日
 

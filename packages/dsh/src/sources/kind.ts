@@ -1,7 +1,7 @@
 /** SourceKind plugin contract: the kernel's declarative manifest plus the runtime's behavior (configuration schema, channel adapter, thread context reader). */
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { z } from 'zod'
-import type { FieldSpec, Localized, OutboundMessage, ScopeResult, SourceManifest, Trigger } from '@superagent/kernel'
+import type { FieldSpec, Localized, OutboundMessage, ScopeResult, SourceManifest, ThreadRef, Trigger } from '@superagent/kernel'
 import type { Deployment } from '../deployment.ts'
 import type { Commands } from '../infra/commands.ts'
 import type { SourceContext, SourceHost } from './host.ts'
@@ -9,6 +9,12 @@ import type { SourceContext, SourceHost } from './host.ts'
 export type { FieldSpec, Localized }
 
 export interface VariableSpec { key: string; description: Localized }
+/**
+ * A shared space a Source's Channel address or Thread belongs to, such as a chat, a repository or a project. It is a
+ * context/display projection and never a membership list or an authorization scope; a Source that has no shared spaces
+ * omits the hooks and the group dimension stays absent.
+ */
+export interface ContextSpaceRef { space: string; label?: string; url?: string }
 export interface EnvironmentInput<C> { deployment: Deployment; config: C; trigger?: Trigger }
 export interface AdmissionRowView { id: string; label: Localized | string; note: Localized; cells: { listedUnaddressed: boolean; unlistedAddressed: boolean; unlistedUnaddressed: boolean } }
 /** Policy extension for a source kind, defining allowed senders, admission table rows, and optional external roster sync. */
@@ -109,6 +115,17 @@ export interface SourceAdapter<C extends Record<string, unknown> = Record<string
   find?(query: string): { threads: string[]; terms: string[] }
   /** Returns the ID of the Trigger whose message this Trigger replies to, when derivable without a network read. */
   repliesTo?(trigger: Trigger): string | undefined
+  /**
+   * The shared space a Channel address belongs to, in the Source's own vocabulary (a chat, repository or project), or
+   * undefined for a private conversation. It feeds the optional context-group dimension; it is not a member list and grants
+   * nothing. A Source with no shared spaces omits it.
+   */
+  contextGroup?(address: Record<string, string>, config: C): ContextSpaceRef | undefined
+  /**
+   * The space a Thread belongs to, so a Ticket's group dimension stays only while the Ticket follows one of that space's
+   * Threads. Undefined when the Thread carries no shared space. `space` must match {@link contextGroup}'s `space`.
+   */
+  threadSpace?(thread: ThreadRef, config: C): string | undefined
   /** Policy section for kinds whose senders have their own identity. */
   policy?: SourcePolicyPart<Record<string, unknown> & { allowed: { id: string; name?: string }[] }>
   /** Rereads display names for row keys (such as chat names), stores the resolved names in `KV.sources.labels(kind)`, and returns them. */

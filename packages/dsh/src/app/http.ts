@@ -36,6 +36,7 @@ import { activityFeed, activityLookup } from './activity.ts'
 import { taskBoard, taskDetail } from './tasks.ts'
 import { goalBoard, goalDetail } from './goals.ts'
 import { spaceRows } from './spaces.ts'
+import { contextGroupBoard } from './context-groups.ts'
 import type { SpaceLeases } from './spaces.ts'
 
 export interface HttpHost {
@@ -185,6 +186,7 @@ function routes(runtime: HttpHost): Routes {
     },
     'GET spaces': async () => ({ generatedAt: new Date().toISOString(),
       rows: await spaceRows(store, runtime.spaces.processEpoch, id => runtime.executor.isLive(id)) }),
+    'GET contexts/groups': () => contextGroupBoard(runtime),
     'GET tasks/:id': ({ params, query }) => {
       const detail = taskDetail(views(runtime), params.id, TasksQuery.parse(query).depth)
       if (!detail) throw new RouteError(404, 'Ticket not found')

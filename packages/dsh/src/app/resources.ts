@@ -18,6 +18,8 @@ import type { Sessions } from './sessions.ts'
 import type { Settings } from './settings.ts'
 import { KV } from '../kv.ts'
 import type { Store } from './store.ts'
+import type { SourceRegistry } from '../sources/registry.ts'
+import { contextGroupOf } from './context-groups.ts'
 import type { TextCache } from './cache.ts'
 
 /** Resource descriptors exposed via orchestrator_read, marking which resources worker sessions may also read for their own ticket. */
@@ -58,6 +60,8 @@ export const resourceGrammar = (executor: boolean): string => RESOURCES.filter(r
 
 export interface ResourceHost {
   readonly store: Pick<Store, 'get' | 'settings' | 'triggers' | 'tickets' | 'threads' | 'read' | 'decisions' | 'replyStatus'>
+  /** Source hooks that derive the optional context group; no read path or grant is added by them. */
+  readonly sources: Pick<SourceRegistry, 'contextGroup' | 'threadSpace'>
   readonly pages: TextCache
   readonly prompts: Pick<Prompts, 'current' | 'version' | 'history' | 'skills' | 'defaultChanged'>
   readonly commands: Commands
@@ -252,7 +256,7 @@ const ROUTES: readonly Route[] = [
       const threads = [...subscribed.map(thread => marked(thread.key, !!thread.context?.includes(id))),
         ...[...bound].filter(key => !subscribed.some(thread => thread.key === key)).map(key => marked(key, false))]
       const origin = host.store.triggers.get(ticket.origin.triggerId)
-      return { ...ticketDetails(ticket, threads, batchOf(host, ticket), !!ticketId, origin), ...retry }
+      return { ...ticketDetails(ticket, threads, batchOf(host, ticket), !!ticketId, origin, contextGroupOf(host, ticket)), ...retry }
     }
     if (section === 'assignments' || section === 'inputs') {
       if (part !== undefined) throw new Error('Unknown context resource')

@@ -74,7 +74,7 @@ What the registry checks when the plugin loads, and what to change if it throws:
 - `health: []` is legal. When you add a loop, declare one entry named after the kind (`['noop']`) and report through `sourceContext`, never through `sync:<id>`.
 - `limits` is optional; use it when the panel should suggest a polling interval.
 
-The adapter is behavior. This one only validates configuration. The optional members are the whole feature map, and [008 §2–9](008-cookbook.md#2-configuration-schema-fields-facts-and-health) covers each: `scope`, `channel`, `threadContext`, `find`, `repliesTo`, `policy`, `environment`, `facts` and `refreshLabels`.
+The adapter is behavior. This one only validates configuration. The optional members are the whole feature map, and [008 §2–9](008-cookbook.md#2-configuration-schema-fields-facts-and-health) covers each: `scope`, `channel`, `threadContext`, `find`, `repliesTo`, `policy`, `environment`, `facts`, `refreshLabels`, and — when the Source has shared spaces — `contextGroup`/`threadSpace` (the read-only group dimension described in document 017; it must not become a member list or an authorization scope).
 
 ## 4. Register the plugin (3 min)
 

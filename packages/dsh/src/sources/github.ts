@@ -77,6 +77,10 @@ export const githubAdapter: SourceAdapter<GithubConfig> = {
   },
   channel: { send: sendGithub, probe: probeGithub, withdraw: withdrawGithub, link: githubLink },
   threadContext: githubThreadContext,
+  // The repository is the shared space of every Issue, PR and review Thread in it.
+  contextGroup: (_address, config) => config.repository
+    ? { space: config.repository, label: config.repository, url: `https://github.com/${config.repository}` } : undefined,
+  threadSpace: (thread, config) => thread.source === SOURCE && config.repository ? config.repository : undefined,
   // `#12`, `12`, or the page of an Issue or PR, of any repository, names Thread 12.
   find: query => {
     const number = (/^#?(\d+)$/.exec(query.trim()) ?? /github\.com\/[^/]+\/[^/]+\/(?:pull|issues)\/(\d+)/.exec(query))?.[1]

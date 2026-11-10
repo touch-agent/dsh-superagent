@@ -34,6 +34,7 @@ import { sourceContextOf, type SourceContextDeps } from './source-context.ts'
 import { conversationDefinition } from '../sources/conversation.ts'
 import { dispatchConversation } from './conversation.ts'
 import type { ResourceHost } from './resources.ts'
+import { contextGroupOf } from './context-groups.ts'
 import { mainTools, type MainToolsHost } from './tools/main.ts'
 import { executorTools, type ExecutorToolsHost } from './tools/executor.ts'
 import { SpaceLeases } from './spaces.ts'
@@ -121,7 +122,7 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const links = parts.links = { store, links: sourceLinks, commands, sources, lifetime }
   const link = parts.link = (trigger: Trigger, signal?: AbortSignal) => sourceLink(links, trigger, signal)
   const environment = parts.environment = (ticket: Ticket) => host.ticketEnvironment(ticket)
-  const resources = parts.resources = { store, pages: new TextCache(4_000_000), prompts, commands, masterId, context: ctx,
+  const resources = parts.resources = { store, sources, pages: new TextCache(4_000_000), prompts, commands, masterId, context: ctx,
     promptVersion: id => parts.sessions.promptVersion(id), mayRead: (id, revision) => parts.sessions.mayRead(id, revision),
     feishuPageSize: () => feishuSettings(sources).readPageSize, sourceLink: link }
   const sessions = parts.sessions = new Sessions({ context: ctx, store, prompts, effects, health: board.claim('models'), masterId,
@@ -134,6 +135,7 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   // One epoch per Runtime process: an old epoch is what makes a lease from a stopped process distinguishable from a live one.
   const spaces = parts.spaces = new SpaceLeases(store, Date.now())
   const executor = parts.executor = new DshExecutor({ context: ctx, get engine() { return parts.engine }, store, effects, spaces,
+    contextGroup: ticket => contextGroupOf({ store, sources }, ticket),
     health: board.claim('worker'), machine, lifetime, sessions, closing: () => host.closing(), paused: () => host.paused(), environment,
     sourceLink: link, repliedTo: trigger => repliedTo({ store, sources }, trigger) })
   const inline = parts.inline = new InlineWork({ store, get engine() { return parts.engine },

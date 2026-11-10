@@ -30,7 +30,8 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   expect(decisions.items).toContainEqual(accepted)
   expect(await read(decisions.items.at(-1)!.read)).toMatchObject({ kind: 'accept', ticket_id: ticket.id, mandate: { strength: 'explicit' } })
   expect(await read(`ticket/${ticket.id}`)).toMatchObject({ ticket_id: ticket.id, state: 'working', directory: ticket.execution!.directory,
-    trigger_id: trigger.id, assignments: { items: [expect.objectContaining({ state: 'running' })] }, assignment: `ticket/${ticket.id}/assignment` })
+    trigger_id: trigger.id, context_group: expect.objectContaining({ key: `feishu:${CHAT}`, source: 'feishu', visibility: 'source' }),
+    assignments: { items: [expect.objectContaining({ state: 'running' })] }, assignment: `ticket/${ticket.id}/assignment` })
   // The settings name each block's revision and hold the small blocks; a block reads whole by the name a save takes.
   const settings = await read('settings')
   expect(settings).toMatchObject({ eval: { value: { mode: 'auto' } }, policy: { revision: expect.any(Number), allowed: { feishu: 1, github: 1 }, read: 'settings/policy' },

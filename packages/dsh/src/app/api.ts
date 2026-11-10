@@ -15,6 +15,7 @@ import type { TriggerTraceView } from './views/trace.ts'
 import type { ActivityFeed, ActivityLevel } from './activity.ts'
 import type { TaskBoardView, TaskDetailView } from './tasks.ts'
 import type { GoalBoardView, GoalView } from './goals.ts'
+import type { ContextGroupBoardView } from './context-groups.ts'
 import type { SpaceRowsView } from './spaces.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
@@ -36,6 +37,7 @@ export interface Api {
   'GET goals': { response: GoalBoardView }
   'GET goals/:id': { response: { goal: GoalView } }
   'GET spaces': { response: SpaceRowsView }
+  'GET contexts/groups': { response: ContextGroupBoardView }
   'GET tasks/:id': { query?: { depth?: number }; response: TaskDetailView }
   'GET search': { query: { q: string }; response: SearchView }
   'GET sources': { response: SourceStatusView[] }
