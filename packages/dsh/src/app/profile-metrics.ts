@@ -141,7 +141,8 @@ export function profileMetrics(store: Store, profile: string, now = new Date()):
     } else if (ticket.parentTicketId && ticket.delegation?.resolution) {
       group.childSuccess.n += 1
       if (ticket.delegation.resolution.kind === 'accepted') group.childSuccess.successes += 1
-    } else if (isLightweight(ticket) && ticket.ended) {
+    } else if (isLightweight(ticket) && ticket.ended
+      && ticket.ended.outcome !== 'dropped' && ticket.ended.outcome !== 'stopped') {
       group.lightweightSuccess.n += 1
       if (ticket.ended.outcome === 'completed' || ticket.ended.outcome === 'merged') group.lightweightSuccess.successes += 1
     }
