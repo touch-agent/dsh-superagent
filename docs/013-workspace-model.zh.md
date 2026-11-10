@@ -2,7 +2,7 @@
 
 > 状态：**设计 v1.2（2026-11-10）；Phase 1 只读投影与 Phase 2 写租约/独立子空间已实现（T3-12/T3-13）**。按方案 A 精简：`Execution.directory` 是空间的唯一 locator，只增加写租约，不建空间注册表。Phase 3 复用/回收与 Phase 4 provider 仍不在本次范围。
 >
-> 实现备注：schema 16 增加 `space_lease`；`packages/dsh/src/app/spaces.ts` 负责 locator、投影和 `SpaceLeases`；执行器在 prepare 前预留、校验后激活、Ticket 结束释放；`executor.workspace.lease` 与 `childSibling` 两个 flag 可分别回退路径模式与旧嵌套布局；E1 的空间区块、E2 的只读列表和 `workspace.view` 客户端开关已落地。租约不进入 Mandate/Action/Approval/Acceptance，任何界面都不把它显示成授权。
+> 实现备注：schema 16 增加 `space_lease`；`packages/dsh/src/app/spaces.ts` 负责 locator、投影和 `SpaceLeases`；执行器在 prepare 前预留、校验后激活、Ticket 结束释放；`executor.workspace.lease` 与 `childSibling` 两个 flag 可分别回退路径模式与旧嵌套布局；E1 的空间区块、E2 的只读列表和 `workspace.view` 客户端开关已落地。E2 的 `GET spaces` 先按目录去重并发预热，再用进程内 15 秒 TTL 缓存目录 kind/分支，冷轮询每个目录读一次、热轮询不读文件系统；E1 的票据负载不再携带 `directory`，绝对路径只出现在 E2。租约不进入 Mandate/Action/Approval/Acceptance，任何界面都不把它显示成授权。
 >
 > 回退：行为回退先关两个 `workspace` flag；二进制回退到 schema 15 及更早版本时，旧构建会拒绝打开 schema 16，需按 [006 部署](006-deployment.md) 恢复升级前备份（或在停服后删除 `space_lease` 并把 `kv.schema` 改回 15）。`space_lease` 没有外键、也不改写旧记录，删除它不影响其他表。
 >
@@ -434,7 +434,7 @@ Phase 2 有租约后，才增加：
 - `ready` 待审阅时 Phase 1/2 不显示「保留中」；Phase 3 有保留策略后再显示保留到期。
 - E1 只显示当前持有者，不显示排队原因；E2 显示租约状态与路径，释放/回收操作留到 Phase 3。
 - lightweight 详情显示「轻量执行：无独立空间」一句，不显示空的租约/分支字段。
-- 现有任务视图若在 identifiers 折叠块里显示目录，T3-12 实现时收敛为显示名/类型，路径移到 E2；不要把内部路径留在 E1 默认展开。
+- E1 不携带、也不渲染绝对路径：`identifiers` 只保留 Ticket id 与旧任务范围；路径只在 E2 的 Spaces 列表（复制路径）。`workspace.view=off` 只隐藏空间区块与 E2 列表，不把路径放回 E1。
 
 ### 6.3 E2 管理面板的「空间」视图
 
@@ -560,6 +560,7 @@ Phase 2 有租约后，才增加：
   - 规范 locator `realpath(dirname)+basename`；prepare 后 `realpath(directory)` 必须匹配，否则释放并失败；
   - 子 Ticket 新空间放根 Ticket 目录所在目录的兄弟位置（通常即执行根；名字含父名）；旧嵌套目录按 legacy 标记，不自动搬迁；prepare cwd 变化要写迁移说明并演练；kernel 继续拥有目录布局（`delegate` 一处改），不引入 runtime layout port；
   - prepare 后置校验（目录、locator、分支/检出、凭据卫生）；
+  - E2 列表读取：`GET spaces` 按目录去重并发预热 kind/分支，再用 15 秒 TTL 缓存；E1 票据负载不再携带 `directory`，绝对路径只出现在 E2；
   - **不做** E2 释放/回收/复用、不做 TTL/心跳、不做 read claim、不做 provider 抽象、不做跨仓库改绑；
   - 文档 003/006 更新。
 - 验收：
@@ -569,7 +570,7 @@ Phase 2 有租约后，才增加：
   - 重启后按 `processEpoch`/活 Session 标 stale；不静默抢占；父先于子恢复；
   - Ticket 结束后释放；resume 重新获取；Phase 2 不把旧目录自动给别的 Ticket；
   - 子 Ticket 仍不能推送/开 PR；父整合子分支；
-  - `tests/spaces.spec.ts`、`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`、`pnpm check`；
+  - `tests/spaces.spec.ts` 覆盖 600 行投影：冷轮询每目录一次读取、热轮询零文件系统读、p95 门槛；E1 负载无绝对路径；`tests/runtime-concurrency.spec.ts`、`tests/migration.spec.ts`、`pnpm check`；
   - 迁移演练：旧库/旧 worktree 正常启动，按 locator 获取租约，无重复 prepare；平铺子空间 prepare cwd 改为根目录所在目录后，相对路径命令的迁移结果符合预期。
 - 回退：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留，但旧二进制拒绝 schema 16，二进制回滚需升级前备份或停服删表降 schema；不删除旧目录。
 

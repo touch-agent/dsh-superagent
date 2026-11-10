@@ -5,7 +5,7 @@
  * from that directory, the Ticket's Assignments and the `space_lease` row. `space_lease` only coordinates writers; it grants
  * nothing and never joins an authorization decision.
  */
-import { mkdir, realpath } from 'node:fs/promises'
+import { mkdir, readFile, realpath, stat } from 'node:fs/promises'
 import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { latestReport, liveTicket, runningAssignment, ticketForm, type Ticket } from '@superagent/kernel'
@@ -106,29 +106,126 @@ export function spaceName(name: string | undefined, directory: string): string {
   return raw.replace(/-[0-9a-f]{12}(?=-child-\d+$|$)/, '') || raw
 }
 
-/** Read the branch (or short commit) a prepared checkout has checked out, without trusting a stale API field. */
-export function branchOf(directory: string): string | undefined {
-  try {
-    let git = join(directory, '.git')
-    const entry = statSync(git)
-    if (entry.isFile()) {
-      const pointer = readFileSync(git, 'utf8').trim()
-      if (!pointer.startsWith('gitdir:')) return undefined
-      git = resolve(directory, pointer.slice('gitdir:'.length).trim())
-    }
-    const head = readFileSync(join(git, 'HEAD'), 'utf8').trim()
-    return head.startsWith('ref: refs/heads/') ? head.slice('ref: refs/heads/'.length) : /^[0-9a-f]{7,40}$/i.test(head) ? head.slice(0, 7) : undefined
-  } catch { return undefined }
+/** One directory's filesystem facts: what kind of space it is and, for a checkout, its branch or short commit. */
+export interface SpaceFacts { kind: SpaceKind; branch?: string }
+
+/** Reads `HEAD` without trusting a stale API field; a detached checkout shows its short commit. */
+function branchAtHead(head: string): string | undefined {
+  const value = head.trim()
+  return value.startsWith('ref: refs/heads/') ? value.slice('ref: refs/heads/'.length) : /^[0-9a-f]{7,40}$/i.test(value) ? value.slice(0, 7) : undefined
 }
 
-/** The kind a prepared directory supports: a VCS checkout, a plain scratch directory, or unknown before it exists. */
-export function kindOf(directory: string): SpaceKind {
+/** The directory facts synchronously, with one `.git` check for both kind and branch (E1's projection path). */
+function factsSync(directory: string): SpaceFacts {
   try {
-    statSync(join(directory, '.git'))
-    return 'checkout'
+    let git = join(directory, '.git')
+    if (statSync(git).isFile()) {
+      const pointer = readFileSync(git, 'utf8').trim()
+      if (!pointer.startsWith('gitdir:')) return { kind: 'checkout' }
+      git = resolve(directory, pointer.slice('gitdir:'.length).trim())
+    }
+    let branch: string | undefined
+    try { branch = branchAtHead(readFileSync(join(git, 'HEAD'), 'utf8')) } catch { /* a checkout without a readable HEAD */ }
+    return { kind: 'checkout', ...branch ? { branch } : {} }
   } catch { /* no VCS metadata */ }
-  try { statSync(directory); return 'scratch' } catch { return 'unknown' }
+  try { statSync(directory); return { kind: 'scratch' } } catch { return { kind: 'unknown' } }
 }
+
+/** The same facts without blocking the event loop, for the batch warm-up of a list projection. */
+async function factsAsync(directory: string): Promise<SpaceFacts> {
+  try {
+    let git = join(directory, '.git')
+    if ((await stat(git)).isFile()) {
+      const pointer = (await readFile(git, 'utf8')).trim()
+      if (!pointer.startsWith('gitdir:')) return { kind: 'checkout' }
+      git = resolve(directory, pointer.slice('gitdir:'.length).trim())
+    }
+    let branch: string | undefined
+    try { branch = branchAtHead(await readFile(join(git, 'HEAD'), 'utf8')) } catch { /* a checkout without a readable HEAD */ }
+    return { kind: 'checkout', ...branch ? { branch } : {} }
+  } catch { /* no VCS metadata */ }
+  try { await stat(directory); return { kind: 'scratch' } } catch { return { kind: 'unknown' } }
+}
+
+/** Read the branch (or short commit) a prepared checkout has checked out, without trusting a stale API field. */
+export const branchOf = (directory: string): string | undefined => factsSync(directory).branch
+
+/** The kind a prepared directory supports: a VCS checkout, a plain scratch directory, or unknown before it exists. */
+export const kindOf = (directory: string): SpaceKind => factsSync(directory).kind
+
+const FACTS_TTL_MS = 15_000, FACTS_LIMIT = 4_096, FACTS_WIDTH = 16
+
+/**
+ * A short-lived cache in front of the per-directory kind/branch reads. E2 polls the whole list every few seconds; without
+ * a cache that is one synchronous `.git`/`HEAD` read per row per poll. `load` also warms the list concurrently so a cold
+ * poll does not serialize hundreds of reads. A branch that changes inside the TTL is shown up to `ttlMs` late: this is a
+ * read-only diagnostic projection, and the executor's prepare verification does not use it.
+ */
+export class SpaceFactsCache {
+  private readonly entries = new Map<string, { at: number; facts: SpaceFacts }>()
+  /** The number of underlying filesystem reads, for diagnostics and the list performance test. */
+  reads = 0
+  private readonly ttlMs: number
+  private readonly limit: number
+  private readonly clock: () => number
+  private readonly read: (directory: string) => Promise<SpaceFacts>
+
+  constructor(options: { ttlMs?: number; limit?: number; now?: () => number; read?: (directory: string) => Promise<SpaceFacts> } = {}) {
+    this.ttlMs = options.ttlMs ?? FACTS_TTL_MS
+    this.limit = options.limit ?? FACTS_LIMIT
+    this.clock = options.now ?? (() => Date.now())
+    this.read = options.read ?? factsAsync
+  }
+
+  /** Fresh facts for a directory, or undefined when absent or older than the TTL. */
+  get(directory: string): SpaceFacts | undefined {
+    const entry = this.entries.get(directory)
+    if (!entry) return undefined
+    if (this.clock() - entry.at > this.ttlMs) { this.entries.delete(directory); return undefined }
+    // Refresh insertion order so the size cap evicts the least recently used directory, not the oldest read.
+    this.entries.delete(directory); this.entries.set(directory, entry)
+    return entry.facts
+  }
+
+  /** Facts for a synchronous projection: a cache hit, else one blocking read. */
+  cached(directory: string): SpaceFacts {
+    const facts = this.get(directory)
+    if (facts) return facts
+    this.reads++
+    const read = factsSync(directory)
+    this.put(directory, read)
+    return read
+  }
+
+  /** Warms every distinct uncached directory concurrently, one read each, for a cold list projection. */
+  async load(directories: Iterable<string>): Promise<void> {
+    const pending = [...new Set(directories)].filter(directory => !this.get(directory))
+    let next = 0
+    const worker = async (): Promise<void> => {
+      while (next < pending.length) {
+        const directory = pending[next++]!
+        if (this.get(directory)) continue
+        this.reads++
+        this.put(directory, await this.read(directory))
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(FACTS_WIDTH, pending.length) }, worker))
+  }
+
+  clear(): void { this.entries.clear() }
+
+  private put(directory: string, facts: SpaceFacts): void {
+    if (this.entries.has(directory)) this.entries.delete(directory)
+    this.entries.set(directory, { at: this.clock(), facts })
+    if (this.entries.size > this.limit) {
+      const oldest = this.entries.keys().next().value
+      if (oldest !== undefined) this.entries.delete(oldest)
+    }
+  }
+}
+
+/** The process-wide facts cache shared by E1 and E2 reads; one runtime process owns one state directory. */
+export const spaceFactsCache = new SpaceFactsCache()
 
 /** Player-readable holder; the caller supplies the viewed Ticket so `own` does not leak an internal id. */
 function holderOf(store: Store, ticketId: string, viewedId?: string): SpaceHolder | undefined {
@@ -148,14 +245,15 @@ export function spaceOf(store: Store, ticket: Ticket, options: {
   parent?: Ticket | undefined
   leases?: ReadonlyMap<string, SpaceLease>
   cache?: Map<string, string>
+  facts?: SpaceFactsCache
 } = {}): SpaceView | undefined {
   if (ticketForm(ticket) === 'lightweight') return undefined
   const directory = ticket.execution?.directory
   if (!directory) return undefined
   const locator = locatorKeySync(directory, options.cache)
   const lease = options.leases ? options.leases.get(locator) : currentLease(store, locator)
-  const kind = kindOf(directory)
-  const exists = kind !== 'unknown'
+  const facts = (options.facts ?? spaceFactsCache).cached(directory)
+  const exists = facts.kind !== 'unknown'
   const legacy = !!options.parent?.execution?.directory
     && directory.startsWith(`${options.parent.execution.directory.replace(/\/$/, '')}/`)
   const running = runningAssignment(ticket)
@@ -166,11 +264,10 @@ export function spaceOf(store: Store, ticket: Ticket, options: {
       : lease?.state === 'active' || (!lease && running) ? 'active'
         : legacy ? 'legacy'
           : exists ? 'ready' : 'planned'
-  const branch = branchOf(directory)
   return {
-    kind,
+    kind: facts.kind,
     name: spaceName(ticket.execution?.name, directory),
-    ...branch ? { branch } : {},
+    ...facts.branch ? { branch: facts.branch } : {},
     state,
     ...holderId ? { holder: holderOf(store, holderId, ticket.id) } : {},
     ...legacy ? { legacy: true as const } : {},
@@ -317,12 +414,13 @@ function leaseOf(row: Record<string, SQLInputValue>): SpaceLease {
 export class SpaceProjection {
   private readonly leases: Map<string, SpaceLease>
   private readonly cache = new Map<string, string>()
-  constructor(private readonly store: Store, readonly processEpoch: number, private readonly live: (ticketId: string) => boolean) {
+  constructor(private readonly store: Store, readonly processEpoch: number, private readonly live: (ticketId: string) => boolean,
+    private readonly facts: SpaceFactsCache = spaceFactsCache) {
     this.leases = new Map(new SpaceLeases(store, processEpoch).currentRows().map(lease => [lease.locatorKey, lease]))
   }
 
   view(ticket: Ticket, parent?: Ticket): SpaceView | undefined {
-    return spaceOf(this.store, ticket, { parent, leases: this.leases, cache: this.cache })
+    return spaceOf(this.store, ticket, { parent, leases: this.leases, cache: this.cache, facts: this.facts })
   }
 
   lease(ticket: Ticket): SpaceLease | undefined {
@@ -344,11 +442,14 @@ export class SpaceProjection {
 }
 
 /** Every E2 space row: tracked Tickets with an Execution, newest activity first, with the path and lease diagnostics. */
-export function spaceRows(store: Store, processEpoch: number, live: (ticketId: string) => boolean): SpaceRow[] {
-  const projection = new SpaceProjection(store, processEpoch, live)
+export async function spaceRows(store: Store, processEpoch: number, live: (ticketId: string) => boolean,
+  facts: SpaceFactsCache = spaceFactsCache): Promise<SpaceRow[]> {
   const latest = new Map<string, string>()
   for (const record of store.activity.latestByTicket()) if (record.ticket) latest.set(record.ticket, record.at)
   const tickets = [...store.tickets.allList()].filter(ticket => ticketForm(ticket) === 'tracked' && !!ticket.execution?.directory)
+  // One concurrent warm-up for the whole list: a cold poll reads each distinct directory once instead of one row at a time.
+  await facts.load(tickets.map(ticket => ticket.execution!.directory))
+  const projection = new SpaceProjection(store, processEpoch, live, facts)
   const parents = new Map(tickets.map(ticket => [ticket.id, ticket]))
   const rank = (ticket: Ticket): number => ticket.ended ? 2 : runningAssignment(ticket) ? 0 : 1
   return tickets.sort((left, right) => rank(left) - rank(right) || (latest.get(right.id) ?? right.updatedAt).localeCompare(latest.get(left.id) ?? left.updatedAt))

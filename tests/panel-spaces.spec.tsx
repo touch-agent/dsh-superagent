@@ -35,12 +35,13 @@ it('lists spaces on the Execution page with the path, lease generation and a cop
   expect(text()).toContain(zh.copied)
 })
 
-it('rolls back to the legacy directory identifiers with workspace.view=off', async () => {
+it('hides the space surfaces when workspace.view=off without putting the path back in E1', async () => {
   localStorage.setItem('workspace.view', 'off')
   await mount()
   await click('修复回归')
   await click(zh.identifiers)
-  expect(text()).toContain('/w/t1')
+  expect(text()).toContain(zh.ticketId)
+  expect(text()).not.toContain('/w/t1')
   expect(text()).not.toContain('fix-login')
   expect(en.space).toBe('Space')
   localStorage.removeItem('workspace.view')
