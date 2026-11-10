@@ -27,6 +27,7 @@ E0–E3 是**展示分级**，不是 Ticket、Mandate 或数据库字段。同�
 | 审批行 | E0 | 「需要你决定」标签、动作级别、后果、过期时间；可批准/拒绝 | 每次审批占一个决定位；隐藏对象 id、revision、`mail.reply` 等内部事实 | 「技术详情」折叠（E2）与工单时间线 | [after-overview](images/exposure-levels/after-overview.png)、[before-overview](images/exposure-levels/before-overview.png) |
 | 审批行「技术详情」 | E2 | 折叠；点开后显示动作 kind、来源/对象 id、revision | 默认零成本；排障/审计时一次点击 | 无；这是审计证据本身 | `dt-e0-technical` 与 `panel-overview` 用例 |
 | 主会话结果卡（`ticketCard.goal`） | E0 | 目标陈述、状态、需决定、结果与验收；结果被截断时给 `ticket/<id>/result` | 只在 worker 报告时进入；进度报告不打扰 | 完整报告在 `ticket/<id>/result`（E3） | `tests/goals.spec.ts`、`docs/015` |
+| 结果转述 relay（`worker_report`/`worker_attention`/`follow_up`） | E0 | 目标、状态、需决定、结果摘要与 `read` 入口；`progress` 不转述 | 每条只通知一次；不带 Assignment、worker 或 Session；`ticket_id` 只用于主会话路由，不是展示字段 | 完整报告在 `ticket/<id>/result`（E3） | `tests/goals.spec.ts`、`tests/notices.spec.ts` |
 | 运行/最近区链接 | E0→E1/E2 | 「任务」「详情」两个入口 | 一次点击就能从结果面进入审查/诊断 | 任务列表（E1）与执行过滤（E2） | 概览用例 |
 
 ### 2.2 任务列表与任务详情（E1）
@@ -79,11 +80,11 @@ E0–E3 是**展示分级**，不是 Ticket、Mandate 或数据库字段。同�
 | --- | --- | --- | --- |
 | C1.1 主会话/结果卡/审批行的 E0 四问 | [before-overview](images/exposure-levels/before-overview.png)：审批行直接显示 `mail.reply · 发送`、`对象 飞书 om_reply_1 · rev-1` | [after-overview](images/exposure-levels/after-overview.png)：审批行给「需要你决定」、动作、后果、过期；对象 id 收进「技术详情」 | 通过：默认面只有目标/状态/需决定/结果，无 `worker-`、Assignment 或 Session id |
 | C2.1 E0 不出现 Session/worker id | [before-overview](images/exposure-levels/before-overview.png)：失败工单行有「打开 Session」 | [after-overview](images/exposure-levels/after-overview.png)：该按钮消失；[after-ticket](images/exposure-levels/after-ticket.png) 标题旁也没有 | 通过：Session 只在工单「标识」折叠（E3） |
-| C2.2 E1 用目标/负责人/状态/交付/阻塞 | [before-tasks](images/exposure-levels/before-tasks.png)：选中详情只有角色与选中提示 | [after-tasks](images/exposure-levels/after-tasks.png)：新增「目标 · 修复回归」「结果 · 还没有可审交付」 | 通过：详情不显示内部 id；计划树/图标注 E2 |
+| C2.2 E1 用目标/负责人/状态/交付/阻塞 | [before-tasks](images/exposure-levels/before-tasks.png)：选中详情只有角色与选中提示 | [after-tasks](images/exposure-levels/after-tasks.png)：新增「目标 · 修复回归」「结果 · 还没有可审交付」，根/审查角色改为「负责人」「审查人」 | 通过：详情不显示内部 id，角色用稳定词；计划树/图标注 E2 |
 | C2.4 事件栏默认关闭、可显式开启、可关闭 | 基线在首次提醒时自动打开（代码路径 + 旧 `client.spec`） | [after-display](images/exposure-levels/after-display.png)：设置 › 显示默认关闭；打开只一次；`events.autoOpen.v1` 可禁用 | 通过：`client.spec` 覆盖默认关闭、显式开启、部署开关关闭三条路径 |
 | 设置分组可见性 | [before-settings](images/exposure-levels/before-settings.png)：来源/评估/执行/提示词/部署 | [after-settings](images/exposure-levels/after-settings.png)：多出「显示」；内容见 [after-display](images/exposure-levels/after-display.png) | 通过：设置项不是默认面，只有主动进入才出现 |
 
-### 5.1 10 秒测试记录
+### 5.1 10 秒自查记录（非用户实验）
 
 - **任务**：只看 `after-overview`，10 秒内回答「现在要不要我、下一步是什么、结果在哪里」。
 - **参与者**：本工单的 worker（实现者自测，非独立用户）；无外部参与者。

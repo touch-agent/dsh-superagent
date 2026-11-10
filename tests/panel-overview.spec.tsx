@@ -77,7 +77,7 @@ it('offers each Ticket that needs a person its E0 actions on the overview: answe
   // The default row carries goal, state and the decision; opening the Executor Session is an E3 detail on the Ticket page.
   expect(all('.dt-ticket-actions button').map(button => button.textContent)).not.toContain(zh.openSession)
   expect(all('.dt-ticket .dt-ticket-meta').map(meta => meta.textContent).join(' ')).not.toContain('未送达')
-  expect(text()).not.toMatch(/worker-|Assignment|Session id/)
+  expect(text()).not.toMatch(/worker-|Assignment|Session id|sessionId|assignmentId|workerId/)
   await click(zh.retry)
   await click(zh.confirm)
   expect(server.requests.some(request => request.path === 'tickets/t4/retry' && request.method === 'POST')).toBe(true)

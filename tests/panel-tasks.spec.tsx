@@ -132,7 +132,8 @@ it('shows the E1 selected detail with the E0 goal, decision and result, and no w
   expect(item.textContent).toContain(zh['stage.review'])
   expect(item.textContent).toContain(zh.tasksResult)
   expect(item.textContent).toContain(`${zh['artifact.file']} · docs/report.md · r7`)
-  expect(item.textContent).not.toMatch(/worker-|Assignment/)
+  expect(item.textContent).toContain(zh['tasksRole.parentWorker'])
+  expect(item.textContent).not.toMatch(/worker-|Assignment|sessionId|assignmentId|workerId/)
 })
 
 it('rolls back to the plan tree with taskView.v1=off and offers no list view', async () => {
