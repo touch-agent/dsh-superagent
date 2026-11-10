@@ -19,7 +19,7 @@
 一次派生最多看三类已有事实：
 
 1. **Channel 地址**：Ticket 的来源 Trigger Channel 优先，其后是 `Ticket.channels`（含后续绑定的 Channel）。Source adapter 可选实现 `contextGroup(address, config)`，返回该地址所属共享空间的 `space`（Source 自己的词汇：飞书群 `chatId`、GitHub `owner/name`）、可选的 `label`/`url`。未实现该 hook 的 Source（如本地 conversation、飞书文档评论）没有群组。
-2. **Thread/Subscription 活性**：群组只在 Ticket 仍订阅该空间中至少一个 Thread 时存在。判断以 `Thread.subscriptions` 为准（`Ticket.follows` 只是历史记录），所以退订、离开共享空间或协作线程关闭后，下一次派生就不再带出该群组；已产生的任务、交付与记录不回溯删除。
+2. **Thread/Subscription 活性**：群组只在 Ticket 仍订阅该空间中至少一个 Thread 时存在。判断以 `Thread.subscriptions` 为准（`Ticket.follows` 只是历史记录），所以退订或离开共享空间后，下一次派生就不再带出该群组；已产生的任务、交付与记录不回溯删除。**关闭 PR/协作 Thread 本身不等于退订**：GitHub 关闭 PR 后保留订阅，以便后续评论恢复工单，因此该群组会保留到订阅被移除；本投影不自造「关闭即离开」的规则。
 3. **群组约定来源**：该 Ticket 在该空间中仍订阅的 Thread 列表，按最近活动排序。`context_group.conventions` 就是这组只读 Thread key；它不读取、也不缓存 Thread 正文。
 
 | Source | 共享空间 | 私聊/无群组 |
@@ -30,6 +30,8 @@
 | feishu-doc | 无（文档评论不是群组） | 全部 |
 
 同一群聊里的不同话题 Thread 派生**同一个** `key`（`<source>:<space>`）；不同群/仓库得到不同 key。GitHub 的 PR/Issue Thread 都属于同一个 repository 空间；退订某个 PR Thread 不等于离开仓库，因此仍有其它 Thread 订阅时群组保留，全部退订后群组缺席。
+
+GitHub 的共享空间来自该 Source 实例**当前**配置的 `repository`，不写入 Ticket/Thread。更换 repository 等同于换一个 Source 空间：旧 Ticket 的旧 Thread 会按新配置重新归属，展示的 `label`/`url` 也随新配置变化。这是刻意的「配置即空间」选择；要保留旧归属，应保留旧 Source 实例，而不是在迁移中改写历史。
 
 ## 3. 读模型
 
@@ -66,7 +68,7 @@ T5-04 的装配表要求每个条目有 `key/source/scope/strength/inheritance/t
 | `inheritance` | `inherit` | 子 Ticket 由 T5-04 按任务继承规则处理 |
 | `truncation` | `800` | 同 key 竞争时的字符上限 |
 
-本任务不做 T5-04 的整表合并、冲突升级、fail closed 与快照；这些仍归 T5-04。子 Ticket 自身没有 Channel，因此本投影对子 Ticket 返回缺席；继承由 T5-04 的「任务 → 子 Ticket 包含继承」实现，不在本模块伪造根 Ticket 的维度。
+本任务不做 T5-04 的整表合并、冲突升级、fail closed 与快照；这些仍归 T5-04。`contextGroupDimension` 目前是 T5-04 可消费的条目形状，不是已接线的装配结果；`truncation` 在本模块按「同 key 竞争时的字符上限」理解，若 T5-04 把该字段解释为优先级，需要在装配层统一词汇。子 Ticket 在本投影中显式返回缺席（即使未来某条路径给它订阅，也不伪造根 Ticket 的群组）；继承由 T5-04 的「任务 → 子 Ticket 包含继承」实现。
 
 ## 5. 验收与测试
 
@@ -77,7 +79,9 @@ T5-04 的装配表要求每个条目有 `key/source/scope/strength/inheritance/t
 | 同组 / 异组 / 无组 | 飞书同群两个话题 key 相同、不同群 key 不同；GitHub 同仓库两个 Issue key 相同；conversation 无维度；`GET contexts/groups` 聚合正确 |
 | 私聊 / 群聊 | 飞书 `direct` 私聊缺席；群聊出现；缺 `direct` 标志但带群 `chatId` 视为群聊（Source 的显式标记优先） |
 | 退订后失效 | Thread 订阅移除后 `contextGroupOf` 缺席、列表移除该 Ticket，Ticket 的 JSON 不变 |
-| 群组不等于授权 | 投影没有成员/名单/授权字段；读取不修改 Mandate；T5-04 条目 shape 可核对 |
+| 订阅归属 | Ticket 在群里有 Channel 但**没有自己的订阅**、而别的 Ticket 订阅了同空间 Thread 时仍缺席；订阅了别的空间的 Thread 也不出组 |
+| 边界形态 | context-only `Thread.context` 仍算订阅；关闭的 follow 只要订阅还在，群组仍在；子 Ticket 显式缺席；旧 Ticket 无 `channels` 不崩溃 |
+| 群组不等于授权 | 投影没有成员/名单/授权字段；读取不修改 Mandate；T5-04 条目 shape 可核对；`GET contexts/groups` 整表只读一次订阅列表 |
 | 读模型与接线 | `ticketDetails` 可选字段、`GET contexts/groups` 只读、真实 Feishu/GitHub adapter hook |
 
 C3.3 走查：本任务的「无群组」「离开群组」由上述用例证明；「无子 Ticket」「轻量 Ticket」和完整装配快照留给 T5-04。C3.4 走查：worker 仍只能通过 `orchestrator_read ticket/<自己的 id>` 读上下文，`GET contexts/groups` 只挂在主 Session/面板的 HTTP 面，不进入 worker 的 `RESOURCES` 白名单；群组不跨 Source 映射，也不把其它 Ticket 的正文带给 worker。

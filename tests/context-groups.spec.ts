@@ -117,6 +117,46 @@ it('reads the subscription list once for the whole board', () => {
   expect(reads).toBe(1)
 })
 
+it('does not borrow another Ticket subscription in the same shared space', () => {
+  const mine = ticket('mine', [feishuChannel('oc_team', 'om_1')], [])
+  const other = ticket('other', [feishuChannel('oc_team', 'om_2')], ['feishu:oc_team:om_2'])
+  const read = host([mine, other], [thread('feishu:oc_team:om_2', ['other'])])
+  expect(contextGroupOf(read, mine)).toBeUndefined()
+  expect(contextGroupBoard(read).groups).toEqual([expect.objectContaining({ key: 'feishu:oc_team', tickets: ['other'] })])
+})
+
+it('does not count a subscription in another shared space', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_other:om_9'])
+  expect(contextGroupOf(host([item], [thread('feishu:oc_other:om_9', ['a'])]), item)).toBeUndefined()
+})
+
+it('counts a context-only Thread the Ticket is still subscribed to', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  const contextOnly = thread('feishu:oc_team:om_1', ['a'], { context: ['a'] })
+  expect(contextGroupOf(host([item], [contextOnly]), item)).toMatchObject({ key: 'feishu:oc_team',
+    conventions: ['feishu:oc_team:om_1'] })
+})
+
+it('keeps the group while a closed follow still has a live subscription', () => {
+  const item = ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'])
+  item.follows![0]!.closed = { at: AT, outcome: 'closed' }
+  expect(contextGroupOf(host([item], [thread('feishu:oc_team:om_1', ['a'])]), item)).toMatchObject({ key: 'feishu:oc_team' })
+})
+
+it('has no group for a child Ticket even when it carries a Channel and subscription', () => {
+  const child = ticket('child', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1'], { parentTicketId: 'parent', rootTicketId: 'parent' })
+  expect(contextGroupOf(host([child], [thread('feishu:oc_team:om_1', ['child'])]), child)).toBeUndefined()
+  expect(contextGroupBoard(host([child], [thread('feishu:oc_team:om_1', ['child'])] )).groups).toEqual([])
+})
+
+it('sorts a board group conventions by newest Thread activity', () => {
+  const items = [ticket('a', [feishuChannel('oc_team', 'om_1')], ['feishu:oc_team:om_1']),
+    ticket('b', [feishuChannel('oc_team', 'om_2')], ['feishu:oc_team:om_2'])]
+  const threads = [thread('feishu:oc_team:om_1', ['a'], { lastAt: '2026-11-10T01:00:00Z' }),
+    thread('feishu:oc_team:om_2', ['b'], { lastAt: '2026-11-10T02:00:00Z' })]
+  expect(contextGroupBoard(host(items, threads)).groups[0]!.conventions).toEqual(['feishu:oc_team:om_2', 'feishu:oc_team:om_1'])
+})
+
 it('treats a legacy Ticket with no channels as having no group', () => {
   const legacy = { ...ticket('legacy', [], []), channels: undefined } as unknown as Ticket
   expect(contextGroupOf(host([legacy]), legacy)).toBeUndefined()

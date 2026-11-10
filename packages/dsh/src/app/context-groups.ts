@@ -4,9 +4,10 @@
  * A group is derived on read from a Ticket's Source Channel addresses and the Threads it currently follows: it has no
  * table, no migration, no member list and no write path. It is context and display only, so reading or assembling a group
  * grants no action and does not stand in for the Mandate/Action gate. An absent group means the dimension stays unassembled;
- * once the Ticket leaves the shared space (drops its last live Thread there), the group disappears without rewriting the
- * Ticket or the work already produced. A child Ticket has no Channel of its own; T5-04's assembly inherits the root's group,
- * while this projection stays strictly per-Ticket.
+ * once the Ticket drops its last subscription in the shared space, the group disappears without rewriting the Ticket or the
+ * work already produced. A closed PR/followed Thread does not by itself drop the subscription (GitHub keeps it for a later
+ * resume), so the group stays until the subscription is removed. A child Ticket has no group of its own; T5-04's assembly
+ * inherits the root's group, while this projection stays strictly per-Ticket.
  */
 import type { ChannelRef, Thread, ThreadRef, Ticket, Trigger } from '@superagent/kernel'
 import type { ContextSpaceRef } from '../sources/kind.ts'
@@ -64,8 +65,9 @@ export interface ContextDimensionEntry {
 const groupKey = (source: string, space: string): string => `${source}:${space}`
 /**
  * The live Threads among `threads` that belong to `space`, newest activity first. Callers pass only Threads whose subscription
- * list still names the Ticket, so a dropped subscription (unsubscribe, leaving the space, or a closed collaboration) removes the
- * group dimension. The Ticket's `follows` record is not enough on its own: it is history, not liveness.
+ * list still names the Ticket, so a dropped subscription (unsubscribe or leaving the space) removes the group dimension. A
+ * closed PR/followed Thread keeps its subscription and therefore its group until the subscription is removed. The Ticket's
+ * `follows` record is not enough on its own: it is history, not liveness.
  */
 function liveThreads(host: ContextGroupReadHost, threads: Thread[], space: ContextSpaceRef & { source: string }): Thread[] {
   return threads.filter(thread => thread.ref.source === space.source && host.sources.threadSpace(thread.ref) === space.space)
@@ -99,6 +101,8 @@ export function contextGroupOf(host: ContextGroupReadHost, ticket: Ticket): Cont
 
 /** Derives one Ticket's group from the live Threads a caller already read; the board uses it to keep the read to one query. */
 function contextGroupAmong(host: ContextGroupReadHost, ticket: Ticket, threads: Thread[]): ContextGroupView | undefined {
+  // A child Ticket has no group of its own, even if a later path subscribes it to a Thread: T5-04 owns root-to-child inheritance.
+  if (ticket.parentTicketId) return undefined
   for (const channel of channelsOf(host, ticket)) {
     const space = host.sources.contextGroup(channel)
     if (!space) continue
@@ -116,10 +120,14 @@ export function contextGroupBoard(host: ContextGroupReadHost, now = new Date()):
   const groups = new Map<string, ContextGroupBoardEntry>()
   // One subscription query for the whole board, indexed by Ticket, rather than one query per Ticket on the read route.
   const byTicket = new Map<string, Thread[]>()
-  for (const thread of host.store.read.subscribedThreads()) for (const id of thread.subscriptions) {
-    const list = byTicket.get(id)
-    if (list) list.push(thread)
-    else byTicket.set(id, [thread])
+  const activity = new Map<string, string>()
+  for (const thread of host.store.read.subscribedThreads()) {
+    activity.set(thread.key, thread.lastAt ?? thread.createdAt)
+    for (const id of thread.subscriptions) {
+      const list = byTicket.get(id)
+      if (list) list.push(thread)
+      else byTicket.set(id, [thread])
+    }
   }
   for (const ticket of host.store.tickets.allList()) {
     const group = contextGroupAmong(host, ticket, byTicket.get(ticket.id) ?? [])
@@ -133,6 +141,9 @@ export function contextGroupBoard(host: ContextGroupReadHost, now = new Date()):
     for (const thread of group.conventions) if (!existing.conventions.includes(thread)) existing.conventions.push(thread)
   }
   const list = [...groups.values()].sort((left, right) => left.key.localeCompare(right.key))
+  // A group's convention list follows the per-Ticket promise: newest Thread activity first, then key order.
+  for (const group of list) group.conventions.sort((left, right) =>
+    (activity.get(right) ?? '').localeCompare(activity.get(left) ?? '') || left.localeCompare(right))
   return { generatedAt: now.toISOString(), groups: list,
     totals: { groups: list.length, tickets: list.reduce((count, group) => count + group.tickets.length, 0) } }
 }
