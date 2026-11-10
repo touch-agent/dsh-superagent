@@ -4,6 +4,7 @@ import { followupOwners, reached, threadKey } from './model.ts'
 import type { Thread, ThreadRef, Ticket, Trigger } from './model.ts'
 import type { Assessor, AssessmentOutcome, DomainEvent, DomainEvents, Executor, InlineExecutor, Outbox, Policy, Repositories, SourceScope, TraceSink }
   from './ports.ts'
+import type { ProfileBinder } from './profile.ts'
 import { spanId, traceId, type SpanKind } from './trace.ts'
 
 export interface EngineOptions {
@@ -17,6 +18,11 @@ export interface EngineOptions {
   inline?: InlineExecutor
   outbox: Outbox
   prepareTicket?: (ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>) => Ticket
+  /**
+   * Binds the execution profile a Ticket starts with. It never decides acceptance or authorization, and a failure here
+   * may leave a ticket legacy or not valid, but must not fail the creating transaction.
+   */
+  profile?: ProfileBinder
   /**
    * Put a child Ticket's directory beside its root's directory under the execution root, instead of nesting it inside
    * the parent's directory. The kernel still owns the layout; the deployment chooses flat or nested for compatibility.

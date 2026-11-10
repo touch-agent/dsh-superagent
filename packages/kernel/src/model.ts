@@ -1,6 +1,7 @@
 /** Domain model of a proactive agent: the concepts and their invariants, independent of any source, policy, or executor. */
 import type { ActionLevel } from './action.ts'
 import type { Review } from './deliverable.ts'
+import type { ProfileSnapshot } from './profile.ts'
 import type { Reason } from './reasons.ts'
 
 /** Actor identity in the source's own vocabulary; Policy decides which actors may originate work on that Source. */
@@ -401,6 +402,8 @@ export interface Ticket {
   updatedAt: string
   /** The Triggers it was accepted from: the one that started it, and the batch its Eval held. */
   origin: { triggerId: string; triggerIds: string[] }
+  /** The execution configuration it bound at creation; absent means legacy (role settings, live prompt, role work tools). */
+  profile?: ProfileSnapshot
   /** What its Executor chose: its short name, directory and assignment text. */
   execution?: Execution
   /** The latest failed delivery of an Input to its worker, until a delivery succeeds. */

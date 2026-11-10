@@ -4,6 +4,7 @@ import { UserError } from './errors.ts'
 import type { DeliverableInput, Review } from './deliverable.ts'
 import { enterReview } from './deliverable.ts'
 import { isChildTicket, latestAssignment, liveTicket, runningAssignment } from './model.ts'
+import { profileSpan } from './profile.ts'
 import type { ActorRef, ReportState, Ticket } from './model.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
@@ -46,7 +47,7 @@ export class Assignments extends EnginePart {
     assignment.state = 'running'; assignment.startedAt ??= this.now()
     ticket.updatedAt = this.now()
     this.repo.tickets.save(ticket)
-    this.stageOf(ticket, 'dispatch', { ref: assignmentId, data: { assignmentId } })
+    this.stageOf(ticket, 'dispatch', { ref: assignmentId, data: { assignmentId, ...profileSpan(ticket) } })
     if (liveTicket(ticket) && ticket.undelivered.length) this.options.executor.deliver(ticket, assignment)
     this.emit('assignment.started', { ticketId, assignmentId })
   }

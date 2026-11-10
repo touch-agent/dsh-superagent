@@ -165,6 +165,14 @@ Once a person's message reached a blocked or failed Ticket, the Executor has the
 A retry ends the current Assignment and starts a new one in the same Executor Session, directory, branch and pull request.
 
 The Executor model applies only when a Session is created; an existing Session keeps its model.
+
+### Agent profile binding
+
+A new root Ticket may bind an immutable AgentProfile snapshot at creation; an old Ticket without one follows the same role defaults as before. The snapshot supplies the model policy, the work-tool policy and a `live` or pinned prompt revision. A pinned prompt is read at that revision; a `live` one still follows the latest revision on every model request. A pinned model is applied when its Session is created, and an existing Session whose actual model differs is recorded as non-compliant rather than rebuilt mid-turn.
+
+A child Ticket copies its parent's snapshot and never chooses a profile of its own, so its effective work tools stay within the root's. A subagent of a worker resolves work tools from the same root snapshot. The fixed protocol tools the executor registers are never removed by a profile; an empty work-tool list therefore means no work tools, not read-only.
+
+The snapshot cannot fail an accept or create a Decision: if the selected profile is wholly unavailable the Ticket is bound as legacy, and if an existing profile demands a missing prompt revision or work tool the binding is kept as invalid and the launch reports `blocked` instead. A model provider failure keeps the existing retry/failed path. `profiles.config.resolve=legacy` returns new Sessions and requests to the role defaults; it never rewrites a bound Ticket, and it can widen a custom profile's work tools, so a person must enable it deliberately.
 ### Restart
 
 Running Assignments end with "host restarted" and new ones start with a recovery note that tells the Executor to check its directory, git history and GitHub before repeating any outside action, oldest Ticket first.

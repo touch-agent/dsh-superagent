@@ -19,6 +19,7 @@ import { evalsHealth } from './views/overview.ts'
 import { TextCache } from './cache.ts'
 import { Effects } from './effects.ts'
 import { Prompts } from './prompts.ts'
+import { Profiles } from './profiles.ts'
 import { candidateCard, repliedTo, sourceLink, type LinkHost } from './links.ts'
 import { eventNotice, followupNotice } from './notices.ts'
 import { pullEndNotices } from '../sources/github-pull.ts'
@@ -66,6 +67,8 @@ export interface AssemblyHost {
 interface Parts {
   setup: Setup
   prompts: Prompts
+  /** The versioned execution-profile registry and its immutable bindings. */
+  profiles: Profiles
   effects: Effects
   sources: SourceRegistry
   commands: Commands
@@ -108,6 +111,12 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
     ? environmentOf({ deployment: setup.deployment, sources: parts.sources, settings: store.settings() }) : undefined
   const feishu = () => setup.configured() && !!setup.deployment.feishu
   const prompts = parts.prompts = new Prompts(store, () => machine.promptMaxChars.get(), deployed, feishu)
+  // Profiles depend only on the Store and prompt versions; the built-in compatible profile is seeded idempotently.
+  const profiles = parts.profiles = new Profiles({ store, prompts })
+  profiles.seed()
+  const profileHealth = board.claim('profiles')
+  const profileProblem = profiles.problem()
+  profileHealth.set(profileProblem ? { state: 'error', detail: profileProblem } : { state: 'ready', detail: 'Agent profiles are ready' })
   const masterId = parts.masterId = store.get(KV.runtime.masterId) ?? `orchestrator-${key(machine.stateDir)}`
   store.set(KV.runtime.masterId, masterId)
   const commands = parts.commands = new Commands(() => setup.deployment, setup.commandEnvironment, lifetime)
@@ -125,7 +134,7 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const resources = parts.resources = { store, sources, pages: new TextCache(4_000_000), prompts, commands, masterId, context: ctx,
     promptVersion: id => parts.sessions.promptVersion(id), mayRead: (id, revision) => parts.sessions.mayRead(id, revision),
     feishuPageSize: () => feishuSettings(sources).readPageSize, sourceLink: link }
-  const sessions = parts.sessions = new Sessions({ context: ctx, store, prompts, effects, health: board.claim('models'), masterId,
+  const sessions = parts.sessions = new Sessions({ context: ctx, store, prompts, profiles, effects, health: board.claim('models'), masterId,
     lifetime,
     closing: () => host.closing(), environment,
     tools: (agent, ticket) => ticket ? executorTools(parts.toolHost, ticket) : mainTools(parts.toolHost, agent) })
@@ -152,6 +161,8 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   // Every domain event is graded and stored in the same transaction that produced it; no other part needs the log itself.
   const activity = new ActivityLog(store)
   const engine = parts.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, inline, outbox, trace,
+    // Profile binding is a read-only execution-configuration lookup; a failure leaves a ticket legacy, never failing accept.
+    profile: { bindRoot: ticket => profiles.bindRoot(ticket), bindChild: (parent, child) => profiles.bindChild(parent, child) },
     // A child directory is flat when the deployment keeps the default; turning the flag off restores the nested layout.
     childSibling: () => store.settings().executor.workspace.childSibling,
     // A lightweight ticket runs inline and has no workspace or assignment text, so it must not claim execution metadata.

@@ -1,5 +1,6 @@
 /** Reusable proactive-agent core: model, ports, engine and in-memory repositories. */
 export * from './model.ts'
+export * from './profile.ts'
 export * from './action.ts'
 export * from './approval.ts'
 export * from './deliverable.ts'

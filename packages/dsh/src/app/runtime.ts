@@ -38,6 +38,7 @@ import { health, type Health, type SourceContext, type SourceHost } from '../sou
 import { sourceContextOf } from './source-context.ts'
 import type { SetupProblem } from '../setup.ts'
 import type { SpaceLeases } from './spaces.ts'
+import type { Profiles } from './profiles.ts'
 
 // Source plugins interact with dsh-superagent exclusively through the `SourceHost` service interface.
 declare module '@deepseek-ai/cordis' { interface Context { orchestrator: SourceHost } }
@@ -90,6 +91,8 @@ export class Runtime extends Service implements SourceHost {
   /** The assembled graph, for the tests and the panel that need more than the SourceHost surface. */
   get setup(): Setup { return this.assembled.setup }
   get prompts(): Prompts { return this.assembled.prompts }
+  /** The versioned execution-profile registry; its read-only routes and the binder share this instance. */
+  get profiles(): Profiles { return this.assembled.profiles }
   get effects(): Effects { return this.assembled.effects }
   get sources(): SourceRegistry { return this.assembled.sources }
   get commands(): Commands { return this.assembled.commands }
@@ -157,8 +160,8 @@ export class Runtime extends Service implements SourceHost {
   }
   private httpHost(): HttpHost {
     const runtime = this
-    const { store, sources, prompts, sessions, settings, engine, executor, spaces, outbox, masterId, ready, setup, passes } = this
-    return { store, sources, prompts, sessions, settings, engine, executor, spaces, outbox, health: runtime.health, machine: this.machine, masterId, ready,
+    const { store, sources, prompts, profiles, sessions, settings, engine, executor, spaces, outbox, masterId, ready, setup, passes } = this
+    return { store, sources, prompts, profiles, sessions, settings, engine, executor, spaces, outbox, health: runtime.health, machine: this.machine, masterId, ready,
       sourceLinks: this.assembled.sourceLinks,
       get deployment() { return setup.deployment },
       get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem },
