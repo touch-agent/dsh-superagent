@@ -298,7 +298,7 @@ function threadPage(key: string, { before, around }: { before?: string; around?:
 }
 /** A small Tickets board with one milestone, one task, a reviewed Ticket, a pull request and a second unplanned Ticket. */
 export const goalFixture = (id: string, fields: Partial<GoalView> = {}): GoalView => ({ id, statement: id === 't9' ? '整理迁移说明' : '修复回归',
-  source: id === 't9' ? 'conversation' : 'feishu', state: { stage: 'working' }, results: [], read: `ticket/${id}`, ...fields })
+  source: id === 't9' ? 'conversation' : 'feishu', state: { stage: 'working' }, results: [], ...fields })
 const goalBoardView = (): GoalBoardView => ({ generatedAt: '2026-09-23T12:00:00Z',
   goals: [goalFixture('t1'), goalFixture('t9', { state: { stage: 'person', action: 'blocked' }, decision: { kind: 'blocked' } })],
   totals: { goals: 2, open: 2, attention: 1 } })

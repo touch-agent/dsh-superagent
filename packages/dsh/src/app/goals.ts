@@ -5,8 +5,8 @@
  */
 import { goalOf, type Goal, type Ticket } from '@superagent/kernel'
 
-/** A Goal plus the read resource a caller can fetch for the same projection. */
-export interface GoalView extends Goal { read: string }
+/** The Goal shape `GET goals` and `GET goals/:id` return; the same projection also rides on the card and task row. */
+export type GoalView = Goal
 
 /** One request's goal list: root Tickets, newest first, with the counts a person scans. */
 export interface GoalBoardView {
@@ -21,7 +21,7 @@ export interface GoalReadHost {
 }
 
 /** The same Goal shape everywhere, so a card and a task row cannot describe one Ticket differently. */
-export const goalView = (ticket: Ticket): GoalView => ({ ...goalOf(ticket), read: `ticket/${ticket.id}` })
+export const goalView = (ticket: Ticket): GoalView => goalOf(ticket)
 
 /** Every root Ticket's Goal, newest update first; child Tickets stay reachable by id and in their root's E1 tree. */
 export function goalBoard(host: GoalReadHost, now = new Date()): GoalBoardView {
