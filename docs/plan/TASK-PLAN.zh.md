@@ -74,6 +74,7 @@ M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上�
 | T5-04 | 可组合六层上下文装配：装配表、快照、fail closed（C） | M5 |
 | T5-05 | 观察→总结→进化→验证闭环（离线、只提案）（C） | M5 |
 | T5-06 | 组织观测与替换演练（D） | M5 |
+| T5-07 | AgentProfile Phase 1：注册表、工单绑定快照与按 profile 遥测 | M5 |
 | X-13 | TRACKING 自动化：计划↔跟踪表↔PR 证据一致性 | X |
 
 **任务树 Phase 0 不是新任务**：它就是 T3-05 的剩余部分（生产 `InlineExecutor`、Eval 选择 `form`、<10s 验收）。本重评估只把 T3-05 的验收口径写清，不重复开任务。
@@ -83,7 +84,7 @@ M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上�
 1. **M3 收尾**：T3-05（Phase 0）→ T3-04（mail previewer）→ T3-08（时间线）；T3-06 后移。T3-04 必须先于任何「review 必有 preview」的对外声称，否则邮件类交付没有预览。
 2. **M3.5 任务视图**：T3-09 → T3-10 → T3-11。任务视图 Phase 1 是纯读、可先落地；Phase 2a 是本轮评论要求的核心（子 Ticket + 每个 tracked 节点 owner/worker + 父 owner 审查链）；Phase 2b 把父审阅与交付聚合接到界面。类别归纳（Phase 3）不在本轮，等目标层与使用数据。
 3. **M3.6 工作空间**：T3-12 → T3-13。先把 `execution.directory` 投影成只读空间视图，再做写租约与子 Ticket 独立空间；设计见 [docs/013](../013-workspace-model.zh.md)。
-4. **M5 原则落地**：T5-01 → T5-02 → T5-03 → T5-04 → T5-05 → T5-06。先有目标层，才能定义 E0 默认面；先有 E0–E3，群组/上下文装配才知道什么能进 prompt；先有观测与边界，进化闭环才不会变成拍脑袋；最后做替换演练，验证 D。
+4. **M5 原则落地**：T5-01 → T5-02 → T5-03 → T5-04 → T5-07 → T5-05 → T5-06。先有目标层，才能定义 E0 默认面；先有 E0–E3，群组/上下文装配才知道什么能进 prompt；先有 profile 身份与按版本遥测，进化闭环才知道「哪个配置」在变好；最后做替换演练，验证 D。T5-05 的 profile 切片依赖 T5-07 的证据，不另开任务。
 5. **M4 多租户**：M5 之后，最后启动；不改变单租户语义。
 6. **X 优先级**：X-13（跟踪自动化）立即；X-03（E2E golden path）在 M3.5 前，给任务视图与父审阅一条端到端证据；X-09（入口三区）在 T5-02 前；X-10（宿主矩阵）在 M4 前；X-01/02/04 并行维护；X-06 继续守领域测试 <2s。
 7. **T1 剩余项**：T1-07/T1-09/T1-10 在 M3.5/M5 之后，或按真实接入需求插队；插队不改变「M2 先于第 4 个源」的信任顺序。
@@ -166,7 +167,7 @@ graph LR
   M2 --> M3
   M3 --> M35["M3.5 任务视图<br/>16 人日"]
   M35 --> M36["M3.6 工作空间<br/>9 人日"]
-  M36 --> M5["M5 原则落地<br/>25 人日"]
+  M36 --> M5["M5 原则落地<br/>35 人日"]
   M5 --> M4["M4 多租户<br/>22 人日（最后）"]
   X["横向 X"] -.贯穿.-> M0 & M1 & M2 & M3 & M35 & M36 & M5
 ```
@@ -180,10 +181,10 @@ graph LR
 | M3 交付 | review 真可审；小活不付 Session 冷启动 | T3-01…08 | 36 人日 | M1、M2 | 小活 p50 < 10s；review 页必有 preview | §6.4–6.6 |
 | M3.5 任务视图 | 右栏任务视图；子 Ticket 树与父 owner 审查链（任务视图 Phase 1/2） | T3-09…11 | 16 人日 | M3 | tracked 任务在右栏可读；父 owner 可拆/审/停子 Ticket；子 Ticket 不是授权主体 | 任务视图 §9 |
 | M3.6 工作空间 | 空间可观测；同一空间写者唯一；子 Ticket 独立空间 | T3-12…13 | 9 人日 | M3.5 | 空间投影/E2 视图可用；两个 Ticket 不并发写同一空间；旧 worktree 可继续使用 | 013 §8 |
-| M5 原则落地 | 目标层、E0–E3、群组/六层上下文、进化闭环、替换演练 | T5-01…06 | 25 人日 | M3.6 | E0 只给目标/状态/决定/结果；装配快照可审查；进化只提案；替换演练等价 | 原则 §8 |
+| M5 原则落地 | 目标层、E0–E3、群组/六层上下文、profile 绑定与遥测、进化闭环、替换演练 | T5-01…07 | 35 人日 | M3.6 | E0 只给目标/状态/决定/结果；装配快照可审查；profile 可追溯且不授权；进化只提案；替换演练等价 | 原则 §8 |
 | M4 多租户 | 能卖团队版/私有化 | T4-01…06 | 22 人日 | M5 | 单租户故障不影响他人；删除演练可验证 | §6.7 |
 
-> 重排后约 202 人日（新增 52 人日；M1 剩余两个源与 M4 计入但后置）≈ 10 周（4 人）。这是「机制可用」的估算，不含 30 个源、产品化打磨与合规认证；方案 §8 的「5–6 个月」含这些。
+> 重排后约 212 人日（新增 62 人日；M1 剩余两个源与 M4 计入但后置）≈ 10.5 周（4 人）。这是「机制可用」的估算，不含 30 个源、产品化打磨与合规认证；方案 §8 的「5–6 个月」含这些。
 
 ---
 
@@ -493,7 +494,7 @@ graph LR
 - **估时**：5 人日。**依赖**：T3-12、[docs/013](../013-workspace-model.zh.md) 的 Phase 2。**回退**：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留，但旧二进制拒绝 schema 16，二进制回滚需升级前备份或停服删表降 schema。
 - **泳道**：Kernel + Runtime。**实现**：PR [#43](https://github.com/touch-agent/dsh-superagent/pull/43)；schema 16 `space_lease`、两个 `workspace` flag、结束释放与 stale 恢复；`tests/spaces.spec.ts` 覆盖并发预留、prepare 失败释放、结束释放、重启 stale。**收尾**：E2 的 `GET spaces` 按目录去重并发预热并缓存 15 秒，`tests/spaces.spec.ts` 以 600 行覆盖冷读/热读与 p95 门槛；E1 票据负载移除 `directory`，绝对路径只在 E2；见 PR [#46](https://github.com/touch-agent/dsh-superagent/pull/46)。**合并与验收补测（2026-11-10）**：#43 `fe9e62a`、#46 `54a6b28` 已合入 `main`；`tests/spaces.spec.ts` 增加「委派只新建兄弟空间、不回写根目录」与「父接受子报告后释放子租约」，`tests/runtime-concurrency.spec.ts` 的父先子后恢复/孤儿用例断言孤儿租约释放。跨仓拆单仍是 owner/worker 流程规则，结构上由无改绑入口保证；运行时不能推断 worker 的 `cd`，见 docs/013 §3.2「强制边界」。
 
-## 6.2 M5 原则落地（T5-01…06）
+## 6.2 M5 原则落地（T5-01…07）
 
 > 执行顺序：M3.5 之后、M4 之前。依据原则 §8 的 A→B→D→C 顺序；C 放在后面不是不重要，而是没有 A/B/D 的观测与边界，进化会变成拍脑袋。
 
@@ -529,12 +530,13 @@ graph LR
 - **估时**：6 人日。**依赖**：T5-03、T5-01、T3-10（子 Ticket 维度）。**回退**：装配层 feature flag，关闭回现有 prompt。
 - **泳道**：Runtime。
 
-### T5-05 观察→总结→进化→验证闭环（离线）· Platform · 5 人日
+### T5-05 观察→总结→进化→验证闭环（离线）· Platform · 8 人日
 
-- **目标**：按原则 C.1 建一条独立于执行 worker 的进化闭环：观察决策/报告/验收/阻塞/返工，产出带证据的版本化提案，人工验证后才可能应用；不自动改授权、代码或生产配置。
-- **交付**：`scripts/evolution/` 离线流程：样本集（脱敏、只读）、提案格式（证据/置信度/范围/版本/回滚）、人工批准队列（先 KV/文档，不接生产写入）、前后指标（验收率、返工率、阻塞、审阅时长、每结果通知数）；首轮用最近 10 个可复核的历史 Ticket 跑通（不足则全部）。
-- **验收**：产出 ≥1 条带证据与范围的提案；提案不含私密全文；没有自动应用路径；`tests/evolution.spec.ts` 或等价脚本测试；C3.1/C3.2/C3.5/C3.6。
-- **估时**：5 人日。**依赖**：T5-02、M0 指标（已完成）。**回退**：纯离线脚本，删除即回退。
+- **目标**：按原则 C.1 建一条独立于执行 worker 的进化闭环：观察决策/报告/验收/阻塞/返工，产出带证据的版本化提案，人工验证后才可能应用；不自动改授权、代码或生产配置。profile 维度只做**预登记对照实验**，不把「默认 profile 的统计」当成收益证据。
+- **交付**：`scripts/evolution/` 离线流程：样本集（脱敏、只读）、提案格式（证据/置信度/范围/版本/回滚）、人工批准队列（先 KV/文档，不接生产写入）、前后指标（验收率、返工率、阻塞、审阅时长、每结果通知数）；首轮用最近 10 个可复核的历史 Ticket 跑通（不足则全部；这 10 个只用于跑通流程，不作为价值证据）。profile 切片另含：eval set manifest/holdout、同工单配对回放或并发随机分配、预登记主指标/MDE/样本量/统计方法、回归门与停止规则；不能只做描述性报表。
+- **验收**：产出 ≥1 条带证据与范围的提案，或一份「证据不足/无差异」的结论；提案不含私密全文；没有自动应用路径；`tests/evolution.spec.ts` 或等价脚本测试；C3.1/C3.2/C3.5/C3.6。profile 切片还须证明「有对照、样本量按 MDE 算过、legacy 与 worker-default 基线分开、成本不伪造成本门」；允许结论是「没有可测差异」。
+- **设计约束**：profile 维度见 [AgentProfile 设计](../016-agent-profile.zh.md) §4；T5-05 的 profile 切片依赖 T5-07 的 `effective.hash` 遥测；不另开任务，但本任务估时从 5 调到 8，避免用「并入」掩盖范围。评测集必须与观察集分离，回归门预登记，人工批准，允许「不采纳」。
+- **估时**：8 人日（含 profile 对照实验 3 人日）。**依赖**：T5-02、M0 指标（已完成）；profile 维度另需 T5-07。**回退**：纯离线脚本，删除即回退。
 - **泳道**：Platform。
 
 ### T5-06 组织观测与替换演练 · Platform · 3 人日
@@ -544,6 +546,14 @@ graph LR
 - **验收**：指标可从 trace/activity/metrics 独立读取，不依赖被替换 UI；C4.2/C4.3/C4.4；演练报告含任务、前后结果、通知数、验收；删除类别/子 Ticket 后 Ticket 仍可解释。
 - **估时**：3 人日。**依赖**：T3-10（子 Ticket 数据）、T5-02。**回退**：只读指标与演练，不改代码。
 - **泳道**：Platform。
+
+### T5-07 AgentProfile Phase 1：注册表、绑定快照与遥测 · Kernel + Runtime · 7 人日
+
+- **目标**：给现有 worker 角色加一层薄的、可版本化的执行配置，使每个新工单能回答「用了哪个 profile 的哪一版、有效 prompt/model/工具/DSH 版本是什么、结果如何」；不改变授权路径，不做自动 profile 选择或晋升，Phase 1 不激活 orchestrator profile。
+- **交付**：`Profiles` 注册表（不可变 revision、head 的 active/retired 指针、`contentHash`、严格 schema、内置 `worker-default@1` 兼容 profile）；`Tickets.create`/`delegate` 绑定 `Ticket.profile` 有效快照（顶层，不放 `execution`，避免 `prepare` 重建时丢失；`effective.hash`；旧工单按 legacy，不重写；子 Ticket 只复制根快照，`delegate` 不加 profile 参数）；`Sessions`/`DshExecutor` 从快照解析模型、pinned/live prompt 与工作工具，协议工具固定，子 Ticket/subagent 有效工作工具 ⊆ 根，subagent 在 pinned 模型时禁用 `modelSelection` 或强制父模型；缺工具/缺 prompt 在 launch `blocked`（不在 accept 失败，不静默回退）；`dispatch` span 记录 profile/effective hash，不写 `Decision.audit`；`GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics` 只读；独立 KV `profiles.config`（`enabled`/`resolve`/`telemetry`），**不新增 settings 块**；token 用量尝试采集，货币成本 `unknown`；`tests/profiles.spec.ts`、`tests/profile-binding.spec.ts`、`tests/profile-metrics.spec.ts`；更新 `004`、`003`、`007`（如新增模块）与本文。
+- **验收**：注册表版本不可变、head 回滚、禁止字段拒绝、并发冲突可解释；新工单有快照、旧工单 legacy、子 Ticket 继承、subagent 不越权、fallback 单列；active 变更不影响运行中工单；有效工作工具 ⊆ 角色上限、子/子代理 ⊆ 根；`tools: []` 仍有协议工具，不宣称只读；accept 不因 profile 失败；旧二进制读带快照 Ticket 仍按 legacy 运行；缺工具/缺 prompt 在 launch `blocked`；`Decision`/`Mandate`/`Action`/`Approval` 测试不变；指标按 `effective.hash` 聚合、n<5 只抑制展示、token 两态、成本 `unknown`、closed/child/lightweight/重试口径可复核；`pnpm check`；用 `worker-default@1` 产出基线，但**不声称收益**。
+- **估时**：7 人日。**依赖**：T3-10（子 Ticket，已完成）、[AgentProfile 设计](../016-agent-profile.zh.md)；面板 E2 另需 T5-02。**回退**：`profiles.config.enabled=false` 停新绑定；`resolve=legacy` 只影响新 Session/新请求，运行中工具/模型不变；Phase 1 无数据库 schema 迁移、无 settings 块。
+- **泳道**：Kernel + Runtime。
 
 ---
 
@@ -720,7 +730,7 @@ graph LR
 | R10 | 子 Ticket 变成绕过 Eval 的第二授权路径 | 子 owner 能建授权根 Ticket、直接找人、提高动作等级 | 子 Ticket 没有 Mandate/Decision，继承根授权；只有 Engine delegation 写；任务视图修订版 §9.2 契约测试与独立 review 先行 |
 | R11 | 清理默认面时误删诊断能力 | E2 入口被移除、排障需要翻日志 | 只改默认可见性，不删入口与记录；保留 E2 折叠入口 |
 | R12 | 连接器后置错过真实接入窗口 | 真实用户提出 Gmail/日历需求 | 按需求插队，仍排在 M2 之后；不为了「凑三个源」提前做 |
-| R13 | M5 范围过大，拖住 M4 | T5-01…06 连续两个里程碑没有合并证据 | 拆成独立 PR；T5-05/T5-06 可以离线/演练先行，不阻塞 T5-01–04 |
+| R13 | M5 范围过大，拖住 M4 | T5-01…07 连续两个里程碑没有合并证据 | 拆成独立 PR；T5-05/T5-06 可以离线/演练先行，T5-07 不阻塞 T5-01–04；T5-05 的 profile 切片只在 T5-07 有证据后启动 |
 
 ---
 
@@ -765,7 +775,7 @@ graph LR
 | T2-01…10 | §6.2 Action、§6.3 Ledger |
 | T3-01…08 | §6.4 Acceptance、§6.5 Deliverable、§6.6 Runtime |
 | T3-09…11 | 任务视图 §9（Phase 1/2） |
-| T5-01…06 | 原则 §2–§5（A/B/C/D 检查点） |
+| T5-01…07 | 原则 §2–§5（A/B/C/D 检查点）；T5-07 另有 AgentProfile 设计 |
 | T4-01…06 | §6.7 Tenant 与保留 |
 | X-07…X-13 | `../../PLUGIN-PACKAGING.zh.md` §3（切包）、§4（入口）、§5（安装边界）；X-13 另见 `docs/plan/README.md`「合并即更新」 |
 | X-01…06 | §10.1、§10.5 |

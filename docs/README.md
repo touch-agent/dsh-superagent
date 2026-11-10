@@ -6,7 +6,7 @@ evolution set, then the plan set when you are picking up work.
 | Layer | Where | What it answers |
 | --- | --- | --- |
 | Numbered mechanism and operations | `docs/000`–`docs/010` | How the system works, how it is authorized, operated and extended. |
-| Design and evolution | `docs/011`–`docs/015` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, and the Goal read model those principles expose. |
+| Design and evolution | `docs/011`–`docs/016` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, and the reusable profile layer over the worker role. |
 | Plans | [`plan/`](plan/README.md) | What to build, in what order, and the current status of every task. |
 | Runbooks and evidence | [`runbooks/`](runbooks/why-not-sent.md), [`images/`](images/) | What to do when something is stuck; the before/after captures the documents cite. |
 
@@ -30,13 +30,14 @@ Read 000–010 in order; each builds only on the ones before it.
 
 ## Design and evolution
 
-These five are written in Chinese. 011 and 012 are a cross-referencing pair:
+These six are written in Chinese. 011 and 012 are a cross-referencing pair:
 read 011 for the principles and their cross-check against the existing
 documents, then 012 for the evolution story. 013 applies them to the workspace
 model (space as an execution reference, orthogonal to the task tree). 014
 records the golden-path E2E and the boundary of its fake host; 015 defines the
 Goal read model that gives E0 a stable answer to the four questions without
-adding a second authorization aggregate.
+adding a second authorization aggregate. 016 designs the reusable profile
+layer over the worker role, keeping authorization in Policy/Eval.
 
 | # | Document | Role |
 | --- | --- | --- |
@@ -45,6 +46,7 @@ adding a second authorization aggregate.
 | 013 | [Workspace model](013-workspace-model.zh.md) | `Execution.directory` as the single space locator, write lease, lifecycle, decision rules, read-only UI exposure and phased migration for the workspace (proposal, not implemented). |
 | 014 | [E2E golden path](014-e2e-golden-path.zh.md) | The one end-to-end path from a GitHub Issue to accepted, merged work: what it asserts, its local fake-host boundary, and its no-retry stability rules. |
 | 015 | [Goal projection](015-goal-projection.zh.md) | One Ticket's read-only Goal (statement, source, state, decision, results, acceptance) shared by the main Session's result card and the task row; no schema, no authorization, no second aggregate. |
+| 016 | [AgentProfile](016-agent-profile.zh.md) | Reusable, versioned execution profiles for the worker role, with authorization kept in Policy, Eval and the action gate; current-state evidence, evolution loop, risks and phased landing (proposal, not implemented). |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
