@@ -5,6 +5,8 @@
 export const TASK_VIEW_V1 = 'taskView.v1'
 /** T3-12's read-only Spaces surfaces; off hides the Space block and the Execution Spaces list, never the E2 path. */
 export const WORKSPACE_VIEW = 'workspace.view'
+/** X-09's three-zone entry page; off restores the pre-X-09 Overview without hiding any tab or record. */
+export const ENTRY_THREE_ZONES = 'entry.threeZones.v1'
 
 /** Whether a switch is on; absent or unreadable storage means the default (on). */
 export function featureEnabled(name: string): boolean {
@@ -16,3 +18,6 @@ export const taskViewV1 = (): boolean => featureEnabled(TASK_VIEW_V1)
 
 /** T3-12's read-only space surfaces; off shows the ticket without its Space block, whose path lives only on E2. */
 export const workspaceView = (): boolean => featureEnabled(WORKSPACE_VIEW)
+
+/** X-09's three-zone entry page; off restores the pre-X-09 Overview and removes the sidebar attention dot. */
+export const entryThreeZones = (): boolean => featureEnabled(ENTRY_THREE_ZONES)

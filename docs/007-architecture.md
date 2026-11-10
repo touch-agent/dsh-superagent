@@ -424,9 +424,10 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/sources/feishu-doc-channel.ts` | The Feishu document comment Channel: one reply per outbound message, `sent` or `gone`, and the mark-aware `probe` a retry asks |
 | `packages/dsh/src/sources/feishu-doc-loops.ts` | The Feishu document loop: polling each document's new comment replies, document titles, and subscribed comment cards |
 | `packages/dsh/src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel, the main-Session entry and row badge, the Status view that reuses the management page, the Events and Task tabs and the page in DeepSeek Harness's Plugin Manager |
+| `packages/dsh/src/client/attention.ts` | The sidebar attention count: one 60-second `GET overview` poll while the panel icon is mounted, silent on failure, stopped when the three-zone entry is off |
 | `packages/dsh/src/client/master.ts` | The shared read-only main-Session identity that the entry, row badge, Status page and Events tab follow, with one poller for all of them |
 | `packages/dsh/src/client/activity-feed.ts` | The same-origin activity reader: first page, SSE with a cursor-polling fallback, dedupe by sequence, unread notice count and the persisted last-seen cursor |
-| `packages/dsh/src/client/features.ts` | The client-only feature switches, read on render so a storage value of `off` rolls a surface back without a server change; `taskView.v1` keeps the compact task list and its right Task tab |
+| `packages/dsh/src/client/features.ts` | The client-only feature switches, read on render so a storage value of `off` rolls a surface back without a server change; `taskView.v1` keeps the compact task list and its right Task tab, and `entry.threeZones.v1` keeps the X-09 three-zone entry page and its sidebar dot |
 | `packages/dsh/src/client/tasks-view.ts` | The shared read-only task list: one `GET tasks` poll while a surface is mounted, the error and stale-data snapshot, and the selected Ticket that the Task and Events tabs share (`eventTaskId` maps a review to the Ticket it reviews) |
 | `packages/dsh/src/client/system.tsx` | The main-Session surfaces: the New Session entry, the row badge, the Status gate around the reused management page, the Events tab with its task groups, filters, shared selected-task scope, locate action and title, and the first-notice auto-open bridge |
 | `packages/dsh/src/client/panel.ts` | Selects the management panel at a route requested by a Conversation surface, remembering it for a panel that mounts later |
@@ -435,7 +436,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/client/provider.tsx` | What every page reads from its host: copy, calls, navigation, notices, the state poll, and `restart`, which reads the state quickly while dsh-superagent restarts |
 | `packages/dsh/src/client/api.ts` | Calls and polls of the management API, typed by `packages/dsh/src/app/api.ts`, and the Decision filters of the Eval status |
 | `packages/dsh/src/client/route.ts` | The tabs, the settings groups, the typed routes that `parseRoute` reads, and the route memory with the settings group opened last |
-| `packages/dsh/src/client/overview.tsx` | The overview |
+| `packages/dsh/src/client/overview.tsx` | The entry page: X-09's waiting-for-you, running and recently-ended zones with the flow and health figures folded as E2, plus the pre-X-09 Overview behind the feature switch |
 | `packages/dsh/src/client/tasks.tsx` | The Tasks pages: the compact flat list with its status filters, form badge, role and deliveries, the right Task tab, and the milestone/task/Ticket/review/pull-request tree with its roll-up and the optional graph of branch lanes |
 | `packages/dsh/src/client/source.tsx`, `trigger.tsx`, `eval.tsx`, `execution.tsx` | One file per stage: its status, and its settings where it has some |
 | `packages/dsh/src/client/thread.tsx`, `ticket.tsx` | The record pages: a Thread with its timeline, and a Ticket with its authorization, Inputs and Assignments |
