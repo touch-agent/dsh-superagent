@@ -53,7 +53,7 @@ Flow counts and the five health figures keep their old links but start folded un
 | --- | --- |
 | ![The flat Overview with pending Tickets, flow, health and Executor sections](images/entry-three-zones/before.png) | ![The same state in the three entry zones with health folded and a sidebar dot](images/entry-three-zones/after.png) |
 
-Same 1280×900 viewport, light theme, left sidebar expanded and one sanitized demo state: three person-stage tickets, one queued ticket, one ended ticket, synthetic titles and no work content. Both runs start from a byte-identical copy of the same `orchestrator.sqlite`. Before is main `567ac43`, where the home page is the flat Overview and the panel icon carries no dot; after is this branch, with **Waiting for you / Running / Recently ended**, the health figures folded, and the warning dot on the Superagent icon.
+Same 1280×900 viewport, light theme, left sidebar collapsed to its icon rail (so no private session names appear) and one sanitized demo state: three person-stage tickets, one queued ticket, one ended ticket, synthetic titles and no work content. Both runs start from a byte-identical copy of the same `orchestrator.sqlite`. Before is main `567ac43`, where the home page is the flat Overview and the panel icon carries no dot; after is this branch, with **Waiting for you / Running / Recently ended**, the health figures folded, and the warning dot on the Superagent icon in the rail.
 
 ### Approvals
 
