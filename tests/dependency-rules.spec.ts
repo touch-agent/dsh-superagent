@@ -55,22 +55,38 @@ function offendersOf(report: ICruiseResult): Record<string, string[]> {
   return offenders
 }
 
-/** Every non-type import of app/api.ts that is not one of its filter constants, as `<file>: <statement>`. */
+/** The value bindings of a named import/export clause; null for a namespace, default or side-effect form. */
+function valueBindings(clause: string): string[] | null {
+  const named = /^\{([\s\S]*?)\}$/.exec(clause.trim())
+  if (named === null) return null
+  return named[1]!.split(',')
+    .map(binding => binding.trim())
+    .filter(binding => binding.length > 0 && !binding.startsWith('type '))
+    .map(binding => binding.split(/\s+as\s+/)[0]!.trim())
+}
+
+/** Every non-type import, re-export or dynamic import of app/api.ts that is not one of its filter constants. */
 function apiValueViolations(text: string, file = ''): string[] {
   const violations: string[] = []
+  const illegal = (clause: string | null): boolean => {
+    const bindings = clause === null ? null : valueBindings(clause)
+    return bindings === null || bindings.some(binding => !PANEL_VALUE_MODULES.has(binding))
+  }
   for (const match of text.matchAll(/^import\s+(?:type\s+)?(?:[\w*{][\s\S]*?from\s+(['"])([^'"]+)\1|(['"])([^'"]+)\3)/gm)) {
     const specifier = match[2] ?? match[4]
     if (specifier !== '../app/api.ts') continue
     const statement = match[0]
     if (/^import\s+type\s/.test(statement)) continue
-    const named = /^import\s+(?:type\s+)?\{([\s\S]*?)\}\s+from\s+/.exec(statement)
-    const bindings = named === null ? null : named[1]!.split(',')
-      .map(binding => binding.trim())
-      .filter(binding => binding.length > 0 && !binding.startsWith('type '))
-      .map(binding => binding.split(/\s+as\s+/)[0]!.trim())
-    if (bindings === null || bindings.some(binding => !PANEL_VALUE_MODULES.has(binding))) {
-      violations.push(`${file}: ${statement}`)
-    }
+    const clause = /^import\s+(?:type\s+)?([\s\S]*?)\s+from\s+/.exec(statement)?.[1] ?? null
+    if (illegal(clause)) violations.push(`${file}: ${statement}`)
+  }
+  for (const match of text.matchAll(/^export\s+(?:type\s+)?([\s\S]*?)\s+from\s+['"]\.\.\/app\/api\.ts['"]/gm)) {
+    const statement = match[0]
+    if (/^export\s+type\s/.test(statement)) continue
+    if (illegal(match[1]!)) violations.push(`${file}: ${statement}`)
+  }
+  for (const match of text.matchAll(/\bimport\s*\(\s*['"]\.\.\/app\/api\.ts['"]\s*\)/g)) {
+    violations.push(`${file}: ${match[0]}`)
   }
   return violations
 }
@@ -89,7 +105,7 @@ describe('the dependency rules of docs/007-architecture.md', () => {
     // reverse test fails this test rather than relying on review alone.
     expect(rulesOf(cruised)).toEqual(config.forbidden!.map(rule => rule.name!).sort())
     expect(offendersOf(cruised)).toEqual({
-      'kernel-zero-dependencies': ['packages/kernel/src/external.ts', 'packages/kernel/src/outside.ts'],
+      'kernel-zero-dependencies': ['packages/kernel/src/external.ts', 'packages/kernel/src/io.ts', 'packages/kernel/src/outside.ts'],
       'kernel-never-reaches-out': ['packages/kernel/src/outside.ts'],
       'runtime-does-not-depend-on-bundle': ['packages/dsh/src/app/imports-bundle.ts'],
       'runtime-uses-kernel-by-package-name': ['packages/dsh/src/app/imports-kernel-by-path.ts'],
@@ -114,7 +130,7 @@ describe('the dependency rules of docs/007-architecture.md', () => {
   })
 
   it('lets the panel name only filter constants as values from app/api.ts', () => {
-    const violations = readdirSync(CLIENT)
+    const violations = readdirSync(CLIENT, { recursive: true, encoding: 'utf8' })
       .filter(name => /\.tsx?$/.test(name))
       .flatMap(name => apiValueViolations(readFileSync(join(CLIENT, name), 'utf8'), name))
     expect(violations).toEqual([])
@@ -128,7 +144,11 @@ describe('the dependency rules of docs/007-architecture.md', () => {
       "import * as api from '../app/api.ts'",
       "import defaults from '../app/api.ts'",
       "import '../app/api.ts'",
+      "const api = await import('../app/api.ts')",
+      "export * from '../app/api.ts'",
+      "export { TICKET_FILTERS as filters } from '../app/api.ts'",
+      "export { filter } from '../app/api.ts'",
     ].join('\n'))
-    expect(violations).toHaveLength(4)
+    expect(violations).toHaveLength(7)
   })
 })

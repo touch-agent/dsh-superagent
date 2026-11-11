@@ -13,10 +13,10 @@ export default {
   forbidden: [
     {
       name: 'kernel-zero-dependencies',
-      comment: 'The kernel imports only its own files and Node built-ins.',
+      comment: 'The kernel imports only its own files and node:crypto, its one built-in.',
       severity: 'error',
       from: { path: '^packages/kernel/src/' },
-      to: { pathNot: '^packages/kernel/src/', dependencyTypesNot: ['core'] },
+      to: { pathNot: ['^packages/kernel/src/', '^(?:node:)?crypto$'] },
     },
     {
       name: 'kernel-never-reaches-out',
