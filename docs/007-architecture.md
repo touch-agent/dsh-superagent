@@ -382,7 +382,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/tools/main.ts` | The main Session's tools, including `orchestrator_dispatch` for work the person assigned in the conversation |
 | `packages/dsh/src/app/tools/executor.ts` | An Executor Session's tools |
 | `packages/dsh/src/app/http.ts` | The `/orchestrator/api` routes, including approval and denial, the same-origin check, request limits and one status per kind of failure |
-| `packages/dsh/src/app/api.ts` | `Api`, every route with its parameters, query, body and response, including the optional lower level an approval grants, and the filters of the lists; it imports only types, so the panel bundles it |
+| `packages/dsh/src/app/api.ts` | `Api`, every route with its parameters, query, body and response, including the optional lower level an approval grants, and the filters of the lists; `PUBLIC_ROUTES`, the agent-reliable subset `docs/006-deployment.md` documents; it imports only types, so the panel bundles it |
 | `packages/dsh/src/app/views/text.ts` | The two forms of a view's text: `preview`, plain text on one line, and `markdown` without HTML; `plain` and `readable` |
 | `packages/dsh/src/app/views/records.ts` | The rows the views share: Triggers, Tickets, Threads, Decisions and Channel links, and `ownersOf`, the owners of follow-ups as one request reads them |
 | `packages/dsh/src/app/views/tickets.ts` | The Ticket lists by stage, a Ticket's page, the Mandate basis facts and the Executor's load |
@@ -555,7 +555,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/draft.spec.ts`, `tests/prompt-config.spec.ts`, `tests/markdown.spec.ts`, `tests/marks.spec.ts` | Draft states, merges and the save bar's line; the prompt configuration by section and the line diff; the Markdown subset and its links; the mark of every state the views classify |
 | `tests/locales.spec.ts`, `tests/styles.spec.ts` | The copy in both languages, the stylesheet |
 | `tests/class-docs.spec.ts` | Every class in `src` has a JSDoc block before it |
-| `tests/docs.spec.ts` | Numbered documents link only to earlier ones, every local link resolves, no document has merge conflict markers, the README lists every numbered document once and in order, and this document's tables list every module and every test |
+| `tests/docs.spec.ts` | Numbered documents link only to earlier ones, every local link resolves, no document has merge conflict markers, the README lists every numbered document once and in order, this document's tables list every module and every test, every `SourceManifest` field has a row in the source guide, and every `PUBLIC_ROUTES` route has a row in the deployment guide's Management API table |
 | `tests/tracking.spec.ts` | X-13: the tracking check rejects a plan task with no row, a row with no plan task, a duplicate row, an invalid status, a non-canonical or missing PR, a completed row whose PR is open, a bad date, empty evidence, an in-progress row without a PR, and stale or malformed exemptions; it accepts the repository's own table offline and queries PR states through a fake GitHub API |
 
 `tests/fixtures/` holds what several tests share: `host.ts`, a simulated DeepSeek Harness host; `panel-server.ts` and `panel.tsx`, the fake management API and the panel around a page; `deployment.ts`, a resolved deployment; `git.ts`, the environment of every git the tests start, which names no repository; and `async.ts`.

@@ -201,6 +201,8 @@ API saves have the panel's permissions. They can change execution environment an
 
 Agents may rely on these routes and fields. The other routes in `packages/dsh/src/app/api.ts` serve the panel and change with it.
 
+`PUBLIC_ROUTES` in `packages/dsh/src/app/api.ts` is the machine-readable list of these routes. `tests/docs.spec.ts` fails when this table and that list disagree; there is no exemption list, so a public route needs its row before it can land.
+
 | Request | Answer |
 | --- | --- |
 | `GET state` | What every page reads: `setup`, with `problem` and `feishuProblem`, each `null` or a setup problem with `place`, `code`, `values` and `detail`, and `accounts` once setup resolved them; `health`, an entry per part, below, with `state` (`starting`, `ready`, `paused` or `error`), `detail` and `at`; `load`, the Executor Sessions `running`, the Tickets `queued` and `maxWorkers`; `paused`; and `masterId` |

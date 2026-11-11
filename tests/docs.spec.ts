@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { PUBLIC_ROUTES } from '@superagent/dsh/app/api.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DOCS = join(ROOT, 'docs')
@@ -19,6 +20,70 @@ function documents(): string[] {
   return [...entries, ...readdirSync(DOCS, { recursive: true, withFileTypes: true })
     .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
     .map(entry => relative(ROOT, join(entry.parentPath, entry.name)))]
+}
+const MANIFEST_SOURCE = 'packages/kernel/src/manifest.ts'
+const API_SOURCE = 'packages/dsh/src/app/api.ts'
+const MANIFEST_GUIDE = 'docs/010-adding-a-source.md'
+const DEPLOYMENT_GUIDE = 'docs/006-deployment.md'
+/**
+ * The body rows of the first table under `### <heading>` in `file`. A missing section or table
+ * fails with the file and heading, because that is the documentation the check requires.
+ */
+function tableRows(file: string, heading: string): string[] {
+  const lines = read(file).split('\n')
+  const start = lines.findIndex(line => /^#{2,3} /.test(line) && line.replace(/^#{2,3} /, '').trim() === heading)
+  if (start < 0) throw new Error(`${file} has no "${heading}" section; add it so tests/docs.spec.ts can find the table`)
+  const end = lines.findIndex((line, index) => index > start && /^#{2,3} /.test(line))
+  const section = lines.slice(start + 1, end < 0 ? undefined : end)
+  const first = section.findIndex(line => line.startsWith('| '))
+  if (first < 0) throw new Error(`${file} has no table under "${heading}"; add one so tests/docs.spec.ts can read it`)
+  const table: string[] = []
+  for (const line of section.slice(first)) {
+    if (!line.startsWith('| ')) break
+    table.push(line)
+  }
+  // The first two rows are the header and its separator.
+  return table.slice(2)
+}
+/** The trimmed contents of one cell of a Markdown table row, counting the first content cell as 0. */
+function cell(row: string, index = 0): string {
+  return row.replace(/^\|/, '').replace(/\|$/, '').split('|')[index]!.trim()
+}
+/** The inline code spans in one table cell. */
+function codeSpans(value: string): string[] {
+  return [...value.matchAll(/`([^`]+)`/g)].map(match => match[1]!)
+}
+/** The property names declared directly on `SourceManifest`, read from its interface rather than a second list. */
+function manifestFields(): string[] {
+  const source = read(MANIFEST_SOURCE)
+  const start = source.indexOf('export interface SourceManifest {')
+  const end = source.indexOf('\n}', start)
+  if (start < 0 || end < 0) throw new Error(`${MANIFEST_SOURCE} has no readable SourceManifest interface`)
+  const body = source.slice(start, end)
+  const fields = [...body.matchAll(/^  ([A-Za-z][A-Za-z0-9]*)\??:/gm)].map(match => match[1]!)
+  if (fields.length === 0) throw new Error(`${MANIFEST_SOURCE}'s SourceManifest interface declares no fields in the expected form`)
+  return fields
+}
+/** The SourceManifest field names documented in the manifest guide's table. */
+function documentedManifestFields(): string[] {
+  return tableRows(MANIFEST_GUIDE, 'Manifest fields').flatMap(row => codeSpans(cell(row)))
+}
+/** Every route key declared on `Api`, read from its interface rather than a second list. */
+function apiRoutes(): string[] {
+  const source = read(API_SOURCE)
+  const start = source.indexOf('export interface Api {')
+  const end = source.indexOf('\n}', start)
+  if (start < 0 || end < 0) throw new Error(`${API_SOURCE} has no readable Api interface`)
+  return [...source.slice(start, end).matchAll(/^  '([^']+)':/gm)].map(match => match[1]!)
+}
+/** The routes documented in the deployment guide's Management API table. */
+function documentedRoutes(): string[] {
+  return tableRows(DEPLOYMENT_GUIDE, 'Management API').flatMap(row => codeSpans(cell(row))
+    .filter(span => /^(GET|POST|PUT|PATCH|DELETE) \S/.test(span)))
+}
+/** A route with parameter names and angle-bracket placeholders erased, so the two spellings compare equal. */
+function routeShape(route: string): string {
+  return route.replace(/<[^>]+>/g, ':').replace(/:[A-Za-z][A-Za-z0-9]*/g, ':')
 }
 /**
  * Extract repo-relative file paths from the first column of a table under `## <heading>` in `docs/007-architecture.md`.
@@ -157,5 +222,36 @@ describe('documentation', () => {
     const tests = listed('Tests')
     expect(files('tests').filter(path => /\.spec\.tsx?$/.test(path) && !tests.includes(path))).toEqual([])
     expect(tests.filter(path => !existsSync(join(ROOT, path)))).toEqual([])
+  })
+  it('documents every SourceManifest field, and only fields that exist', () => {
+    const fields = manifestFields()
+    const documented = documentedManifestFields()
+    const problems = [
+      ...fields.filter(field => !documented.includes(field)).map(field =>
+        `SourceManifest.${field} is undocumented: add a row for \`${field}\` under "Manifest fields" in ${MANIFEST_GUIDE}`),
+      ...documented.filter(field => !fields.includes(field)).map(field =>
+        `${MANIFEST_GUIDE} documents \`${field}\` under "Manifest fields", but ${MANIFEST_SOURCE} has no such SourceManifest field; remove or correct that row`),
+      ...documented.filter((field, index) => documented.indexOf(field) !== index).map(field =>
+        `${MANIFEST_GUIDE} documents \`${field}\` more than once under "Manifest fields"`),
+    ]
+    expect(problems).toEqual([])
+  })
+  it('documents every public management route, and only routes that exist', () => {
+    const routes = apiRoutes()
+    const documented = [...new Set(documentedRoutes())]
+    const publicRoutes = [...PUBLIC_ROUTES]
+    const shapes = new Set(publicRoutes.map(routeShape))
+    const documentedShapes = new Set(documented.map(routeShape))
+    const problems = [
+      ...publicRoutes.filter((route, index) => publicRoutes.indexOf(route) !== index).map(route =>
+        `${API_SOURCE} lists ${route} in PUBLIC_ROUTES more than once`),
+      ...publicRoutes.filter(route => !routes.includes(route)).map(route =>
+        `${API_SOURCE} lists ${route} in PUBLIC_ROUTES, but Api declares no such route; remove it or add the route`),
+      ...publicRoutes.filter(route => !documentedShapes.has(routeShape(route))).map(route =>
+        `public route ${route} is missing from the Management API table in ${DEPLOYMENT_GUIDE}; add a row for \`${route}\``),
+      ...documented.filter(route => !shapes.has(routeShape(route))).map(route =>
+        `${DEPLOYMENT_GUIDE} documents ${route} in the Management API table, but ${API_SOURCE} does not list it in PUBLIC_ROUTES; add it there or remove the row`),
+    ]
+    expect(problems).toEqual([])
   })
 })
