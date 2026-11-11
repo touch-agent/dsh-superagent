@@ -152,6 +152,13 @@ export class SourceRegistry implements SourceScope {
   trusted(id: string): boolean {
     return this.registrations.get(id)?.adapter.trusted === true
   }
+  /** Whether the kind's current configuration declares this Trigger a person on an account shared with the agent. */
+  humanIdentity(source: string, meta: Record<string, unknown>, settings = this.settings()): boolean {
+    const registration = this.registrations.get(source)
+    if (!registration?.adapter.humanIdentity) return false
+    const instance = this.resolve(registration, settings.sources[source])
+    return instance.enabled && registration.adapter.humanIdentity({ meta }, instance.config)
+  }
   channelAllowed(channel: { source: string; address: Record<string, string> }, settings = this.settings()): boolean {
     const registration = this.registrations.get(channel.source)
     if (!registration) return false

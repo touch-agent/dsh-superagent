@@ -85,6 +85,8 @@ const RULES: [rule: string, file: string, says: string[], gone?: string[]][] = [
   ['A UI change carries before-and-after evidence, as a delivery requirement the team can change', 'team/delivery',
     ['PR description must contain BOTH Before and After visual evidence', 'same scenario, viewport, theme and relevant UI state', 'After-only evidence is incomplete',
       'not a mockup presented as the previous implementation', 'baseline and changed revision identified', 'do not claim the UI PR is ready']],
+  ['The agent never forges a person\'s signal on a shared GitHub account', 'team/delivery',
+    ['never submit `APPROVED`/`CHANGES_REQUESTED` reviews or start a comment with `[人]`/`HUMAN:`', 'use `COMMENTED` reviews or plain comments']],
   ['Human attention is limited', 'team/communication', ['Human attention is limited']],
   ['Each automated reviewer gets at most three rounds per PR', 'team/communication', ['at most three review rounds per PR from each automated reviewer']],
   ['An incomplete draft is blocked, and every change is reviewed and checked', 'work', ['An incomplete draft is blocked', 'Review changes and run relevant checks']],

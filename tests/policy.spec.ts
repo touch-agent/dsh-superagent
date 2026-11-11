@@ -536,6 +536,22 @@ describe('bots and events without a sender', () => {
     expect(field.hint!.en).toContain(comments.en)
     expect(field.hint!.zh).toContain(comments.zh)
   })
+  it('admits a shared account\'s human signal explicitly while its switch is on, and revokes it when off', () => {
+    const settings = observing({ humanIdentity: true })
+    const shared: Trigger = { id: 'h', source: 'github', threads: [{ source: 'github', id: '7' }],
+      actor: { source: 'github', id: 'agent-bot' }, human: true, at: '', text: '[人] fix the login', addressed: 'mention',
+      meta: { number: 7, isPr: true, humanIdentity: 'mark' } }
+    expect(setup(settings).policy.gate(shared, thread(), [])).toEqual({ admissible: true, strength: 'explicit',
+      basis: { source: 'github', scope: shared.meta, via: 'humanIdentity', addressed: 'mention' } })
+    expect(setup(settings).sources.humanIdentity('github', shared.meta)).toBe(true)
+    // The switch is the rollback; an event already holding the declaration is refused rather than falling back to the list.
+    expect(setup(observing({ humanIdentity: false })).policy.gate(shared, thread(), [])).toEqual({ admissible: false, reason: 'not_human' })
+    expect(setup(observing({ humanIdentity: false })).sources.humanIdentity('github', shared.meta)).toBe(false)
+    const mandate = { strength: 'explicit' as const, policyVersion: '', actor: shared.actor, scope: '',
+      basis: { via: 'humanIdentity' as const, source: 'github', scope: shared.meta } }
+    expect(setup(settings).policy.revalidate(mandate, NOW).ok).toBe(true)
+    expect(setup(observing({ humanIdentity: false })).policy.revalidate(mandate, NOW)).toEqual({ ok: false, reason: { code: 'revoked' } })
+  })
   it('names a GitHub Trigger\'s receiving scope, which the Source observes where its switch is on', () => {
     const { sources } = setup(observing({ observeIssues: true }))
     const github = (meta: Record<string, unknown>) => ({ source: 'github', meta })

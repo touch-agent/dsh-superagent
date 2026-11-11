@@ -87,6 +87,27 @@ The host recognizes GitHub Apps, logins ending in `[bot]`, and Feishu bots as bo
 
 An automated reviewer using an ordinary account counts as a person to the host. Its comments reach subscribed Tickets and generate follow-up notices. Team prompt text must identify such accounts as automated reviewers.
 
+### Human identity on a shared GitHub account
+
+A deployment may sign the agent in to an account that a person also uses. By default the GitHub Source treats every event from that login as the agent's own output and ignores it. The GitHub Source's `humanIdentity` configuration flag, off by default, lets a person act through that account with two signals:
+
+- **The state is the decision.** A submitted review with state `APPROVED` is a person's approval, and `CHANGES_REQUESTED` is a person's rejection, whatever its body says. The agent always submits `COMMENTED` reviews and never approves or requests changes. GitHub also refuses a review decision on a pull request the same account authored; the Source ignores such a record even if one reaches the API.
+- **The mark is an instruction.** A comment whose body starts exactly with `[人]` or `HUMAN:` is a person's instruction: a conversation comment, an inline review comment, or the body of a `COMMENTED` review. The mark counts as addressing the agent, so the comment needs no `@` mention and is read even when the Source observes only mentions. Leading whitespace or any other prefix does not count.
+
+Everything else from that account remains agent output or discussion: unmarked comments, `COMMENTED` reviews without a mark, edits that leave the body unmarked, Issue and PR titles and bodies, and CI. None of them starts a Ticket or an Eval. An edit that makes an existing body start with a marker is read as that person's instruction, because the Source re-reads an updated comment.
+
+The order matters:
+
+1. **Bot filtering wins.** A GitHub App or a login ending in `[bot]` is never a person, even with a decision state or a marker. A listed bot's event can still become an inferred candidate under the usual bot rules.
+2. **The self-output filter applies next.** With the switch off, every event from the agent's login is dropped exactly as before. With it on, only the two signals above pass the filter.
+3. **A decision state wins over the body.** A decisive review is a decision even when its body is empty, unmarked or unrelated.
+4. **The mark wins over ordinary discussion.** A marked comment is an explicit instruction; an unmarked comment or a `COMMENTED` review is discussion and produces no work.
+5. **Other accounts are unchanged.** The marker is evidence about the shared account only; it neither changes another person's admission nor makes a bot human.
+
+The gate admits a human-identity Trigger as an explicit request with basis `humanIdentity`. It needs no entry on the Source's allowed list and does not depend on the accept mode or the receiving row. Revalidation requires the GitHub Source to still listen and its flag to still be on; turning the flag off revokes those Mandates at their next resume or action. Source configuration is not part of the Policy version, so the flag changes later checks rather than discarding Evals already in flight.
+
+This is a convention, not a security boundary. The host cannot cryptographically distinguish a person from the agent while they use one credential, and a compromised or misled agent could submit a human signal. The built-in Delivery requirements therefore forbid the agent from submitting `APPROVED` or `CHANGES_REQUESTED` and from starting a comment with the markers, and GitHub itself refuses self-approval on the pull request the account authored. A deployment that needs a real separation gives the person a second account.
+
 ## Routing candidates
 
 The main Session routes explicit candidates with `orchestrator_route`. One call can contain several accept, attach, stop or ignore decisions. Each item is processed independently: a refused item or a missing field does not prevent the others from running.
@@ -143,6 +164,7 @@ The Mandate must not have expired, and the Source must still listen to the origi
 - An inferred Mandate needs `auto` mode and its matched rules still enabled.
 - A Mandate admitted by a table cell must still receive at least its original strength under today's table and sender membership. Removing a sender from the list can therefore revoke a Mandate accepted through the listed-sender cell.
 - A bot's Mandate requires that bot to remain on the Source's bot list. Inferred table and bot Mandates also need `auto` mode and enabled matched rules.
+- A human-identity Mandate requires the Source to still declare the same evidence under its current configuration; turning the shared-account switch off revokes it.
 - Other Mandates require the sender to remain on the Source's allowed list.
 
 If revalidation fails, the Ticket stays ended and takes none of its waiting messages. Each message is treated as having reached no Ticket; if no other Ticket owns it, it goes to Eval. The main Session is not told it reached a worker. This also applies after a processing pause. Attaching to the Ticket is refused, and further work requires a new accept.

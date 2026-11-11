@@ -113,6 +113,8 @@ The default instructions allow auto-merge only for a pull request opened for the
 
 Reviews without a body, such as approvals, also arrive as Triggers and can wake an Executor waiting for review. These instructions govern the agent, not GitHub's merge rules. To enforce approvals, require them in branch protection and dismiss stale approvals. Omit the merge CLI or remove the auto-merge paragraph to require manual merging.
 
+When the deployment shares the agent's GitHub account with a person, the GitHub Source's `humanIdentity` configuration flag makes a submitted `APPROVED` or `CHANGES_REQUESTED` review and a comment starting with `[人]` or `HUMAN:` that person's signal ([002](002-authorization.md)). The agent must submit only `COMMENTED` reviews and ordinary comments; the Delivery requirements say so. GitHub itself refuses a review decision on a pull request the account authored, so that person approves the agent's own pull request with a second reviewer account, or relies on a marked comment where the workflow accepts one.
+
 ## How a Ticket ends
 
 - **Ready without a pull request:** a `ready` Report ends the Ticket as completed.
