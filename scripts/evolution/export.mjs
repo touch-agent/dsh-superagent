@@ -57,6 +57,13 @@ function usageOf(db, ticketId) {
   return fields.every(field => typeof value[field] === 'number') ? value : null
 }
 
+/** Read the effective hash of the worker Session, which is how a moving profile is grouped. */
+function runHashOf(db, ticket) {
+  const row = db.prepare('SELECT value FROM kv WHERE key = ?').get(`session-effective:worker-${ticket.id}`)
+  const value = row ? json(row.value) : undefined
+  return typeof value?.hash === 'string' ? value.hash : ticket.profile?.effective?.hash
+}
+
 /** Read a Decision's instant for a Ticket, when the Ticket has one. */
 function decisionAt(db, decisionId) {
   if (typeof decisionId !== 'string') return undefined
@@ -65,7 +72,7 @@ function decisionAt(db, decisionId) {
 }
 
 /** Keep only the fields the analyzer reads, so a later schema field cannot become an accidental export. */
-function sanitized(ticket, id, decisionAt, usage) {
+function sanitized(ticket, id, decisionAt, usage, runEffectiveHash) {
   return {
     id,
     form: ticket.form,
@@ -92,6 +99,7 @@ function sanitized(ticket, id, decisionAt, usage) {
       id: ticket.profile.id,
       revision: ticket.profile.revision,
       effective: ticket.profile.effective ? { hash: ticket.profile.effective.hash } : undefined,
+      runEffectiveHash,
       selection: { moving: ticket.profile.selection?.moving, fallback: ticket.profile.selection?.fallback },
     } : undefined,
     decisionAt,
@@ -112,7 +120,7 @@ try {
     if (!ticket || typeof ticket.id !== 'string') continue
     if (ticket.profile && !ticket.profile.effective?.hash) { skippedProfile += 1; continue }
     const id = createHash('sha256').update(ticket.id).digest('hex').slice(0, 16)
-    tickets.push(sanitized(ticket, id, decisionAt(db, ticket.decisionId), usageOf(db, ticket.id)))
+    tickets.push(sanitized(ticket, id, decisionAt(db, ticket.decisionId), usageOf(db, ticket.id), runHashOf(db, ticket)))
   }
   const generatedAt = args.at ?? new Date().toISOString()
   const samples = samplesFromTickets(tickets, {

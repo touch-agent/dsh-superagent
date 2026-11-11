@@ -49,6 +49,7 @@ function sample(id: string, profile: EvolutionSample['profile'], overrides: Part
     kind: 'root',
     form: 'tracked',
     ended: { outcome: 'completed', at: AT },
+    childAccepted: null,
     reworked: false,
     review: { reviewed: true, accepted: true, comments: 2 },
     failure: { state: null, reasonCode: null },
@@ -109,7 +110,7 @@ function intent(overrides: Partial<ProposalIntent> = {}): ProposalIntent {
       allocation: 'paired-replay',
       evalSet: { id: 'docs-v1', revision: 1 },
       guardrails: { reworkRate: 0.05, blockedRate: 0.05, p90DispatchToReadySeconds: 600, reviewRejectionRate: 0.05, tokenGrowthRate: 0.25 },
-      stopping: { afterSamples: 1000, rule: 'Stop after the pre-registered sample and read the single primary metric once.' },
+      stopping: { afterSamples: 360, rule: 'Stop after the pre-registered sample and read the single primary metric once.' },
     },
     ...overrides,
   }
@@ -253,7 +254,8 @@ it('passes the gate only when the holdout effect reaches the MDE with a positive
   expect(report.proposals[0]?.status).toBe('ready-for-human-approval')
   expect(report.proposals[0]?.recommendation).toBe('adopt')
   expect(report.approvalQueue.items).toHaveLength(1)
-  expect(report.approvalQueue.items[0]?.evidenceRef).toContain('eval-0')
+  expect(report.approvalQueue.items[0]).toMatchObject({ evidenceRef: 'docs-v1@1#holdout=360',
+    candidateEffectiveHash: 'sha256:candidate', baselineEffectiveHash: 'sha256:baseline' })
   expect(report.conclusion.kind).toBe('propose')
 })
 
@@ -364,7 +366,7 @@ it('maps raw Ticket records to sanitized samples with rework, review, failure an
           review: { deliverable: { artifact: { revision: 'rev-1' } } } } },
       ],
       inputs: [{ kind: 'resumed', at: '2026-11-10T12:02:00.000Z' }],
-      profile: { id: 'worker-docs', revision: 2, effective: { hash: 'sha256:candidate' }, selection: { moving: false, fallback: false } },
+      profile: { id: 'worker-docs', revision: 2, effective: { hash: 'sha256:candidate' }, selection: { moving: true, fallback: false } },
       usage: { input: 1000, output: 200, cacheRead: 0, cacheWrite: 0, reasoning: 10, messages: 2 },
     },
     {
@@ -384,6 +386,134 @@ it('refuses a proposal whose base revision is not older than the revision it pro
   const report = runEvolution(input(undefined, { intents: [intent({ baseRevision: 3 })] }))
   expect(report.proposals).toHaveLength(0)
   expect(report.observation.withheld).toContainEqual({ id: 'exp-docs', reason: 'invalidRevisionOrder' })
+})
+
+it('does not read a result before the pre-registered stopping sample', () => {
+  const experiment = intent().experiment
+  const report = runEvolution(input(undefined, {
+    intents: [intent({ experiment: { ...experiment, stopping: { afterSamples: 1000, rule: 'Wait for 1000 pairs.' } } })],
+    evidence: evidence(passEvidence()),
+  }))
+  expect(report.gates[0]?.outcome).toBe('insufficient')
+  expect(report.gates[0]?.reasons).toContain('stoppingNotReached')
+})
+
+it('treats an unavailable p90 guardrail as insufficient, while allowing unknown token usage', () => {
+  const replay = passEvidence()
+  for (const pair of replay.pairs!) pair.candidate.dispatchToReadySeconds = null
+  for (const pair of replay.pairs!) pair.baseline.dispatchToReadySeconds = null
+  const report = runEvolution(input(undefined, { evidence: evidence(replay) }))
+  expect(report.gates[0]?.outcome).toBe('insufficient')
+  expect(report.gates[0]?.reasons).toContain('guardrailUnknown')
+})
+
+it('refuses a diff that leaves the prompt, model or tools moving', () => {
+  expect(() => parseIntents({ schema: INTENT_SCHEMA, intents: [intent({ diff: { prompt: { mode: 'live' } } })] })).toThrow(/movingDiff/)
+  expect(() => parseIntents({ schema: INTENT_SCHEMA, intents: [intent({ diff: { tools: { mode: 'inherit' } } })] })).toThrow(/movingDiff/)
+})
+
+it('detects a holdout entry that carries the hashed observation reference of an observed Ticket', () => {
+  const set = evalSet()
+  set.entries[0] = { ...set.entries[0]!, observationRef: 'candidate-0' }
+  const report = runEvolution(input(undefined, { evalSet: set, evidence: evidence(passEvidence()) }))
+  expect(report.gates[0]?.outcome).toBe('insufficient')
+  expect(report.gates[0]?.reasons).toContain('holdoutOverlap')
+})
+
+it('records a moving worker-default baseline as descriptive, not as a causal proposal', () => {
+  const movingBaseline = { ...BASELINE, moving: true, runEffectiveHash: 'sha256:run-1' }
+  const report = runEvolution(input([...group('candidate', CANDIDATE, 40, 40), ...group('baseline', movingBaseline, 40, 24)],
+    { evidence: evidence(passEvidence()) }))
+  const diagnosis = report.observation.diagnoses.find(entry => entry.candidateKey.includes('candidate'))
+  expect(diagnosis?.baselineKey).toContain('sha256:run-1')
+  expect(diagnosis?.withheld).toBe('notComparable')
+  expect(report.proposals).toHaveLength(0)
+})
+
+it('runs the randomized allocation through the same gate', () => {
+  const set = evalSet({ entries: Array.from({ length: 720 }, (_, index) => ({
+    id: `eval-${index}`, taskFamily: 'docs/tracked', form: 'tracked' as const, holdout: true,
+    replay: 'dry' as const, rubric: 'rule' as const, timeoutSeconds: 60,
+  })) })
+  const randomized: ReplayEvidence = {
+    id: 'exp-docs', baseline: 'sha256:baseline', candidate: 'sha256:candidate',
+    environment: { ...ENVIRONMENT, repoBaseline: 'abc123' }, allocation: 'randomized',
+    runs: Array.from({ length: 720 }, (_, index) => ({
+      entryId: `eval-${index}`,
+      group: index < 360 ? 'candidate' as const : 'baseline' as const,
+      outcome: outcome(index < 360 ? index < 300 : index < 576),
+    })),
+  }
+  const experiment = intent().experiment
+  const report = runEvolution(input(undefined, { evalSet: set, intents: [intent({ experiment: { ...experiment, allocation: 'randomized' } })], evidence: evidence(randomized) }))
+  expect(report.gates[0]?.outcome).toBe('pass')
+  expect(report.gates[0]?.statistics?.candidate.n).toBe(360)
+  expect(report.gates[0]?.statistics?.baseline.n).toBe(360)
+})
+
+it('maps a child delegation resolution and reports the ready-to-end latency', () => {
+  const mapped = samplesFromTickets([{
+    id: 'child-1', form: 'tracked', parentTicketId: 'root-1', channels: [{ source: 'github' }],
+    ended: { outcome: 'completed', at: AT }, delegation: { resolution: { kind: 'accepted' } },
+    assignments: [{ startedAt: '2026-11-10T11:00:00.000Z', report: { state: 'ready', at: '2026-11-10T11:10:00.000Z' } }],
+  }], { generatedAt: AT, source: 'test', environment: ENVIRONMENT })
+  expect(mapped.records[0]?.childAccepted).toBe(true)
+  const group = runEvolution(input([mapped.records[0]!], { intents: [] })).observation.groups[0]!
+  expect(group.childSuccess).toMatchObject({ n: 1, successes: 1 })
+  expect(group.latency.readyToEnd).toMatchObject({ samples: 1, p50Seconds: 3000, p90Seconds: 3000 })
+})
+
+it('labels proposal prose as author-supplied instead of claiming all text is refused', () => {
+  const report = runEvolution(input(undefined, { intents: [intent({ hypothesis: 'PRIVATE TITLE' })], evidence: evidence(passEvidence()) }))
+  expect(JSON.stringify(report)).toContain('PRIVATE TITLE')
+  expect(report.guarantees.samplePrivateText).toBe('refused')
+  expect(report.guarantees.proposalText).toBe('author-supplied')
+})
+
+it('uses the pre-registered alpha for the interval instead of a fixed 95 percent', () => {
+  const experiment = intent().experiment
+  const report = runEvolution(input(undefined, {
+    intents: [intent({ experiment: { ...experiment, alpha: 0.1 } })], evidence: evidence(passEvidence()),
+  }))
+  expect(report.gates[0]?.outcome).toBe('pass')
+  expect(report.gates[0]?.statistics?.ci.level).toBeCloseTo(0.9)
+})
+
+it('rejects a failed outcome even when the primary success metric improves', () => {
+  const replay = passEvidence()
+  for (let index = 0; index < 30; index += 1) {
+    replay.pairs![index] = { ...replay.pairs![index]!, candidate: { ...replay.pairs![index]!.candidate, failed: true } }
+  }
+  const report = runEvolution(input(undefined, { evidence: evidence(replay) }))
+  expect(report.gates[0]?.outcome).toBe('reject')
+  expect(report.gates[0]?.reasons).toContain('guardrailRegression')
+})
+
+it('refuses an eval set with no holdout entry', () => {
+  const set = evalSet()
+  set.entries = set.entries.map(entry => ({ ...entry, holdout: false }))
+  const report = runEvolution(input(undefined, { evalSet: set, evidence: evidence(passEvidence()) }))
+  expect(report.gates[0]?.outcome).toBe('insufficient')
+  expect(report.gates[0]?.reasons).toContain('noHoldout')
+})
+
+it('refuses a stopping plan below the required sample size', () => {
+  const experiment = intent().experiment
+  const report = runEvolution(input(undefined, {
+    intents: [intent({ experiment: { ...experiment, stopping: { afterSamples: 100, rule: 'Too early.' } } })],
+    evidence: evidence(passEvidence()),
+  }))
+  expect(report.gates[0]?.outcome).toBe('insufficient')
+  expect(report.gates[0]?.reasons).toContain('stoppingBeforePower')
+})
+
+it('refuses evidence whose allocation differs from the pre-registered plan', () => {
+  const experiment = intent().experiment
+  const report = runEvolution(input(undefined, {
+    intents: [intent({ experiment: { ...experiment, allocation: 'randomized' } })], evidence: evidence(passEvidence()),
+  }))
+  expect(report.gates[0]?.outcome).toBe('insufficient')
+  expect(report.gates[0]?.reasons).toContain('allocationMismatch')
 })
 
 it('is deterministic and exposes no write, apply, save or activate path', () => {
@@ -422,7 +552,7 @@ it('replays the CLI byte-identically into an operator-chosen directory only', ()
   expect(readdirSync(outputs[0]!).sort()).toEqual(['approval-queue.json', 'report.json'])
   const report = JSON.parse(readFileSync(join(outputs[0]!, 'report.json'), 'utf8'))
   expect(report.conclusion.kind).toBe('propose')
-  expect(report.guarantees).toEqual({ liveConfiguration: 'unchanged', autoApply: false, authorizationFields: 'refused', privateText: 'refused', externalCredentials: false })
+  expect(report.guarantees).toEqual({ liveConfiguration: 'unchanged', autoApply: false, authorizationFields: 'refused', samplePrivateText: 'refused', proposalText: 'author-supplied', externalCredentials: false })
 })
 
 it('exports the live Ticket shape read-only into hashed, text-free samples', () => {
@@ -441,12 +571,14 @@ it('exports the live Ticket shape read-only into hashed, text-free samples', () 
         review: { deliverable: { artifact: { revision: 'rev-1' } } } } },
     ],
     inputs: [{ kind: 'resumed', at: '2026-11-10T12:02:00.000Z' }],
-    profile: { id: 'worker-docs', revision: 2, effective: { hash: 'sha256:candidate' }, selection: { moving: false, fallback: false } },
+    profile: { id: 'worker-docs', revision: 2, effective: { hash: 'sha256:candidate' }, selection: { moving: true, fallback: false } },
   }
   store.prepare('INSERT INTO ticket (id, value) VALUES (?, ?)').run(ticket.id, JSON.stringify(ticket))
   store.prepare('INSERT INTO decision (id, value) VALUES (?, ?)').run('d1', JSON.stringify({ id: 'd1', at: '2026-11-10T11:59:00.000Z' }))
   store.prepare('INSERT INTO kv (key, value) VALUES (?, ?)').run('session-usage:worker-raw-ticket-id',
     JSON.stringify({ input: 1000, output: 200, cacheRead: 0, cacheWrite: 0, reasoning: 10, messages: 2 }))
+  store.prepare('INSERT INTO kv (key, value) VALUES (?, ?)').run('session-effective:worker-raw-ticket-id',
+    JSON.stringify({ hash: 'sha256:run-1' }))
   store.close()
   execFileSync(process.execPath, [join(ROOT, 'scripts', 'evolution', 'export.mjs'), '--db', database, '--out', output,
     '--limit', '10', '--at', AT, '--dsh-version', ENVIRONMENT.dshVersion, '--policy-version', ENVIRONMENT.policyVersion], { cwd: ROOT, stdio: 'pipe' })
@@ -456,7 +588,7 @@ it('exports the live Ticket shape read-only into hashed, text-free samples', () 
   expect(record.id).toMatch(/^[0-9a-f]{16}$/)
   expect(record.id).not.toBe('raw-ticket-id')
   expect(record).toMatchObject({ taskFamily: 'github/tracked', reworked: true, review: { reviewed: true, accepted: true },
-    profile: { id: 'worker-docs', revision: 2 }, latency: { decisionToDispatchSeconds: 5, dispatchToReadySeconds: 115, readyToEndSeconds: 60 },
+    profile: { id: 'worker-docs', revision: 2, runEffectiveHash: 'sha256:run-1', moving: true }, latency: { decisionToDispatchSeconds: 5, dispatchToReadySeconds: 115, readyToEndSeconds: 60 },
     tokens: { input: 1000, output: 200 } })
   expect(JSON.stringify(parsed)).not.toMatch(/private title|rev-1|raw-ticket-id|person/)
 })

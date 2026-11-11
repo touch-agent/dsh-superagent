@@ -5,7 +5,8 @@
 
 Add the offline evolution loop from T5-05 under `scripts/evolution/`. A
 read-only exporter turns sanitized Ticket telemetry into a sample set; the pure
-analyzer aggregates by `effective.hash` and task family, records structured
+analyzer aggregates frozen configurations by `effective.hash` and moving ones by
+the Session run hash, records structured
 diagnoses with sample references, withholds low-confidence or baseline-less
 observations, and builds versioned proposals with a limited execution-content
 diff, evidence, confidence, scope, guardrails and a rollback pointer. Every
@@ -15,5 +16,6 @@ paired or randomized replay reaches the document-only human approval queue.
 There is no Store, profile-registry, network or filesystem write path in the
 analyzer, and `applied`/`decidedBy` stay false/null. `tests/evolution.spec.ts`
 covers aggregation, downgrade, privacy, forbidden authorization fields, gate
-pass/reject/insufficient/no-difference, holdout contamination, rollback and
+pass/reject/insufficient/no-difference, stopping and pre-registered alpha,
+randomized allocation, moving run hashes, holdout provenance, rollback and
 deterministic CLI replay.

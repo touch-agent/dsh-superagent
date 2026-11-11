@@ -38,11 +38,13 @@ export type Allocation = 'paired-replay' | 'randomized'
 /** One sanitized historical run. It carries counts, codes and opaque references, never message text. */
 export interface EvolutionSample {
   id: string
-  profile: { id: string; revision: number; effectiveHash: string; moving: boolean; fallback: boolean } | null
+  profile: { id: string; revision: number; effectiveHash: string; runEffectiveHash?: string; moving: boolean; fallback: boolean } | null
   taskFamily: string
   kind: SampleKind
   form: SampleForm
   ended: { outcome: SampleOutcome; at: string } | null
+  /** A child's delegation resolution; null when the parent has not decided, which is censored. */
+  childAccepted: boolean | null
   reworked: boolean
   review: { reviewed: boolean; accepted: boolean; comments: number | null }
   failure: { state: FailureState; reasonCode: string | null }
@@ -70,6 +72,8 @@ export interface EvalSetEntry {
   replay: 'dry' | 'sandbox' | 'human'
   rubric: 'rule' | 'human'
   timeoutSeconds: number
+  /** The same hashed observation reference when this holdout entry came from an observed Ticket. */
+  observationRef?: string
 }
 
 /** A versioned eval-set manifest. It must be safe to replay offline and must not contain private text. */
@@ -198,7 +202,7 @@ export interface EvolutionGroup {
   failureReasons: Record<string, number>
   rework: Rate
   review: { reviewed: number; accepted: number; unaccepted: number; acceptedRate: number | null; comments: { state: 'available' | 'unknown'; total: number | null } }
-  latency: { samples: number; p50Seconds: number | null; p90Seconds: number | null }
+  latency: { samples: number; p50Seconds: number | null; p90Seconds: number | null; readyToEnd: { samples: number; p50Seconds: number | null; p90Seconds: number | null } }
   tokens: { state: 'available' | 'unknown'; samples: number; input: number | null; output: number | null; cacheRead: number | null; cacheWrite: number | null; reasoning: number | null }
   notifications: { state: 'available' | 'unknown'; total: number | null; perResult: number | null }
   sampleIds: string[]
@@ -279,7 +283,7 @@ export interface ApprovalQueue {
   storage: 'document'
   generatedAt: string
   status: 'pending-human-approval'
-  items: { proposalId: string; profileId: string; baseRevision: number; proposedRevision: number; evidenceRef: string; requestedAt: string }[]
+  items: { proposalId: string; profileId: string; baseRevision: number; proposedRevision: number; candidateEffectiveHash: string; baselineEffectiveHash: string; evidenceRef: string; requestedAt: string }[]
   note: string
 }
 
@@ -298,7 +302,7 @@ export interface EvolutionReport {
   gates: GateResult[]
   approvalQueue: ApprovalQueue
   conclusion: { kind: 'propose' | 'no-measurable-difference' | 'reject' | 'insufficient-evidence'; summary: string; reasons: string[] }
-  guarantees: { liveConfiguration: 'unchanged'; autoApply: false; authorizationFields: 'refused'; privateText: 'refused'; externalCredentials: false }
+  guarantees: { liveConfiguration: 'unchanged'; autoApply: false; authorizationFields: 'refused'; samplePrivateText: 'refused'; proposalText: 'author-supplied'; externalCredentials: false }
 }
 
 /** Everything one run needs; every field is already parsed, sanitized data. */
@@ -373,7 +377,7 @@ function booleanAt(value: unknown, path: string): boolean {
 function sampleAt(value: unknown, index: number): EvolutionSample {
   const path = `records[${index}]`
   if (!isRecord(value)) throw new EvolutionInputError('invalidSample', path)
-  onlyKeys(value, ['id', 'profile', 'taskFamily', 'kind', 'form', 'ended', 'reworked', 'review', 'failure', 'latency', 'tokens', 'notifications', 'environment'], path)
+  onlyKeys(value, ['id', 'profile', 'taskFamily', 'kind', 'form', 'ended', 'childAccepted', 'reworked', 'review', 'failure', 'latency', 'tokens', 'notifications', 'environment'], path)
   const id = stringAt(value.id, `${path}.id`, REF)
   const taskFamily = stringAt(value.taskFamily, `${path}.taskFamily`, FAMILY)
   if (typeof value.kind !== 'string' || !KINDS.has(value.kind as SampleKind)) throw new EvolutionInputError('invalidKind', `${path}.kind`)
@@ -384,11 +388,13 @@ function sampleAt(value: unknown, index: number): EvolutionSample {
   let profile: EvolutionSample['profile'] = null
   if (value.profile !== null) {
     if (!isRecord(value.profile)) throw new EvolutionInputError('invalidProfile', `${path}.profile`)
-    onlyKeys(value.profile, ['id', 'revision', 'effectiveHash', 'moving', 'fallback'], `${path}.profile`)
+    onlyKeys(value.profile, ['id', 'revision', 'effectiveHash', 'runEffectiveHash', 'moving', 'fallback'], `${path}.profile`)
     profile = {
       id: stringAt(value.profile.id, `${path}.profile.id`, REF),
       revision: numberAt(value.profile.revision, `${path}.profile.revision`, 1, 1_000_000, true),
       effectiveHash: stringAt(value.profile.effectiveHash, `${path}.profile.effectiveHash`, ENV),
+      runEffectiveHash: value.profile.runEffectiveHash === undefined || value.profile.runEffectiveHash === null
+        ? undefined : stringAt(value.profile.runEffectiveHash, `${path}.profile.runEffectiveHash`, ENV),
       moving: booleanAt(value.profile.moving, `${path}.profile.moving`),
       fallback: booleanAt(value.profile.fallback, `${path}.profile.fallback`),
     }
@@ -402,6 +408,9 @@ function sampleAt(value: unknown, index: number): EvolutionSample {
     }
     ended = { outcome: value.ended.outcome as SampleOutcome, at: instantAt(value.ended.at, `${path}.ended.at`) }
   }
+  const childAccepted = value.childAccepted === undefined || value.childAccepted === null
+    ? null : booleanAt(value.childAccepted, `${path}.childAccepted`)
+  if (kind !== 'child' && childAccepted !== null) throw new EvolutionInputError('unexpectedChildResolution', path)
   if (!isRecord(value.review)) throw new EvolutionInputError('invalidReview', `${path}.review`)
   onlyKeys(value.review, ['reviewed', 'accepted', 'comments'], `${path}.review`)
   if (!isRecord(value.failure)) throw new EvolutionInputError('invalidFailure', `${path}.failure`)
@@ -434,6 +443,7 @@ function sampleAt(value: unknown, index: number): EvolutionSample {
     kind,
     form,
     ended,
+    childAccepted,
     reworked: booleanAt(value.reworked, `${path}.reworked`),
     review: {
       reviewed: booleanAt(value.review.reviewed, `${path}.review.reviewed`),
@@ -498,7 +508,7 @@ export function parseEvalSet(value: unknown): EvalSetManifest {
   const entries = value.entries.map((entry, index): EvalSetEntry => {
     const path = `evalSet.entries[${index}]`
     if (!isRecord(entry)) throw new EvolutionInputError('invalidEntry', path)
-    onlyKeys(entry, ['id', 'taskFamily', 'form', 'holdout', 'replay', 'rubric', 'timeoutSeconds'], path)
+    onlyKeys(entry, ['id', 'taskFamily', 'form', 'holdout', 'replay', 'rubric', 'timeoutSeconds', 'observationRef'], path)
     if (typeof entry.form !== 'string' || !FORMS.has(entry.form as SampleForm)) throw new EvolutionInputError('invalidForm', `${path}.form`)
     if (typeof entry.replay !== 'string' || !REPLAYS.has(entry.replay as EvalSetEntry['replay'])) throw new EvolutionInputError('invalidReplay', `${path}.replay`)
     if (typeof entry.rubric !== 'string' || !RUBRICS.has(entry.rubric as EvalSetEntry['rubric'])) throw new EvolutionInputError('invalidRubric', `${path}.rubric`)
@@ -510,6 +520,8 @@ export function parseEvalSet(value: unknown): EvalSetManifest {
       replay: entry.replay as EvalSetEntry['replay'],
       rubric: entry.rubric as EvalSetEntry['rubric'],
       timeoutSeconds: numberAt(entry.timeoutSeconds, `${path}.timeoutSeconds`, 1, 86_400, true),
+      observationRef: entry.observationRef === undefined || entry.observationRef === null
+        ? undefined : stringAt(entry.observationRef, `${path}.observationRef`, REF),
     }
   })
   const ids = new Set<string>()
@@ -562,6 +574,10 @@ function assertDiff(value: unknown): ProfileDiff {
     }
   }
   if (Object.keys(diff).length === 0) throw new EvolutionInputError('emptyDiff', 'diff must change at least one field')
+  // A moving configuration cannot be the treatment in an A/B: pin the prompt, model and tool list.
+  if (diff.prompt?.mode === 'live' || diff.model?.mode === 'inherit' || diff.tools?.mode === 'inherit') {
+    throw new EvolutionInputError('movingDiff', 'diff model, tools and prompt must be pinned')
+  }
   return diff
 }
 
@@ -789,7 +805,7 @@ function baselineOf(profile: EvolutionSample['profile']): EvolutionGroup['baseli
 /** The stable grouping key: a moving configuration is its own, explicitly non-comparable, group. */
 function groupKeyOf(sample: EvolutionSample): string {
   const profile = sample.profile
-  const profileKey = profile === null ? 'legacy' : profile.moving ? `moving:${profile.id}@${profile.revision}` : `frozen:${profile.effectiveHash}`
+  const profileKey = profile === null ? 'legacy' : profile.moving ? `moving:${profile.id}@${profile.revision}:${profile.runEffectiveHash ?? profile.effectiveHash}` : `frozen:${profile.effectiveHash}`
   return `${profileKey}|${sample.taskFamily}|${sample.form}`
 }
 
@@ -800,6 +816,7 @@ export function aggregate(samples: EvolutionSample[]): EvolutionGroup[] {
   const groups = new Map<string, {
     group: EvolutionGroup
     dispatchToReady: number[]
+    readyToEnd: number[]
     tokenSamples: number
     tokenInput: number
     tokenOutput: number
@@ -824,12 +841,12 @@ export function aggregate(samples: EvolutionSample[]): EvolutionGroup[] {
           closed: 0, blocked: 0, failed: 0, stopped: 0, dropped: 0, failureReasons: {},
           rework: rate(0, 0),
           review: { reviewed: 0, accepted: 0, unaccepted: 0, acceptedRate: null, comments: { state: 'unknown', total: null } },
-          latency: { samples: 0, p50Seconds: null, p90Seconds: null },
+          latency: { samples: 0, p50Seconds: null, p90Seconds: null, readyToEnd: { samples: 0, p50Seconds: null, p90Seconds: null } },
           tokens: { state: 'unknown', samples: 0, input: null, output: null, cacheRead: null, cacheWrite: null, reasoning: null },
           notifications: { state: 'unknown', total: null, perResult: null },
           sampleIds: [],
         },
-        dispatchToReady: [], tokenSamples: 0, tokenInput: 0, tokenOutput: 0, tokenCacheRead: 0, tokenCacheWrite: 0,
+        dispatchToReady: [], readyToEnd: [], tokenSamples: 0, tokenInput: 0, tokenOutput: 0, tokenCacheRead: 0, tokenCacheWrite: 0,
         tokenReasoning: 0, notifications: [], comments: [], reviewedWithComments: 0,
       }
       groups.set(key, entry)
@@ -853,9 +870,9 @@ export function aggregate(samples: EvolutionSample[]): EvolutionGroup[] {
     if (sample.kind === 'root' && sample.ended && sample.ended.outcome !== 'dropped' && sample.ended.outcome !== 'stopped') {
       group.rootSuccess.n += 1
       if (sample.ended.outcome === 'completed' || sample.ended.outcome === 'merged') group.rootSuccess.successes += 1
-    } else if (sample.kind === 'child' && sample.ended) {
+    } else if (sample.kind === 'child' && sample.childAccepted !== null) {
       group.childSuccess.n += 1
-      if (sample.ended.outcome === 'completed' || sample.ended.outcome === 'merged') group.childSuccess.successes += 1
+      if (sample.childAccepted) group.childSuccess.successes += 1
     } else if (sample.kind === 'lightweight' && sample.ended && sample.ended.outcome !== 'dropped' && sample.ended.outcome !== 'stopped') {
       group.lightweightSuccess.n += 1
       if (sample.ended.outcome === 'completed' || sample.ended.outcome === 'merged') group.lightweightSuccess.successes += 1
@@ -874,6 +891,7 @@ export function aggregate(samples: EvolutionSample[]): EvolutionGroup[] {
       }
     }
     if (sample.latency.dispatchToReadySeconds !== null) entry.dispatchToReady.push(sample.latency.dispatchToReadySeconds)
+    if (sample.latency.readyToEndSeconds !== null) entry.readyToEnd.push(sample.latency.readyToEndSeconds)
     if (sample.tokens !== null) {
       entry.tokenSamples += 1
       entry.tokenInput += sample.tokens.input
@@ -894,7 +912,8 @@ export function aggregate(samples: EvolutionSample[]): EvolutionGroup[] {
     group.review.comments = group.review.reviewed > 0 && entry.reviewedWithComments === group.review.reviewed
       ? { state: 'available', total: entry.comments.reduce((sum, value) => sum + value, 0) }
       : { state: 'unknown', total: null }
-    group.latency = { samples: entry.dispatchToReady.length, p50Seconds: quantile(entry.dispatchToReady, 0.5), p90Seconds: quantile(entry.dispatchToReady, 0.9) }
+    group.latency = { samples: entry.dispatchToReady.length, p50Seconds: quantile(entry.dispatchToReady, 0.5), p90Seconds: quantile(entry.dispatchToReady, 0.9),
+      readyToEnd: { samples: entry.readyToEnd.length, p50Seconds: quantile(entry.readyToEnd, 0.5), p90Seconds: quantile(entry.readyToEnd, 0.9) } }
     const tracked = group.n - group.lightweight
     group.tokens = tracked > 0 && entry.tokenSamples === tracked
       ? { state: 'available', samples: entry.tokenSamples, input: entry.tokenInput, output: entry.tokenOutput,
@@ -1070,7 +1089,8 @@ function diagnose(candidate: EvolutionGroup, baseline: EvolutionGroup, window: {
 /** Pick the pre-registered comparison group: a profile prefers worker-default, which prefers legacy. */
 function baselineFor(candidate: EvolutionGroup, groups: EvolutionGroup[]): EvolutionGroup | undefined {
   const candidates = groups.filter(group => group.taskFamily === candidate.taskFamily && group.form === candidate.form
-    && group.key !== candidate.key && group.comparable && group.rootSuccess.n > 0
+    && group.key !== candidate.key && (group.comparable || group.baseline === 'worker-default@1') && group.rootSuccess.n > 0
+    && !(group.profile && candidate.profile && group.profile.id === candidate.profile.id && group.profile.revision === candidate.profile.revision)
     && group.environments.join('|') === candidate.environments.join('|'))
   const rank = (group: EvolutionGroup): number => group.baseline === 'worker-default@1' ? 0 : group.baseline === 'legacy' ? 1 : 2
   return candidates.sort((left, right) => rank(left) - rank(right) || left.key.localeCompare(right.key))[0]
@@ -1135,7 +1155,8 @@ export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined,
   if (observationMismatch.length > 0) return insufficient('observationEnvironmentMismatch')
   const holdout = evalSet.entries.filter(entry => entry.holdout && entry.taskFamily === plan.taskFamily && entry.form === plan.form)
   const entryIds = new Set(holdout.map(entry => entry.id))
-  const overlap = holdout.filter(entry => observationIds.has(entry.id))
+  const overlap = holdout.filter(entry => observationIds.has(entry.id)
+    || (entry.observationRef !== undefined && observationIds.has(entry.observationRef)))
   checks.push({ check: 'holdout-separate-from-observation', status: overlap.length === 0 ? 'pass' : 'fail',
     detail: overlap.length === 0 ? `${holdout.length} holdout entries` : `${overlap.length} overlapping entries` })
   if (overlap.length > 0) return insufficient('holdoutOverlap')
@@ -1159,7 +1180,6 @@ export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined,
     checks.push({ check: 'stopping-rule', status: 'fail', detail: 'stops before the pre-registered sample size' })
     return insufficient('stoppingBeforePower')
   }
-  checks.push({ check: 'stopping-rule', status: 'pass', detail: `after ${plan.stopping.afterSamples} samples per group` })
 
   let baselineOutcomes: ReplayOutcome[]
   let candidateOutcomes: ReplayOutcome[]
@@ -1199,6 +1219,15 @@ export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined,
     return insufficient('sampleSize')
   }
   checks.push({ check: 'sample-size', status: 'pass', detail: `${n1}/${n2} >= ${plan.requiredPerGroup} per group` })
+  if (n1 < plan.stopping.afterSamples || n2 < plan.stopping.afterSamples) {
+    checks.push({ check: 'stopping-rule', status: 'fail', detail: `${n1}/${n2} reached before ${plan.stopping.afterSamples} per group` })
+    return insufficient('stoppingNotReached')
+  }
+  checks.push({ check: 'stopping-rule', status: 'pass', detail: `reached ${plan.stopping.afterSamples} per group` })
+  if (statistics.guardrails['p90DispatchToReadySeconds']?.status === 'unknown') {
+    checks.push({ check: 'guardrails', status: 'unknown', detail: 'p90 dispatch-to-ready latency is unavailable' })
+    return insufficient('guardrailUnknown')
+  }
   const guardrailFailures = Object.entries(statistics.guardrails).filter(([, value]) => value.status === 'fail').map(([name]) => name)
   checks.push({ check: 'guardrails', status: guardrailFailures.length === 0 ? 'pass' : 'fail',
     detail: guardrailFailures.length === 0 ? 'no available guardrail regressed past its threshold' : guardrailFailures.join(',') })
@@ -1273,9 +1302,12 @@ function queueOf(proposals: EvolutionProposal[], generatedAt: string): ApprovalQ
     schema: QUEUE_SCHEMA, storage: 'document', generatedAt, status: 'pending-human-approval',
     items: proposals.filter(proposal => proposal.status === 'ready-for-human-approval').map(proposal => ({
       proposalId: proposal.id, profileId: proposal.scope.profileId, baseRevision: proposal.baseRevision,
-      proposedRevision: proposal.proposedRevision, evidenceRef: proposal.evidence.holdout.join(','), requestedAt: generatedAt,
+      proposedRevision: proposal.proposedRevision, candidateEffectiveHash: proposal.evidence.candidate.effectiveHash,
+      baselineEffectiveHash: proposal.evidence.baseline.effectiveHash,
+      evidenceRef: `${proposal.evidence.evalSet.id}@${proposal.evidence.evalSet.revision}#holdout=${proposal.evidence.holdout.length}`,
+      requestedAt: generatedAt,
     })),
-    note: 'Document-only queue: no production write path. A person must review the report, create the revision with the existing profile registry and activate it; bound tickets keep their snapshots.',
+    note: 'Document-only queue: no production write path. A person must review the report; activate the observed revision if it already exists, otherwise save the listed diff as the next revision and verify the registry effective.hash equals candidateEffectiveHash; rollback points to baseRevision. Bound tickets keep their snapshots.',
   }
 }
 
@@ -1397,7 +1429,7 @@ export function runEvolution(input: EvolutionInput): EvolutionReport {
     gates,
     approvalQueue: queueOf(proposals, generatedAt),
     conclusion: conclusionOf(proposals, gates, samples.records.length, intents.length),
-    guarantees: { liveConfiguration: 'unchanged', autoApply: false, authorizationFields: 'refused', privateText: 'refused', externalCredentials: false },
+    guarantees: { liveConfiguration: 'unchanged', autoApply: false, authorizationFields: 'refused', samplePrivateText: 'refused', proposalText: 'author-supplied', externalCredentials: false },
   }
 }
 
@@ -1415,7 +1447,7 @@ export interface TicketLike {
   }[]
   inputs?: { kind?: string; at?: string }[]
   delegation?: { resolution?: { kind?: string }; dispositions?: { decision?: string }[] }
-  profile?: { id?: string; revision?: number; effective?: { hash?: string }; selection?: { moving?: boolean; fallback?: boolean } }
+  profile?: { id?: string; revision?: number; effective?: { hash?: string }; runEffectiveHash?: string; selection?: { moving?: boolean; fallback?: boolean } }
   decisionAt?: string
   usage?: { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; messages: number } | null
   notifications?: number | null
@@ -1449,6 +1481,7 @@ export function samplesFromTickets(tickets: TicketLike[], options: { generatedAt
         throw new EvolutionInputError('profileHashMissing', 'ticket.profile.effective.hash')
       }
       profile = { id: ticket.profile.id, revision: ticket.profile.revision, effectiveHash: ticket.profile.effective.hash,
+        runEffectiveHash: ticket.profile.runEffectiveHash,
         moving: ticket.profile.selection?.moving === true, fallback: ticket.profile.selection?.fallback === true }
     }
     const ended = ticket.ended?.at && ticket.ended.outcome && OUTCOMES.has(ticket.ended.outcome as SampleOutcome)
@@ -1465,6 +1498,7 @@ export function samplesFromTickets(tickets: TicketLike[], options: { generatedAt
       kind,
       form,
       ended,
+      childAccepted: kind === 'child' && ticket.delegation?.resolution ? ticket.delegation.resolution.kind === 'accepted' : null,
       reworked: returned || resumedAfterReady,
       review: { reviewed: latest?.review?.deliverable !== undefined, accepted: latest?.accepted !== undefined, comments: null },
       failure: { state: failureState, reasonCode: failureReason },
