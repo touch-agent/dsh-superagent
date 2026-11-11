@@ -271,7 +271,7 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 | C4.4 | 观测点不依赖被替换的 UI | trace/activity/metrics 独立读取；无 UI 也能取证 |
 | C4.5 | 新人能在不看组织视图的情况下完成一次任务 | 可用性走查；失败记录为产品缺口 |
 
-T5-06 的逐条结论：C4.1 通过；C4.2 部分满足（结果/通知等价，审计完整但扁平组织下不再逐字节相同，见 D2）；C4.3 部分满足（子 Ticket 委派移除已演练，仓库内没有可删除的类别覆盖层，投影只读已断言）；C4.4 通过（观测不读视图，但 D5 的两项客户端采集仍缺）；C4.5 未验证（未做新人可用性走查）。详见 [replacement.drill.md](runbooks/replacement.drill.md)。
+T5-06 的逐条结论：C4.1 通过；C4.2 部分满足（结果/通知等价，审计完整但扁平组织下不再逐字节相同，见 D2）；C4.3 部分满足（子 Ticket 委派移除已演练，仓库内没有可删除的类别覆盖层，投影只读已断言）；C4.4 通过（观测不读视图，但 D5 的两项客户端采集仍缺）；C4.5 部分满足（[novice-walkthrough.md](runbooks/novice-walkthrough.md) 的首次使用者走查可在不看组织视图时完成概览 → 工单 → 批准，但 G1–G6 文案/入口缺口仍在，且本次为 agent 认知走查、未经独立新人复跑，见 D7）。详见 [replacement.drill.md](runbooks/replacement.drill.md)。
 
 ## 6. 逐条对照现有文档
 
@@ -281,7 +281,7 @@ T5-06 的逐条结论：C4.1 通过；C4.2 部分满足（结果/通知等价，
 | --- | --- | --- | --- | --- |
 | [docs/000](000-philosophy.md) | 注意力最小、价值最大；少概念、少设置、面板只显示需要人的事 | 支持 A；B/C/D 未展开 | 有总原则，缺组织与进化的具体约束 | 保留原文，本文作为展开；不重复改写 000 |
 | [docs/001](001-domain.md) | 只有 Eval 创建 Ticket；Executor/Session 在领域外；拒绝跨源身份 | 支持 B、D | 子 Ticket 提案复用 Ticket，不新增新的实体类型；执行仍落在 Assignment/worker；需防止它变成第二授权层 | 接受「执行树」持久化，但授权仍只在根 Ticket/Mandate；`docs/001` 的「只有 Eval 创建 Ticket」按「只有 Eval 创建授权根 Ticket」解释；Engine delegation 创建的子 Ticket 不是授权主体，继承根授权与 `maxActionLevel`，不另开 |
-| [docs/003](003-execution.md) | 一进程一体系；tracked 有 worker/Session/目录；subagent 是执行细节；目录不是安全边界；`reviewTicket` 只接受最新 Report，`approve` 不按 revision 令牌 | 支持 C 的六层上下文与 D 的执行边界 | 细节面向操作者，容易被误读为产品默认面；任务视图提案的 `ReviewAggregate`/`reviewRevision` 尚不存在 | 保留为操作文档；产品默认面按 B 的 E0/E1 分层；不把目录当组织/权限；6.6 的「按 revision 确认」只能作为提案，不能当作当前不变量 |
+| [docs/003](003-execution.md) | 一进程一体系；tracked 有 worker/Session/目录；subagent 是执行细节；目录不是安全边界；`reviewTicket` 接受最新 Report，`approve` 现按 `reviewRevision` 绑定根聚合（T3-11 已落地） | 支持 C 的六层上下文与 D 的执行边界 | 细节面向操作者，容易被误读为产品默认面；`ReviewAggregate`/`reviewRevision` 已实现，见 `tasks-view-architecture.zh.md` §6.6 | 保留为操作文档；产品默认面按 B 的 E0/E1 分层；不把目录当组织/权限；「按 revision 确认」已是当前不变量，不再只是提案 |
 | [docs/005](005-panel.md) | 七 tab 管理面板；聚焦、安静、诚实；Tasks 是计划树 | 支持 A；与 B 部分冲突 | 默认面板暴露 Trigger/Eval/Execution；Tasks 树把计划编号当层级 | 面板定位为 E2 信任控制台，不是产品主界面；默认面按 E0；计划树在任务视图里降为标签/回退 |
 | [docs/007](007-architecture.md) | kernel 零宿主依赖；依赖规则；worker 只读自己的 Ticket；读资源分页与上限 | 支持 C、D | 上下文规则分散在装配、prompt、读资源中，没有统一装配表 | 收敛成 C.3 的装配表；不改代码；用测试固定隔离 |
 | [docs/009](009-conversation-tasks.md) | 对话可派活但 chat 不是 Trigger；主会话只协调；Ticket 仍是任务聚合，拒绝第二套 Task 实体 | 支持 A、B | 隐式派活会让每句话变成工作；状态问答与任务边界易混；任务视图修订版的子 Ticket 是 Ticket 自引用，不是第二 Task 聚合 | 保持显式 dispatch；默认面只给确认与结果；A 约束「不确认不派活」的文案；子 Ticket 仍由根 Ticket 授权，不是授权主体；类别只是展示覆盖层 |
@@ -312,7 +312,7 @@ T5-06 的逐条结论：C4.1 通过；C4.2 部分满足（结果/通知等价，
 两个典型裁决：
 
 - 「把组织树放到主会话右侧，帮助人信任」→ A 先问：人现在要决定什么？如果只是「想看看」，放 E1/E2，按需打开；如果组织异常导致人必须决定，给一条异常摘要 + 入口，不给整棵树。
-- 「让父 worker 自动接受子交付，减少人的审阅」→ 1 先问：验收条件是否仍由人确认？可以自动接受低风险子交付，但最终验收仍由人确认；`Review.confirmations` 只保存需要人判定的验收项，不能替代验收动作；否则违反验收不变量。**当前实现边界**：今天的 `reviewTicket(ticketId, by)` 只对带 preview 的 review-stage Report 记录接受者/时间，接受的是最新 Report，没有 `reviewRevision` 参数；任务视图修订版的 `ReviewAggregate`/`reviewRevision`/`409 reviewStale` 仍是提案。没有确认项的 Ticket 仍按现有 ready/PR 关闭路径结束，PLATFORM ADR-05 的外部 Acceptance 还是目标而非现状。因此「按 revision 确认」只能在 6.6 落地后作为不变量，不能写成当前已实现的行为。
+- 「让父 worker 自动接受子交付，减少人的审阅」→ 1 先问：验收条件是否仍由人确认？可以自动接受低风险子交付，但最终验收仍由人确认；`Review.confirmations` 只保存需要人判定的验收项，不能替代验收动作；否则违反验收不变量。**当前实现边界（T3-11，2026-11-09 已落地）**：`reviewTicket(ticketId, by, reviewRevision)` 按根 `ReviewAggregate` 的当前 revision 接受交付，过期 revision 返回 `409 reviewStale`，子 Ticket 返回 `childRequiresParent`；父 owner 的 `accept_child` 仍不等于人的确认。没有确认项的 Ticket 仍按现有 ready/PR 关闭路径结束，PLATFORM ADR-05 的外部 Acceptance 还是目标而非现状。因此「按 revision 确认」已是当前不变量，见 `tasks-view-architecture.zh.md` §6.6。
 
 ## 8. 状态、落地顺序与暂缓项
 
