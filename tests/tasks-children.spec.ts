@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { Assignment, Ticket } from '@superagent/kernel'
+import type { Assignment, ProfileSnapshot, Ticket } from '@superagent/kernel'
 import { Store } from '@superagent/dsh/app/store.ts'
 import { taskBoard, taskDetail } from '@superagent/dsh/app/tasks.ts'
 import type { ViewHost } from '@superagent/dsh/app/views/records.ts'
@@ -13,6 +13,15 @@ afterEach(() => { rmSync(directory, { recursive: true, force: true }) })
 
 const host = (store: Store): ViewHost => ({ store, sources: { kind: () => undefined } as never, links: () => ({}) as never })
 const at = '2026-09-22T00:00:00Z'
+const docsProfile: ProfileSnapshot = {
+  id: 'docs-owner', revision: 2, hash: 'sha256:docs', role: 'worker',
+  selection: { by: 'code', source: 'builtin', reason: 'test', moving: false, valid: true }, model: { mode: 'inherit' },
+  tools: [], toolsMode: 'inherit', prompt: { mode: 'live', revision: 2, hash: 'sha256:prompt' },
+  effective: { promptRevision: 2, promptHash: 'sha256:prompt', toolsHash: 'sha256:tools',
+    model: { provider: 'host-default', model: 'host-default' }, dshVersion: 'test', policyVersion: 'v', skillsHash: 'sha256:skills',
+    hash: 'sha256:effective' },
+  boundAt: at, reason: 'test',
+}
 const assignment = (id: string, report?: Assignment['report']): Assignment => ({ id, state: report ? 'running' : 'ended', createdAt: at,
   ...report ? {} : { startedAt: at }, ...report ? { startedAt: at, report } : {} })
 const tracked = (id: string, fields: Partial<Ticket> = {}): Ticket => ({
@@ -26,7 +35,7 @@ const seed = (store: Store, tickets: Ticket[]) => { for (const item of tickets) 
 
 it('keeps the board to roots with child counts and loads direct children only on detail', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
-  const root = tracked('root1', { profile: { id: 'docs-owner', revision: 2 },
+  const root = tracked('root1', { profile: docsProfile,
     assignments: [assignment('ra', { state: 'progress', summary: 'working', at })] })
   const waiting = child('c1', { assignments: [assignment('c1a', { state: 'waiting', summary: 'waiting on parent', at })] })
   const dropped = child('c2', { ended: { at, by: 'executor', outcome: 'dropped' }, assignments: [assignment('c2a')] })

@@ -183,7 +183,7 @@ it('shows a failed Feishu bot check as a problem of the Feishu Source only, with
   await mount()
   await click(zh.problemAggregateShow)
   expect(text()).toContain(zh.problemSetupFeishu)
-  expect(text()).not.toContain('飞书 来源异常')
+  expect(text()).not.toContain('「飞书」连接出现问题')
   await click(find(zh.problemSetupFeishu, 'button, a, [role="button"]'))
   const feishu = all('.dt-card')[0]!
   expect(feishu.textContent).toContain('部署检查未通过：应用 cli_bot 的机器人身份状态是 missing；用 lark-cli 配置应用密钥。')

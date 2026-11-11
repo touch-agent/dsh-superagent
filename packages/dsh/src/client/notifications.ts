@@ -76,6 +76,8 @@ const failedTask = (ticket: TicketRow): boolean =>
   ticket.stage === 'person' && (ticket.action === 'failed' || ticket.action === 'blocked')
 
 const questionOf = (ticket: TicketRow): string | undefined => ticket.attention?.question?.trim() || undefined
+/** The list row is a union of plan and Ticket rows; only a person-stage row carries the action this slice reads. */
+const actionOf = (ticket: TicketRow): string | undefined => 'action' in ticket ? ticket.action : undefined
 
 /** A stable identity for a folded problem, so the aggregate notice changes only when its members do. */
 function problemKey(problem: Problem): string {
@@ -93,7 +95,7 @@ function problemKey(problem: Problem): string {
 /** One line for a failed or blocked task folded into the system notice. */
 function taskDetailOf(ticket: TicketRow, t: T): string {
   const reason = ticket.note?.text?.trim()
-  const stage = t(ticket.action === 'blocked' ? 'stage.blocked' : 'stage.failed')
+  const stage = t(actionOf(ticket) === 'blocked' ? 'stage.blocked' : 'stage.failed')
   return reason ? `${ticket.title} · ${stage} · ${reason}` : `${ticket.title} · ${stage}`
 }
 
@@ -118,8 +120,9 @@ export function noticeItems(data: OverviewView, t: T): Notice[] {
     ],
   })
   for (const ticket of data.person.filter(ticket => !failedTask(ticket))) {
-    const answer = ticket.action === 'answer'
-    const review = ticket.action === 'review'
+    const action = actionOf(ticket)
+    const answer = action === 'answer'
+    const review = action === 'review'
     const what = answer ? t('noticeAnswerWhat', { task: ticket.title, question: questionOf(ticket) ?? t('noticeNoQuestion') })
       : review ? t('noticeReviewWhat', { task: ticket.title, summary: ticket.note?.text?.trim() || ticket.summary || t('noticeNoSummary') })
       : t('noticeDeliveryWhat', { task: ticket.title })

@@ -18,7 +18,7 @@ it('opens with the three zones and keeps health as a folded E2 path', async () =
   // Source and Ticket problems fold into one row; the detail list keeps every underlying problem.
   expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['需要处理的异常 3 项'])
   await click(zh.problemAggregateShow)
-  expect(all('.dt-problem-group-list .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
+  expect(all('.dt-problem-group-list .dt-att-what').map(item => item.textContent)).toEqual(['「飞书」连接出现问题', '判断没有完成：这个文案好奇怪'])
   // Actions sit below the title and Threads, apart from the stage, each with its icon.
   expect(all('.dt-ticket').every(row => row.querySelector('.dt-ticket-stage button, .dt-ticket-stage a') === null
     && [...row.querySelectorAll('.dt-ticket-actions button, .dt-ticket-actions a')].every(action => action.querySelector('svg')))).toBe(true)
@@ -57,7 +57,7 @@ it('re-evaluates or dismisses an unjudged Eval from the problem list', async () 
 it('opens the Thread of an unjudged Eval at its Trigger from the problem list', async () => {
   await mount()
   await click(zh.problemAggregateShow)
-  await click('评估未完成：这个文案好奇怪')
+  await click('判断没有完成：这个文案好奇怪')
   expect(server.requests.some(request => request.path.startsWith('threads/feishu:oc_1:om_root'))).toBe(true)
   expect(document.querySelector('.dt-highlight')?.textContent).toContain('message e3')
 })
@@ -199,7 +199,7 @@ it('lists the unavailable Evals one by one, without the health entry that counts
   server.health.evals = { state: 'error', detail: '1 Eval(s) unavailable in the last hour without a later judgement' }
   await mount()
   await click(zh.problemAggregateShow)
-  expect(all('.dt-problem-group-list .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
+  expect(all('.dt-problem-group-list .dt-att-what').map(item => item.textContent)).toEqual(['「飞书」连接出现问题', '判断没有完成：这个文案好奇怪'])
   expect(text()).not.toContain(zh['health.evals'])
 })
 
@@ -214,12 +214,12 @@ it('says when no Source is on, an Eval is past its deadline or a message keeps f
   await click(zh.problemAggregateShow)
   const titles = () => all('.dt-problem-group-list .dt-att-what').map(item => item.textContent)
   // The Feishu Source is off, so its error is no problem any more.
-  expect(titles()).toEqual([zh.problemNoSource, '评估超时未决定：#9 迟迟未决', '评估未完成：这个文案好奇怪', 'GitHub 回复发送失败（已重试 4 次）'])
+  expect(titles()).toEqual([zh.problemNoSource, '还在判断：#9 迟迟未决', '判断没有完成：这个文案好奇怪', 'GitHub 回复发送失败（已重试 4 次）'])
   expect(text()).toContain('HTTP 502 from GitHub')
   await click(zh.actionOpenSources)
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['settingsGroup.source'])
   await click(tab(zh['tab.overview']))
   await click(zh.problemAggregateShow)
-  await click('评估超时未决定：#9 迟迟未决')
+  await click('还在判断：#9 迟迟未决')
   expect(server.requests.some(request => request.path.startsWith('threads/github:9'))).toBe(true)
 })

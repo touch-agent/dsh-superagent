@@ -73,6 +73,7 @@ function Reports({ task, t }: { task: TaskView; t: T }) {
     </> : task.childSummary ? <p className="dt-task-report">
       <Tag tone={task.childSummary.blocked + task.childSummary.failed + task.childSummary.orphaned > 0 ? 'warning' : 'neutral'}>
         {t('tasksChildCount', { count: task.childSummary.total })}</Tag>
+      <span className="dt-hint">{t('taskHierarchyChildReportsHint')}</span>
       {task.childSummary.review > 0 && <Tag tone="warning">{t('tasksParentReview')} {task.childSummary.review}</Tag>}
       {task.childSummary.accepted > 0 && <Tag tone="success">{t('taskHierarchyParentAccepted')} {task.childSummary.accepted}</Tag>}
       {task.childSummary.unresolved > 0 && <Tag tone="warning">{task.childSummary.unresolved} {t('taskHierarchyReportsWaiting')}</Tag>}
