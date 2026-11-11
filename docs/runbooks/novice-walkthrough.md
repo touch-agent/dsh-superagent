@@ -2,7 +2,7 @@
 
 > 对应 [011 设计原则](../011-design-principles.zh.md) C4.5「新人能在不看组织视图的情况下完成一次任务」。
 > 本记录只采信可复现的界面状态：固定的提交、固定的 fixture、固定的面板文案，不引用生产数据的截图。
-> 走查日期 2026-11-11；界面版本 `main@f7846fc` 上的面板组件与中文 locale。
+> 走查日期 2026-11-11；面板组件与中文 locale 固定在 `main@f7846fc`，本记录与测试随本 PR 提供，不修改面板代码。
 
 ## 结论
 
@@ -15,13 +15,13 @@
 - **任务**：「面板里有一条等你确认的交付。找到它、读完交付，然后确认（批准）。不要打开工单树或计划树。」
 - **起点**：面板首屏「概览」，语言中文，默认 E0 面（不预先打开右栏、不打开任务详情）。
 - **可复现状态**：`tests/novice-walkthrough.spec.tsx` 的 fixture——根工单 `t1` 处于 `person / review`，有一个文档交付 `docs/review.md@rev-1`、预览链接、规则验收标准 `pr.merged` 和一条人工确认「Check the tone」；概览的「待我处理」把它列为「待验收」。
-- **界面版本**：本文与测试都固定在 `main@f7846fc`（T5-02 的 E0–E3 默认面与 T3-11 的审查聚合已落地）。如果后续改动面板文案/布局，这个走查要重新记录，不能拿旧结论冒充。
+- **界面版本**：面板组件与 locale 固定在 `main@f7846fc`（T5-02 的 E0–E3 默认面与 T3-11 的审查聚合已落地）。测试 fixture 和本记录随本 PR 提供，不改面板代码；因此复现要检出本 PR 的 head，而不是停在 `f7846fc`。如果后续改动面板文案/布局，这个走查要重新记录，不能拿旧结论冒充。
 
 ## 复现
 
 ```sh
-git switch --detach f7846fc
-pnpm install --offline --frozen-lockfile
+git switch agent/docs-c4-98f7fc9c3bd4   # this PR's head; use main once merged
+pnpm install --frozen-lockfile
 pnpm vitest run tests/novice-walkthrough.spec.tsx
 ```
 
