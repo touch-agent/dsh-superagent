@@ -42,7 +42,8 @@
   "exclude": [
     "node_modules",
     "lib",
-    "packages/*/lib"
+    "packages/*/lib",
+    "tests/fixtures/dependency-rules"
   ],
   "include": [
     "packages/**/*.ts",

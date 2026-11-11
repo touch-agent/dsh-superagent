@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@superagent/kernel": ["./packages/kernel/src/index.ts"],
+      "@superagent/dsh": ["./packages/dsh/src/index.ts"],
+      "@superagent/dsh/*": ["./packages/dsh/src/*"]
+    }
+  },
+  "include": ["packages/**/*.ts", "meta/**/*.ts", "tests/**/*.ts"]
+}

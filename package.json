@@ -56,7 +56,8 @@
     "drill:replacement": "vitest run tests/replacement-drill.spec.ts",
     "check:size": "node scripts/check-bundle-size.mjs",
     "check:tracking": "node scripts/check-tracking.mjs",
-    "check": "pnpm check:tracking && pnpm typecheck && pnpm test && pnpm build && pnpm check:size",
+    "check:arch": "depcruise packages meta tests --config .dependency-cruiser.mjs",
+    "check": "pnpm check:tracking && pnpm check:arch && pnpm typecheck && pnpm test && pnpm build && pnpm check:size",
     "evolution": "node scripts/evolution/run.mjs",
     "evolution:export": "node scripts/evolution/export.mjs",
     "changeset": "changeset"
@@ -104,6 +105,7 @@
     "@types/proper-lockfile": "4.1.4",
     "@types/react": "18.3.28",
     "@types/react-dom": "18.3.7",
+    "dependency-cruiser": "18.7.2",
     "jsdom": "29.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",

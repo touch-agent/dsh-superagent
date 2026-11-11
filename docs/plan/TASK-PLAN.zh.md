@@ -604,6 +604,15 @@ graph LR
 
 **优先级（2026-11-08 重评估）**：X-13 立即；X-14 在 021 Phase 2 评审前；X-03 在 M3.5 前；X-09 在 T5-02 前；X-10 在 M4 前；X-12 已完成（PR #31）；X-01/X-02/X-04 作为并行维护项，不占关键路径；X-06 继续守领域测试 <2s。
 
+### X-02 dependency-cruiser 架构规则 · Platform · 2 人日
+
+- **目标**：把 `tests/layers.spec.ts` 里手写的分层与依赖方向扫描换成 dependency-cruiser 规则，规则变多时仍能逐条说明、逐条拦截；旧扫描器保留一个版本做对照，再删除。
+- **交付**：`.dependency-cruiser.mjs`，覆盖 kernel 零依赖、runtime 不反向依赖 bundle、`meta/` 只 re-export runtime、Source 不依赖 host、panel 只取类型与白名单 plain values、`packages/` 只按包名进入、浏览器半不引 Node built-in；`pnpm check:arch` 接入 `pnpm check` 与 CI；`tests/dependency-rules.spec.ts` 的 clean/violations fixtures 为每条规则提供反向测试；dependency-cruiser 规则表达不了的两条（kernel manifest 零依赖、panel 只从 `app/api.ts` 取值 `TICKET_FILTERS`/`THREAD_FILTERS`）留在新 spec。
+- **验收**：`pnpm check:arch` 在干净仓库绿；`tests/dependency-rules.spec.ts` 在每个规则被故意违反时红，clean fixture 无误报；`pnpm test`、`pnpm typecheck` 与 `tests/docs.spec.ts` 同时绿；独立 review 核对「能拦住新增违规」「不误报」，结论写进 PR review 评论。
+- **估时**：2 人日。**依赖**：无。**回退**：删除 `.dependency-cruiser.mjs`、`scripts` 里的 `check:arch` 与新 spec 即回退；旧扫描器保留期间始终是第二道检查。
+- **泳道**：Platform。
+- **实现（2026-11-11，PR [#64](https://github.com/touch-agent/dsh-superagent/pull/64)）**：`.dependency-cruiser.mjs` 把上层规则写成 13 条 error 规则；`pnpm check:arch` 接入 `pnpm check` 与 `check` CI job；`tests/dependency-rules.spec.ts` 的 clean fixture 守白名单、violations fixture 逐条覆盖全部规则，并保留 kernel manifest 与 `app/api.ts` 过滤常量的两条断言；`tests/layers.spec.ts`、`tests/kernel-boundary.spec.ts` 标为过渡，配置首次发布后的下一个版本删除。`docs/007-architecture.md` 的「Architecture checks」记录规则、反向测试与退役条件。
+
 ### X-13 TRACKING 自动化 · Platform · 2 人日
 
 - **目标**：把「合并即更新」从人工纪律变成可验证的检查：计划任务、跟踪表行、PR 状态三者一致，漂移在 CI 变红。

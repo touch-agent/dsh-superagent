@@ -221,9 +221,11 @@ Design proposals (unnumbered, not implemented):
 
 ## Development
 
-`pnpm check` is the gate: typecheck, the full test suite, the build and the bundle-size budget. The pieces:
+`pnpm check` is the gate: the architecture rules, tracking consistency, typecheck, the full test suite, the build and the bundle-size budget. The pieces:
 
 ```sh
+pnpm check:tracking   # plan, tracking table and PR links agree (offline)
+pnpm check:arch       # dependency-cruiser architecture rules
 pnpm typecheck        # tsc --noEmit
 pnpm test             # vitest run (tests/)
 pnpm build            # tsdown, the runtime and the bundle
@@ -236,7 +238,7 @@ pnpm changeset        # record a version bump for a package change
 
 `pnpm test:install-e2e` needs `dsh` on `PATH` (or `DSH_BIN` pointing at another copy; on Windows, point it at the host's `lib/bin.js`); `KEEP=1` keeps the temporary home. The same applies to `tests/dump-config.spec.ts`, which composes an installed profile through the host's own `--dump-config`.
 
-The tests are the specification. `tests/kernel-boundary.spec.ts` and `tests/layers.spec.ts` enforce the package boundaries; `tests/conformance/` is the contract every Source must satisfy; `tests/chaos.spec.ts` and `tests/withdraw-drill.spec.ts` cover delivery failure; `tests/runtime.spec.ts` runs the application against a simulated host, and the panel specs against a fake management API; `tests/docs.spec.ts` checks that the numbered documents link only backwards, that the README lists every numbered document once and in order, and that the 007 module and test tables stay complete.
+The tests are the specification. `.dependency-cruiser.mjs` enforces the package boundaries, with `tests/dependency-rules.spec.ts` proving that a new violation is caught and that the allowed imports are not; `tests/kernel-boundary.spec.ts` and `tests/layers.spec.ts` stay for one release as the transitional second scanner; `tests/conformance/` is the contract every Source must satisfy; `tests/chaos.spec.ts` and `tests/withdraw-drill.spec.ts` cover delivery failure; `tests/runtime.spec.ts` runs the application against a simulated host, and the panel specs against a fake management API; `tests/docs.spec.ts` checks that the numbered documents link only backwards, that the README lists every numbered document once and in order, and that the 007 module and test tables stay complete.
 
 CI runs four workflows: `check` (the gate above, with the pinned host installed so the dump-config test is real, plus a `changesets` job that requires a package change to name the package it bumps), `e2e` (the golden path on a fake host), `host-matrix` (the bundle installs, boots, answers and uninstalls on Linux and macOS at Node 22/24 and on Windows at Node 24, plus a forward-host probe outside the declared range; the supported-host contract, exclusions and timeouts are in [docs/006](docs/006-deployment.md#supported-hosts-and-the-ci-matrix)), and `release` (a dry run on `main` that shows the versions and changelogs a release would write; nothing is published).
 
