@@ -6,6 +6,7 @@ import { enterReview } from './deliverable.ts'
 import { isChildTicket, latestAssignment, liveTicket, runningAssignment } from './model.ts'
 import { profileSpan } from './profile.ts'
 import type { ActorRef, ReportState, Ticket } from './model.ts'
+import type { ContextSnapshot } from './context.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
 import { reviewAggregate } from './review.ts'
@@ -77,6 +78,18 @@ export class Assignments extends EnginePart {
     const ticket = this.running(ticketId, assignmentId)
     if (!ticket) return
     runningAssignment(ticket)!.idleAt = this.now()
+    this.repo.tickets.save(ticket)
+  }
+  /**
+   * Records the read-only context snapshot the host assembled for an Assignment. It is a fact about what the worker was
+   * told, not an authorization change, and a snapshot for an ended Assignment is dropped.
+   */
+  context(ticketId: string, assignmentId: string, context: ContextSnapshot): void {
+    const ticket = this.require(ticketId)
+    const assignment = ticket.assignments.find(item => item.id === assignmentId)
+    if (!assignment || assignment.state === 'ended') return
+    assignment.context = context
+    ticket.updatedAt = this.now()
     this.repo.tickets.save(ticket)
   }
   deliveryFailed(ticketId: string, assignmentId: string, error: string): void {

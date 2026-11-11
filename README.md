@@ -187,7 +187,7 @@ What is not wired yet, and matters when you evaluate the project:
 
 ## Documentation
 
-Read 000–010 in order; each builds only on the ones before it. 011 and 012 are a cross-referencing pair: the product and organization principles, and the platform evolution they sit above. 013 applies them to the workspace model, 014 records the end-to-end golden path that proves the task tree and parent review, 015 gives E0 the read-only Goal projection those principles ask for, 016 designs the reusable profile layer over the worker role, and 017 derives the optional context-group dimension from Source channels and Thread subscriptions (router reserved for a later phase).
+Read 000–010 in order; each builds only on the ones before it. 011 and 012 are a cross-referencing pair: the product and organization principles, and the platform evolution they sit above. 013 applies them to the workspace model, 014 records the end-to-end golden path that proves the task tree and parent review, 015 gives E0 the read-only Goal projection those principles ask for, 016 designs the reusable profile layer over the worker role, 017 derives the optional context-group dimension from Source channels and Thread subscriptions, and 019 assembles the six context dimensions per Assignment with a read-only snapshot and fail-closed conflicts.
 
 - [000 Philosophy](docs/000-philosophy.md): the attention rule, and what the agent may and may not do.
 - [001 Domain model](docs/001-domain.md): Sources, Triggers, Threads, Evals, Mandates, Tickets, Assignments, Deliverables and Subscriptions.
@@ -208,6 +208,7 @@ Read 000–010 in order; each builds only on the ones before it. 011 and 012 are
 - [016 AgentProfile](docs/016-agent-profile.zh.md): reusable, versioned execution profiles for the worker role, with authorization kept in Policy, Eval and the action gate; current-state evidence, evolution loop, risks and a phased landing (Chinese, proposal).
 - [017 Context groups](docs/017-context-groups.zh.md): the optional group dimension derived from Channel addresses and live Thread subscriptions, with no membership table, no member list and no authorization (Chinese).
 - [018 Exposure levels](docs/018-exposure-levels.zh.md): the E0–E3 display levels and the default-surface inventory with attention cost, deeper entry and rollback, plus the T5-02 before/after evidence (Chinese).
+- [019 Context assembly](docs/019-context-assembly.zh.md): the six-layer per-Assignment assembler, its merge and conflict rules, the read-only snapshot and trace stage, fail-closed behavior, and the child-ticket inheritance rules (Chinese).
 
 The design and evolution layer and the plan set are Chinese working documents, and can be ahead of, or behind, the numbered set. [docs/README.md](docs/README.md) maps the whole documentation set; [docs/plan/README.md](docs/plan/README.md) explains the plan documents and the tracking convention.
 

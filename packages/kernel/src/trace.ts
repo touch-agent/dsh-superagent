@@ -9,7 +9,7 @@ import { key } from './ids.ts'
  * gated, admitted, assessed, decided, attached and dispatched, then a lightweight ticket's actions run inline and the
  * ticket reports on it. A tracked ticket records no `action` stage: its actions happen inside its worker's Session.
  */
-export const SPAN_KINDS = ['ingest', 'dedupe', 'enqueue', 'gate', 'admission', 'assess', 'decide', 'attach', 'dispatch', 'action', 'report',
+export const SPAN_KINDS = ['ingest', 'dedupe', 'enqueue', 'gate', 'admission', 'assess', 'decide', 'attach', 'dispatch', 'context', 'action', 'report',
   'delegation.delegate', 'delegation.report', 'delegation.review', 'delegation.self-work', 'delegation.report-up'] as const
 /** One stage of `SPAN_KINDS`: what happened to a Trigger, not what its message said. */
 export type SpanKind = typeof SPAN_KINDS[number]

@@ -325,6 +325,7 @@ const TEXT = {
   'span.decide': ['决定', 'Decided'],
   'span.attach': ['挂接', 'Attached'],
   'span.dispatch': ['派工', 'Dispatched'],
+  'span.context': ['装配上下文', 'Assembled context'],
   'span.action': ['动作', 'Action'],
   'span.report': ['报告', 'Reported'],
   'activityEvent.ticketDelegated': ['父 owner 创建子工单 {child}', 'Parent owner delegated child Ticket {child}'],

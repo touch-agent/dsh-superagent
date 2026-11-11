@@ -268,8 +268,22 @@ it('relays an explicit member mention as a candidate and creates the ticket, ack
     // The optional group dimension is derived from the Channel and the Thread the Ticket follows; it grants nothing.
     context_group: expect.objectContaining({ key: `feishu:${CHAT}`, source: 'feishu', space: CHAT, visibility: 'source',
       conventions: [`feishu:${CHAT}:om_1`] }),
+    // The six dimensions that exist for this Ticket; the absent subtask is named rather than faked with an empty layer.
+    context_assembly: expect.objectContaining({ state: 'assembled', dimensions: ['organization', 'user', 'group', 'task', 'agent'],
+      absent: ['subtask'], hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      entries: expect.arrayContaining([expect.objectContaining({ key: 'task:goal', dimension: 'task' }),
+        expect.objectContaining({ key: `group:feishu:${CHAT}`, dimension: 'group' }),
+        expect.objectContaining({ key: 'agent:role', dimension: 'agent' })]) }),
     trigger: expect.objectContaining({ trigger_id: trigger.id, from: MEMBER, thread: `feishu:${CHAT}:om_1`, text: trigger.text }) })
   expect(first.trigger).not.toHaveProperty('read')
+  // The Assignment keeps the read-only snapshot (no entry text), and the trace keeps the assembly stage.
+  const assignment = runtime.store.tickets.get(ticket.id)!.assignments[0]!
+  expect(assignment.context).toMatchObject({ state: 'assembled', dimensions: ['organization', 'user', 'group', 'task', 'agent'],
+    absent: ['subtask'], assignmentId: assignment.id })
+  expect(assignment.context!.entries.every(item => !('text' in item))).toBe(true)
+  expect(runtime.store.spans.trace(traceId(trigger.id))).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: 'context', assignmentId: assignment.id, data: expect.objectContaining({ state: 'assembled',
+      dimensions: ['organization', 'user', 'group', 'task', 'agent'], absent: ['subtask'] }) })]))
   expect(await route({ kind: 'accept', trigger_id: trigger.id, title: 'again', worktree_name: worktreeName, acknowledgement: 'x' })).toMatchObject({ ticket: { ticket_id: ticket.id } })
 })
 

@@ -1,7 +1,7 @@
 /** Builds the application's collaborators in one explicit dependency order, so `Runtime` keeps only lifecycle and its SourceHost surface. */
 import type { Context } from '@deepseek-ai/cordis'
 import { Engine, key, ticketForm, type EngineForSettings, type Ticket, type Trigger } from '@superagent/kernel'
-import { settingsPolicy } from '../policy.ts'
+import { policyVersion, settingsPolicy } from '../policy.ts'
 import { SourceRegistry } from '../sources/registry.ts'
 import { Commands } from '../infra/commands.ts'
 import type { HealthBoard, HealthEntry } from '../infra/health.ts'
@@ -36,6 +36,7 @@ import { conversationDefinition } from '../sources/conversation.ts'
 import { dispatchConversation } from './conversation.ts'
 import type { ResourceHost } from './resources.ts'
 import { contextGroupOf } from './context-groups.ts'
+import { assembleContext } from './context-assembly.ts'
 import { mainTools, type MainToolsHost } from './tools/main.ts'
 import { executorTools, type ExecutorToolsHost } from './tools/executor.ts'
 import { SpaceLeases } from './spaces.ts'
@@ -143,8 +144,16 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
     sourceHost: { sources, context: kind => sourceContextOf(parts.sourceDeps, kind) }, setup, requestPass: () => { host.requestPass() } })
   // One epoch per Runtime process: an old epoch is what makes a lease from a stopped process distinguishable from a live one.
   const spaces = parts.spaces = new SpaceLeases(store, Date.now())
-  const executor = parts.executor = new DshExecutor({ context: ctx, get engine() { return parts.engine }, store, effects, spaces,
+  const trace = parts.trace = new SqliteTraceSink(store)
+  const executor = parts.executor = new DshExecutor({ context: ctx, get engine() { return parts.engine }, store, effects, spaces, trace,
     contextGroup: ticket => contextGroupOf({ store, sources }, ticket),
+    contextAssembly: (ticket, assignment) => assembleContext({
+      ticket: id => store.tickets.get(id),
+      trigger: id => store.triggers.get(id),
+      group: target => contextGroupOf({ store, sources }, target),
+      policyVersion: () => policyVersion(store.settings()),
+      promptRevision: () => prompts.current().revision,
+    }, ticket, assignment),
     health: board.claim('worker'), machine, lifetime, sessions, closing: () => host.closing(), paused: () => host.paused(), environment,
     sourceLink: link, repliedTo: trigger => repliedTo({ store, sources }, trigger) })
   const inline = parts.inline = new InlineWork({ store, get engine() { return parts.engine },
@@ -157,7 +166,6 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   const outbox = parts.outbox = new Outbox({ store, effects, sources, commands, policy,
     approvalPolicy: () => store.settings().policy.approval, paused: () => host.paused(),
     undoWindowMs: () => store.settings().policy.undoWindowSeconds * 1000 })
-  const trace = parts.trace = new SqliteTraceSink(store)
   // Every domain event is graded and stored in the same transaction that produced it; no other part needs the log itself.
   const activity = new ActivityLog(store)
   const engine = parts.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, inline, outbox, trace,

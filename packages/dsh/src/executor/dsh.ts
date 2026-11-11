@@ -5,7 +5,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { mkdir, realpath, rmdir, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { key, latestAssignment, latestReport, liveTicket, runningAssignment, threadKey, waitsForPerson } from '@superagent/kernel'
+import { key, latestAssignment, latestReport, liveTicket, runningAssignment, spanId, threadKey, traceId, waitsForPerson } from '@superagent/kernel'
 import { depthOf } from '@superagent/kernel'
 import type { AssessmentOutcome, Assignment, EngineForExecutor, Execution, Executor, Mandate, PolicyEffect, Ticket, TicketInput, Trigger }
   from '@superagent/kernel'
@@ -20,7 +20,9 @@ import { ProfileLaunchBlocked } from '../app/profiles.ts'
 import { WorktreeNameSchema } from '../app/assessment.ts'
 import type { SpaceLease, SpaceLeases } from '../app/spaces.ts'
 import type { ContextGroupView } from '../app/context-groups.ts'
-import { resultRelay } from '../app/notices.ts'
+import type { ContextAssembly } from '../app/context-assembly.ts'
+import type { SqliteTraceSink } from '../app/trace.ts'
+import { reportRelay, resultRelay } from '../app/notices.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { cancelled, collectJob, killJobs, runningJobs, stopBackground, stopSubagents, until, untilQuiet } from './background.ts'
 
@@ -81,7 +83,7 @@ export interface ExecutorHost {
   /** DSH Cordis context: agents and their events, and the subprocess service used to run prepare commands. */
   readonly context: Context
   /** Where the Executor reports what happened to Assignments and Inputs. */
-  readonly engine: Pick<EngineForExecutor, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed' | 'report'
+  readonly engine: Pick<EngineForExecutor, 'assignmentStarted' | 'contextAssembled' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed' | 'report'
     | 'assignmentInterrupted' | 'orphanChild'>
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'set' | 'settings' | 'atomic' | 'afterCommit'>
   /** Durable effect queue through which launches and input deliveries run. */
@@ -101,6 +103,10 @@ export interface ExecutorHost {
   environment(ticket: Ticket): Variable[]
   /** The Ticket's optional context group at launch, derived from its Channels and live Threads; it grants nothing. */
   contextGroup(ticket: Ticket): ContextGroupView | undefined
+  /** The read-only six-layer context assembly for an Assignment; it never authorizes an action. */
+  contextAssembly(ticket: Ticket, assignment: Assignment): ContextAssembly
+  /** Keeps the assembly stage in the Ticket's Trigger trace without copying any entry text. */
+  trace: Pick<SqliteTraceSink, 'record'>
   sourceLink(trigger: Trigger, signal?: AbortSignal): Promise<{ source_url?: string; source_url_read?: string }>
   /** Stored Trigger of the message `trigger` replies to, when it replies to one. */
   repliedTo(trigger: Trigger): Trigger | undefined
@@ -467,11 +473,22 @@ export class DshExecutor implements Executor {
     this.failed(ticketId, String(error))
   }
   /** Records a `blocked` report on the ticket and relays it: a profile launch that cannot satisfy its snapshot waits for a person. */
-  private blocked(ticketId: string, summary: string): void {
+  private blocked(ticketId: string, summary: string, question?: string): void {
     this.host.store.atomic(() => {
-      const updated = this.host.engine.report(ticketId, { state: 'blocked', summary })
-      this.relay(resultRelay(updated, 'blocked', summary))
+      const updated = this.host.engine.report(ticketId, { state: 'blocked', summary, ...(question ? { question } : {}) })
+      const relay = question && !updated.parentTicketId ? reportRelay(updated, { state: 'blocked', summary, question })
+        : resultRelay(updated, 'blocked', summary)
+      if (relay) this.relay(relay)
     })
+  }
+  /** Records what the assembly decided in the Trigger trace: dimensions, sources and hashes, never entry text. */
+  private recordContext(ticket: Ticket, assignment: Assignment, assembly: ContextAssembly): void {
+    const trace = traceId(ticket.origin.triggerId)
+    const snapshot = assembly.snapshot
+    this.host.trace.record({ id: spanId(trace, 'context', assignment.id), traceId: trace, kind: 'context', at: now(), ticketId: ticket.id,
+      assignmentId: assignment.id, data: { state: snapshot.state, dimensions: snapshot.dimensions, absent: snapshot.absent, hash: snapshot.hash,
+        sources: snapshot.sources, merge_keys: snapshot.merges.map(merge => merge.key), conflict_keys: snapshot.conflicts.map(conflict => conflict.key),
+        ...(snapshot.blocked ? { reason: snapshot.blocked.reason, ...(snapshot.blocked.dimension ? { dimension: snapshot.blocked.dimension } : {}) } : {}) } })
   }
   /** Records a `failed` report on the ticket and relays the failure to the main Session in one transaction. */
   private failed(ticketId: string, summary: string): void {
@@ -492,6 +509,12 @@ export class DshExecutor implements Executor {
     // model-provider failure keeps the existing transient/failed path.
     await this.host.sessions.preflight(ticket)
     if (!current()) return
+    // Assemble the six context dimensions before touching the workspace: a blocked assembly records its snapshot and waits
+    // for a person instead of launching a worker with a guessed default.
+    const assembly = this.host.contextAssembly(ticket, assignment)
+    this.host.engine.contextAssembled(ticket.id, assignment.id, assembly.snapshot)
+    this.recordContext(ticket, assignment, assembly)
+    if (assembly.state === 'blocked') { this.blocked(ticket.id, assembly.block.summary, assembly.block.question); return }
     const source = sourceTrigger(this.host, ticket)
     const workspace = ticket.execution?.directory ?? ''
     if (!current()) return
@@ -539,12 +562,17 @@ export class DshExecutor implements Executor {
       const card = told || !source ? undefined : await this.triggerCard(ticket, source.id)
       if (!current()) return
       const batch = told ? [] : batchOf(this.host, ticket).map(batchLine)
-      // The group dimension is part of the first message's context, so a later message does not repeat an unchanged dimension.
+      // The group and the assembled context are part of the first message's context, so a later message repeats neither an
+      // unchanged group nor an unchanged assembly; a changed assembly is sent so the worker does not act on stale context.
       const group = told ? undefined : this.host.contextGroup(ticket)
-      const text = told ? JSON.stringify({ ticket_id: ticket.id, assignment: ticket.assignments.length, ...retried })
+      const previousAssembly = ticket.assignments.at(-2)?.context
+      const context = !told || previousAssembly?.contentHash !== assembly.snapshot.contentHash ? assembly.prompt : undefined
+      const text = told ? JSON.stringify({ ticket_id: ticket.id, assignment: ticket.assignments.length,
+        ...(context ? { context_assembly: context } : {}), ...retried })
         : JSON.stringify({ ticket_id: ticket.id, title: ticket.title, ...(brief ? { assignment: brief } : {}),
           ...(read ? { assignment_chars: chars, assignment_read: read } : {}), ...(card ? { trigger: card } : {}),
-          ...(batch.length ? { batch } : {}), ...(group ? { context_group: group } : {}), ...retried })
+          ...(batch.length ? { batch } : {}), ...(group ? { context_group: group } : {}),
+          ...(context ? { context_assembly: context } : {}), ...retried })
       const requestId = later ? `assignment:${ticket.id}:${assignment.id}` : first
       await this.host.sessions.prompt(sessionId, requestId, text, 'queue',
         () => { if (!current()) throw new Error('Launch authorization changed before worker delivery') },
