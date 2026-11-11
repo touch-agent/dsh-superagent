@@ -311,7 +311,6 @@ export function TicketPage({ id }: { id: string }) {
         message={t('retryConfirm', { title: data.title })}
         onConfirm={() => after(call('POST tickets/:id/retry', { id }))} />}
       {data.conversationSession && <SessionButton variant="outline" sessionId={data.conversationSession} label={t('openConversation')} />}
-      {!data.parentTicketId && data.sessionId && <SessionButton variant="outline" sessionId={data.sessionId} />}
     </PageHead>
     {error && <LoadState error={error} loading={false} />}
     <div className="dt-row-meta dt-status-line">
@@ -402,6 +401,9 @@ export function TicketPage({ id }: { id: string }) {
       </Details>}
       <Details icon="hash" title={t('identifiers')}>
         <KeyValues rows={[[t('ticketId'), <span className="dt-mono">{data.id}</span>],
+          // The Executor Session is E3: an explicit entry, never an id or button on the E1 default page.
+          ...!data.parentTicketId && data.sessionId ? [[t('term.executorSession'), <SessionButton variant="outline"
+            sessionId={data.sessionId} />] as [string, ReactNode]] : [],
           ...legacy && data.mandate.scope ? [[t('legacyAssignment'), <span
             className="dt-mono dt-clamp">{data.mandate.scope}</span>] as [string, ReactNode]] : []]} />
       </Details>

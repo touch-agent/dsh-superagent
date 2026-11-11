@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type { ActivityRecord, ActivityStatus, ActivitySubject, ActivityTask } from '../app/activity.ts'
 import type { ActivityFeedClient, ActivitySnapshot } from './activity-feed.ts'
 import { useActivityFeed } from './activity-feed.ts'
+import { eventsAutoOpen } from './features.ts'
 import { Button, Icon, Pill, Tag, type IconName, type TagTone } from './controls.tsx'
 import { useTaskSelection, type TasksViewClient } from './tasks-view.ts'
 import type { MasterStore } from './master.ts'
@@ -297,7 +298,9 @@ export function EventsBridge({ activity, master, autoOpen, open }: { activity: A
   const identity = useMaster(master)
   const sessionId = identity.masterId
   useEffect(() => {
-    if (autoOpen.done || snapshot.unread === 0 || sessionId === undefined) return
+    // The stable phase never opens Events by itself: the trust-phase exception is a Settings › Display preference
+    // (default off), and the `events.autoOpen.v1` switch can disable it for a whole deployment.
+    if (autoOpen.done || snapshot.unread === 0 || sessionId === undefined || !eventsAutoOpen()) return
     autoOpen.done = true
     open()
   }, [autoOpen, open, sessionId, snapshot.unread])

@@ -12,7 +12,7 @@ import { usePanel } from './provider.tsx'
 import type { Route } from './route.ts'
 import { duration, fullTime, localized, valueLabel, when, type T } from './text.ts'
 import { TasksViewClient, useTasksView, type TaskSelection } from './tasks-view.ts'
-import { LoadState, Section } from './widgets.tsx'
+import { Hint, LoadState, Section } from './widgets.tsx'
 
 const STATUS_TONE: Record<ActivityStatus, TagTone> = { queued: 'neutral', working: 'info', idle: 'neutral', review: 'warning',
   answer: 'warning', delivery: 'warning', blocked: 'warning', failed: 'danger', done: 'success' }
@@ -240,6 +240,19 @@ function TaskSources({ t, task }: { t: T; task: TaskView }) {
         revision: task.deliverables[0].artifact.revision })}</span>}</>
 }
 
+/** The E1 selected-detail block: the same Goal the main Session's result card carries, in stable E0 words. */
+function TaskGoal({ task, t }: { task: TaskView; t: T }) {
+  const goal = task.goal
+  const decision = goal.decision
+  const result = goal.results[0]
+  return <div className="dt-tasks-goal">
+    <span>{t('tasksGoal')} · {goal.statement}</span>
+    {decision && <span>{t('tasksDecision')} · {decision.question ?? valueLabel(t, 'stage', decision.kind)}</span>}
+    <span>{t('tasksResult')} · {result ? `${valueLabel(t, 'artifact', result.artifact.kind)} · ${result.artifact.ref} · ${result.artifact.revision}`
+      : t('tasksNoResult')}</span>
+  </div>
+}
+
 /**
  * The compact task list both task surfaces show: one row per root Ticket and, while selected, its direct child
  * Tickets; reviews stay indented below their owner. A child row never opens its own children here: the right pane
@@ -276,6 +289,7 @@ export function TaskList({ tasks, t, filter, selected, expanded, childrenOf, onS
               ? t('tasksParentAccepted') : t('tasksOwnedByParent')}</span>}</span>
       </button>
       {selected === task.id && <div className="dt-tasks-detail">
+        <TaskGoal task={task} t={t} />
         <span className="dt-hint">{t('tasksChildSelectedHint')}</span>
         {onOpenTask && <Button size="sm" variant="outline" icon={<Icon name="external" size={13} />}
           onClick={() => onOpenTask(task.id)}>{t('tasksOpen')}</Button>}
@@ -320,6 +334,7 @@ export function TaskList({ tasks, t, filter, selected, expanded, childrenOf, onS
         </button>
         {children.length > 0 && <ul className="dt-tasks-children">{children.map(child => childRow(child, task.id))}</ul>}
         {selected === task.id && <div className="dt-tasks-detail">
+          <TaskGoal task={task} t={t} />
           <span className="dt-hint">{task.form === 'lightweight' ? t('tasksLightweightNote') : t('tasksSelectedHint')}</span>
           {onOpenTask && <Button size="sm" variant="outline" icon={<Icon name="external" size={13} />}
             onClick={() => onOpenTask(task.id)}>{t('tasksOpen')}</Button>}
@@ -440,6 +455,7 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
     {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
     <p className="dt-hint dt-task-intro">{view === 'list' ? t('tasksListIntro')
       : view === 'tickets' ? t('tasksTicketsIntro') : t('tasksIntro')}</p>
+    {view !== 'list' && view !== 'tickets' && <Hint>{t('tasksPlanFallback')}</Hint>}
     <div className="dt-task-views">
       <SegmentedTabs label={t('tasksViewLabel')} value={view} onChange={value => setView(value)}
         items={views.map(value => ({ value, label: t(`tasksView.${value}`), id: `${id}-${value}`, panelId: `${id}-panel` }))} />

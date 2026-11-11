@@ -3,7 +3,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { en, zh } from '@superagent/dsh/client/locales.ts'
 import { usePanel, mount, remount, all, find, tab, click, text } from './fixtures/panel.tsx'
-import { server, droppedReply, threadSummary } from './fixtures/panel-server.ts'
+import { server, approvalSummary, droppedReply, threadSummary } from './fixtures/panel-server.ts'
 
 usePanel()
 afterEach(() => localStorage.clear())
@@ -68,22 +68,46 @@ it('follows the last day\'s counts to the status of each stage', async () => {
   expect(text()).toContain(zh['reason.source_disabled'])
 })
 
-it('offers each Ticket that needs a person its actions on the overview: answer in its Channel, retry or open a failed worker, and stop',
+it('offers each Ticket that needs a person its E0 actions on the overview: answer in its Channel, retry and stop',
   async () => {
   await mount()
   expect(all('.dt-ticket-actions a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['去飞书回答',
     'https://applink.feishu.cn/client/chat/open?openChatId=oc_1']])
   expect(all('.dt-ticket-note').map(note => note.textContent)).toContain('LlmError: no adapter registered for provider "provider-a"')
+  // The default row carries goal, state and the decision; opening the Executor Session is an E3 detail on the Ticket page.
+  expect(all('.dt-ticket-actions button').map(button => button.textContent)).not.toContain(zh.openSession)
+  expect(all('.dt-ticket .dt-ticket-meta').map(meta => meta.textContent).join(' ')).not.toContain('未送达')
+  expect(text()).not.toMatch(/worker-|Assignment|Session id|sessionId|assignmentId|workerId/)
   await click(zh.retry)
   await click(zh.confirm)
   expect(server.requests.some(request => request.path === 'tickets/t4/retry' && request.method === 'POST')).toBe(true)
-  await click(all('.dt-ticket-actions button').find(button => button.textContent === '打开 Session')!)
-  expect(server.opened).toEqual(['worker-t4'])
   const row = all('.dt-ticket').find(item => item.textContent?.includes('截图工具'))!
   await click([...row.querySelectorAll<HTMLButtonElement>('.dt-ticket-actions button')].find(button => button.textContent === '停止')!)
   await click(zh.confirm)
   expect(server.requests.some(request => request.path === 'tickets/t4/stop' && request.method === 'POST')).toBe(true)
   expect(text()).not.toContain('截图工具')
+})
+
+it('puts the approval decision in E0 words and folds the object id and action kind into technical details', async () => {
+  server.approvals = [approvalSummary()]
+  await mount()
+  expect(text()).toContain(zh.approvalNeedsYou)
+  expect(text()).toContain(zh['level.send'])
+  expect(text()).toContain(zh['levelEffect.send'])
+  const details = document.querySelector('.dt-e0-technical') as HTMLDetailsElement
+  expect(details.open).toBe(false)
+  expect(details.querySelector('summary')?.textContent).toBe(zh.approvalTechnical)
+  expect(details.textContent).toContain('om_reply_1')
+  expect(details.textContent).toContain('mail.reply')
+})
+
+it('keeps the Executor Session entry on the Ticket page as an explicit E3 detail, not on the E1 default page', async () => {
+  await mount()
+  await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
+  expect(text()).not.toContain(zh.openSession)
+  await click(zh.identifiers)
+  await click(find(zh.openSession))
+  expect(server.opened).toEqual(['worker-t1'])
 })
 
 it('shows paused processing as a system problem with its resume action, and says so on the Policy records', async () => {

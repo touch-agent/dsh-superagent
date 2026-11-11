@@ -207,6 +207,7 @@ Read 000–010 in order; each builds only on the ones before it. 011 and 012 are
 - [015 Goal projection](docs/015-goal-projection.zh.md): one Ticket's read-only goal (statement, source, state, decision, results, acceptance) shared by the result card and the task row, without a schema or a second authorization aggregate (Chinese).
 - [016 AgentProfile](docs/016-agent-profile.zh.md): reusable, versioned execution profiles for the worker role, with authorization kept in Policy, Eval and the action gate; current-state evidence, evolution loop, risks and a phased landing (Chinese, proposal).
 - [017 Context groups](docs/017-context-groups.zh.md): the optional group dimension derived from Channel addresses and live Thread subscriptions, with no membership table, no member list and no authorization (Chinese).
+- [018 Exposure levels](docs/018-exposure-levels.zh.md): the E0–E3 display levels and the default-surface inventory with attention cost, deeper entry and rollback, plus the T5-02 before/after evidence (Chinese).
 
 The design and evolution layer and the plan set are Chinese working documents, and can be ahead of, or behind, the numbered set. [docs/README.md](docs/README.md) maps the whole documentation set; [docs/plan/README.md](docs/plan/README.md) explains the plan documents and the tracking convention.
 

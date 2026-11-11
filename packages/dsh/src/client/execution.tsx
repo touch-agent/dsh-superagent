@@ -51,8 +51,8 @@ export function ExecutionStatus({ filter: current, from, state, reload }: {
     {current === 'idle' && <Hint>{t('idleHint')}</Hint>}
     <LoadState error={error} loading={!data} />
     {data && (data.items.length ? <ul className="dt-list">{data.items.map(ticket => ticket.stage === 'person'
-      ? <TicketLine key={ticket.id} ticket={ticket} question
-        onChanged={reloadTickets} /> : <TicketLine key={ticket.id} ticket={ticket} />)}</ul> : <Hint>{t('none')}</Hint>)}
+      ? <TicketLine key={ticket.id} ticket={ticket} question surface="e2"
+        onChanged={reloadTickets} /> : <TicketLine key={ticket.id} ticket={ticket} surface="e2" />)}</ul> : <Hint>{t('none')}</Hint>)}
     {data?.next_offset != null && <LoadMore onMore={() => setLimit(limit + 20)} />}
     {current === 'open' && !from && <SpacesSection />}
   </>

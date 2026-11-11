@@ -6,7 +6,7 @@ evolution set, then the plan set when you are picking up work.
 | Layer | Where | What it answers |
 | --- | --- | --- |
 | Numbered mechanism and operations | `docs/000`–`docs/010` | How the system works, how it is authorized, operated and extended. |
-| Design and evolution | `docs/011`–`docs/016` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, and the reusable profile layer over the worker role. |
+| Design and evolution | `docs/011`–`docs/018` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, and the reusable profile layer over the worker role. |
 | Plans | [`plan/`](plan/README.md) | What to build, in what order, and the current status of every task. |
 | Runbooks and evidence | [`runbooks/`](runbooks/why-not-sent.md), [`images/`](images/) | What to do when something is stuck; the before/after captures the documents cite. |
 
@@ -39,7 +39,8 @@ Goal read model that gives E0 a stable answer to the four questions without
 adding a second authorization aggregate. 016 designs the reusable profile
 layer over the worker role, keeping authorization in Policy/Eval. 017 defines
 the derived context group (shared space) dimension, which adds no membership
-table and no authorization.
+table and no authorization. 018 turns the same principles into the E0–E3
+exposure levels and the default-surface inventory T5-02 implements.
 
 | # | Document | Role |
 | --- | --- | --- |
@@ -50,11 +51,13 @@ table and no authorization.
 | 015 | [Goal projection](015-goal-projection.zh.md) | One Ticket's read-only Goal (statement, source, state, decision, results, acceptance) shared by the main Session's result card and the task row; no schema, no authorization, no second aggregate. |
 | 016 | [AgentProfile](016-agent-profile.zh.md) | Reusable, versioned execution profiles for the worker role, with authorization kept in Policy, Eval and the action gate; current-state evidence, evolution loop, risks and phased landing (proposal, not implemented). |
 | 017 | [Context groups](017-context-groups.zh.md) | The optional group dimension derived from Channel addresses and live Thread subscriptions: read-only context and display, no membership table, no member list, no authorization. |
+| 018 | [Exposure levels](018-exposure-levels.zh.md) | The E0–E3 display levels and the element-by-element default-surface inventory: attention cost, deeper entry and rollback for each surface, plus the T5-02 walkthrough evidence. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
 is the golden-path E2E; 015 is the E0 read model that follows from 011's
-attention principle; 017 provides the group dimension T5-04 assembles. 011 §6
+attention principle; 017 provides the group dimension T5-04 assembles; 018 is
+the display-level checklist T5-02 lands. 011 §6
 cross-checks the existing documents; conflicts are resolved in 011 §7.
 
 ## Plans

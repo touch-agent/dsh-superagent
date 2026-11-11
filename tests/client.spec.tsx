@@ -352,14 +352,32 @@ it('treats answer and delivery work as needing a person and keeps a recorded end
   expect(activityTitle(t, stopped)).toContain('不要继续')
   expect(activityTitle(t, stopped)).toContain('人工停止')
 })
-it('opens the Events tab once when the first unread notice reaches the main Session', async () => {
+it('keeps the Events tab closed by default: the stable phase never opens it by itself', async () => {
   serve()
+  const { opened, entries } = fixture([])
+  const bridge = entries.find(entry => entry.options.name === 'conversation.session.header.utilities')!
+  const view = await render(bridge, {})
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+  expect(opened).toEqual([])
+  view.dispose()
+})
+it('opens Events once when the trust-phase display preference is on, and the deployment switch can still suppress it', async () => {
+  serve()
+  localStorage.setItem('dsh-superagent/events-auto-open', 'on')
   const { opened, entries } = fixture([])
   const bridge = entries.find(entry => entry.options.name === 'conversation.session.header.utilities')!
   const view = await render(bridge, {})
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
   expect(opened).toEqual(['system-events'])
   view.dispose()
+
+  opened.length = 0
+  localStorage.setItem('events.autoOpen.v1', 'off')
+  const suppressed = fixture([])
+  const second = await render(suppressed.entries.find(entry => entry.options.name === 'conversation.session.header.utilities')!, {})
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+  expect(suppressed.opened).toEqual([])
+  second.dispose()
 })
 
 it('keeps the management panel and registers only declared seats on a host without the conversation surfaces', () => {

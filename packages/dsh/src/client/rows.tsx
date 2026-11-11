@@ -7,8 +7,10 @@ import { usePanel } from './provider.tsx'
 import { actorName, localized, readableMarkers, reasonLabel, valueLabel } from './text.ts'
 import { ActionLink, ConfirmButton, LabelValue, SessionButton, StageMark, When } from './widgets.tsx'
 
-export function TicketLine({ ticket, question, onChanged, context }: {
+export function TicketLine({ ticket, question, onChanged, context, surface = 'e0' }: {
   ticket: TicketRow; question?: boolean; onChanged?: () => Promise<void>; context?: boolean
+  /** E0 entry rows keep only goal, state, the decision and the result; E2 lists may show delivery and Session access. */
+  surface?: 'e0' | 'e2'
 }) {
   const { t, call, navigate } = usePanel()
   const status = ticketMark(t, ticket)
@@ -24,7 +26,7 @@ export function TicketLine({ ticket, question, onChanged, context }: {
         {ticket.origin === 'conversation' && <Tag tone="quiet">{t('ticketFromConversation')}</Tag>}
         {ticket.threads.map(thread => <ThreadChip key={thread.key} thread={thread} />)}
         {context && <ContextTag />}
-        {ticket.undelivered > 0 && <LabelValue label={t('ticketUndeliveredLabel')} value={ticket.undelivered} />}
+        {surface === 'e2' && ticket.undelivered > 0 && <LabelValue label={t('ticketUndeliveredLabel')} value={ticket.undelivered} />}
         {note ? <span className={note.error ? 'dt-ticket-note dt-ticket-note-error' : 'dt-ticket-note'} title={note.text}>{note.text}</span>
           : <When at={ticket.updatedAt} />}
       </div>
@@ -35,7 +37,7 @@ export function TicketLine({ ticket, question, onChanged, context }: {
         {ticket.actions.retry && <ConfirmButton variant="outline" icon="refresh" label={t('retry')} title={t('retryTitle')}
           message={t('retryConfirm', { title: ticket.title })}
           onConfirm={() => after(call('POST tickets/:id/retry', { id: ticket.id }))} />}
-        {ticket.actions.retry && ticket.sessionId && <SessionButton variant="outline" sessionId={ticket.sessionId} />}
+        {surface === 'e2' && ticket.actions.retry && ticket.sessionId && <SessionButton variant="outline" sessionId={ticket.sessionId} />}
         {ticket.actions.stop && <ConfirmButton variant="outline" icon="stop" label={t('stop')} title={t('stopConfirmTitle')}
           message={t('stopConfirm', { title: ticket.title })}
           onConfirm={() => after(call('POST tickets/:id/stop', { id: ticket.id }))} />}
