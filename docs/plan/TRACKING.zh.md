@@ -4,6 +4,7 @@
 > 初始建表 2026-11-08：历史任务按当日仓库、PR 与计划文档中能复核的证据回填；没有完成证据的任务记为 `未开始`，发现不符时先修表。`最后更新` 是这一行最后一次改动日期。
 > 2026-11-08 重评估：新增 T3-09…11、T5-01…06、X-13（均未开始）；X-12 随 PR #31 合并改为已完成；T3-05 的验收口径改为 Phase 0 剩余项。
 > 2026-11-09 设计修订：T3-10/T3-11 从独立 `Subtask` 类型改为 `Ticket` 自引用（子 Ticket + 父 owner 审查链 + 根授权唯一），范围见 TASK-PLAN；实现见 PR #40。
+> 2026-11-11 文档：新增 X-14 上游扩展点提案（`../022-harness-extension-requests.zh.md`），PR #61 跟踪回填。
 
 ## 任务跟踪表
 
@@ -81,6 +82,7 @@
 | X-11 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/19 | `tests/dump-config.spec.ts`；六行齐全 | 2026-11-08 |
 | X-12 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/31 | PR #31 合并（`19b8c3d`）；`tests/docs.spec.ts` 文档结构与跟踪表校验、计划文档迁入 `docs/plan/` | 2026-11-08 |
 | X-13 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/34 | `scripts/check-tracking.mjs`、`tests/tracking.spec.ts`；CI `tracking` job；`docs/plan/README.md` 的「自动校验」 | 2026-11-09 |
+| X-14 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/61 | `../022-harness-extension-requests.zh.md`；DSH `0.2.1-rc.5` 类型/实现证据；`tests/docs.spec.ts` 文档索引 | 2026-11-11 |
 | S-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity.spec.ts`；`activity` 表与三级分级 | 2026-11-08 |
 | S-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity-feed.spec.ts`；`endCoveredBy` 单一通知预算 | 2026-11-08 |
 | S-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/runtime.spec.ts` 的 `<stateDir>/system` 目录断言 | 2026-11-08 |

@@ -596,12 +596,13 @@ graph LR
 | X-11 | `dump-config` 断言：patch 6 行齐全 | 2 | 防「装了没生效」的静默失败；随 X-07 一起做 |
 | X-12 | 文档结构与计划跟踪：011/012 入 `docs/`、计划文档入 `docs/plan/`、跟踪表校验 | 1 | 文档与计划分散在仓库根，引用与状态易漂移；由 `tests/docs.spec.ts` 固定结构和格式 |
 | X-13 | TRACKING 自动化：计划↔跟踪表↔PR 证据一致性 | 2 | 防止「合并即更新」靠人记；把状态漂移变成 CI 红灯 |
+| X-14 | 上游扩展点提案：DSH 侧栏、设置、会话列表与通知边界 | 2 | 021 Phase 2 需要可提交的宿主契约；先把「插件能做什么」核清，避免把可做项误报成宿主缺口 |
 
 **X-09 落地（2026-11-10，本 PR）**：首页改为「待我处理 / 正在跑 / 最近历史」三区，`stage = person` 工单与审批进 E0，`working`（queued/running）工单与执行器计数进第二区，`idle` 工单留在 Execution 过滤，最近结束工单按 `ticket.ended` 倒序最多八条进第三区；24 小时流量与健康指标折叠为 E2，tab、过滤器与 E2/E3 记录不删。`GET overview` 新增 `running`/`recent` 投影，侧边栏图标在 SVG 内画 warning 点（宿主 `sidebar.panellist` 无 badge 子槽），每 60 秒读同一 `GET overview`。整页由 `entry.threeZones.v1` 开关控制，关闭恢复旧 Overview；原则 A/B 的逐项核对见 PR review 评论。
 
 **X-07 与 X-11 曾是 M1 的前置**（5 人日，均已完成）：M1 要写 `SourceManifest` 与新源，这些代码落在哪个包取决于切分结果；切晚了等于搬两次。X-08 是 M1 的退出证据——没有它，M1 交付的「三个源」只在本机跑过。
 
-**优先级（2026-11-08 重评估）**：X-13 立即；X-03 在 M3.5 前；X-09 在 T5-02 前；X-10 在 M4 前；X-12 已完成（PR #31）；X-01/X-02/X-04 作为并行维护项，不占关键路径；X-06 继续守领域测试 <2s。
+**优先级（2026-11-08 重评估）**：X-13 立即；X-14 在 021 Phase 2 评审前；X-03 在 M3.5 前；X-09 在 T5-02 前；X-10 在 M4 前；X-12 已完成（PR #31）；X-01/X-02/X-04 作为并行维护项，不占关键路径；X-06 继续守领域测试 <2s。
 
 ### X-13 TRACKING 自动化 · Platform · 2 人日
 
@@ -611,6 +612,15 @@ graph LR
 - **估时**：2 人日。**依赖**：X-12（已完成）。**回退**：脚本独立，移除即回退；不自动改状态表。
 - **泳道**：Platform。
 - **实现（2026-11-09，PR #34 进行中）**：`scripts/check-tracking.mjs` 做离线语义检查（任务集、五字段、状态、证据、日期、PR 链接格式），`--check-prs` 用 GitHub token 查询存在性与 merge 状态；`tests/tracking.spec.ts` 覆盖缺行、`进行中` 无 PR、`已完成` 指向 open PR、坏日期与豁免路径。`pnpm check` 接入离线检查，CI `tracking` job 接入联网检查；豁免清单 `docs/plan/TRACKING-EXEMPTIONS.json` 当前为空，格式与规则见 [`README.md`](README.md) 的「显式豁免」。
+
+### X-14 上游扩展点提案 · Platform · 2 人日
+
+- **目标**：把 [021 §8](../021-ux-redesign.zh.md) 与 [018](../018-exposure-levels.zh.md) 的宿主边界整理成可提交 DSH 上游的扩展点请求，并逐项核对现有 slot/API 是否已经足够，避免把插件可做的项报成宿主缺口。
+- **交付**：[`../022-harness-extension-requests.zh.md`](../022-harness-extension-requests.zh.md)：侧栏顶置席与导航覆盖、会话呈现/归档、工作区列表座、设置分组、通知角标、会话行尾元数据等 7 项；每项给现状、缺口、接口草案、MVP/后续、宿主影响/兼容/回退、优先级与不改宿主的降级；附 DSH `0.2.1-rc.5` 的证据路径与关键字段。
+- **验收**：`pnpm exec vitest run tests/docs.spec.ts` 与 `pnpm check:tracking` 绿；独立 review 逐项核对「真的做不到 / 只能整体替换 / 已可做」，结论写进 PR review；不把整体替换可做的事写成「完全做不到」。
+- **估时**：2 人日。**依赖**：T5-02 的 018/021 设计输入。**回退**：纯文档，删除即回退；不改运行时、不新增 schema。
+- **泳道**：Platform。
+- **实现（2026-11-11，PR [#61](https://github.com/touch-agent/dsh-superagent/pull/61) 进行中）**：`docs/022-harness-extension-requests.zh.md`；`tests/docs.spec.ts` 文档索引与 `check:tracking` 通过；评审结论见 PR review 评论。
 
 ---
 
