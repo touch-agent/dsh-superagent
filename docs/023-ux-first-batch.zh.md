@@ -81,7 +81,22 @@
 - 新增/更新的面板测试覆盖：任务层级逐层打开与 E2 折叠、通知未读/抽屉分组/原地批准/停用来源、浮层三张上限与关闭开关、错误聚合的重试次数/最近时间/恢复消失/原列表回退、显示设置里的四个开关。
 - 同场景 Before/After 截图（1440×900、light、同一 fixture）见 PR 描述；Before 取当前 main，After 取本 PR 构建。截图对任务标题、账号与来源内容做了脱敏，不使用私有飞书内容。
 
-### 5.1 十秒自查
+### 5.1 视觉证据
+
+同场景、1440×900、light、zh-CN、同一 fixture；只截 Superagent 面板，左侧 DSH 会话栏与真实工作区标题不入镜。Before 取 `main@e0e1336`（之后 `39b8a08` 只改文档），After 取本 PR 构建。截图中的任务标题、负责人、来源和账号均为脱敏 fixture。
+
+| 场景 | Before | After |
+| --- | --- | --- |
+| 任务列表选中同一任务 | [before-tasks.png](images/ux-first-batch/before-tasks.png) | [after-tasks-list.png](images/ux-first-batch/after-tasks-list.png) |
+| 任务层级详情（上半） | 同上：紧凑选中行，无层级按钮 | [after-tasks.png](images/ux-first-batch/after-tasks.png) |
+| 任务层级详情（下半：阻断/汇报/会话） | — | [after-tasks-bottom.png](images/ux-first-batch/after-tasks-bottom.png) |
+| 概览：问题折叠成一条 | [before-overview.png](images/ux-first-batch/before-overview.png) | [after-overview.png](images/ux-first-batch/after-overview.png) |
+| 聚合展开后的逐条明细 | 同上：原本逐条显示 | [after-error.png](images/ux-first-batch/after-error.png) |
+| 右侧浮层（3 张、10px 间距） | 同上：无铃铛/浮层 | [after-cards.png](images/ux-first-batch/after-cards.png) |
+| 通知抽屉（需要你/进展/系统） | 同上：只有右侧 Events 页 | [after-notices.png](images/ux-first-batch/after-notices.png) |
+| 设置 → 显示：四个回退开关 | [before-settings.png](images/ux-first-batch/before-settings.png) | [after-settings.png](images/ux-first-batch/after-settings.png)、[after-settings-bottom.png](images/ux-first-batch/after-settings-bottom.png) |
+
+### 5.2 十秒自查
 
 对一个从未用过本面板的人，默认面应能回答：
 

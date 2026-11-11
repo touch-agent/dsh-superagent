@@ -560,6 +560,14 @@ graph LR
 - **估时**：7 人日。**依赖**：T3-10（子 Ticket，已完成）、[AgentProfile 设计](../016-agent-profile.zh.md)；面板 E2 另需 T5-02。**回退**：`profiles.config.enabled=false` 停新绑定；`resolve=legacy` 只影响新 Session/新请求，运行中工具/模型不变；Phase 1 无数据库 schema 迁移、无 settings 块。
 - **泳道**：Kernel + Runtime。
 
+### T5-08 UI 第一批：任务层级页与通知层 · Platform · 3 人日
+
+- **目标**：把 021 提案里已经可由现有 `GET overview` / `GET tasks` 支撑的第一批默认面落地：任务层级详情、通知浮层与抽屉、错误聚合、默认面术语，并为每一项提供独立回退开关。
+- **交付**：`TaskView` 增加只读 `owner.profile`、`parentOwner.profile`、`blocker`、`childSummary`；任务列表可打开一层详情，显示目标、负责人/Profile、直接子任务、每层产出物、阻断、向上汇报与执行会话入口，深层按需加载；`notifications.ts` 把 Approval、待回答/待审阅/待交付、最近结果、来源/任务/其他问题投影成客户端通知，不新增服务端实体；`notification-center.tsx` 提供铃铛、未读、3 张浮层、8 秒自动收起/悬停暂停、分组抽屉与原地批准/拒绝/重试/停用来源/查看；`overview.tsx` 在 `ux.errorAggregate.v1` 下把来源异常、失败/被卡住任务与其他问题折成一条，展示重试次数、最近时间、重试与停用来源入口，恢复后自然消失；`pollFailure` 增加可选 `at`；默认任务/概览/通知/搜索文案按 021 §5 改写，内部字段只留 E2 折叠区；四个 `ux.*` flag 与两个浏览器偏好写入设置 → 显示；`docs/023-ux-first-batch.zh.md`、changeset、README/docs 索引同步。
+- **验收**：任务层级一次只拉一层、负责人/Profile/产出物/阻断/汇报/会话入口可见，父 owner 接受不等同人工验收；通知是 overview 的客户端投影，浮层上限 3、8 秒自动收起、可暂停，抽屉保留全量并能原地操作；错误聚合计数、重试次数、最近时间正确，上游恢复后行与浮层一起消失，关闭 flag 后退回逐条问题；四个 flag 独立关闭，通知浮层关闭不影响抽屉、抽屉关闭不影响浮层，关闭任一 flag 不迁移/不删除记录；默认面无 `worker-`/`ticket_`/Assignment/Disposition 说明词；`pnpm check` 全绿；同场景 Before/After 截图与 10 秒自查记录在 PR/023。
+- **估时**：3 人日。**依赖**：T5-02（E0–E3 与默认面）、T3-09（任务视图）、T5-07（owner Profile）；021 Phase 2 的其余项（主 Agent 入口、四菜单、上下文装配）不在本单。**回退**：四个 feature flag 逐项关闭；只改默认可见性与客户端投影，不删 E2/E3 记录，不改审批/Mandate/Dispatch/Store schema。
+- **泳道**：Platform。
+
 ---
 
 ## 7. M4 多租户（最后一项，T4-01…06）
