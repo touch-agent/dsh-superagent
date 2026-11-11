@@ -25,7 +25,7 @@
 | organization | 总有（Policy 与 worker prompt 可读时） | `policyVersion`、当前 worker prompt revision | `organization:policy` 约束；`organization:prompts` 默认 | inherit | 360 / 280 |
 | user | 根 Trigger 由人发起（`trigger.human`） | 根 Ticket 的 origin Trigger actor | `user:actor` 默认、private | private | 200 |
 | group | 根 Ticket 有共享空间且仍订阅 | T5-03 `contextGroupOf` / `contextGroupDimension` | `group:<source>:<space>` 默认 | inherit | 800 |
-| task | 根 Ticket 与 Mandate 存在 | 根 Ticket、Mandate、origin Trigger | `task:goal` 默认；`task:mandate` 约束（只引用 scope）；`task:origin` 默认 | inherit | 600 / 400 / 240 |
+| task | 根 Ticket 与 Mandate 存在 | 根 Ticket、Mandate、origin Trigger | `task:goal` 默认；`task:mandate` 约束（只引用，不复制 Mandate 或 scope 正文）；`task:origin` 默认 | inherit | 600 / 400 / 240 |
 | subtask | 当前 Ticket 是 Engine delegation 创建的子 Ticket | 本 Ticket 的 `delegation` 与最近一次报告 | `subtask:goal` 约束；scope/attempt/last-report 默认、private | private | 600 / 400 / 120 / 600 |
 | agent | tracked Ticket 且有 Assignment | worker 身份、Execution 目录、Profile 快照 | `agent:role`、`agent:profile` 默认、private | private | 260 / 260 |
 
@@ -128,3 +128,5 @@ Executor 会先记录带 `blocked` 的快照与 trace，再以 `blocked` 报告�
 - 轻量 Ticket 的 inline 执行器不生成 worker prompt，所以装配器支持其「只有 task」的形态并写入快照，但 inline 路径没有注入点；这是「没有 Assignment 就没有 agent 维度」的直接结果，不是遗漏。
 - 快照不含正文，回放比较 digest/hash；需要人读原文时仍走既有 `trigger/<id>`、`ticket/<id>/assignment` 等白名单资源。
 - 截断目前是逐条目字符上限（表 §2 的 truncation），没有额外的全局装配预算；内置六个来源的合计远低于一条 worker 消息，宿主通过 `entries` 增加来源时须自带每项上限。
+- 来源可信度沿用 Source 既有的安装/认证边界；装配器不新增信任评分，只把来源读取失败或缺失视为不可用。
+- 没有运行时 feature flag；回退是删除 `DshExecutor` 的 `contextAssembly` 接线并保留既有 prompt 路径。`Assignment.context` 是可选 JSON 字段，回退不迁移数据。

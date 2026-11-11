@@ -126,14 +126,13 @@ function groupDimension(host: ContextAssemblyHost, root: Ticket): ContextEntry[]
 /** The task dimension: the root's goal, Mandate scope reference and origin. It is authorization's pointer, not a copy. */
 function taskDimension(root: Ticket, origin: Trigger): ContextEntry[] {
   const scope = `task:${root.id}`
-  const mandate = root.mandate
-  if (!mandate) throw new Missing('task', 'the root Ticket has no Mandate')
+  if (!root.mandate) throw new Missing('task', 'the root Ticket has no Mandate')
   return [
     { key: 'task:goal', dimension: 'task', source: `ticket:${root.id}`, scope, strength: 'default', inheritance: 'inherit', truncation: 600,
       text: `Root goal: ${goalOf(root).statement}.` },
     { key: 'task:mandate', dimension: 'task', source: `ticket:${root.id}#mandate`, scope, strength: 'constraint', inheritance: 'inherit',
       truncation: 400,
-      text: `Mandate scope ${mandate.scope ? `"${mandate.scope}"` : '(none)'} is referenced, not included; the action gate decides actions and this context grants nothing.` },
+      text: 'The root Mandate and its scope are referenced, not copied; the action gate decides actions and this context grants nothing.' },
     { key: 'task:origin', dimension: 'task', source: `trigger:${origin.id}`, scope, strength: 'default', inheritance: 'inherit', truncation: 240,
       text: `Origin: ${origin.source}; Trigger ${origin.id}.` },
   ]
@@ -289,7 +288,10 @@ export function assembleContext(host: ContextAssemblyHost, ticket: Ticket, assig
     // A lightweight Ticket has no Assignment or agent; its assembly is exactly the task dimension (docs/011 §C.3).
     if (ticketForm(ticket) === 'lightweight') {
       const merged = mergeContextEntries(task)
-      if (merged.conflicts.length) return blocked(ticket, at, { reason: 'conflict', detail: merged.conflicts[0]!.key }, merged.conflicts)
+      if (merged.conflicts.length) {
+        return blocked(ticket, at, { reason: 'conflict', detail: merged.conflicts.map(conflict => conflict.key).join(', ') },
+          merged.conflicts, merged.entries, merged.merges, ['task'], { task: `ticket:${root.id}` })
+      }
       const snapshot = snapshotOf({ state: 'assembled', at, ticket, entries: merged.entries, merges: merged.merges, conflicts: [],
         present: ['task'], absent: CONTEXT_DIMENSIONS.filter(dimension => dimension !== 'task'),
         sources: { task: `ticket:${root.id}` } })
