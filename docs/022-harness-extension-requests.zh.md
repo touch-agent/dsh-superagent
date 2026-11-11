@@ -220,7 +220,7 @@ ctx.uiWorkspace.registerSessionPresentationRule({
 
 - 没有只读投影/过滤钩子。要做「工作区即任务视图」，要么把任务视图放进 `main`（已可），左侧宿主列表继续存在；要么整块替换 `sidebar.workspaces`，重写搜索、分组、归档过滤、行操作、目录流。
 - 通过 `insertBefore`/`pin` 改变的是宿主持久顺序，不是展示投影；为了视觉分组去改用户的工作区顺序会污染数据。
-- 没有「按任务/项目分组」的展示层；`WorkspaceView` 只有 `path/title/sessionIds`，没有业务分组字段。
+- 没有「按任务/项目分组」的展示层；`WorkspaceView` 只有 `workspaceId/path/title/sessionIds/createdAt/updatedAt`，没有业务分组字段。
 
 **建议接口**
 
@@ -428,7 +428,7 @@ ctx.workspaceView.registerProjection({
 
 **现状能力**
 
-- `sidebar.panellist` 的条目支持 `id`、`order`、`label`；`order` 只在插件面板之间排序。New Session 固定在面板列表之上，Plugins 行固定存在（`id === 'plugins'` 永不被过滤），工作区区域在面板列表之下，Settings 固定在底部。
+- `sidebar.panellist` 的条目支持 `id`、`order`、`label`；`order` 只在 panel list 内排序（固定的 Plugins 行也在这个列表里），不能越过 New Session。New Session 固定在面板列表之上，Plugins 行固定存在（`id === 'plugins'` 永不被过滤），工作区区域在面板列表之下，Settings 固定在底部。
 - `sidebar.panellist.actions` 可以往「更多」菜单加动作；面板行自身有内存态的 `unpinned` 隐藏（插件重载后恢复），Plugins 行不受影响。这是用户级显示状态，不是插件改名/重排 API。
 - 没有统一的宿主导航项模型，也没有 `hidden`/`label override`。
 
@@ -678,7 +678,7 @@ export function apply(ctx: Context): void {
 panels.filter(({ id }) => id === 'plugins' || !unpinned.includes(id))
 ```
 
-因此 Plugins 行始终存在，且位于 New Session 之后；`sidebar.panellist` 的 `order` 只在插件面板之间生效。
+因此 Plugins 行始终存在，且位于 New Session 之后；`sidebar.panellist` 的 `order` 只在这个 panel list 内生效，不能把插件行排到 New Session 之前。
 
 ### 8.2 面板行 owner 与徽标
 
