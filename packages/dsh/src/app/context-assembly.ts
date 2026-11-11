@@ -198,27 +198,30 @@ export function mergeContextEntries(entries: readonly ContextEntry[]): { entries
   const merges: ContextMergeDecision[] = []
   const conflicts: ContextConflict[] = []
   for (const [key, group] of [...byKey].sort(([left], [right]) => left.localeCompare(right))) {
-    const unique = [...new Map(group.map(entry => [entry.text, entry])).values()]
-    if (unique.length === 1) { chosen.push(unique[0]!); continue }
-    const constraints = unique.filter(entry => entry.strength === 'constraint')
-    const defaults = unique.filter(entry => entry.strength === 'default')
+    if (group.length === 1) { chosen.push(group[0]!); continue }
+    const label = (entry: ResolvedEntry) => `${entry.dimension}:${entry.source}`
     const conflict = (strength: ContextStrength, candidates: ResolvedEntry[]) => conflicts.push({ key, strength,
       dimensions: [...new Set(candidates.map(entry => entry.dimension))].sort((left, right) => DIMENSION_ORDER.get(left)! - DIMENSION_ORDER.get(right)!),
-      sources: candidates.map(entry => `${entry.dimension}:${entry.source}`) })
-    if (constraints.length > 1) { conflict('constraint', constraints); continue }
-    if (constraints.length === 1) {
-      chosen.push(constraints[0]!)
-      merges.push({ key, winner: `${constraints[0]!.dimension}:${constraints[0]!.source}`,
-        losers: defaults.map(entry => `${entry.dimension}:${entry.source}`) })
+      sources: candidates.map(label) })
+    const constraints = group.filter(entry => entry.strength === 'constraint')
+    const defaults = group.filter(entry => entry.strength === 'default')
+    // Same text is agreement, not a conflict: among agreeing constraints the most specific scope wins, and an agreeing
+    // constraint still beats an agreeing default even though the worker would read the same characters either way.
+    if (constraints.length) {
+      if (new Set(constraints.map(entry => entry.text)).size > 1) { conflict('constraint', constraints); continue }
+      const rank = Math.max(...constraints.map(entryRank))
+      const winner = constraints.filter(entry => entryRank(entry) === rank).sort((left, right) => label(left).localeCompare(label(right)))[0]!
+      chosen.push(winner)
+      merges.push({ key, winner: label(winner), losers: group.filter(entry => entry !== winner).map(label) })
       continue
     }
     const rank = Math.max(...defaults.map(entryRank))
-    const winners = defaults.filter(entry => entryRank(entry) === rank)
-    if (winners.length > 1) { conflict('default', winners); continue }
-    const winner = winners[0]!
+    const top = defaults.filter(entry => entryRank(entry) === rank)
+    // A more specific default wins even when its text differs; only defaults at the same rank with different text are unresolved.
+    if (new Set(top.map(entry => entry.text)).size > 1) { conflict('default', top); continue }
+    const winner = [...top].sort((left, right) => label(left).localeCompare(label(right)))[0]!
     chosen.push(winner)
-    merges.push({ key, winner: `${winner.dimension}:${winner.source}`,
-      losers: defaults.filter(entry => entry !== winner).map(entry => `${entry.dimension}:${entry.source}`) })
+    merges.push({ key, winner: label(winner), losers: group.filter(entry => entry !== winner).map(label) })
   }
   return { entries: chosen.sort((left, right) => DIMENSION_ORDER.get(left.dimension)! - DIMENSION_ORDER.get(right.dimension)!
     || left.key.localeCompare(right.key)),

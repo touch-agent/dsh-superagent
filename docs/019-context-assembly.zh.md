@@ -53,7 +53,7 @@
 1. **强度先于 scope**：`constraint` 赢 `default`；`default` 之间的胜者不参与强度比较。
 2. **同强度默认才比较 scope**：scope 的前缀与维度 rank 给出具体性（organization < user < group < task < subtask < agent），更具体者赢；群组的 `<source>:<space>` 无前缀时回退到 group rank。
 3. **同强度且 scope 不可分序**：文本不同即冲突。约束冲突直接 `blocked`；默认冲突同样不猜，避免「按来源顺序」成为隐式规则。
-4. **完全相同文本**：去重，不产生合并决策。
+4. **完全相同文本视为同意**：不产生冲突；但若来源的强度或 scope 不同，仍按上面的规则记录胜者（约束仍胜默认），不因文本相同而丢掉更强的来源。
 5. **记录的决策**：非冲突的胜者写入快照 `merges`（winner 与 losers 的 `<dimension>:<source>`，不含正文）；冲突写入 `conflicts`（key、strength、维度、来源），装配停止。
 
 ## 4. 快照、trace 与回放
@@ -129,4 +129,6 @@ Executor 会先记录带 `blocked` 的快照与 trace，再以 `blocked` 报告�
 - 快照不含正文，回放比较 digest/hash；需要人读原文时仍走既有 `trigger/<id>`、`ticket/<id>/assignment` 等白名单资源。
 - 截断目前是逐条目字符上限（表 §2 的 truncation），没有额外的全局装配预算；内置六个来源的合计远低于一条 worker 消息，宿主通过 `entries` 增加来源时须自带每项上限。
 - 来源可信度沿用 Source 既有的安装/认证边界；装配器不新增信任评分，只把来源读取失败或缺失视为不可用。
+- user 维度只装根 Ticket 的 origin 发起人，不把后续操作者替换进同一份任务上下文；操作者身份仍由当前 Trigger/Input 携带。
+- task 维度只装目标、Mandate 引用与来源；验收条件与交付物已经在 Goal/Review/Assignment 文本中，装配不复制它们，避免第二份验收事实。
 - 没有运行时 feature flag；回退是删除 `DshExecutor` 的 `contextAssembly` 接线并保留既有 prompt 路径。`Assignment.context` 是可选 JSON 字段，回退不迁移数据。

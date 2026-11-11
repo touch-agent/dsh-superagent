@@ -301,6 +301,13 @@ describe('context assembly', () => {
     ])
     expect(merged.entries).toHaveLength(1)
     expect(merged.conflicts).toEqual([])
+    // Agreeing text does not erase the stronger strength: the constraint still supplies the entry.
+    const agreeing = mergeContextEntries([
+      entry({ key: 'same', dimension: 'group', source: 'g', text: 'Agreed' }),
+      entry({ key: 'same', dimension: 'task', source: 't', strength: 'constraint', text: 'Agreed' }),
+    ])
+    expect(agreeing.entries[0]).toMatchObject({ dimension: 'task', source: 't', strength: 'constraint' })
+    expect(agreeing.conflicts).toEqual([])
     const invalid = blocked(assembleContext(hostFor([ticket('root')], [trigger('t-root')], {
       entries: () => [entry({ key: 'bad', dimension: 'user', text: 'x', truncation: 0 })] }).host, ticket('root'),
     assignment('a1'), new Date(AT)))
