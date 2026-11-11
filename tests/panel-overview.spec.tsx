@@ -203,6 +203,15 @@ it('lists the unavailable Evals one by one, without the health entry that counts
   expect(text()).not.toContain(zh['health.evals'])
 })
 
+it('restores one row per problem, with the same entries, when ux.errorAggregate.v1 is off', async () => {
+  localStorage.setItem('ux.errorAggregate.v1', 'off')
+  await mount()
+  expect(document.querySelector('.dt-problem-group')).toBeNull()
+  expect(text()).toContain('「飞书」连接出现问题')
+  expect(text()).toContain('判断没有完成：这个文案好奇怪')
+  expect(all('.dt-problem-group-list .dt-att-what')).toHaveLength(0)
+})
+
 it('says when no Source is on, an Eval is past its deadline or a message keeps failing, each with the way to it', async () => {
   for (const kind of ['feishu', 'github']) server.settings.sources[kind] = { ...server.settings.sources[kind]!, enabled: false }
   server.threads = [threadSummary({ key: 'github:9', title: '#9 迟迟未决', stage: 'evaluating',

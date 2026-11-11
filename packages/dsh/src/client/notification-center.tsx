@@ -94,11 +94,14 @@ function ToastCard({ notice, onDone, onAction, onOpenDrawer, busy }: { notice: N
   onAction: (notice: Notice, action: NoticeAction) => Promise<void>; onOpenDrawer?: () => void; busy: boolean }) {
   const { t } = usePanel()
   const [paused, setPaused] = useState(false)
+  const done = useRef(onDone)
+  done.current = onDone
+  // The five-second overview poll re-renders the host; keep one eight-second timer per card instead of restarting it.
   useEffect(() => {
     if (!notifyAutoDismiss() || paused) return
-    const timer = setTimeout(onDone, CARD_SECONDS * 1000)
+    const timer = setTimeout(() => done.current(), CARD_SECONDS * 1000)
     return () => clearTimeout(timer)
-  }, [paused, onDone])
+  }, [paused, notice.id])
   return <article className="dt-notice-card" role="group" aria-label={notice.title} onMouseEnter={() => setPaused(true)}
     onMouseLeave={() => setPaused(false)}>
     <div className="dt-notice-card-bar" data-kind={notice.kind} />
@@ -163,26 +166,30 @@ export function NotificationHost({ children }: { children: ReactNode }) {
   const seen = useRef<Set<string>>(new Set())
   const seeded = useRef(false)
   const overlay = useRef(notifyOverlay())
+  const drawerOn = notifyDrawer()
+  // With both switches off this component adds no poll and no surface at all.
+  const active = drawerOn || overlay.current
   const readRef = useRef(read)
   readRef.current = read
   const load = useCallback(async () => {
     try { setData(await call('GET overview')) } catch { /* a transient poll failure keeps the last notices */ }
   }, [call])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { if (active) void load() }, [active, load])
   // A five-second cadence matches the rest of the panel; a hidden tab waits longer. Opening the drawer does not poll
   // separately, and a mutation reloads right away so an approved row does not linger.
   useEffect(() => {
+    if (!active) return
     let timer: ReturnType<typeof setTimeout> | undefined
-    let active = true
+    let running = true
     const run = () => {
       clearTimeout(timer)
-      void load().finally(() => { if (active) timer = setTimeout(run, document.hidden ? 30_000 : 5000) })
+      void load().finally(() => { if (running) timer = setTimeout(run, document.hidden ? 30_000 : 5000) })
     }
     timer = setTimeout(run, 5000)
     const shown = () => { if (!document.hidden) run() }
     document.addEventListener('visibilitychange', shown)
-    return () => { active = false; clearTimeout(timer); document.removeEventListener('visibilitychange', shown) }
-  }, [load])
+    return () => { running = false; clearTimeout(timer); document.removeEventListener('visibilitychange', shown) }
+  }, [active, load])
   const items = useMemo(() => data ? noticeItems(data, t) : [], [data, t])
   const unread = unreadOf(items, read)
   const pump = useCallback(() => {
@@ -259,8 +266,7 @@ export function NotificationHost({ children }: { children: ReactNode }) {
   }, [busy, call, load, navigate, notify, t])
   // The drawer and the floating cards are separate switches: turning the drawer off must keep the cards that the
   // overlay switch still allows, and turning both off returns the page untouched.
-  const drawerOn = notifyDrawer()
-  if (!drawerOn && !overlay.current) return <>{children}</>
+  if (!active) return <>{children}</>
   const center: NoticeCenter = { items, unread, open, openDrawer: () => setOpen(true), closeDrawer: () => setOpen(false),
     markAllRead, onAction: action, busy }
   const body = <>
