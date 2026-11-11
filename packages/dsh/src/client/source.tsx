@@ -25,13 +25,19 @@ function SourceCard({ source }: { source: SourceView }) {
   // Saving a modified setup-sensitive field restarts dsh-superagent, interrupting running Assignments.
   const restarts = draft.dirty && source.restarts.some(changed)
   const description = localized(t, source.description)
+  // The panel model derives the fields and the card's specs from the manifest, so a new Source needs no panel code.
+  const form = source.form
+  // A switch may name other switches it relies on; a missing one is offered as a click that turns it on in this draft.
+  const requiresOf = (spec: FieldSpec) => spec.type !== 'switch' ? [] : (spec.requires ?? []).flatMap(key => {
+    const target = (form?.fields ?? []).find(item => item.key === key)
+    return target?.type === 'switch' ? [{ key, label: localized(t, target.label), on: value.config[key] === true }] : []
+  })
   // Hide derived facts for unsaved field edits until the new value is saved.
   const field = (spec: FieldSpec) => <SourceField key={spec.key} field={spec} value={value.config[spec.key]} saved={saved.config[spec.key]}
     labels={source.labels}
     refreshLabels={refreshLabels} fact={spec.type === 'fact' || !changed(spec.key) ? source.facts[spec.key] : undefined}
+    requires={requiresOf(spec)} onEnable={key => draft.edit({ ...value, config: { ...value.config, [key]: true } })}
     onChange={next => draft.edit({ ...value, config: { ...value.config, [spec.key]: next } })} />
-  // The panel model derives the fields and the card's specs from the manifest, so a new Source needs no panel code.
-  const form = source.form
   const advanced = (form?.fields ?? []).filter(spec => spec.advanced)
   const signIn = form && form.auth.kind !== 'none'
     ? t(form.auth.kind === 'cli' ? 'sourceSignInCli' : 'sourceSignInApp',

@@ -143,6 +143,32 @@ it('shows the account each CLI signs in as, and keeps a saved CLI on screen whil
   expect(sessionStorage.getItem('dsh-superagent/draft/master/source:github')).toBeNull()
 })
 
+it('offers the shared-account human identity switch with clickable receive dependencies, and saves the configuration it writes', async () => {
+  await mount()
+  await click(tab(zh['tab.settings']))
+  const github = all('.dt-card')[1]!
+  const identity = find('人工身份判决（共享账号）')
+  expect(identity.getAttribute('role')).toBe('switch')
+  expect(identity.getAttribute('aria-checked')).toBe('false')
+  // The effect and its dependency are named on the switch itself, before anything is turned on.
+  expect(all('.dt-info').some(item => item.getAttribute('aria-label')?.includes('APPROVED')
+    && item.getAttribute('aria-label')?.includes('接收仓库里的评论'))).toBe(true)
+  await click(identity)
+  expect(identity.getAttribute('aria-checked')).toBe('true')
+  // Both receive switches are off, so the card offers each as a click instead of letting the flag do nothing silently.
+  const prompt = () => [...github.querySelectorAll<HTMLElement>('p[role="status"]')].find(item => item.textContent?.includes(zh.sourceRequiresLead))
+  expect(prompt()?.textContent).toBe(`${zh.sourceRequiresLead}接收仓库里的评论、接收仓库里的新 PR${zh.sourceRequiresTail}`)
+  const dependency = (name: string) => [...prompt()!.querySelectorAll('button')].find(item => item.textContent === name)!
+  await click(dependency('接收仓库里的评论'))
+  expect(prompt()?.textContent).toBe(`${zh.sourceRequiresLead}接收仓库里的新 PR${zh.sourceRequiresTail}`)
+  await click(dependency('接收仓库里的新 PR'))
+  expect(prompt()).toBeUndefined()
+  await act(async () => { github.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) }); await settle()
+  expect(server.requests.find(request => request.path === 'settings/source:github')).toMatchObject({ method: 'PUT', body: { revision: 0,
+    value: { enabled: true, config: expect.objectContaining({ humanIdentity: true, observeComments: true, observePulls: true }) } } })
+  expect(server.settings.sources.github!.config).toMatchObject({ humanIdentity: true, observeComments: true, observePulls: true })
+})
+
 it('points a setup problem at the settings that fix it', async () => {
   server.setup = { ...server.setup, problem: problemOf('agentCliUnset'), accounts: null }
   // jsdom has no scrolling; mock scrollIntoView to record which card the link brings into view.

@@ -142,13 +142,21 @@ The plan tree is E2: the Tasks tab opens on the E1 list and offers the plan tree
 
 ## Settings groups
 
-- **Sources:** one card per Source with its switch, fields and verified account facts. The card derives its fields, sign-in hint, health entries and polling default from the Source manifest, so adding a Source needs no panel code. GitHub also offers receive-all switches for new Issues, pull requests, comments and default-branch CI. Polling and read limits are under Advanced.
+- **Sources:** one card per Source with its switch, fields and verified account facts. The card derives its fields, sign-in hint, health entries and polling default from the Source manifest, so adding a Source needs no panel code. GitHub also offers receive-all switches for new Issues, pull requests, comments and default-branch CI, plus the shared-account human identity switch described below. Polling and read limits are under Advanced.
 
 | Before (main `37eaff3`) | After (this change) |
 | --- | --- |
 | ![Source card before](images/source-manifest/before-sources.png) | ![Source card after](images/source-manifest/after-sources.png) |
 
 Same 1440×900 viewport, light theme and Settings › Sources. The GitHub card before shows only its fields; after it also shows the sign-in, health items and polling default read from the manifest.
+
+The GitHub card also offers **人工身份判决（共享账号）** (Human decisions on the shared account), off by default: a submitted `APPROVED` or `CHANGES_REQUESTED` review and a `[人]`/`HUMAN:` comment from the agent's own account are a person's action. While it is on, the card names the receive switches it relies on, `observeComments` and `observePulls`, and offers each missing one as a click that turns it on in the draft; its hint says what each one adds. Turning it off revokes the instructions accepted under it at the next check.
+
+| Before (main `2231ef6`) | After (this change) |
+| --- | --- |
+| ![GitHub card before](images/human-identity-switch/before-sources.png) | ![GitHub card after](images/human-identity-switch/after-sources.png) |
+
+Same 1440×1000 viewport, light theme and Settings › Sources. Both captures read the same sanitized demo state, whose GitHub repository is empty so no account is called; after adds the switch row. With the switch on and both receive switches off, the card offers them as clicks: [dependency prompt](images/human-identity-switch/after-dependencies.png).
 
 - **Eval:** the Policy version and rules, followed by **On each Source** and the Eval settings. Each Source tab contains its allowed list, membership sync, admission table and bot list. Sync runs at startup and on **Sync now**. The admission table distinguishes receiving scope, sender membership and whether the message addresses the agent. Eval settings select the accept mode, timeout and assessment model.
 - **Execution:** worker model, concurrency, directory root, prepare command and blocked commands. Clicking an available variable inserts it into the prepare command. The lightweight fallback is an API/config setting (`executor.lightweight`), not a field on this page.

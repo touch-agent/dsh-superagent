@@ -237,15 +237,29 @@ function RowsField({ field, value, saved, onChange, labels, refreshLabels }: {
     </li>)}</ul>}
   </div>
 }
-export function SourceField({ field, value, saved, fact, onChange, labels, refreshLabels }: {
+export interface Requirement { key: string; label: string; on: boolean }
+export function SourceField({ field, value, saved, fact, onChange, labels, refreshLabels, requires, onEnable }: {
   field: FieldSpec; value: unknown; saved: unknown; fact: Localized | string | undefined; onChange: (next: unknown) => void
   labels: Record<string, string>
   refreshLabels?: () => Promise<string[]>
+  requires?: Requirement[]
+  onEnable?: (key: string) => void
 }) {
   const { t, navigate } = usePanel()
   const label = localized(t, field.label), hint = localized(t, field.hint)
   switch (field.type) {
-    case 'switch': return <SwitchRow label={label} hint={hint} checked={value === true} onChange={onChange} />
+    case 'switch': {
+      const missing = (requires ?? []).filter(item => !item.on)
+      return <>
+        <SwitchRow label={label} hint={hint} checked={value === true} onChange={onChange} />
+        {value === true && missing.length > 0 && <p className="dt-hint" role="status">
+          {t('sourceRequiresLead')}
+          {missing.map((item, index) => <span key={item.key}>{index > 0 && t('listSeparator')}<button type="button"
+            className="dt-textlink" onClick={() => onEnable?.(item.key)}>{item.label}</button></span>)}
+          {t('sourceRequiresTail')}
+        </p>}
+      </>
+    }
     case 'select': return <Field label={label} hint={hint}>
       <SegmentedControl className="dt-segmented dt-field-segmented" label={label} value={String(value ?? field.options[0]!.value)}
         options={field.options.map(option => ({ value: option.value, label: localized(t, option.label) }))} onChange={onChange} />

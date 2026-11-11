@@ -68,7 +68,11 @@ export const githubManifest: SourceManifest = {
     { key: 'observeComments', type: 'switch', label: { zh: '接收仓库里的评论', en: 'Receive comments in the repository' },
       hint: { zh: '打开后，Issue 和 PR 上没有 @ 智能体的评论和代码评论也会收到，由策略的接收表决定是否成为候选。', en: 'Comments and review comments on Issues and PRs that do not mention the agent are received too, and the Policy\'s admission table decides whether they become candidates.' } },
     { key: 'observeCi', type: 'switch', label: { zh: '接收默认分支的 CI', en: 'Receive the default branch\'s CI' },
-      hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.' } }],
+      hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.' } },
+    { key: 'humanIdentity', type: 'switch', requires: ['observeComments', 'observePulls'],
+      label: { zh: '人工身份判决（共享账号）', en: 'Human decisions on the shared account' },
+      hint: { zh: '智能体登录的账号同时由人使用时：该账号提交的 APPROVED 视为人工批准，CHANGES_REQUESTED 视为人工打回；正文以 [人] 或 HUMAN: 开头的评论视为人工指令，不需要 @ 智能体。该账号的其他评论、COMMENTED 评审、Issue/PR 正文和 CI 仍是智能体输出或讨论。仓库范围的评论和新 PR 靠「接收仓库里的评论」与「接收仓库里的新 PR」接收；本开关开启而缺少它们时，卡片会给出可直接开启的提示。关闭本开关后，下一次检查会撤销已接受的人工身份指令。',
+        en: 'When a person also uses the account the agent signs in to, a submitted APPROVED review from it is a person\'s approval and CHANGES_REQUESTED a rejection; a comment whose body starts with [人] or HUMAN: is a person\'s instruction and needs no mention. Its other comments, COMMENTED reviews, Issue and PR bodies and CI stay agent output or discussion. Repository-wide comments and new pull requests arrive through Receive comments in the repository and Receive new pull requests in the repository; if this switch is on without them, the card offers to turn them on. Off, the next check revokes instructions already accepted under it.' } }],
   health: ['github'],
   limits: { pollSeconds: 60 },
 }

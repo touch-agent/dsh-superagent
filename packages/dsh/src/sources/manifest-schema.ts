@@ -11,7 +11,7 @@ const ColumnSchema = z.discriminatedUnion('type', [
   z.object({ key: z.string().min(1), label: LocalizedSchema, type: z.literal('select'), options: z.array(OptionSchema).min(1) }).strict(),
 ])
 const FieldSchema = z.discriminatedUnion('type', [
-  z.object({ ...FieldBase, type: z.literal('switch') }).strict(),
+  z.object({ ...FieldBase, type: z.literal('switch'), requires: z.array(z.string().min(1)).min(1).optional() }).strict(),
   z.object({ ...FieldBase, type: z.literal('select'), options: z.array(OptionSchema).min(1) }).strict(),
   z.object({ ...FieldBase, type: z.literal('number'), min: z.number(), max: z.number() }).strict(),
   z.object({ ...FieldBase, type: z.literal('text'), pattern: z.string().optional(), readonly: z.boolean().optional(), choose: LocalizedSchema.optional() }).strict(),
@@ -45,6 +45,16 @@ export const SourceManifestSchema = z.object({
     message: `a ${manifest.auth.kind} sign-in must name the fields that carry it`, path: ['auth', 'fields'] })
   manifest.health.forEach((name, index) => {
     if (manifest.health.indexOf(name) !== index) ctx.addIssue({ code: 'custom', message: `duplicate health entry "${name}"`, path: ['health', index] })
+  })
+  // A switch may name the switches it depends on, which the panel offers to turn on; a dangling or non-switch key would
+  // render a prompt that cannot be fixed.
+  manifest.fields.forEach((field, index) => {
+    if (field.type !== 'switch') return
+    field.requires?.forEach((key, position) => {
+      const target = manifest.fields.find(item => item.key === key)
+      if (target?.type !== 'switch') ctx.addIssue({ code: 'custom',
+        message: `requires "${key}", which is not a switch in this manifest`, path: ['fields', index, 'requires', position] })
+    })
   })
 })
 
