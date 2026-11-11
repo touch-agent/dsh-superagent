@@ -52,7 +52,6 @@ function seed(store: Store): void {
     assignments: [assignment('a1', 'running')] }))
   store.tickets.save(ticket('c2', {
     parentTicketId: 'root', rootTicketId: 'root', ended: { by: 'executor', outcome: 'completed', at: at(7) },
-    assignment: undefined,
     delegation: delegation({
       dispositions: [{ childTicketId: 'c2', attempt: 1, reportAt: at(1), decision: 'accepted', by: BY, at: at(20), traceId: 't2' }],
       resolution: { kind: 'accepted', by: BY, at: at(7), acceptedReportAt: at(1), acceptedAttempt: 1 },
@@ -61,7 +60,7 @@ function seed(store: Store): void {
   }))
   store.tickets.save(ticket('gc', {
     parentTicketId: 'c1', rootTicketId: 'root', ended: { by: 'executor', outcome: 'completed', at: at(6) },
-    delegation: delegation({ parentTicketId: 'c1', disposition: undefined,
+    delegation: delegation({ parentTicketId: 'c1',
       dispositions: [{ childTicketId: 'gc', attempt: 1, reportAt: at(1), decision: 'accepted', by: BY, at: at(8), traceId: 't3' }],
       resolution: { kind: 'accepted', by: BY, at: at(6), acceptedReportAt: at(1), acceptedAttempt: 1 } }),
     assignments: [assignment('a3', 'ended', childReport('gc'))],
@@ -104,7 +103,7 @@ describe('attention metrics', () => {
     ]
     for (const receipt of receipts) db.db.prepare('INSERT INTO outbox (id, value) VALUES (?, ?)').run(receipt.id, JSON.stringify(receipt))
     for (const level of ['quiet', 'quiet', 'feed', 'feed', 'feed', 'notice', 'notice'] as const) {
-      db.activity.record({ seq: 0, at: at(0), event: 'ticket.ended', level, summary: level, ticket: 'root' })
+      db.activity.record({ at: at(0), event: 'ticket.ended', level, summary: level, ticket: 'root' })
     }
     const view = attentionMetrics(db)
     expect(view.results).toBe(1)

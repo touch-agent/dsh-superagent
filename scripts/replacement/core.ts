@@ -266,7 +266,8 @@ class Run {
       }
       case 'read': {
         const current = ticket(action.ticketId)!
-        const ids = current.inputs.filter(input => input.readAt === null && input.kind === 'child-report').map(input => input.id)
+        const ids = current.inputs.filter(input => input.kind === 'child-report'
+          && (input.readAt === undefined || input.readAt === null)).map(input => input.id)
         if (ids.length) this.engine.inputsRead(current.id, ids)
         return
       }
@@ -347,7 +348,7 @@ export function audit(digest: DrillDigest): DrillRun['audit'] {
   const required = ['ingest', 'enqueue', 'gate', 'assess', 'decide', 'attach', 'dispatch', 'report']
   const missing = required.filter(kind => !kinds.has(kind))
   check('trace', missing.length === 0, missing.length ? `missing stages: ${missing.join(', ')}` : `${kinds.size} stage kinds`)
-  const events = new Set(digest.activity.map(record => record.event))
+  const events = new Set<string>(digest.activity.map(record => String(record.event)))
   const wanted = ['decision.recorded', 'ticket.created', 'assignment.started']
   const missingEvents = wanted.filter(event => !events.has(event))
   check('activity', missingEvents.length === 0, missingEvents.length ? `missing events: ${missingEvents.join(', ')}` : `${digest.activity.length} records`)
