@@ -94,7 +94,7 @@ A deployment may sign the agent in to an account that a person also uses. By def
 - **The state is the decision.** A submitted review with state `APPROVED` is a person's approval, and `CHANGES_REQUESTED` is a person's rejection, whatever its body says. The agent always submits `COMMENTED` reviews and never approves or requests changes. GitHub also refuses a review decision on a pull request the same account authored; the Source ignores such a record even if one reaches the API.
 - **The mark is an instruction.** A comment whose body starts exactly with `[人]` or `HUMAN:` is a person's instruction: a conversation comment, an inline review comment, or the body of a `COMMENTED` review. The mark counts as addressing the agent, so the comment needs no `@` mention and is read even when the Source observes only mentions. Leading whitespace or any other prefix does not count.
 
-Everything else from that account remains agent output or discussion: unmarked comments, `COMMENTED` reviews without a mark, edits, Issue and PR titles and bodies, and CI. None of them starts a Ticket or an Eval.
+Everything else from that account remains agent output or discussion: unmarked comments, `COMMENTED` reviews without a mark, edits that leave the body unmarked, Issue and PR titles and bodies, and CI. None of them starts a Ticket or an Eval. An edit that makes an existing body start with a marker is read as that person's instruction, because the Source re-reads an updated comment.
 
 The order matters:
 
