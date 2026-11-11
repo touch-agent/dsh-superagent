@@ -611,6 +611,7 @@ graph LR
 - **验收**：`pnpm check:arch` 在干净仓库绿；`tests/dependency-rules.spec.ts` 在每个规则被故意违反时红，clean fixture 无误报；`pnpm test`、`pnpm typecheck` 与 `tests/docs.spec.ts` 同时绿；独立 review 核对「能拦住新增违规」「不误报」，结论写进 PR review 评论。
 - **估时**：2 人日。**依赖**：无。**回退**：删除 `.dependency-cruiser.mjs`、`scripts` 里的 `check:arch` 与新 spec 即回退；旧扫描器保留期间始终是第二道检查。
 - **泳道**：Platform。
+- **实现（2026-11-11，PR [#64](https://github.com/touch-agent/dsh-superagent/pull/64)）**：`.dependency-cruiser.mjs` 把上层规则写成 13 条 error 规则；`pnpm check:arch` 接入 `pnpm check` 与 `check` CI job；`tests/dependency-rules.spec.ts` 的 clean fixture 守白名单、violations fixture 逐条覆盖全部规则，并保留 kernel manifest 与 `app/api.ts` 过滤常量的两条断言；`tests/layers.spec.ts`、`tests/kernel-boundary.spec.ts` 标为过渡，配置首次发布后的下一个版本删除。`docs/007-architecture.md` 的「Architecture checks」记录规则、反向测试与退役条件。
 
 ### X-13 TRACKING 自动化 · Platform · 2 人日
 
