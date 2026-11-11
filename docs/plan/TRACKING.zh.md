@@ -14,7 +14,7 @@
 | T0-02 | 已完成 | — | `7f11e0d`、`ab8f6c5`；一条 trigger 的 trace 十段齐全 | 2026-11-08 |
 | T0-03 | 已完成 | — | `1377989`；`tests/metrics.spec.ts` 四指标 | 2026-11-08 |
 | T0-04 | 已完成 | — | `1377989`；Overview「运行健康」与中断/恢复提示 | 2026-11-08 |
-| T0-05 | 已完成 | — | `894c1a5`；changesets 与包体积门 | 2026-11-08 |
+| T0-05 | 已完成 | — | `894c1a5`；changesets 与包体积门；2026-11-11 按模块核对 #63/#65 的增量后重定体积基线（`index.js` 814000、总计 1668000），`pnpm check:size` 通过 | 2026-11-11 |
 | T0-06 | 已完成 | — | `492e668`、`a3809b1`；`../runbooks/why-not-sent.md` 与三次查找演练 | 2026-11-08 |
 | T1-01 | 已完成 | — | `packages/kernel/src/manifest.ts`；`tests/manifest.spec.ts` | 2026-11-08 |
 | T1-02 | 已完成 | — | `packages/dsh/src/sources/manifest-form.ts`；`tests/manifest-form.spec.ts` | 2026-11-08 |
