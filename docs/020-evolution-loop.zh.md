@@ -25,7 +25,7 @@ T5-05 要的是一条**独立于执行 worker** 的「观察 → 总结 → 进�
 | 样本集 | `evolution.samples.v1` | 脱敏工单样本：哈希引用、profile 坐标、任务族、成功/返工/失败码、review 接受、延迟、token 可得或 `null`、环境指纹 |
 | 评测集 | `evolution.evalset.v1` | 版本化 manifest：holdout 条目、replay 模式（`dry`/`sandbox`/`human`）、评分方式、环境指纹、隐私与副作用声明 |
 | 候选经验 | `evolution.intents.v1` | 人工/分析者给出的候选 diff、基线坐标、假设与预登记实验参数 |
-| 回放证据 | `evolution.eval-results.v1` | 配对回放或随机分配的逐条结果；没有则只能得到「证据不足」 |
+| 回放证据 | `evolution.eval-results.v1` | 基线/候选配置摘要、环境、配对回放或随机分配的逐条结果；没有则只能得到「证据不足」 |
 
 样本集里没有标题、摘要、prompt、review 正文、消息文本或账号；`id` 只接受短的不透明引用。评测集必须声明 `containsPrivate=false`、无外部写、无 push/send/merge。
 
@@ -55,7 +55,7 @@ T5-05 要的是一条**独立于执行 worker** 的「观察 → 总结 → 进�
 | `medium` | 两组均 ≥10、方向为正、可比 | 可进入提案，但评测门仍须通过 |
 | `high` | 两组均 ≥30，且差值 95% 区间下界 >0 | 可进入提案，仍不自动采纳 |
 
-`withheld` 会明确写出 `noSamples`、`lowConfidence`、`noBaseline`、`notComparable`、`baselineMismatch` 等原因；没有候选 diff 时结论是 `noCandidateExperience`，不是「没有收益」。
+结论和 `withheld` 会明确写出 `noSamples`（结论）、`noSuccessSample`、`lowConfidence`、`noBaseline`、`notComparable`、`baselineMismatch` 等原因；没有候选 diff 时结论是 `noCandidateExperience`，不是「没有收益」。
 
 ### 2.4 提案格式
 
@@ -75,11 +75,11 @@ T5-05 要的是一条**独立于执行 worker** 的「观察 → 总结 → 进�
 
 `gate()` 的顺序与判定：
 
-1. **预登记完整性**：评测集 id/revision 与 intent 一致；holdout 非空；holdout 与观察样本 id 不相交；回放环境指纹与 manifest 一致；停止样本量不得小于按 MDE 算出的所需样本量。
+1. **预登记完整性**：评测集 id/revision 与 intent 一致；holdout 非空；holdout 与观察样本 id 不相交；观察环境、回放环境和 manifest 的环境指纹一致；回放证据的 baseline/candidate 摘要等于提案的基线/候选 `effectiveHash`；停止样本量不得小于按 MDE 算出的所需样本量。
 2. **样本量**：`n` 按基线率、MDE、α、power 的两比例公式计算；不足直接 `insufficient(sampleSize)`，不因区间看起来好就淘汰样本量规则。
 3. **护栏**：返工率、阻塞率、p90 dispatch→ready、review 拒绝率不得比基线恶化超过预登记阈值；token 可得时按预登记的相对增长阈值护栏，货币成本不可得时**不设成本门**。
 4. **主指标**：配对回放用 McNemar 精确检验 + 配对差 95% 区间；随机分配用两比例 z 检验 + 差值区间。
-   - `pass`：差值 ≥ MDE 且区间下界 >0；
+   - `pass`：差值 ≥ MDE、95% 区间下界 >0，且双侧 p < 预登记 α；
    - `no-difference`：达到预登记样本且区间上界 < MDE（可明确写「没有可测差异」）；
    - `reject`：区间整体为负，或护栏恶化；
    - `insufficient`：样本不足、区间跨 MDE、holdout 污染、环境不一致或没有证据。

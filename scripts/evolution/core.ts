@@ -148,6 +148,8 @@ export interface ReplayOutcome {
 /** One experiment's replay results: paired for a paired replay, runs for a randomized allocation. */
 export interface ReplayEvidence {
   id: string
+  baseline: string
+  candidate: string
   environment: { dshVersion: string; policyVersion: string; repoBaseline: string | null }
   allocation: Allocation
   pairs?: { entryId: string; baseline: ReplayOutcome; candidate: ReplayOutcome }[]
@@ -713,7 +715,7 @@ export function parseEvalResults(value: unknown): EvalResults {
   const experiments = value.experiments.map((experiment, index): ReplayEvidence => {
     const path = `evidence.experiments[${index}]`
     if (!isRecord(experiment)) throw new EvolutionInputError('invalidExperiment', path)
-    onlyKeys(experiment, ['id', 'environment', 'allocation', 'pairs', 'runs'], path)
+    onlyKeys(experiment, ['id', 'baseline', 'candidate', 'environment', 'allocation', 'pairs', 'runs'], path)
     if (typeof experiment.allocation !== 'string' || !ALLOCATIONS.has(experiment.allocation as Allocation)) {
       throw new EvolutionInputError('invalidAllocation', `${path}.allocation`)
     }
@@ -721,6 +723,8 @@ export function parseEvalResults(value: unknown): EvalResults {
     onlyKeys(experiment.environment, ['dshVersion', 'policyVersion', 'repoBaseline'], `${path}.environment`)
     const result: ReplayEvidence = {
       id: stringAt(experiment.id, `${path}.id`, REF),
+      baseline: stringAt(experiment.baseline, `${path}.baseline`, ENV),
+      candidate: stringAt(experiment.candidate, `${path}.candidate`, ENV),
       environment: {
         dshVersion: stringAt(experiment.environment.dshVersion, `${path}.environment.dshVersion`, ENV),
         policyVersion: stringAt(experiment.environment.policyVersion, `${path}.environment.policyVersion`, ENV),
@@ -1033,7 +1037,7 @@ function diagnose(candidate: EvolutionGroup, baseline: EvolutionGroup, window: {
   }
   let withheld: string | null = null
   if (!comparable) withheld = 'notComparable'
-  else if (candidateRate === null || baselineRate === null) withheld = 'noBaseline'
+  else if (candidateRate === null || baselineRate === null) withheld = 'noSuccessSample'
   else if (delta === null || delta <= 0) withheld = 'noImprovement'
   else if (confidence === 'low') withheld = 'lowConfidence'
   const profileLabel = (group: EvolutionGroup): string => group.profile ? `${group.profile.id}@${group.profile.revision}` : 'legacy'
@@ -1074,7 +1078,7 @@ function baselineFor(candidate: EvolutionGroup, groups: EvolutionGroup[]): Evolu
 export function diagnoses(groups: EvolutionGroup[], window: { from: string; to: string }): EvolutionDiagnosis[] {
   const result: EvolutionDiagnosis[] = []
   for (const candidate of groups) {
-    if (candidate.profile === null || candidate.rootSuccess.n === 0) continue
+    if (candidate.profile === null) continue
     const baseline = baselineFor(candidate, groups)
     if (!baseline) {
       result.push({
@@ -1144,6 +1148,11 @@ export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined,
   if (evidence.environment.dshVersion !== evalSet.environment.dshVersion
     || evidence.environment.policyVersion !== evalSet.environment.policyVersion
     || evidence.environment.repoBaseline !== evalSet.environment.repoBaseline) return insufficient('environmentMismatch')
+  const expectedBaseline = plan.baseline.kind === 'legacy' ? 'legacy' : plan.baseline.effectiveHash
+  const configurationMismatch = evidence.baseline !== expectedBaseline || evidence.candidate !== plan.candidate.effectiveHash
+  checks.push({ check: 'evidence-configuration', status: configurationMismatch ? 'fail' : 'pass',
+    detail: `${evidence.baseline} -> ${evidence.candidate}` })
+  if (configurationMismatch) return insufficient('evidenceConfigurationMismatch')
   if (plan.stopping.afterSamples < plan.requiredPerGroup) {
     checks.push({ check: 'stopping-rule', status: 'fail', detail: 'stops before the pre-registered sample size' })
     return insufficient('stoppingBeforePower')
@@ -1196,8 +1205,8 @@ export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined,
     return { proposalId: plan.id, outcome: 'reject', reasons, checks, requiredPerGroup: plan.requiredPerGroup, statistics }
   }
   const delta = statistics.difference
-  if (delta >= plan.mde && statistics.ci.lower > 0) {
-    checks.push({ check: 'primary-effect', status: 'pass', detail: `${(delta * 100).toFixed(1)}pp >= ${(plan.mde * 100).toFixed(1)}pp, CI lower ${((statistics.ci.lower) * 100).toFixed(1)}pp` })
+  if (delta >= plan.mde && statistics.ci.lower > 0 && statistics.pValue !== null && statistics.pValue < plan.alpha) {
+    checks.push({ check: 'primary-effect', status: 'pass', detail: `${(delta * 100).toFixed(1)}pp >= ${(plan.mde * 100).toFixed(1)}pp, CI lower ${((statistics.ci.lower) * 100).toFixed(1)}pp, p ${statistics.pValue.toFixed(4)} < ${plan.alpha}` })
     return { proposalId: plan.id, outcome: 'pass', reasons, checks, requiredPerGroup: plan.requiredPerGroup, statistics }
   }
   if (statistics.ci.upper < 0) {
@@ -1244,11 +1253,11 @@ function conclusionOf(proposals: EvolutionProposal[], gates: GateResult[], sampl
   if (ready.length > 0) {
     return { kind: 'propose', summary: `${ready.length} proposal(s) passed the pre-registered holdout gate and await human approval.`, reasons: ['gatePass'] }
   }
-  if (gates.some(result => result.outcome === 'no-difference')) {
-    return { kind: 'no-measurable-difference', summary: 'The holdout showed no effect at or above the pre-registered MDE; keep the current configuration.', reasons: ['belowMde'] }
-  }
   if (gates.some(result => result.outcome === 'reject')) {
     return { kind: 'reject', summary: 'At least one pre-registered gate rejected adoption; record the reason and keep the current configuration.', reasons: ['gateReject'] }
+  }
+  if (gates.some(result => result.outcome === 'no-difference')) {
+    return { kind: 'no-measurable-difference', summary: 'The holdout showed no effect at or above the pre-registered MDE; keep the current configuration.', reasons: ['belowMde'] }
   }
   if (intentCount === 0) {
     return { kind: 'insufficient-evidence', summary: 'No candidate experience with an explicit diff and pre-registered experiment was supplied; the observation is recorded only.', reasons: ['noCandidateExperience'] }

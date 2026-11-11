@@ -124,6 +124,8 @@ function outcome(success: boolean, overrides: Partial<ReplayOutcome> = {}): Repl
 function passEvidence(): ReplayEvidence {
   return {
     id: 'exp-docs',
+    baseline: 'sha256:baseline',
+    candidate: 'sha256:candidate',
     environment: { ...ENVIRONMENT, repoBaseline: 'abc123' },
     allocation: 'paired-replay',
     pairs: Array.from({ length: 360 }, (_, index) => ({
@@ -194,6 +196,14 @@ it('downgrades a low-confidence observation instead of proposing it', () => {
   ))
   expect(report.proposals).toEqual([])
   expect(report.observation.withheld).toEqual(expect.arrayContaining([{ id: 'exp-docs', reason: 'lowConfidence' }]))
+  expect(report.conclusion.kind).toBe('insufficient-evidence')
+})
+
+it('downgrades a candidate with no successful root sample instead of treating it as zero', () => {
+  const censored = group('candidate', CANDIDATE, 10, 0).map(record => ({ ...record, ended: null }))
+  const report = runEvolution(input([...censored, ...group('baseline', BASELINE, 40, 24)], { intents: [intent()] }))
+  expect(report.observation.diagnoses.find(entry => entry.candidateKey.includes('candidate'))?.withheld).toBe('noSuccessSample')
+  expect(report.proposals).toHaveLength(0)
   expect(report.conclusion.kind).toBe('insufficient-evidence')
 })
 
@@ -305,6 +315,14 @@ it('allows the no-measurable-difference conclusion after the pre-registered samp
   expect(report.conclusion.kind).toBe('no-measurable-difference')
 })
 
+it('refuses replay evidence whose candidate digest is not the proposed configuration', () => {
+  const replay = passEvidence()
+  replay.candidate = 'sha256:different-candidate'
+  const report = runEvolution(input(undefined, { evidence: evidence(replay) }))
+  expect(report.gates[0]?.outcome).toBe('insufficient')
+  expect(report.gates[0]?.reasons).toContain('evidenceConfigurationMismatch')
+})
+
 it('refuses a holdout that overlaps the observation window', () => {
   const contaminated = evalSet({
     entries: evalSet().entries.map((entry, index) => index === 0 ? { ...entry, id: 'candidate-0' } : entry),
@@ -367,7 +385,8 @@ it('is deterministic and exposes no write, apply, save or activate path', () => 
   const second = runEvolution(input(undefined, { evidence: evidence(passEvidence()) }))
   expect(second).toEqual(first)
   const source = readFileSync(join(ROOT, 'scripts', 'evolution', 'core.ts'), 'utf8')
-  expect(source).not.toMatch(/from 'node:fs'|from 'node:child_process'|from '@superagent|writeFile|createWriteStream/)
+  expect(source).not.toMatch(/from ['"](?:node:fs|node:fs\/promises|node:child_process|node:http|node:https|node:net|node:tls|@superagent)/)
+  expect(source).not.toMatch(/writeFile|createWriteStream|fetch\(/)
   expect(source).not.toMatch(/function (?:apply|write|save|activate)[A-Z]/)
   expect(Object.keys(evolution).filter(name => /apply|write|save|activate/i.test(name))).toEqual([])
   for (const proposal of first.proposals) {
