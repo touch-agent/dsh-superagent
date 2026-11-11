@@ -6,7 +6,7 @@ evolution set, then the plan set when you are picking up work.
 | Layer | Where | What it answers |
 | --- | --- | --- |
 | Numbered mechanism and operations | `docs/000`–`docs/010` | How the system works, how it is authorized, operated and extended. |
-| Design and evolution | `docs/011`–`docs/018` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, and the reusable profile layer over the worker role. |
+| Design and evolution | `docs/011`–`docs/020` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, and the reusable profile layer over the worker role. |
 | Plans | [`plan/`](plan/README.md) | What to build, in what order, and the current status of every task. |
 | Runbooks and evidence | [`runbooks/`](runbooks/why-not-sent.md), [`images/`](images/) | What to do when something is stuck; the before/after captures the documents cite. |
 
@@ -30,7 +30,7 @@ Read 000–010 in order; each builds only on the ones before it.
 
 ## Design and evolution
 
-These seven are written in Chinese. 011 and 012 are a cross-referencing pair:
+These ten are written in Chinese. 011 and 012 are a cross-referencing pair:
 read 011 for the principles and their cross-check against the existing
 documents, then 012 for the evolution story. 013 applies them to the workspace
 model (space as an execution reference, orthogonal to the task tree). 014
@@ -43,6 +43,9 @@ table and no authorization. 018 turns the same principles into the E0–E3
 exposure levels and the default-surface inventory T5-02 implements. 019
 connects the six dimensions into the per-Assignment assembler: presence first,
 constraint before scope, fail closed, and a read-only snapshot without text.
+020 closes the loop above them: an offline observer reads sanitized telemetry,
+a proposal carries its evidence and pre-registered holdout gate, and only a
+person can apply it.
 
 | # | Document | Role |
 | --- | --- | --- |
@@ -55,12 +58,13 @@ constraint before scope, fail closed, and a read-only snapshot without text.
 | 017 | [Context groups](017-context-groups.zh.md) | The optional group dimension derived from Channel addresses and live Thread subscriptions: read-only context and display, no membership table, no member list, no authorization. |
 | 018 | [Exposure levels](018-exposure-levels.zh.md) | The E0–E3 display levels and the element-by-element default-surface inventory: attention cost, deeper entry and rollback for each surface, plus the T5-02 walkthrough evidence. |
 | 019 | [Context assembly](019-context-assembly.zh.md) | The per-Assignment six-layer assembler: presence first, constraint before scope, conflict escalation, the read-only snapshot and `context` trace stage, fail-closed behavior, and child-ticket inheritance and flattening rules. |
+| 020 | [Evolution loop](020-evolution-loop.zh.md) | The offline observe→summarize→propose→verify loop: sanitized samples, effective-hash and task-family aggregation, confidence downgrades, versioned proposals, the pre-registered holdout/MDE gate, the document-only approval queue, human apply and rollback; no write path. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
 is the golden-path E2E; 015 is the E0 read model that follows from 011's
 attention principle; 017 provides the group dimension; 018 is the display-level
-checklist T5-02 lands; 019 assembles the six dimensions per Assignment. 011 §6
+checklist T5-02 lands; 019 assembles the six dimensions per Assignment; 020 is the offline evolution loop that consumes their telemetry and never applies its own proposals. 011 §6
 cross-checks the existing documents; conflicts are resolved in 011 §7.
 
 ## Plans

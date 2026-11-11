@@ -56,6 +56,8 @@
     "check:size": "node scripts/check-bundle-size.mjs",
     "check:tracking": "node scripts/check-tracking.mjs",
     "check": "pnpm check:tracking && pnpm typecheck && pnpm test && pnpm build && pnpm check:size",
+    "evolution": "node scripts/evolution/run.mjs",
+    "evolution:export": "node scripts/evolution/export.mjs",
     "changeset": "changeset"
   },
   "engines": {
