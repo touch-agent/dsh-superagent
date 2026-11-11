@@ -81,6 +81,7 @@ summaries, not a second status source.
   implementation (Chinese).
 - [Plugin packaging](../PLUGIN-PACKAGING.zh.md): installing the project as an
   independent DSH plugin (Chinese).
-- [`runbooks/`](runbooks/why-not-sent.md): stopping and tracing a stuck send.
+- [`runbooks/`](runbooks/why-not-sent.md): stopping and tracing a stuck send, and
+  [replacing an execution boundary](runbooks/replacement.drill.md) with the T5-06 drill evidence.
 - [`images/`](images/): the before/after captures cited by the numbered
   documents and the task view.

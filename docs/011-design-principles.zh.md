@@ -236,7 +236,7 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 
 一句话：**授权语义不可替换（实现细节可换），组织与呈现层尽量可替换；二者之间用 Ticket/Assignment/Projection 三个窄接口隔开。**
 
-观测点状态：Decision/Mandate/Action/Approval、Assignment/worker/报告、`GET tasks`/ownership、事件分级/通知计数是现有数据；层级深度、父审阅时长、孤儿子 Ticket 数依赖任务视图修订版的子 Ticket 数据，自动打开关闭率与替换证据需要新建采集，未落地前只作为检查点。
+观测点状态：Decision/Mandate/Action/Approval、Assignment/worker/报告、`GET tasks`/ownership、事件分级/通知计数是现有数据。2026-11-11 的 T5-06 把层级深度、活跃/孤儿/未解决子 Ticket 数、父审阅时长、每结果通知数与分级计数加入 `GET metrics` 的只读 `organization`/`attention` 块（读 Store，不经任务视图）；自动打开关闭率与默认面点击深度仍无服务端事件，明确标记为 `not-collected`。替换证据见 [replacement.drill.md](runbooks/replacement.drill.md)，操作步骤见 [replacement.md](runbooks/replacement.md)。
 
 ### D.3 观测点
 
@@ -247,11 +247,11 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 - （现有）验收与返工：`Assignment.report.review`、`Review.confirmations`、review 结果；
 - （现有）执行事实：Assignment 状态、worker 槽位、阻塞/失败原因、目录与分支。
 
-原则 D 要求再补三类「组织观测」（均待建）：
+原则 D 要求再补三类「组织观测」，现状如下：
 
-1. **组织成本**（依赖任务视图修订版的子 Ticket 数据）：层级深度、活跃子 Ticket 数、父审阅时长、孤儿子 Ticket 数；
-2. **注意力成本**（需新增采集）：每结果通知数、自动打开后关闭率、默认面点击深度；
-3. **替换证据**（需演练采集）：同一个任务在「有组织视图/无组织视图」「有子 Ticket/扁平执行」下的结果、审计、通知是否等价。
+1. **组织成本（已落地）**：层级深度、活跃子 Ticket 数、父审阅时长、孤儿/未解决子 Ticket 数，由 `packages/dsh/src/app/replacement.ts` 的 `organizationMetrics(store)` 从已存子 Ticket 字段读取，作为 `GET metrics.organization` 暴露；不依赖任务视图或类别覆盖层。
+2. **注意力成本（服务端已落地，客户端缺口）**：每结果通知数、quiet/feed/notice 分级计数已由 `attentionMetrics(store)` 从 outbox 请求与 `activity` 窗口读取；自动打开后关闭率与默认面点击深度只存在于浏览器，当前明确返回 `not-collected`，不冒充为 0（D5）。
+3. **替换证据（已演练，范围有界）**：`pnpm drill:replacement` 用同一任务跑基线、回放 Executor、扁平组织、失败替换与回滚；结果/结果消息/通知数等价，扁平组织移除子 Ticket 与委派 span（D2），生产 `DshExecutor`、模型 provider、真实投递与存储替换未覆盖（D1、D3、D4、D6）。
 
 ### D.4 简化/替换路径
 
@@ -270,6 +270,8 @@ DSH 是宿主，不是组织模型。二者的对应关系必须说清，否则�
 | C4.3 | 删除类别覆盖层不影响 Ticket；移除子 Ticket 委派后 Ticket/Assignment 仍可解释 | 迁移/回滚演练；投影只读断言 |
 | C4.4 | 观测点不依赖被替换的 UI | trace/activity/metrics 独立读取；无 UI 也能取证 |
 | C4.5 | 新人能在不看组织视图的情况下完成一次任务 | 可用性走查；失败记录为产品缺口 |
+
+T5-06 的逐条结论：C4.1 通过；C4.2 部分满足（结果/通知等价，审计完整但扁平组织下不再逐字节相同，见 D2）；C4.3 部分满足（子 Ticket 委派移除已演练，仓库内没有可删除的类别覆盖层，投影只读已断言）；C4.4 通过（观测不读视图，但 D5 的两项客户端采集仍缺）；C4.5 未验证（未做新人可用性走查）。详见 [replacement.drill.md](runbooks/replacement.drill.md)。
 
 ## 6. 逐条对照现有文档
 
