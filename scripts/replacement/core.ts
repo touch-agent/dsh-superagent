@@ -91,6 +91,7 @@ export interface RunSummary {
   decisions: number
   activity: { quiet: number; feed: number; notice: number }
   outbox: number
+  reviewSamples: number
   result: string
   complete: boolean
 }
@@ -374,7 +375,7 @@ function summarize(kind: RunKind, digest: DrillDigest, complete: boolean): RunSu
   return { kind, tickets: digest.tickets.length, children: childrenOf(digest).length, depth: digest.organization.tickets.maxDepth,
     spans: digest.spans.length, decisions: digest.decisions.length,
     activity: { quiet: digest.attention.activity.quiet, feed: digest.attention.activity.feed, notice: digest.attention.activity.notice },
-    outbox: (digest.outbox as unknown[]).length, result, complete }
+    outbox: (digest.outbox as unknown[]).length, reviewSamples: digest.organization.parentReview.samples, result, complete }
 }
 
 /** The read-only task projection; the view itself must not change a row it reads. */
@@ -474,10 +475,10 @@ export function runReplacementDrill(): DrillReport {
 /** The drill's Markdown table and graded differences, for the runbook and `pnpm drill:replacement`. */
 export function markdownReport(report: DrillReport): string {
   const lines = [
-    '| Run | Tickets | Children | Depth | Spans | Decisions | quiet/feed/notice | Outbox | Result | Audit |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| Run | Tickets | Children | Depth | Spans | Decisions | quiet/feed/notice | Outbox | Reviews | Result | Audit |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...report.runs.map(run => `| ${run.kind} | ${run.tickets} | ${run.children} | ${run.depth} | ${run.spans} | ${run.decisions} | `
-      + `${run.activity.quiet}/${run.activity.feed}/${run.activity.notice} | ${run.outbox} | ${run.result} | ${run.complete ? 'complete' : 'incomplete'} |`),
+      + `${run.activity.quiet}/${run.activity.feed}/${run.activity.notice} | ${run.outbox} | ${run.reviewSamples} | ${run.result} | ${run.complete ? 'complete' : 'incomplete'} |`),
     '',
     `Equivalence: executor replay ${report.equivalence.executorReplay}; flat behavior ${report.equivalence.flatBehavior}; `
       + `view hidden ${report.equivalence.viewHidden}; rollback ${report.equivalence.rollback}.`,

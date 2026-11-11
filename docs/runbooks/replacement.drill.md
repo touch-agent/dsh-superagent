@@ -9,13 +9,13 @@ is `main@0af96a0`; the replacement is this branch's `ReplayExecutor`, and the ru
 ## The drill
 
 ```text
-| Run | Tickets | Children | Depth | Spans | Decisions | quiet/feed/notice | Outbox | Result | Audit |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| baseline | 2 | 1 | 1 | 18 | 1 | 7/5/0 | 2 | completed | complete |
-| replay | 2 | 1 | 1 | 18 | 1 | 7/5/0 | 2 | completed | complete |
-| flat | 1 | 0 | 0 | 10 | 1 | 3/4/0 | 2 | completed | complete |
-| failure | 2 | 1 | 1 | 16 | 1 | 7/4/0 | 1 | failed | complete |
-| rollback | 2 | 1 | 1 | 18 | 1 | 7/5/0 | 2 | completed | complete |
+| Run | Tickets | Children | Depth | Spans | Decisions | quiet/feed/notice | Outbox | Reviews | Result | Audit |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| baseline | 2 | 1 | 1 | 18 | 1 | 7/5/0 | 2 | 1 | completed | complete |
+| replay | 2 | 1 | 1 | 18 | 1 | 7/5/0 | 2 | 1 | completed | complete |
+| flat | 1 | 0 | 0 | 10 | 1 | 3/4/0 | 2 | 0 | completed | complete |
+| failure | 2 | 1 | 1 | 16 | 1 | 7/4/0 | 1 | 1 | failed | complete |
+| rollback | 2 | 1 | 1 | 18 | 1 | 7/5/0 | 2 | 1 | completed | complete |
 
 Equivalence: executor replay true; flat behavior true; view hidden true; rollback true.
 ```
@@ -51,7 +51,7 @@ successful run); it is not a count of persisted receipts or of delivered message
 | Spans | 18 | 18 | 10 | 16 | 18 |
 | Outbox requests | 2 | 2 | 2 | 1 | 2 |
 | Feed graded quiet/feed/notice | 7/5/0 | 7/5/0 | 3/4/0 | 7/4/0 | 7/5/0 |
-| Parent review samples | 1 | 1 | 0 | 0 | 1 |
+| Parent review samples | 1 | 1 | 0 | 1 | 1 |
 | Audit complete | yes | yes | yes | yes | yes |
 | Result messages | `Drill: completed` | identical | identical | none | identical |
 
