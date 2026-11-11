@@ -44,7 +44,9 @@ export interface ExecutorToolsHost {
 async function followableGithubThread(host: ExecutorToolsHost, source: string, id: string, signal: AbortSignal): Promise<void> {
   if (source !== 'github' || id.startsWith('ci:')) return
   const number = Number(id)
-  if (!Number.isInteger(number) || number <= 0) throw new Error('A GitHub thread key names an Issue or PR number, such as github:<number>')
+  // Canonical form only: polling and triggers key on `github:<number>`, so `github:012` would store a Subscription
+  // whose Thread key never matches a delivery.
+  if (!Number.isInteger(number) || number <= 0 || String(number) !== id) throw new Error('A GitHub thread key uses the canonical github:<number> form, such as github:12')
   // Setup resolves the repository; before that the Source polls nothing, and the follow can be stored like any other.
   if (!host.github.configured()) return
   try { await readGithubThread(host.github, number, signal) }

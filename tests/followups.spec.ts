@@ -176,6 +176,10 @@ it('lets a worker follow a related thread for context, which the main Session he
   await expect(h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github:12', reason: 'The PR it fixes.' }))
     .rejects.toThrow(/only reads its configured repository/)
   expect(h.runtime.store.threads.get('github:12')).toBeUndefined()
+  // `github:012` would read Issue 12 but store a key the poll never emits triggers for; only the canonical number is accepted.
+  await expect(h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github:012', reason: 'The issue it fixes.' }))
+    .rejects.toThrow(/canonical github:<number> form/)
+  expect(h.runtime.store.threads.get('github:012')).toBeUndefined()
   expect(await h.runTool(h.runtime.masterId, 'orchestrator_ticket_note', { ticket_id: ticket.id, text: 'Ticket B renamed the setting.' }))
     .toMatchObject({ reason: 'Noted for the worker' })
   await h.runtime.idle()
