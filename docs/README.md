@@ -30,7 +30,7 @@ Read 000–010 in order; each builds only on the ones before it.
 
 ## Design and evolution
 
-These eleven are written in Chinese. 011 and 012 are a cross-referencing pair:
+These twelve are written in Chinese. 011 and 012 are a cross-referencing pair:
 read 011 for the principles and their cross-check against the existing
 documents, then 012 for the evolution story. 013 applies them to the workspace
 model (space as an execution reference, orthogonal to the task tree). 014
@@ -50,7 +50,11 @@ surface as a task-first proposal: a main Agent entry, a task view that replaces
 the workspace, a task hierarchy with owners, sessions, deliverables, blockers
 and reports, a right-side notification overlay plus drawer, and a four-item
 main menu with operations moved into settings; its before/after captures,
-extension-point annotations and clickable prototype ship with it.
+extension-point annotations and clickable prototype ship with it. 022 audits
+those host-dependent gaps against the shipped DSH `0.2.1-rc.5` plugin slots and
+turns the remaining ones into per-item upstream requests, separating what
+plugins can already do from what needs an additive seat or a whole-region
+replacement.
 
 | # | Document | Role |
 | --- | --- | --- |
@@ -65,12 +69,13 @@ extension-point annotations and clickable prototype ship with it.
 | 019 | [Context assembly](019-context-assembly.zh.md) | The per-Assignment six-layer assembler: presence first, constraint before scope, conflict escalation, the read-only snapshot and `context` trace stage, fail-closed behavior, and child-ticket inheritance and flattening rules. |
 | 020 | [Evolution loop](020-evolution-loop.zh.md) | The offline observe→summarize→propose→verify loop: sanitized samples, effective-hash and task-family aggregation, confidence downgrades, versioned proposals, the pre-registered holdout/MDE gate, the document-only approval queue, human apply and rollback; no write path. |
 | 021 | [Interface redesign](021-ux-redesign.zh.md) | The revised task-first Superagent interface proposal: the main Agent as the first entry, the workspace replaced by a task view, the goal → task → subtask hierarchy with owners, sessions, deliverables, blockers and reports, a right-side notification overlay plus drawer, and a four-item main menu with operations in settings; includes the plugin-extension mapping (including what needs host work), phased rollout, before/after captures and a clickable prototype (proposal, not implemented). |
+| 022 | [Harness extension requests](022-harness-extension-requests.zh.md) | The upstream request set behind 021's host-dependent gaps: a sidebar top seat and nav overrides, session-row presentation and archiving, a workspace-list seat, settings groups and icons, notification badges, and session-row trailing metadata; per item it gives the shipped capability, the gap, an interface sketch, MVP and later stages, host impact, rollback, priority and a no-host-change fallback, with DSH `0.2.1-rc.5` evidence (proposal, not implemented). |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
 is the golden-path E2E; 015 is the E0 read model that follows from 011's
 attention principle; 017 provides the group dimension; 018 is the display-level
-checklist T5-02 lands; 019 assembles the six dimensions per Assignment; 020 is the offline evolution loop that consumes their telemetry and never applies its own proposals; 021 applies 018's levels to the default surface and the revised task-first interface (proposal). 011 §6
+checklist T5-02 lands; 019 assembles the six dimensions per Assignment; 020 is the offline evolution loop that consumes their telemetry and never applies its own proposals; 021 applies 018's levels to the default surface and the revised task-first interface (proposal); 022 audits 021's host-dependent gaps and sorts them into existing capability, additive seat and whole-region replacement. 011 §6
 cross-checks the existing documents; conflicts are resolved in 011 §7.
 
 ## Plans
