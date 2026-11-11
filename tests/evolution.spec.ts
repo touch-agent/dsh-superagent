@@ -437,6 +437,18 @@ it('records a moving worker-default baseline as descriptive, not as a causal pro
   expect(report.proposals).toHaveLength(0)
 })
 
+it('prefers a comparable baseline over a moving worker-default fallback', () => {
+  const movingBaseline = { ...BASELINE, moving: true, runEffectiveHash: 'sha256:run-1' }
+  const report = runEvolution(input([
+    ...group('candidate', CANDIDATE, 40, 40),
+    ...group('baseline', BASELINE, 40, 24),
+    ...group('moving', movingBaseline, 40, 24),
+  ], { evidence: evidence(passEvidence()) }))
+  const diagnosis = report.observation.diagnoses.find(entry => entry.candidateKey.includes('candidate'))
+  expect(diagnosis?.baselineKey).toBe('frozen:sha256:baseline|docs/tracked|tracked')
+  expect(diagnosis?.withheld).toBeNull()
+})
+
 it('runs the randomized allocation through the same gate', () => {
   const set = evalSet({ entries: Array.from({ length: 720 }, (_, index) => ({
     id: `eval-${index}`, taskFamily: 'docs/tracked', form: 'tracked' as const, holdout: true,

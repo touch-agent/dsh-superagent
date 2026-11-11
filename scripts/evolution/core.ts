@@ -1092,7 +1092,9 @@ function baselineFor(candidate: EvolutionGroup, groups: EvolutionGroup[]): Evolu
     && group.key !== candidate.key && (group.comparable || group.baseline === 'worker-default@1') && group.rootSuccess.n > 0
     && !(group.profile && candidate.profile && group.profile.id === candidate.profile.id && group.profile.revision === candidate.profile.revision)
     && group.environments.join('|') === candidate.environments.join('|'))
-  const rank = (group: EvolutionGroup): number => group.baseline === 'worker-default@1' ? 0 : group.baseline === 'legacy' ? 1 : 2
+  // A comparable baseline always wins; a moving worker-default is only a descriptive fallback.
+  const rank = (group: EvolutionGroup): number => !group.comparable ? 3
+    : group.baseline === 'worker-default@1' ? 0 : group.baseline === 'legacy' ? 1 : 2
   return candidates.sort((left, right) => rank(left) - rank(right) || left.key.localeCompare(right.key))[0]
 }
 
