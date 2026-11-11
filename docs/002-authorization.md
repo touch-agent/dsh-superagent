@@ -89,7 +89,7 @@ An automated reviewer using an ordinary account counts as a person to the host. 
 
 ### Human identity on a shared GitHub account
 
-A deployment may sign the agent in to an account that a person also uses. By default the GitHub Source treats every event from that login as the agent's own output and ignores it. The GitHub Source's `humanIdentity` switch, off by default, lets a person act through that account with two signals:
+A deployment may sign the agent in to an account that a person also uses. By default the GitHub Source treats every event from that login as the agent's own output and ignores it. The GitHub Source's `humanIdentity` configuration flag, off by default, lets a person act through that account with two signals:
 
 - **The state is the decision.** A submitted review with state `APPROVED` is a person's approval, and `CHANGES_REQUESTED` is a person's rejection, whatever its body says. The agent always submits `COMMENTED` reviews and never approves or requests changes. GitHub also refuses a review decision on a pull request the same account authored; the Source ignores such a record even if one reaches the API.
 - **The mark is an instruction.** A comment whose body starts exactly with `[人]` or `HUMAN:` is a person's instruction: a conversation comment, an inline review comment, or the body of a `COMMENTED` review. The mark counts as addressing the agent, so the comment needs no `@` mention and is read even when the Source observes only mentions. Leading whitespace or any other prefix does not count.
@@ -104,7 +104,7 @@ The order matters:
 4. **The mark wins over ordinary discussion.** A marked comment is an explicit instruction; an unmarked comment or a `COMMENTED` review is discussion and produces no work.
 5. **Other accounts are unchanged.** The marker is evidence about the shared account only; it neither changes another person's admission nor makes a bot human.
 
-The gate admits a human-identity Trigger as an explicit request with basis `humanIdentity`. It needs no entry on the Source's allowed list and does not depend on the accept mode or the receiving row. Revalidation requires the GitHub Source to still listen and its switch to still be on; turning the switch off revokes those Mandates at their next resume or action. Source configuration is not part of the Policy version, so the switch changes later checks rather than discarding Evals already in flight.
+The gate admits a human-identity Trigger as an explicit request with basis `humanIdentity`. It needs no entry on the Source's allowed list and does not depend on the accept mode or the receiving row. Revalidation requires the GitHub Source to still listen and its flag to still be on; turning the flag off revokes those Mandates at their next resume or action. Source configuration is not part of the Policy version, so the flag changes later checks rather than discarding Evals already in flight.
 
 This is a convention, not a security boundary. The host cannot cryptographically distinguish a person from the agent while they use one credential, and a compromised or misled agent could submit a human signal. The built-in Delivery requirements therefore forbid the agent from submitting `APPROVED` or `CHANGES_REQUESTED` and from starting a comment with the markers, and GitHub itself refuses self-approval on the pull request the account authored. A deployment that needs a real separation gives the person a second account.
 
