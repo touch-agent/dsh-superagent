@@ -964,7 +964,7 @@ export function requiredSampleSize(baseline: number, mde: number, alpha: number,
 }
 
 /** A paired difference and its normal-approximation interval plus McNemar's exact two-sided p-value. */
-function pairedStatistics(pairs: NonNullable<ReplayEvidence['pairs']>): { baseline: Rate; candidate: Rate; difference: number; ci: { lower: number; upper: number; level: number }; pValue: number } {
+function pairedStatistics(pairs: NonNullable<ReplayEvidence['pairs']>, alpha = 0.05): { baseline: Rate; candidate: Rate; difference: number; ci: { lower: number; upper: number; level: number }; pValue: number } {
   let baselineSuccesses = 0, candidateSuccesses = 0, b = 0, c = 0
   for (const pair of pairs) {
     if (pair.baseline.success) baselineSuccesses += 1
@@ -975,7 +975,7 @@ function pairedStatistics(pairs: NonNullable<ReplayEvidence['pairs']>): { baseli
   const n = pairs.length
   const difference = (c - b) / n
   const variance = (b / n + c / n - difference ** 2) / n
-  const half = invNorm(0.975) * Math.sqrt(Math.max(0, variance))
+  const half = invNorm(1 - alpha / 2) * Math.sqrt(Math.max(0, variance))
   const discordant = b + c
   let pValue = 1
   if (discordant > 0) {
@@ -987,19 +987,19 @@ function pairedStatistics(pairs: NonNullable<ReplayEvidence['pairs']>): { baseli
     }
     pValue = Math.min(1, 2 * sum)
   }
-  return { baseline: rate(baselineSuccesses, n), candidate: rate(candidateSuccesses, n), difference, ci: { lower: difference - half, upper: difference + half, level: 0.95 }, pValue }
+  return { baseline: rate(baselineSuccesses, n), candidate: rate(candidateSuccesses, n), difference, ci: { lower: difference - half, upper: difference + half, level: 1 - alpha }, pValue }
 }
 
 /** An unpaired difference and its normal-approximation interval plus the two-sided z test. */
-function unpairedStatistics(baseline: Rate, candidate: Rate): { difference: number; ci: { lower: number; upper: number; level: number }; pValue: number | null } {
-  if (baseline.n === 0 || candidate.n === 0) return { difference: 0, ci: { lower: 0, upper: 0, level: 0.95 }, pValue: null }
+function unpairedStatistics(baseline: Rate, candidate: Rate, alpha = 0.05): { difference: number; ci: { lower: number; upper: number; level: number }; pValue: number | null } {
+  if (baseline.n === 0 || candidate.n === 0) return { difference: 0, ci: { lower: 0, upper: 0, level: 1 - alpha }, pValue: null }
   const p1 = baseline.rate!, p2 = candidate.rate!
   const difference = p2 - p1
   const variance = p1 * (1 - p1) / baseline.n + p2 * (1 - p2) / candidate.n
   const se = Math.sqrt(Math.max(0, variance))
-  const half = invNorm(0.975) * se
+  const half = invNorm(1 - alpha / 2) * se
   const pValue = se === 0 ? (difference === 0 ? 1 : 0) : 2 * (1 - normalCdf(Math.abs(difference / se)))
-  return { difference, ci: { lower: difference - half, upper: difference + half, level: 0.95 }, pValue }
+  return { difference, ci: { lower: difference - half, upper: difference + half, level: 1 - alpha }, pValue }
 }
 
 /** A stable proposal id from its public coordinates, so two runs over the same evidence agree. */
@@ -1172,7 +1172,7 @@ export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined,
     if (outside.length > 0) { checks.push({ check: 'holdout-coverage', status: 'fail', detail: `${outside.length} entries outside holdout` }); return insufficient('holdoutCoverage') }
     baselineOutcomes = pairs.map(pair => pair.baseline)
     candidateOutcomes = pairs.map(pair => pair.candidate)
-    const result = pairedStatistics(pairs)
+    const result = pairedStatistics(pairs, plan.alpha)
     const guardrails = guardrailComparison(guardrailValues(baselineOutcomes), guardrailValues(candidateOutcomes), plan.guardrails)
     statistics = { method: 'paired-mcnemar', baseline: result.baseline, candidate: result.candidate, difference: result.difference,
       ci: result.ci, pValue: result.pValue, guardrails }
@@ -1186,7 +1186,7 @@ export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined,
     candidateOutcomes = runs.filter(run => run.group === 'candidate').map(run => run.outcome)
     const baselineRate = rate(baselineOutcomes.filter(outcome => outcome.success).length, baselineOutcomes.length)
     const candidateRate = rate(candidateOutcomes.filter(outcome => outcome.success).length, candidateOutcomes.length)
-    const result = unpairedStatistics(baselineRate, candidateRate)
+    const result = unpairedStatistics(baselineRate, candidateRate, plan.alpha)
     statistics = { method: 'unpaired-z', baseline: baselineRate, candidate: candidateRate, difference: result.difference,
       ci: result.ci, pValue: result.pValue, guardrails: guardrailComparison(guardrailValues(baselineOutcomes), guardrailValues(candidateOutcomes), plan.guardrails) }
     covered = runs.length === entryIds.size && new Set(runs.map(run => run.entryId)).size === entryIds.size
