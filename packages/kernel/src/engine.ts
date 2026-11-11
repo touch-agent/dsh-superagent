@@ -3,6 +3,7 @@ import { UserError } from './errors.ts'
 import { isoTime, liveTicket } from './model.ts'
 import type { ActorRef, ChannelRef, ChildReportDisposition, Decision, PolicyEffect, ThreadRef, Ticket, Trigger } from './model.ts'
 import type { Candidate, InlineResult, InlineStep, Repositories } from './ports.ts'
+import type { ContextSnapshot } from './context.ts'
 import type { EngineOptions } from './part.ts'
 import { Assignments, type WorkerReport } from './assignments.ts'
 import { Evals, type Outcome } from './evals.ts'
@@ -232,6 +233,10 @@ export class Engine {
   assignmentStarted(ticketId: string, assignmentId: string): void {
     this.repo.atomic(() => { this.assignments.started(ticketId, assignmentId) })
   }
+  /** The Executor's read-only context snapshot for an Assignment; it records what the worker was told, not what it may do. */
+  contextAssembled(ticketId: string, assignmentId: string, context: ContextSnapshot): void {
+    this.repo.atomic(() => { this.assignments.context(ticketId, assignmentId, context) })
+  }
   /**
    * The Executor's fact that Inputs reached the Assignment that runs the ticket, which clears a failed delivery. A fact about
    * an Assignment that no longer runs is dropped. Its worker reads each once its Session takes it into a step (`inputsRead`).
@@ -343,7 +348,7 @@ export type EngineForPeople = Pick<Engine, 'stopTicket' | 'retryTicket' | 'revie
 /** What Settings tells the Engine. */
 export type EngineForSettings = Pick<Engine, 'policyChanged'>
 /** What the Executor tells the Engine, and what its workers ask of it. */
-export type EngineForExecutor = Pick<Engine, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed'
+export type EngineForExecutor = Pick<Engine, 'assignmentStarted' | 'contextAssembled' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed'
   | 'assignmentInterrupted' | 'report' | 'markUnrelated' | 'handback' | 'followForContext' | 'reply'
   | 'delegate' | 'acceptChild' | 'returnChild' | 'cancelChild' | 'childDecision' | 'orphanChild'>
 /** What the inline executor tells the Engine: each action a lightweight ticket ran, and how its run ended. */

@@ -40,7 +40,9 @@ adding a second authorization aggregate. 016 designs the reusable profile
 layer over the worker role, keeping authorization in Policy/Eval. 017 defines
 the derived context group (shared space) dimension, which adds no membership
 table and no authorization. 018 turns the same principles into the E0–E3
-exposure levels and the default-surface inventory T5-02 implements.
+exposure levels and the default-surface inventory T5-02 implements. 019
+connects the six dimensions into the per-Assignment assembler: presence first,
+constraint before scope, fail closed, and a read-only snapshot without text.
 
 | # | Document | Role |
 | --- | --- | --- |
@@ -52,12 +54,13 @@ exposure levels and the default-surface inventory T5-02 implements.
 | 016 | [AgentProfile](016-agent-profile.zh.md) | Reusable, versioned execution profiles for the worker role, with authorization kept in Policy, Eval and the action gate; current-state evidence, evolution loop, risks and phased landing (proposal, not implemented). |
 | 017 | [Context groups](017-context-groups.zh.md) | The optional group dimension derived from Channel addresses and live Thread subscriptions: read-only context and display, no membership table, no member list, no authorization. |
 | 018 | [Exposure levels](018-exposure-levels.zh.md) | The E0–E3 display levels and the element-by-element default-surface inventory: attention cost, deeper entry and rollback for each surface, plus the T5-02 walkthrough evidence. |
+| 019 | [Context assembly](019-context-assembly.zh.md) | The per-Assignment six-layer assembler: presence first, constraint before scope, conflict escalation, the read-only snapshot and `context` trace stage, fail-closed behavior, and child-ticket inheritance and flattening rules. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
 is the golden-path E2E; 015 is the E0 read model that follows from 011's
-attention principle; 017 provides the group dimension T5-04 assembles; 018 is
-the display-level checklist T5-02 lands. 011 §6
+attention principle; 017 provides the group dimension; 018 is the display-level
+checklist T5-02 lands; 019 assembles the six dimensions per Assignment. 011 §6
 cross-checks the existing documents; conflicts are resolved in 011 §7.
 
 ## Plans

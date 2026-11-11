@@ -1,5 +1,6 @@
 /** Domain model of a proactive agent: the concepts and their invariants, independent of any source, policy, or executor. */
 import type { ActionLevel } from './action.ts'
+import type { ContextSnapshot } from './context.ts'
 import type { Review } from './deliverable.ts'
 import type { ProfileSnapshot } from './profile.ts'
 import type { Reason } from './reasons.ts'
@@ -252,6 +253,8 @@ export interface Assignment {
    * into a step before, the worker read.
    */
   idleAt?: string
+  /** The read-only context snapshot assembled when the Assignment began; it carries no entry text and grants nothing. */
+  context?: ContextSnapshot
 }
 
 export type TicketInput =
