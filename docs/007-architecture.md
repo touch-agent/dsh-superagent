@@ -78,7 +78,7 @@ Callers receive only their role's `Pick` of the Engine: `EngineForSources`, `Eng
 | Main Session, Executor | `reply(request)` | Queues a message for the Channel its purpose names: `acknowledgement`, `answer`, `result` or `attention` |
 | People | `stopTicket(ticketId, reason?)` | A person's stop, which withdraws the Mandate |
 | People | `retryTicket(ticketId)` | Ends the stalled Assignment of a Ticket that waits for a person after a `failed` or `blocked` Report, or whose Input delivery failed (`canRetry`), and starts a new one |
-| People | `reviewTicket(ticketId, by)` | Accepts the deliverable preview of a review-stage Ticket and records who accepted that revision; refused when the Ticket is not awaiting review or its latest Report carries no preview |
+| People | `reviewTicket(ticketId, by, reviewRevision)` | Accepts the root Ticket's current review aggregate at that revision and records who accepted it; refused when the Ticket is a child (`childRequiresParent`), has unresolved child Tickets (`unfinishedChildTickets`), is not awaiting review (`reviewNotReady`), has no deliverable (`deliverablePreviewMissing`) or the revision is stale (`reviewStale`) |
 | People | `reevaluate(triggerId)` | Queues a stored Trigger for a fresh Eval |
 | People | `unsubscribe(thread)` | Drops every Subscription on a Thread, and the Tickets that followed it follow it no more; each keeps deciding the follow-ups it received there |
 | People | `dismiss(decisionId)` | Dismisses the problem an `unavailable` Decision shows, which the Decision records |

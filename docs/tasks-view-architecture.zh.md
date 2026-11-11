@@ -872,7 +872,6 @@ interface TaskView {
     name?: string                      // 现有 Execution.name（工作目录短名）
     sessionId?: string                 // worker-<ticketId>；子 Ticket 同样是 worker-<childId>
     assignments: number                // lightweight 固定 0
-    subagents?: number                 // 宿主可读时才有；lightweight 为 0
   }
   delegation?: {
     parentTicketId: string
