@@ -1,7 +1,7 @@
 # TASK-PLAN — 从原型到可托付底座：任务分解与排期
 
 > 基线：`touch-agent/dsh-superagent`（private）· `main` `19b8c3d`（PR #31 合并后）· CI `check` 全绿
-> 依据：`../012-platform-evolution.zh.md`（下称「方案」）、`../011-design-principles.zh.md`（下称「原则」）、`../tasks-view-architecture.zh.md`（下称「任务视图」，PR #26）· 本文只做**任务分解**，不重复方案里的取舍论证
+> 依据：`../012-platform-evolution.zh.md`（下称「方案」）、`../011-design-principles.zh.md`（下称「原则」）、`../tasks-view-architecture.zh.md`（下称「任务视图」，PR #26）、`../021-ux-redesign.zh.md`（下称「界面重构」，提案）· 本文只做**任务分解**，不重复方案里的取舍论证
 > 日期：2026-11-07；重评估 2026-11-08 · 状态：执行中；任务状态、PR 与验收证据见 [TRACKING.zh.md](TRACKING.zh.md)
 
 
@@ -513,6 +513,7 @@ graph LR
 - **交付**：E0–E3 清单（每个默认 UI 元素归一层、替代关系、注意力成本）；主会话/结果卡/审批行 E0 文案；任务视图与任务详情 E1；管理面板 Trigger/Eval/Execution 与事件栏 E2；Session/日志 E3；事件栏首次自动打开改为设置项、稳定期默认关闭；计划树降为 E2 回退。
 - **验收**：C1.1/C2.1/C2.2/C2.4 截图走查；默认面无 `worker-`/`Assignment`/Session id；`tests/panel-*.spec.tsx` 覆盖自动打开默认值；每个新增默认 UI 在 PR 写明注意力成本与替代项；10 秒测试记录。
 - **估时**：4 人日。**依赖**：T5-01（E0 词汇）、T3-09（E1 任务视图）、X-09（入口三区，未开始）。**回退**：设置项 + feature flag；只改默认可见性，不删 E2 入口与记录。
+- **设计输入（提案）**：[界面重构](../021-ux-redesign.zh.md) 把同一批 E0–E3 原则扩到整个面板默认面（主 Agent 入口、任务视图、任务层级、通知浮层/抽屉、运维进设置），并附可交互原型与前后截图。本任务已落地的默认面收紧与该方向一致，但提案中任务视图/任务关系/通知聚合的完整形态尚未实现；落地时按提案 §11 的 Phase 0/1 拆 PR，Phase 2 的宿主增强见提案 §8，不在本任务承诺内。
 - **泳道**：Platform。
 
 ### T5-03 群组派生（上下文群组维度）· Connector + Runtime · 3 人日
