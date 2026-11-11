@@ -530,7 +530,7 @@ graph LR
 - **验收**：`tests/context-assembly.spec.ts` 覆盖无群组、无子 Ticket、离开群组、轻量 Ticket、约束 > 默认、同强度比 scope、约束冲突升级、worker 读不到别 Ticket；快照可审查；C3.3/C3.7。
 - **估时**：6 人日。**依赖**：T5-03、T5-01、T3-10（子 Ticket 维度）。**回退**：装配层 feature flag，关闭回现有 prompt。
 - **泳道**：Runtime。
-- **实现状态（2026-11-11，PR #54）**：`packages/dsh/src/app/context-assembly.ts` 在 workspace prepare 前装配 organization/user/group/task/subtask/agent 六维：存在性优先、约束先于 scope、同强度冲突/必需维度缺失/来源不可读时记录 blocked 快照并以 question 请人处理；首条 worker 消息带 `context_assembly`，每个 Assignment 在 `Assignment.context` 保留无正文的只读快照，`context` span 记录维度/来源/hash/冲突 key。子 Ticket 只读根并平铺继承根的任务/用户/群组，轻量 Ticket 只有 task。`tests/context.spec.ts` 18 例、`tests/runtime.spec.ts`（含 blocked launch、contentHash 去重/变更、快照无正文 trace）与 `tests/runtime-concurrency.spec.ts`（子工单首条消息继承）已覆盖；无 schema/迁移、无授权聚合，bundle 预算按新增装配器上调。独立 review 结论待贴到 PR #54。
+- **实现状态（2026-11-11，PR #54）**：`packages/dsh/src/app/context-assembly.ts` 在 workspace prepare 前装配 organization/user/group/task/subtask/agent 六维：存在性优先、约束先于 scope、同强度冲突/必需维度缺失/来源不可读时记录 blocked 快照并以 question 请人处理；首条 worker 消息带 `context_assembly`，每个 Assignment 在 `Assignment.context` 保留无正文的只读快照，`context` span 记录维度/来源/hash/冲突 key。子 Ticket 只读根并平铺继承根的任务/用户/群组，轻量 Ticket 只有 task。`tests/context.spec.ts` 18 例、`tests/runtime.spec.ts`（含 blocked launch、contentHash 去重/变更、快照无正文 trace）与 `tests/runtime-concurrency.spec.ts`（子工单首条消息继承）已覆盖；无 schema/迁移、无授权聚合，bundle 预算按新增装配器上调。独立 review 结论见 PR #54 的 review 评论。
 
 ### T5-05 观察→总结→进化→验证闭环（离线）· Platform · 8 人日
 
