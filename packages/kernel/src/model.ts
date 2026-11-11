@@ -122,6 +122,8 @@ interface Received { source?: string; scope?: Record<string, unknown>; row?: str
  * - `listed`: accepted before Mandates recorded their basis, from a sender who must still be on the list; `authority` is
  *   what an earlier version recorded instead.
  * - `local`: a built-in local Source (the conversation) whose authenticated user is explicit by definition and has no roster.
+ * - `humanIdentity`: a Source-declared human action on an account shared with the agent, such as a decisive review or a
+ *   marked comment on GitHub; explicit while the Source still declares it and its switch stays on.
  * `sender` names the allowed sender at acceptance time, and `rules` the rules an assessment matched.
  */
 export type MandateBasis = Received & { sender?: string; rules?: string[] } & (
@@ -133,6 +135,8 @@ export type MandateBasis = Received & { sender?: string; rules?: string[] } & (
   | { via: 'bot'; addressed?: 'mention' | 'direct'; observation: { mode: AcceptMode } }
   /** A built-in local Source's authenticated user; explicit without a roster. */
   | { via: 'local'; addressed?: 'mention' | 'direct' }
+  /** A person on an account shared with the agent, proved by the Source's evidence; explicit without a roster. */
+  | { via: 'humanIdentity'; addressed?: 'mention' | 'direct' }
 )
 
 /** Immutable authorization produced by an accept decision; execution is bounded by it and it never changes. */

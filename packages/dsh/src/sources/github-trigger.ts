@@ -59,19 +59,46 @@ function commentText(comment: GithubComment, kind: 'conversation' | 'inline' | '
 }
 export const mentions = (text: string, login: string): boolean =>
   new RegExp(`(?:^|[^a-zA-Z0-9_@])@${escapeRegExp(login)}(?![a-zA-Z0-9_-])`, 'i').test(text)
-const author = (user: { login: string; type?: string }, agent: string) =>
-  ({ actor: { source: SOURCE, id: user.login }, human: isHumanLogin(user) && !sameName(user.login, agent) })
-/** Builds a trigger for a comment or review; text is empty for a bodyless comment or a `COMMENTED` review without a body. */
-export function commentTrigger(comment: GithubComment, ref: PullRef, kind: 'conversation' | 'inline' | 'review', agent: string): Trigger {
+/** Comment prefixes a person uses on an account shared with the agent, so the Source does not take them as agent output. */
+export const HUMAN_MARKERS = ['[人]', 'HUMAN:'] as const
+/** Review states only a person may submit on the shared account; the agent submits `COMMENTED` reviews. */
+export const HUMAN_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED'])
+/** True when the body starts exactly with `[人]` or `HUMAN:`. */
+export const humanMark = (body: string | null | undefined): boolean =>
+  !!body && HUMAN_MARKERS.some(marker => body.startsWith(marker))
+/**
+ * The human evidence of a comment on an account shared with the agent: a decisive review state, or the mark at the start
+ * of a body. A decisive review is ignored on a pull request the same account authored, because GitHub itself refuses a
+ * person's approval there; such a record is agent output rather than a human decision.
+ */
+export function humanSignal(comment: GithubComment, kind: 'conversation' | 'inline' | 'review',
+  prAuthor?: string): 'review' | 'mark' | undefined {
+  if (kind === 'review' && HUMAN_REVIEW_STATES.has(comment.state ?? '')) {
+    return prAuthor && sameName(prAuthor, comment.user.login) ? undefined : 'review'
+  }
+  return humanMark(comment.body) ? 'mark' : undefined
+}
+const author = (user: { login: string; type?: string }, human: boolean) =>
+  ({ actor: { source: SOURCE, id: user.login }, human: isHumanLogin(user) && human })
+/**
+ * Builds a trigger for a comment or review; text is empty for a bodyless comment or a `COMMENTED` review without a body.
+ * With `sharedAccount`, the agent's own login also acts for a person through the two signals of `humanSignal`; the mark
+ * addresses the agent, so it needs no mention.
+ */
+export function commentTrigger(comment: GithubComment, ref: PullRef, kind: 'conversation' | 'inline' | 'review', agent: string,
+  sharedAccount = false): Trigger {
   const at = comment.updated_at ?? comment.submitted_at ?? comment.created_at ?? new Date().toISOString()
   const version = comment.updated_at ?? comment.submitted_at ?? ''
   const id = key('github-comment', comment.html_url ?? `github:${ref.number}`, String(comment.id), version)
-  return { id, source: SOURCE, threads: [{ source: SOURCE, id: String(ref.number) }], ...author(comment.user, agent), at,
+  const own = sameName(comment.user.login, agent)
+  const signal = sharedAccount && own ? humanSignal(comment, kind, ref.prAuthor) : undefined
+  return { id, source: SOURCE, threads: [{ source: SOURCE, id: String(ref.number) }], ...author(comment.user, !own || !!signal), at,
     text: commentText(comment, kind),
-    ...(mentions(comment.body ?? '', agent) ? { addressed: 'mention' as const } : {}),
+    ...(signal === 'mark' || mentions(comment.body ?? '', agent) ? { addressed: 'mention' as const } : {}),
     channel: githubChannel(ref.number, comment.html_url ?? undefined),
     ...(comment.html_url ?? ref.url ? { url: comment.html_url ?? ref.url } : {}),
     meta: { number: ref.number, isPr: ref.isPr, ...(ref.prAuthor ? { prAuthor: ref.prAuthor } : {}), commentId: comment.id, kind,
+      ...signal ? { humanIdentity: signal } : {},
       ...comment.path ? { path: comment.path, line: comment.line ?? comment.original_line ?? null } : {},
       ...comment.in_reply_to_id ? { inReplyTo: comment.in_reply_to_id } : {} } }
 }
@@ -82,7 +109,7 @@ export function commentTrigger(comment: GithubComment, ref: PullRef, kind: 'conv
 export function issueTrigger(issue: Opened, agent: string): Trigger {
   const body = issue.body ?? ''
   return { id: key('github-issue', String(issue.number)), source: SOURCE,
-    threads: [{ source: SOURCE, id: String(issue.number) }], ...author(issue.user, agent), at: issue.created_at,
+    threads: [{ source: SOURCE, id: String(issue.number) }], ...author(issue.user, !sameName(issue.user.login, agent)), at: issue.created_at,
     text: `${issue.title}\n\n${body}`,
     ...(mentions(body, agent) ? { addressed: 'mention' as const } : {}),
     channel: githubChannel(issue.number, issue.html_url), url: issue.html_url, meta: { number: issue.number, isPr: false, kind: 'issue' } }

@@ -21,6 +21,12 @@ export interface SourceScope {
   scope(input: { source: string; meta: Record<string, unknown> }): ScopeResult
   /** Whether `source` is a built-in local Source whose authenticated user needs no Policy roster. */
   trusted?(source: string): boolean
+  /**
+   * Whether `source` declares this Trigger a person writing through an account it shares with the agent, under the
+   * Source's current configuration. The Source's adapter decides what evidence counts; the Policy admits such a Trigger
+   * as an explicit request and re-checks this declaration before a resume or an action.
+   */
+  humanIdentity?(source: string, meta: Record<string, unknown>): boolean
 }
 
 /** Versioned rules; `gate` decides who may originate work. Source scope is not part of Policy. */

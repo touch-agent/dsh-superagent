@@ -5,7 +5,7 @@ import { sameName } from '../infra/text.ts'
 import { GithubAccountsSchema } from '../deployment.ts'
 import { CliError, validItems, type Tally } from '../infra/commands.ts'
 import { ciCounts, ciFact, ciFailures, ciSummary, githubThreadContext, pullChecks } from './github-read.ts'
-import { branchCiTrigger, ciTrigger, commentTrigger, CommentSchema, githubAddress, issueTrigger, IssueSchema, pullTrigger, SOURCE }
+import { branchCiTrigger, ciTrigger, commentTrigger, CommentSchema, githubAddress, humanSignal, issueTrigger, IssueSchema, pullTrigger, SOURCE }
   from './github-trigger.ts'
 import { githubLink, probeGithub, sendGithub, withdrawGithub } from './github-channel.ts'
 import type { GithubComment, PullRef } from './github-trigger.ts'
@@ -26,7 +26,12 @@ const NotificationSchema = z.looseObject({
 const GithubConfigSchema = GithubAccountsSchema.extend({ pollSeconds: z.number().int().min(60).max(3600).default(60),
   failuresBeforeError: z.number().int().min(1).max(20).default(3),
   observeIssues: z.boolean().default(false), observePulls: z.boolean().default(false), observeComments: z.boolean().default(false),
-  observeCi: z.boolean().default(false) }).strict()
+  observeCi: z.boolean().default(false),
+  /**
+   * Treat a person's actions on the agent's own account as human. Off by default: every event from that login is agent
+   * output. On, only a decisive review state or a marked comment is human; the rest stays agent output.
+   */
+  humanIdentity: z.boolean().default(false) }).strict()
 export type GithubConfig = z.infer<typeof GithubConfigSchema>
 const OBSERVED = { issues: 'observeIssues', pulls: 'observePulls', comments: 'observeComments', ci: 'observeCi' } as const
 type Scope = keyof typeof OBSERVED
@@ -63,7 +68,9 @@ export const githubManifest: SourceManifest = {
     { key: 'observeComments', type: 'switch', label: { zh: '接收仓库里的评论', en: 'Receive comments in the repository' },
       hint: { zh: '打开后，Issue 和 PR 上没有 @ 智能体的评论和代码评论也会收到，由策略的接收表决定是否成为候选。', en: 'Comments and review comments on Issues and PRs that do not mention the agent are received too, and the Policy\'s admission table decides whether they become candidates.' } },
     { key: 'observeCi', type: 'switch', label: { zh: '接收默认分支的 CI', en: 'Receive the default branch\'s CI' },
-      hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.' } }],
+      hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.' } },
+    { key: 'humanIdentity', type: 'switch', label: { zh: '区分同一账号上的人工动作', en: 'Distinguish human actions on the agent account' },
+      hint: { zh: '打开后，智能体账号上提交的 APPROVED / CHANGES_REQUESTED review 视为人的批准或打回；正文以 [人] 或 HUMAN: 开头的评论视为人的指令，不需要 @ 智能体。该账号其余评论、COMMENTED review、Issue 和 PR 正文仍视为智能体的输出或讨论，不产生工单。智能体自己始终只提交 COMMENTED review，绝不 approve。关闭则恢复原行为：该账号的消息全部忽略。', en: 'On the agent\'s account, a submitted APPROVED or CHANGES_REQUESTED review is a person\'s decision, and a comment whose body starts with [人] or HUMAN: is a person\'s instruction that needs no mention. The account\'s other comments, COMMENTED reviews, and Issue or PR bodies remain agent output or discussion and start no Ticket. The agent itself always submits COMMENTED reviews and never approves. Turn this off to restore the old behavior: every message from the account is ignored.' } }],
   health: ['github'],
   limits: { pollSeconds: 60 },
 }
@@ -75,6 +82,8 @@ export const githubAdapter: SourceAdapter<GithubConfig> = {
     const row = scopeOf(meta)
     return { listened: true, observed: row !== undefined && config[OBSERVED[row]], ...row ? { row } : {} }
   },
+  // A person's decisive review or marked comment on the shared login; the switch can be turned off at any time.
+  humanIdentity: ({ meta }, config) => config.humanIdentity && meta.humanIdentity !== undefined,
   channel: { send: sendGithub, probe: probeGithub, withdraw: withdrawGithub, link: githubLink },
   threadContext: githubThreadContext,
   // The repository is the shared space of every Issue, PR and review Thread in it.
@@ -190,8 +199,9 @@ const ListedSchema = CommentSchema.extend({ issue_url: z.string().nullish(), pul
 /** Repository-wide event streams; GitHub's `/issues` endpoint includes PRs, and `/issues/comments` covers issue and PR conversation comments (excluding inline review comments). */
 const STREAMS = [
   { id: 'issues', observed: (config: GithubConfig) => config.observeIssues || config.observePulls, path: 'issues?state=all' },
-  { id: 'comments', observed: (config: GithubConfig) => config.observeComments, path: 'issues/comments?' },
-  { id: 'review-comments', observed: (config: GithubConfig) => config.observeComments, path: 'pulls/comments?' },
+  // A shared account's marked comments are read even when only human identity is on; the reader then keeps only those.
+  { id: 'comments', observed: (config: GithubConfig) => config.observeComments || config.humanIdentity, path: 'issues/comments?' },
+  { id: 'review-comments', observed: (config: GithubConfig) => config.observeComments || config.humanIdentity, path: 'pulls/comments?' },
 ] as const
 /** Polls repository-wide streams (new Issues/PRs, comments, default-branch CI); each stream reads from when it was switched on, resets when switched off, and fails independently. */
 async function pollRepository(ctx: SourceContext, round: Round): Promise<void> {
@@ -242,8 +252,10 @@ async function readStream(ctx: SourceContext, round: Round, id: string, path: st
   for (const item of items) {
     // Stopping mid-stream aborts before advancing the cursor so unread items are retried.
     if (stopped(ctx, round)) throw new Error('The GitHub Source stopped during the poll')
-    if (sameName(item.user.login, login)) continue
+    const own = sameName(item.user.login, login)
     if (id === 'issues') {
+      // An Issue or PR the agent opened is its own output, never a person's action.
+      if (own) continue
       const issue = IssueSchema.safeParse(item)
       const pr = issue.success && !!issue.data.pull_request
       if (!issue.success || !fresh(issue.data.created_at, pr ? 'pulls' : 'issues')) continue
@@ -253,9 +265,14 @@ async function readStream(ctx: SourceContext, round: Round, id: string, path: st
     }
     const number = Number(/\/(?:issues|pulls)\/(\d+)$/.exec((id === 'comments' ? item.issue_url : item.pull_request_url) ?? '')?.[1])
     if (!number || !fresh(item.updated_at ?? item.created_at, 'comments')) continue
+    const kind = id === 'comments' ? 'conversation' : 'inline'
+    // A shared account contributes only its human signals; with comments unobserved, other comments stay unread.
+    const signal = own && config.humanIdentity ? humanSignal(item, kind) : undefined
+    if (own && !signal) continue
+    if (!config.observeComments && !signal) continue
     const isPr = id === 'review-comments' || /\/pull\//.test(item.html_url ?? '')
     const ref = { number, isPr, ...item.html_url ? { url: item.html_url } : {} }
-    const trigger = commentTrigger(item, ref, id === 'comments' ? 'conversation' : 'inline', login)
+    const trigger = commentTrigger(item, ref, kind, login, config.humanIdentity)
     if (trigger.text) await ctx.receive(trigger)
   }
   const newest = Math.max(...items.map(item => Date.parse(item.updated_at ?? '')).filter(Number.isFinite))
@@ -401,6 +418,7 @@ function pull(ctx: SourceContext, round: Round, number: number): Promise<Pull> {
 }
 async function intakeComments(ctx: SourceContext, ref: PullRef, since: string, round: Round): Promise<void> {
   const commands = ctx.commands.withSignal(round.signal)
+  const config = ctx.config<GithubConfig>(SOURCE)
   const { login } = ctx.deployment.github
   const kinds = ref.isPr ? ['conversation', 'inline', 'review'] as const : ['conversation'] as const
   for (const kind of kinds) {
@@ -412,9 +430,12 @@ async function intakeComments(ctx: SourceContext, ref: PullRef, since: string, r
       if (stopped(ctx, round)) throw new Error('The GitHub Source stopped during the poll')
       const timestamp = Date.parse(comment.updated_at ?? comment.submitted_at ?? comment.created_at ?? '')
       if (!Number.isFinite(timestamp) || timestamp < Date.parse(since)) continue
-      if (sameName(comment.user.login, login)) continue
+      // The agent's own output is skipped unless the shared account supplies one of the two human signals.
+      const signal = sameName(comment.user.login, login) && config?.humanIdentity
+        ? humanSignal(comment, kind, ref.prAuthor) : undefined
+      if (sameName(comment.user.login, login) && !signal) continue
       // A review decision without a body still reaches the ticket: a worker may be waiting for that approval.
-      const trigger = commentTrigger(comment, ref, kind, login)
+      const trigger = commentTrigger(comment, ref, kind, login, config?.humanIdentity ?? false)
       if (trigger.text) await ctx.receive(trigger)
     }
   }

@@ -5,7 +5,7 @@ import { backfillChat, consumerRetry, feishuKind, feishuTriggerId, feishuRef, fe
 import { KV } from '@superagent/dsh/kv.ts'
 import { apply as applyFeishu, pollThreads as pollFeishuThreads } from '@superagent/dsh/sources/feishu.ts'
 import { runFeishu } from '@superagent/dsh/sources/feishu-loops.ts'
-import { commentTrigger, githubAddress, githubChannel, issueTrigger, type GithubComment, type GithubIssue } from '@superagent/dsh/sources/github-trigger.ts'
+import { commentTrigger, githubAddress, githubChannel, issueTrigger, type GithubComment, type GithubIssue, type PullRef } from '@superagent/dsh/sources/github-trigger.ts'
 import { claimPull, observePull, pullEndNotices, pullOf, ticketBranch, type Pull } from '@superagent/dsh/sources/github-pull.ts'
 import { ciCounts, ciFact, ciSummary } from '@superagent/dsh/sources/github-read.ts'
 import { apply as applyGithub, githubKind, pollFailure, pollRound } from '@superagent/dsh/sources/github.ts'
@@ -341,6 +341,35 @@ describe('github source', () => {
     expect(commentTrigger({ id: 9, body: '@Agent-Bot please fix', user: { login: 'alice', type: 'User' } }, { number: 7, isPr: true }, 'conversation', 'agent-bot')).toMatchObject({ human: true, addressed: 'mention' })
     expect(commentTrigger({ id: 10, body: 'mail@agent-bot.example', user: { login: 'alice', type: 'User' } }, { number: 7, isPr: true }, 'conversation', 'agent-bot')).not.toHaveProperty('addressed')
     expect(commentTrigger({ id: 11, body: 'pushed', user: { login: 'Agent-Bot', type: 'User' } }, { number: 7, isPr: true }, 'conversation', 'agent-bot').human).toBe(false)
+  })
+  it('reads a person\'s review state or mark on the shared agent account, and keeps every other self event automated', () => {
+    const self = (fields: Partial<GithubComment>, kind: 'conversation' | 'inline' | 'review' = 'conversation',
+      ref: PullRef = { number: 7, isPr: true }) => commentTrigger({ id: 20, user: { login: 'Agent-Bot', type: 'User' },
+      updated_at: '2026-09-01T00:00:00Z', ...fields }, ref, kind, 'agent-bot', true)
+    // The review state is the decision, with or without a body.
+    expect(self({ state: 'APPROVED', submitted_at: '2026-09-01T00:00:00Z' }, 'review'))
+      .toMatchObject({ human: true, meta: { humanIdentity: 'review' } })
+    expect(self({ state: 'CHANGES_REQUESTED', body: 'Keep the margin' }, 'review'))
+      .toMatchObject({ human: true, meta: { humanIdentity: 'review' } })
+    // The mark starts the body and counts as addressing the agent; either marker works in every comment kind.
+    expect(self({ body: '[人] fix the login' }))
+      .toMatchObject({ human: true, addressed: 'mention', meta: { humanIdentity: 'mark' } })
+    expect(self({ body: 'HUMAN: fix the login', state: 'COMMENTED' }, 'review'))
+      .toMatchObject({ human: true, addressed: 'mention', meta: { humanIdentity: 'mark' } })
+    expect(self({ body: '[人] nit', path: 'src/a.ts', line: 2 }, 'inline'))
+      .toMatchObject({ human: true, addressed: 'mention', meta: { humanIdentity: 'mark', kind: 'inline' } })
+    // Everything else stays agent output: no mark, a leading space, a bodyless COMMENTED review.
+    expect(self({ body: 'done' }).human).toBe(false)
+    expect(self({ body: ' [人] fix' }).human).toBe(false)
+    expect(self({ body: 'done', state: 'COMMENTED' }, 'review').human).toBe(false)
+    // GitHub refuses a decision on a PR the same account authored; a record that still carries one is not human.
+    expect(self({ state: 'APPROVED' }, 'review', { number: 7, isPr: true, prAuthor: 'agent-bot' }).human).toBe(false)
+    // The switch is the rollback: without it, the same signals are automated output.
+    expect(commentTrigger({ id: 21, body: '[人] fix', user: { login: 'Agent-Bot', type: 'User' } },
+      { number: 7, isPr: true }, 'conversation', 'agent-bot').human).toBe(false)
+    // A bot stays a bot even with both human signals; the existing bot list still governs its candidates.
+    expect(commentTrigger({ id: 22, state: 'APPROVED', body: '[人] fix', user: { login: 'ci[bot]', type: 'Bot' } },
+      { number: 7, isPr: true }, 'review', 'agent-bot', true)).toMatchObject({ human: false })
   })
   it('reads the address of an Issue, a PR or a review comment of the repository, and nothing else', () => {
     expect(githubAddress('https://api.github.com/repos/acme/widgets/pulls/9', 'acme/widgets')).toEqual({ number: 9, pr: true })
@@ -1030,7 +1059,7 @@ it('reports GitHub as failing only after the configured number of consecutive fa
   expect(pollFailure(2, 3, eof)).toBeUndefined()
   expect(pollFailure(3, 3, eof)).toEqual({ state: 'error', detail: '3 consecutive failed polls; last: Error: Get "https://api.github.com/x": EOF', code: 'pollFailures', values: { count: '3', error: 'Error: Get "https://api.github.com/x": EOF' } })
   expect(githubKind.schema.parse({})).toEqual({ repository: '', cli: '', pollSeconds: 60, failuresBeforeError: 3, observeIssues: false,
-    observePulls: false, observeComments: false, observeCi: false })
+    observePulls: false, observeComments: false, observeCi: false, humanIdentity: false })
 })
 describe('feishu event consumer', () => {
   let dir: string
@@ -1270,6 +1299,65 @@ describe('observing the GitHub repository', () => {
     await pollRound(h)
     expect(h.receive.mock.calls.map(([trigger]) => [trigger.meta.number, trigger.meta.isPr, trigger.meta.kind, trigger.human]))
       .toEqual([[7, false, 'conversation', true], [9, true, 'conversation', false], [9, true, 'inline', true]])
+    h.store.close()
+  })
+  it('takes in a shared account\'s decisive reviews and marked comments as explicit human actions, and skips its other output', async () => {
+    const h = host()
+    observe(h, { humanIdentity: true })
+    h.store.threads.save({ key: 'github:7', ref: { source: 'github', id: '7' }, createdAt: '2026-09-01T00:00:00Z',
+      lastAt: new Date().toISOString(), subscriptions: ['t'], correlated: [], pending: [], meta: { number: 7, isPr: true, title: 'Fix the margin' } })
+    const self = (id: number, fields: Record<string, unknown>) => ({ id, user: { login: 'agent-bot', type: 'User' },
+      created_at: '2026-09-02T00:0' + id + ':00Z', updated_at: '2026-09-02T00:0' + id + ':00Z', ...fields })
+    github(h, { 'pulls/7': openPull(7), 'issues/7/comments': [
+      self(1, { body: '[人] please fix the login' }), self(2, { body: 'pushed a fix' })],
+    'pulls/7/reviews': [
+      self(3, { state: 'APPROVED', commit_id: 'abc123', submitted_at: '2026-09-02T00:03:00Z' }),
+      self(4, { state: 'COMMENTED', commit_id: 'abc123', body: '', submitted_at: '2026-09-02T00:04:00Z' }),
+      self(5, { state: 'CHANGES_REQUESTED', commit_id: 'abc123', body: 'needs work', submitted_at: '2026-09-02T00:05:00Z' })] })
+    await pollGithubThreads(h)
+    expect(h.receive.mock.calls.map(([trigger]) => trigger)).toEqual([
+      expect.objectContaining({ human: true, addressed: 'mention', text: '[人] please fix the login', meta: expect.objectContaining({ humanIdentity: 'mark' }) }),
+      expect.objectContaining({ human: true, text: 'APPROVED review of commit abc123', meta: expect.objectContaining({ humanIdentity: 'review' }) }),
+      expect.objectContaining({ human: true, text: 'CHANGES_REQUESTED review of commit abc123\n\nneeds work',
+        meta: expect.objectContaining({ humanIdentity: 'review' }) })])
+    expect(await h.receive.mock.results[0]!.value).toBe('stored')
+    expect(h.engine.candidate(h.receive.mock.calls[0]![0].id)?.strength).toBe('explicit')
+    // Reading the approvals again produces the same Trigger IDs, so the Engine keeps one decision, not another ticket.
+    const ids = h.receive.mock.calls.map(([trigger]) => trigger.id)
+    h.store.set('github-cursor:7', '2026-09-01T00:00:00.000Z')
+    await pollGithubThreads(h)
+    expect(h.receive.mock.calls.slice(3).map(([trigger]) => trigger.id)).toEqual(ids)
+    for (const index of [3, 4, 5]) expect(await h.receive.mock.results[index]!.value).toBe('duplicate')
+    h.store.close()
+  })
+  it('keeps a shared account\'s review decisions and marks ignored while its switch is off', async () => {
+    const h = host()
+    observe(h, {})
+    h.store.threads.save({ key: 'github:7', ref: { source: 'github', id: '7' }, createdAt: '2026-09-01T00:00:00Z',
+      lastAt: new Date().toISOString(), subscriptions: ['t'], correlated: [], pending: [], meta: { number: 7, isPr: true, title: 'Fix the margin' } })
+    github(h, { 'pulls/7': openPull(7), 'issues/7/comments': [{ id: 1, body: '[人] fix', user: { login: 'agent-bot' },
+      created_at: '2026-09-02T00:01:00Z', updated_at: '2026-09-02T00:01:00Z' }],
+    'pulls/7/reviews': [{ id: 2, state: 'APPROVED', user: { login: 'agent-bot' }, submitted_at: '2026-09-02T00:02:00Z' }] })
+    await pollGithubThreads(h)
+    expect(h.receive).not.toHaveBeenCalled()
+    h.store.close()
+  })
+  it('reads a shared account\'s marked comment from the repository comment stream when only human identity is on', async () => {
+    const h = host()
+    observe(h, { humanIdentity: true })
+    h.store.set('github-since', at(-24))
+    for (const stream of ['comments', 'review-comments']) h.store.set(`github-stream:${stream}`, { since: at(0), started: { comments: at(0) } })
+    const comment = (id: number, user: { login: string; type?: string }, body: string) => ({ id, body, user, created_at: at(1),
+      updated_at: at(1), issue_url: 'https://api.github.com/repos/acme/widgets/issues/7',
+      html_url: `https://github.com/acme/widgets/issues/7#issuecomment-${id}` })
+    repository(h, { comments: [comment(1, { login: 'agent-bot', type: 'User' }, '[人] fix the login'),
+      comment(2, { login: 'agent-bot', type: 'User' }, 'pushed a fix'),
+      comment(3, { login: 'ci[bot]', type: 'Bot' }, 'HUMAN: approve this')] })
+    await pollRound(h)
+    expect(h.receive).toHaveBeenCalledTimes(1)
+    const trigger = h.receive.mock.calls[0]![0]
+    expect(trigger).toMatchObject({ human: true, addressed: 'mention', text: '[人] fix the login', meta: { humanIdentity: 'mark' } })
+    expect(h.engine.candidate(trigger.id)?.strength).toBe('explicit')
     h.store.close()
   })
   it('fails the round for a stream whose read fails, keeps its cursor, and still reads the other streams', async () => {

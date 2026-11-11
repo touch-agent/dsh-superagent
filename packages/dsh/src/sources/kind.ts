@@ -107,6 +107,12 @@ export interface SourceAdapter<C extends Record<string, unknown> = Record<string
   facts?(deployment: Deployment | undefined): Record<string, Localized | string>
   /** Listening rule for a trigger (or recorded Mandate basis) of this kind; kinds without `scope` listen to everything they produce and observe none of it. */
   scope?(input: { meta: Record<string, unknown> }, config: C): ScopeResult
+  /**
+   * Whether a Trigger is a person writing through an account shared with the agent, under `config`. A kind without this
+   * hook has no such signal. The Policy admits the Trigger as an explicit request and re-checks the hook before a resume
+   * or an action, so turning the configuration off revokes the Mandate at its next check.
+   */
+  humanIdentity?(input: { meta: Record<string, unknown> }, config: C): boolean
   /** Outbound reply adapter; kinds without `channel` produce no replies or channel checks. */
   channel?: SourceChannel<C>
   /** Bounded context reader for assessments; assessments of a kind without `threadContext` read none. */

@@ -297,6 +297,10 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
     if (current && !current.listened) return false
     // The conversation's authenticated local user stays explicit while the built-in Source exists.
     if (basis.via === 'local') return !!source && (sources.trusted?.(source) ?? false)
+    // A shared account stays a person only while the Source still declares the same evidence under its configuration.
+    if (basis.via === 'humanIdentity') {
+      return !!source && !!basis.scope && (sources.humanIdentity?.(source, basis.scope) ?? false)
+    }
     const rulesOn = (rules: string[] | undefined) => (rules ?? []).every(id => settings.policy.rules.some(rule => rule.enabled && rule.id === id))
     // Explicit follow-ups remain valid; inferred follow-ups require auto mode and enabled matched rules.
     if (basis.via === 'followup') return mandate.strength === 'explicit' || (mode === 'auto' && rulesOn(basis.rules))
@@ -332,6 +336,14 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
         const own = sources.scope({ source: trigger.source, meta: trigger.meta })
         if (!own.listened) return { admissible: false, reason: own.reason }
         return { admissible: true, strength: 'explicit', basis: { source: trigger.source, scope: trigger.meta, via: 'local',
+          ...trigger.addressed ? { addressed: trigger.addressed } : {} } }
+      }
+      // A Source may declare a person on an account it shares with the agent; the declaration is revalidated later.
+      if (trigger.meta.humanIdentity !== undefined) {
+        const own = sources.scope({ source: trigger.source, meta: trigger.meta })
+        if (!own.listened) return { admissible: false, reason: own.reason }
+        if (!sources.humanIdentity?.(trigger.source, trigger.meta)) return { admissible: false, reason: 'not_human' }
+        return { admissible: true, strength: 'explicit', basis: { source: trigger.source, scope: trigger.meta, via: 'humanIdentity',
           ...trigger.addressed ? { addressed: trigger.addressed } : {} } }
       }
       const allowed = allowedSender(settings, trigger.actor)
