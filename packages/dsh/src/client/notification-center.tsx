@@ -81,7 +81,7 @@ function NoticeBody({ notice, compact = false }: { notice: Notice; compact?: boo
     <h3 className="dt-notice-title">{notice.title}</h3>
     <p className="dt-notice-what">{notice.what}</p>
     <p className="dt-notice-next"><strong>{t('taskHierarchyNext')}</strong> {notice.next}</p>
-    {!compact && <p className="dt-notice-consequence">{notice.consequence}</p>}
+    <p className="dt-notice-consequence">{notice.consequence}</p>
     {!!notice.details?.length && <div className="dt-notice-details">
       <button type="button" className="dt-textlink dt-more-link" aria-expanded={details} onClick={() => setDetails(value => !value)}>
         {details ? t('noticeDetailsHide') : t('noticeDetails', { count: notice.details.length })}</button>
