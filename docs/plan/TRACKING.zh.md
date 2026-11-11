@@ -73,7 +73,7 @@
 | X-02 | 未开始 | — | — | 2026-11-08 |
 | X-03 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/44 | `tests/e2e/golden-path.e2e.ts`；`pnpm test:e2e`；CI `e2e` workflow | 2026-11-10 |
 | X-04 | 未开始 | — | — | 2026-11-08 |
-| X-05 | 未开始 | — | — | 2026-11-08 |
+| X-05 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/62 | `tests/docs.spec.ts` 新增 `SourceManifest` 字段与 `PUBLIC_ROUTES`/Management API 表的一致性检查，缺失项会指名字段或路由与应改文件；`pnpm typecheck`、`tests/docs.spec.ts`、全量 `pnpm test`（本机 `GIT_CONFIG_GLOBAL` 环境下的 2 个既有失败去除该变量后通过）、`pnpm build`、`pnpm check:size` 通过；独立 review 见 PR #62 review 评论 | 2026-11-11 |
 | X-06 | 未开始 | — | — | 2026-11-08 |
 | X-07 | 已完成 | — | `packages/dsh` 与根 meta 切包；`PLUGIN-PACKAGING.zh.md` §3 | 2026-11-08 |
 | X-08 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/20 | `pnpm test:install-e2e`；临时 `DSH_HOME` 安装/卸载 | 2026-11-08 |
