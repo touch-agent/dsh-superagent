@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { Assignment, Ticket } from '@superagent/kernel'
+import type { Assignment, ProfileSnapshot, Ticket } from '@superagent/kernel'
 import { Store } from '@superagent/dsh/app/store.ts'
 import { taskBoard, taskDetail } from '@superagent/dsh/app/tasks.ts'
 import type { ViewHost } from '@superagent/dsh/app/views/records.ts'
@@ -13,6 +13,15 @@ afterEach(() => { rmSync(directory, { recursive: true, force: true }) })
 
 const host = (store: Store): ViewHost => ({ store, sources: { kind: () => undefined } as never, links: () => ({}) as never })
 const at = '2026-09-22T00:00:00Z'
+const docsProfile: ProfileSnapshot = {
+  id: 'docs-owner', revision: 2, hash: 'sha256:docs', role: 'worker',
+  selection: { by: 'code', source: 'builtin', reason: 'test', moving: false, valid: true }, model: { mode: 'inherit' },
+  tools: [], toolsMode: 'inherit', prompt: { mode: 'live', revision: 2, hash: 'sha256:prompt' },
+  effective: { promptRevision: 2, promptHash: 'sha256:prompt', toolsHash: 'sha256:tools',
+    model: { provider: 'host-default', model: 'host-default' }, dshVersion: 'test', policyVersion: 'v', skillsHash: 'sha256:skills',
+    hash: 'sha256:effective' },
+  boundAt: at, reason: 'test',
+}
 const assignment = (id: string, report?: Assignment['report']): Assignment => ({ id, state: report ? 'running' : 'ended', createdAt: at,
   ...report ? {} : { startedAt: at }, ...report ? { startedAt: at, report } : {} })
 const tracked = (id: string, fields: Partial<Ticket> = {}): Ticket => ({
@@ -26,7 +35,8 @@ const seed = (store: Store, tickets: Ticket[]) => { for (const item of tickets) 
 
 it('keeps the board to roots with child counts and loads direct children only on detail', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
-  const root = tracked('root1', { assignments: [assignment('ra', { state: 'progress', summary: 'working', at })] })
+  const root = tracked('root1', { profile: docsProfile,
+    assignments: [assignment('ra', { state: 'progress', summary: 'working', at })] })
   const waiting = child('c1', { assignments: [assignment('c1a', { state: 'waiting', summary: 'waiting on parent', at })] })
   const dropped = child('c2', { ended: { at, by: 'executor', outcome: 'dropped' }, assignments: [assignment('c2a')] })
   const cancelled = child('c4', { ended: { at, by: 'executor', outcome: 'stopped' },
@@ -41,6 +51,8 @@ it('keeps the board to roots with child counts and loads direct children only on
   expect(board.totals).toMatchObject({ tickets: 1, children: 4 })
   expect(board.tasks[0]!.childSummary).toMatchObject({ total: 4, live: 2, waiting: 1, cancelled: 1, orphaned: 1 })
   expect(board.tasks[0]!.children).toBeUndefined()
+  expect(board.tasks[0]!.owner).toEqual({ role: 'owner', profile: { id: 'docs-owner', revision: 2 } })
+  expect(board.tasks[0]!.blocker).toMatchObject({ kind: 'child', count: 2 })
 
   const detail = taskDetail(host(store), 'root1', 1, new Date('2026-09-22T12:00:00Z'))!
   expect(detail.children.map(item => item.id).sort()).toEqual(['c1', 'c2', 'c3', 'c4'])
@@ -49,7 +61,8 @@ it('keeps the board to roots with child counts and loads direct children only on
   expect(byId.get('c1')).toMatchObject({ status: 'idle', depth: 1, parentTicketId: 'root1', parentOwner: { role: 'owner' } })
   expect(byId.get('c2')).toMatchObject({ terminal: 'dropped', status: 'done' })
   expect(byId.get('c4')).toMatchObject({ terminal: 'stopped', status: 'done', delegation: { resolution: { kind: 'cancelled' } } })
-  expect(byId.get('c3')).toMatchObject({ status: 'blocked', delegation: { orphaned: { reason: 'parent gone' } } })
+  expect(byId.get('c3')).toMatchObject({ status: 'blocked', delegation: { orphaned: { reason: 'parent gone' } },
+    parentOwner: { role: 'owner', profile: { id: 'docs-owner', revision: 2 } }, blocker: { kind: 'orphaned' } })
 })
 
 it('gives a person attention for a failed child only when no living ancestor owner can decide it', () => {

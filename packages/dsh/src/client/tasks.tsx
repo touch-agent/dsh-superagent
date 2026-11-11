@@ -7,10 +7,11 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import type { ActivityStatus } from '../app/activity.ts'
 import type { TaskBoardView, TaskGraphBranch, TaskMilestone, TaskNode, TaskView } from '../app/tasks.ts'
 import { Button, Dot, Icon, Pill, SegmentedTabs, Tag, type DotState, type TagTone } from './controls.tsx'
-import { taskViewV1 } from './features.ts'
+import { taskHierarchy, taskViewV1 } from './features.ts'
 import { usePanel } from './provider.tsx'
 import type { Route } from './route.ts'
 import { duration, fullTime, localized, valueLabel, when, type T } from './text.ts'
+import { TaskDetail } from './task-detail.tsx'
 import { TasksViewClient, useTasksView, type TaskSelection } from './tasks-view.ts'
 import { Hint, LoadState, Section } from './widgets.tsx'
 
@@ -51,7 +52,8 @@ export function orderTasks(tasks: readonly TaskView[]): TaskView[] {
   return ordered
 }
 
-const statusLabel = (t: T, status: ActivityStatus): string => t(`activityStatus.${status}`)
+const statusLabel = (t: T, status: ActivityStatus): string => status === 'blocked' ? t('stage.blocked')
+  : status === 'failed' ? t('stage.failed') : t(`activityStatus.${status}`)
 const kindLabel = (t: T, node: TaskNode): string => t(`tasksKind.${node.kind}`)
 
 /** Internal navigation for a Ticket or Thread, and a new tab for a source URL. */
@@ -258,10 +260,10 @@ function TaskGoal({ task, t }: { task: TaskView; t: T }) {
  * Tickets; reviews stay indented below their owner. A child row never opens its own children here: the right pane
  * shows one child layer and deeper levels open on the Ticket page.
  */
-export function TaskList({ tasks, t, filter, selected, expanded, childrenOf, onSelect, onSelectChild, onOpenTask, onOpenEvents, empty }: {
+export function TaskList({ tasks, t, filter, selected, expanded, childrenOf, onSelect, onSelectChild, onOpenTask, onOpenEvents, onOpenDetail, empty }: {
   tasks: readonly TaskView[]; t: T; filter: TaskFilter; selected?: string; expanded?: string
   childrenOf?: (id: string) => readonly TaskView[]; onSelect?: (id: string) => void; onSelectChild?: (root: string, id: string) => void
-  onOpenTask?: (id: string) => void; onOpenEvents?: (id: string) => void; empty?: string
+  onOpenTask?: (id: string) => void; onOpenEvents?: (id: string) => void; onOpenDetail?: (id: string) => void; empty?: string
 }) {
   const shown = orderTasks(tasks).filter(task => matchesTaskFilter(task, filter))
   if (!shown.length) return <p className="dt-hint">{tasks.length ? t('tasksFilterEmpty') : empty ?? t('tasksEmpty')}</p>
@@ -291,6 +293,8 @@ export function TaskList({ tasks, t, filter, selected, expanded, childrenOf, onS
       {selected === task.id && <div className="dt-tasks-detail">
         <TaskGoal task={task} t={t} />
         <span className="dt-hint">{t('tasksChildSelectedHint')}</span>
+        {onOpenDetail && <Button size="sm" variant="primary" icon={<Icon name="queue" size={13} />}
+          onClick={() => onOpenDetail(task.id)}>{t('taskHierarchyOpen')}</Button>}
         {onOpenTask && <Button size="sm" variant="outline" icon={<Icon name="external" size={13} />}
           onClick={() => onOpenTask(task.id)}>{t('tasksOpen')}</Button>}
         {onOpenEvents && <Button size="sm" variant="ghost" onClick={() => onOpenEvents(task.id)}>{t('tasksViewEvents')}</Button>}
@@ -336,6 +340,8 @@ export function TaskList({ tasks, t, filter, selected, expanded, childrenOf, onS
         {selected === task.id && <div className="dt-tasks-detail">
           <TaskGoal task={task} t={t} />
           <span className="dt-hint">{task.form === 'lightweight' ? t('tasksLightweightNote') : t('tasksSelectedHint')}</span>
+          {onOpenDetail && <Button size="sm" variant="primary" icon={<Icon name="queue" size={13} />}
+            onClick={() => onOpenDetail(task.id)}>{t('taskHierarchyOpen')}</Button>}
           {onOpenTask && <Button size="sm" variant="outline" icon={<Icon name="external" size={13} />}
             onClick={() => onOpenTask(task.id)}>{t('tasksOpen')}</Button>}
           {onOpenEvents && <Button size="sm" variant="ghost" onClick={() => onOpenEvents(task.id)}>{t('tasksViewEvents')}</Button>}
@@ -440,7 +446,9 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
   useEffect(() => () => { if (!tasks) store.dispose() }, [store, tasks])
   const snapshot = useTasksView(store)
   const [filter, setFilter] = useState<TaskFilter>('all')
+  const [detailId, setDetailId] = useState<string>()
   const flag = taskViewV1()
+  const hierarchy = taskHierarchy()
   const views = flag ? ['list', 'tickets', ...VIEWS] as const : VIEWS
   const [view, setView] = useState<TasksView>(flag ? 'list' : 'tree')
   const id = useId()
@@ -450,6 +458,13 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
   const selectRoot = (ticket: string) => store.select(selected === ticket ? undefined : { kind: 'ticket', id: ticket, rootId: ticket })
   const selectChild = (root: string, ticket: string) => store.select(selected === ticket ? undefined
     : { kind: 'ticket', id: ticket, rootId: root } satisfies TaskSelection)
+  const openDetail = (ticket: string) => {
+    const root = data?.tasks.find(item => item.id === ticket)?.id ?? rootId ?? ticket
+    store.select({ kind: 'ticket', id: ticket, rootId: root })
+    store.ensureDetail(ticket)
+    setDetailId(ticket)
+  }
+  const detailTask = detailId ? store.taskOf(detailId) : undefined
   if (!data) return <LoadState error={snapshot.error} loading={!snapshot.ready || snapshot.loading} />
   return <>
     {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
@@ -461,14 +476,17 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
         items={views.map(value => ({ value, label: t(`tasksView.${value}`), id: `${id}-${value}`, panelId: `${id}-panel` }))} />
       <span className="dt-hint">{t('tasksGenerated', { time: when(data.generatedAt, t('lang')) })}</span>
     </div>
+    {detailTask && hierarchy ? <TaskDetail task={detailTask} store={store} onBack={() => setDetailId(undefined)}
+      onOpenTicket={ticket => navigate({ page: 'execution', id: ticket })} /> : <>
     {view === 'list' && <TaskFilters t={t} value={filter} onChange={setFilter} tasks={data.tasks} />}
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${view}`}>
       {data.totals.tickets === 0 ? <p className="dt-hint">{t('tasksEmpty')}</p>
         : view === 'list' ? <TaskList tasks={data.tasks} t={t} filter={filter} selected={selected} expanded={rootId}
           childrenOf={ticket => store.detailOf(ticket)?.children ?? []} onSelect={selectRoot} onSelectChild={selectChild}
-          onOpenTask={ticket => navigate({ page: 'execution', id: ticket })} empty={t('tasksEmpty')} />
+          onOpenTask={ticket => navigate({ page: 'execution', id: ticket })} onOpenDetail={hierarchy ? openDetail : undefined}
+          empty={t('tasksEmpty')} />
         : view === 'tickets' ? <TicketTree roots={data.tasks} client={store} />
           : view === 'tree' ? <TreeView board={data} /> : <GraphView board={data} />}
-    </div>
+    </div></>}
   </>
 }

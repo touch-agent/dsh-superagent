@@ -114,7 +114,12 @@ export interface TaskReviewView {
 }
 
 /** How one task node's owner/worker is shown; the internals such as a Session id stay in E2 details. */
-export interface TaskActorView { role: 'owner' | 'worker'; sessionId?: string }
+export interface TaskActorView {
+  role: 'owner' | 'worker'
+  sessionId?: string
+  /** The immutable profile the Ticket bound at accept; a legacy Ticket has none. */
+  profile?: { id: string; revision: number }
+}
 
 /** One accepted, cancelled or failed parent decision on a child Ticket, without the internal Session id. */
 export interface TaskDelegationView {
@@ -127,6 +132,14 @@ export interface TaskDelegationView {
   resolution?: { kind: 'accepted' | 'cancelled' | 'failed'; by: ActorView; at: string; reason?: string }
   dispositions: { decision: string; by: ActorView; at: string; reason?: string }[]
   merge?: { into?: string; resolution: 'merged' | 'escalated' | 'none'; childRevisions: string[]; conflicts: string[]; reason?: string }
+}
+
+/** Why one level is not moving: the latest report, a delivery failure, an orphaned delegation, or children below it. */
+export interface TaskBlockerView {
+  kind: 'blocked' | 'failed' | 'delivery' | 'orphaned' | 'child'
+  detail?: string
+  count?: number
+  at?: string
 }
 
 /** Direct child counts for one node; a projection of child Tickets, not a second stored state. */
@@ -143,6 +156,21 @@ export interface TaskChildSummary {
   accepted: number
   cancelled: number
   unresolved: number
+}
+
+/** The one thing holding a level back, in the order a person reads it: delivery, its own failure, an orphan, sick children. */
+function blockerOf(ticket: Ticket, report: ReturnType<typeof latestReport>, childSummary: TaskChildSummary | undefined): TaskBlockerView | undefined {
+  if (ticket.ended) return undefined
+  if (ticket.delivery) return { kind: 'delivery', detail: markdown(ticket.delivery.error), at: ticket.delivery.at }
+  if (report && (report.state === 'blocked' || report.state === 'failed')) return { kind: report.state,
+    detail: markdown(report.summary?.split('\n')[0] ?? ''), at: report.at }
+  if (ticket.delegation?.orphaned) return { kind: 'orphaned', detail: markdown(ticket.delegation.orphaned.reason ?? ''),
+    at: ticket.delegation.orphaned.at }
+  const sick = (childSummary?.blocked ?? 0) + (childSummary?.failed ?? 0) + (childSummary?.orphaned ?? 0)
+  // The counts stay numbers here; the client words them for the surface and the language, so no English enum
+  // leaks into the default task page.
+  if (childSummary && sick > 0) return { kind: 'child', count: sick }
+  return undefined
 }
 
 /** How a lightweight Ticket's inline run went, read from the trace it records instead of an Assignment. */
@@ -194,6 +222,8 @@ export interface TaskView {
   delegation?: TaskDelegationView
   /** Direct child Tickets; counts only, never a second hierarchy inside the board's root list. */
   childSummary?: TaskChildSummary
+  /** The one thing holding this level back; a child's blocked state belongs to its parent owner, not to a person. */
+  blocker?: TaskBlockerView
   /** The close a PR or Thread already reported while child Tickets or the final approval still held it. */
   pendingEnd?: { by: 'thread' | 'follows'; outcome: 'merged' | 'closed'; at: string; reason?: string; ref?: string }
   /** Children expanded on demand for a detail tree; the root list never carries them. */
@@ -531,6 +561,10 @@ function taskView(ticket: Ticket, view: Snapshot, owners: OwnershipIndex, tree: 
   const childSummary = children.length ? childSummaryOf(children) : undefined
   const sessionId = ticket.assignments.some(assignment => assignment.startedAt) ? workerSessionId(ticket.id) : undefined
   const space = spaces?.view(ticket, ticket.parentTicketId ? tree.get(ticket.parentTicketId) : undefined)
+  const profile = ticket.profile ? { profile: { id: ticket.profile.id, revision: ticket.profile.revision } } : {}
+  const parentProfile = ticket.parentTicketId ? tree.get(ticket.parentTicketId)?.profile : undefined
+  const parentActor = parentProfile ? { profile: { id: parentProfile.id, revision: parentProfile.revision } } : {}
+  const blocker = blockerOf(ticket, latestReport(ticket), childSummary)
   return {
     id: ticket.id, kind: review ? 'review' : 'ticket', ...parent ? { reviewedTicketId: parent } : {}, title: ticket.title, form, status,
     ...terminal ? { terminal } : {}, ...!ticket.parentTicketId && attentionFor(ticket, tree) ? { attention: true } : {},
@@ -547,11 +581,14 @@ function taskView(ticket: Ticket, view: Snapshot, owners: OwnershipIndex, tree: 
     ...space ? { space } : {},
     ...ticket.parentTicketId ? { parentTicketId: ticket.parentTicketId, rootTicketId: rootTicketIdOf(ticket) } : {},
     ...ticket.parentTicketId ? { depth: depthOf(ticket, tree.get) } : { depth: 0 },
-    ...form === 'tracked' ? { owner: { role: 'owner' as const }, worker: { role: 'worker' as const, ...sessionId ? { sessionId } : {} } } : {},
-    ...ticket.parentTicketId ? { parentOwner: { role: 'owner' as const } } : {},
+    // The owner profile is an execution description, not authority: a child inherits the root's snapshot in Phase 1.
+    ...form === 'tracked' ? { owner: { role: 'owner' as const, ...profile },
+      worker: { role: 'worker' as const, ...sessionId ? { sessionId } : {} } } : {},
+    ...ticket.parentTicketId ? { parentOwner: { role: 'owner' as const, ...parentActor } } : {},
     ...delegationView(ticket, view) ? { delegation: delegationView(ticket, view) } : {},
     ...childSummary ? { childSummary } : {},
     ...ticket.endPending ? { pendingEnd: { ...ticket.endPending } } : {},
+    ...blocker ? { blocker } : {},
     goal: goalView(ticket),
     deliverables,
     ...reviewView ? { review: reviewView } : {},

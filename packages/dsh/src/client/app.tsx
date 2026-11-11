@@ -7,6 +7,7 @@ import { EvalStatus } from './eval.tsx'
 import { ExecutionStatus } from './execution.tsx'
 import { ticketMark } from './marks.ts'
 import { GLOSSARY, GLOSSARY_VALUES, en, zh, type DshSuperagentKey } from './locales.ts'
+import { NotificationHost, useNoticeCenter } from './notification-center.tsx'
 import { OverviewPage } from './overview.tsx'
 import { PanelProvider, usePanel, usePanelData } from './provider.tsx'
 import { PANEL_NAVIGATE } from './panel.ts'
@@ -107,6 +108,7 @@ function SearchResults({ result, query, onClose }: { result: SearchView; query: 
 
 function Header({ masterId }: { masterId: string | undefined }) {
   const { t, call, openSession, notify } = usePanel()
+  const notices = useNoticeCenter()
   const [glossary, setGlossary] = useState(false)
   const [query, setQuery] = useState('')
   const [result, setResult] = useState<{ query: string; value: SearchView }>()
@@ -136,6 +138,11 @@ function Header({ masterId }: { masterId: string | undefined }) {
           onChange={event => { setQuery(event.target.value); if (!event.target.value) show() }} />
         {result && <SearchResults result={result.value} query={result.query} onClose={() => { show() }} />}
       </form>
+      {notices && <Button className="dt-bell" variant="ghost" size="sm" icon={<Icon name="bell" />}
+        aria-label={t('noticeUnread', { count: notices.unread })} title={t('notifications')} aria-haspopup="dialog"
+        aria-expanded={notices.open} onClick={notices.openDrawer}>
+        {notices.unread > 0 && <span className="dt-bell-badge" aria-hidden="true">{notices.unread > 99 ? '99+' : notices.unread}</span>}
+      </Button>}
       <Button variant="ghost" size="sm" icon={<Icon name="question" />} aria-label={t('glossary')} title={t('glossary')} aria-haspopup="dialog"
         onClick={() => setGlossary(true)} />
       <Button variant="outline" size="sm" icon={<Icon name="session" size={14} />} disabled={!masterId}
@@ -206,6 +213,8 @@ export function App({ t, openSession, deploymentForm, embedded = false, tasks }:
   const pageId = embedded ? 'dt-page-status' : 'dt-page'
   const tabPrefix = embedded ? 'dt-page-status-tab' : 'dt-tab'
   return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? HOME)}>
-    <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} pageId={pageId} tabPrefix={tabPrefix} tasks={tasks} />
+    <NotificationHost>
+      <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} pageId={pageId} tabPrefix={tabPrefix} tasks={tasks} />
+    </NotificationHost>
   </PanelProvider>
 }

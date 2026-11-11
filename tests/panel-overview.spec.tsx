@@ -14,8 +14,11 @@ it('opens with the three zones and keeps health as a folded E2 path', async () =
   expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待我处理4', '正在跑1任务详情 ›', '最近历史1详情 ›',
     '过去 24 小时详情 ›', '运行健康'])
   // Waiting for a person first, then the running Ticket and the recently ended one; each carries its own stage.
-  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败', '执行中', '人工停止'])
-  expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
+  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '执行中', '人工停止'])
+  // Source and Ticket problems fold into one row; the detail list keeps every underlying problem.
+  expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['需要处理的异常 3 项'])
+  await click(zh.problemAggregateShow)
+  expect(all('.dt-problem-group-list .dt-att-what').map(item => item.textContent)).toEqual(['「飞书」连接出现问题', '判断没有完成：这个文案好奇怪'])
   // Actions sit below the title and Threads, apart from the stage, each with its icon.
   expect(all('.dt-ticket').every(row => row.querySelector('.dt-ticket-stage button, .dt-ticket-stage a') === null
     && [...row.querySelectorAll('.dt-ticket-actions button, .dt-ticket-actions a')].every(action => action.querySelector('svg')))).toBe(true)
@@ -43,6 +46,7 @@ it('opens with the three zones and keeps health as a folded E2 path', async () =
 
 it('re-evaluates or dismisses an unjudged Eval from the problem list', async () => {
   await mount()
+  await click(zh.problemAggregateShow)
   await click(zh.requeue)
   expect(server.requests.some(request => request.path === 'triggers/e3/requeue' && request.method === 'POST')).toBe(true)
   await click(zh.dismiss)
@@ -52,7 +56,8 @@ it('re-evaluates or dismisses an unjudged Eval from the problem list', async () 
 
 it('opens the Thread of an unjudged Eval at its Trigger from the problem list', async () => {
   await mount()
-  await click('评估未完成：这个文案好奇怪')
+  await click(zh.problemAggregateShow)
+  await click('判断没有完成：这个文案好奇怪')
   expect(server.requests.some(request => request.path.startsWith('threads/feishu:oc_1:om_root'))).toBe(true)
   expect(document.querySelector('.dt-highlight')?.textContent).toContain('message e3')
 })
@@ -73,6 +78,7 @@ it('offers each Ticket that needs a person its E0 actions on the overview: answe
   await mount()
   expect(all('.dt-ticket-actions a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['去飞书回答',
     'https://applink.feishu.cn/client/chat/open?openChatId=oc_1']])
+  await click(zh.problemAggregateShow)
   expect(all('.dt-ticket-note').map(note => note.textContent)).toContain('LlmError: no adapter registered for provider "provider-a"')
   // The default row carries goal, state and the decision; opening the Executor Session is an E3 detail on the Ticket page.
   expect(all('.dt-ticket-actions button').map(button => button.textContent)).not.toContain(zh.openSession)
@@ -113,12 +119,14 @@ it('keeps the Executor Session entry on the Ticket page as an explicit E3 detail
 it('shows paused processing as a system problem with its resume action, and says so on the Policy records', async () => {
   server.settings = { ...server.settings, paused: true }
   await mount()
+  await click(zh.problemAggregateShow)
   expect(text()).toContain(zh.problemPaused)
   await click(zh['tab.eval'])
   expect(text()).toContain(zh.evalRecordsPaused)
   await click(zh.resumeWhere)
   expect(tab(zh['tab.execution']).getAttribute('aria-selected')).toBe('true')
   await click(zh['tab.overview'])
+  await click(zh.problemAggregateShow)
   await click(find(zh.resumeProcessing, '.dt-att button'))
   await click(zh.confirm)
   expect(server.requests.find(request => request.path === 'executor/pause')).toMatchObject({ method: 'POST', body: { paused: false } })
@@ -128,6 +136,7 @@ it('offers the step that fixes a settings problem as a button on the overview', 
   server.settings = { ...server.settings, policy: { ...server.settings.policy, sources: { feishu: { allowed: [], admission: {} },
     github: { allowed: [], admission: {} } } } }
   await mount()
+  await click(zh.problemAggregateShow)
   expect(text()).toContain(zh.problemNoAllowed)
   await click(zh.actionAddAllowed)
   expect(tab(zh['tab.settings']).getAttribute('aria-selected')).toBe('true')
@@ -149,7 +158,8 @@ it('counts the messages not sent in the last day, linking to the Source status, 
 it('names a failing part of dsh-superagent itself by its label', async () => {
   server.health = { launch: { state: 'error', detail: 'spawn failed' }, relay: { state: 'ready', detail: 'Nothing waiting' } }
   await mount()
-  expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toContain(zh.problemRuntime.replace('{name}', zh['health.launch']))
+  await click(zh.problemAggregateShow)
+  expect(all('.dt-problem-group-list .dt-att-what').map(item => item.textContent)).toContain(zh.problemRuntime.replace('{name}', zh['health.launch']))
   expect(text()).toContain('spawn failed')
 })
 
@@ -157,6 +167,7 @@ it('words a refused retry in the interface language by its code', async () => {
   await mount()
   // Simulate another user retrying the ticket after the overview loaded.
   server.person = server.person.map(ticket => ticket.id === 't4' ? { ...ticket, actions: { ...ticket.actions, retry: false } } : ticket)
+  await click(zh.problemAggregateShow)
   await click(find(zh.retry, '.dt-ticket-actions button'))
   await click(zh.confirm)
   expect(document.querySelector('.dt-toast')?.textContent).toBe(zh['userError.notRetryable'])
@@ -167,8 +178,8 @@ it('shows the three zones in English', async () => {
   await mount(en)
   expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${en.entryNeeds}4`, `${en.entryRunning}1TasksDetails ›`,
     `${en.entryRecent}1Details ›`, `${en.lastDay}${en.details}`, en.metricsTitle])
-  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual([en['stage.answer'], en['stage.failed'],
-    en['stage.working'], en['outcome.stopped']])
+  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual([en['stage.answer'], en['stage.working'],
+    en['outcome.stopped']])
   expect(all('.dt-stat-label').map(label => label.textContent)).toEqual([en.executingLabel, en.queuedLabel, en.idleLabel,
     en.flowReceivedLabel, en.flowFilteredLabel, en.flowJudgedLabel, en.flowAcceptedLabel, en.metricTtfaLabel, en.metricDuplicatesLabel,
     en.metricRecoveryLabel, en.metricThroughputLabel, en.metricApprovalLabel])
@@ -177,7 +188,7 @@ it('shows the three zones in English', async () => {
 it('restores the pre-X-09 Overview, and hides no record, when entry.threeZones.v1 is off', async () => {
   localStorage.setItem('entry.threeZones.v1', 'off')
   await mount()
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${zh.pendingTickets}2`, `${zh.problems}2`,
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${zh.pendingTickets}2`, `${zh.problems}3`,
     `${zh.lastDay}${zh.details}`, zh.metricsTitle, `${zh['term.executor']}${zh.details}`])
   // The old sections still lead to the same records and tabs.
   await click(all('.dt-more-link').at(-1)!)
@@ -187,8 +198,18 @@ it('restores the pre-X-09 Overview, and hides no record, when entry.threeZones.v
 it('lists the unavailable Evals one by one, without the health entry that counts them as a failure of dsh-superagent', async () => {
   server.health.evals = { state: 'error', detail: '1 Eval(s) unavailable in the last hour without a later judgement' }
   await mount()
-  expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
+  await click(zh.problemAggregateShow)
+  expect(all('.dt-problem-group-list .dt-att-what').map(item => item.textContent)).toEqual(['「飞书」连接出现问题', '判断没有完成：这个文案好奇怪'])
   expect(text()).not.toContain(zh['health.evals'])
+})
+
+it('restores one row per problem, with the same entries, when ux.errorAggregate.v1 is off', async () => {
+  localStorage.setItem('ux.errorAggregate.v1', 'off')
+  await mount()
+  expect(document.querySelector('.dt-problem-group')).toBeNull()
+  expect(text()).toContain('「飞书」连接出现问题')
+  expect(text()).toContain('判断没有完成：这个文案好奇怪')
+  expect(all('.dt-problem-group-list .dt-att-what')).toHaveLength(0)
 })
 
 it('says when no Source is on, an Eval is past its deadline or a message keeps failing, each with the way to it', async () => {
@@ -199,13 +220,15 @@ it('says when no Source is on, an Eval is past its deadline or a message keeps f
     text: '已修复', attempts: 4,
     error: 'HTTP 502 from GitHub' }]
   await mount()
-  const titles = () => all('.dt-cards .dt-att-what').map(item => item.textContent)
+  await click(zh.problemAggregateShow)
+  const titles = () => all('.dt-problem-group-list .dt-att-what').map(item => item.textContent)
   // The Feishu Source is off, so its error is no problem any more.
-  expect(titles()).toEqual([zh.problemNoSource, '评估超时未决定：#9 迟迟未决', '评估未完成：这个文案好奇怪', 'GitHub 回复发送失败（已重试 4 次）'])
+  expect(titles()).toEqual([zh.problemNoSource, '还在判断：#9 迟迟未决', '判断没有完成：这个文案好奇怪', 'GitHub 回复发送失败（已重试 4 次）'])
   expect(text()).toContain('HTTP 502 from GitHub')
   await click(zh.actionOpenSources)
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['settingsGroup.source'])
   await click(tab(zh['tab.overview']))
-  await click('评估超时未决定：#9 迟迟未决')
+  await click(zh.problemAggregateShow)
+  await click('还在判断：#9 迟迟未决')
   expect(server.requests.some(request => request.path.startsWith('threads/github:9'))).toBe(true)
 })

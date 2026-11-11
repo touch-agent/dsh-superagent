@@ -1,12 +1,12 @@
 /** Entry page: X-09's three zones (waiting for a person, running, recent history) with flow and health folded as E2. */
 import { useState, type ReactNode } from 'react'
-import { usePoll, type ApprovalRow, type OverviewView, type Problem } from './api.ts'
+import { usePoll, type ApprovalRow, type OverviewView, type Problem, type TicketRow } from './api.ts'
 import { Button, Icon, Tag } from './controls.tsx'
-import { entryThreeZones } from './features.ts'
+import { entryThreeZones, errorAggregate } from './features.ts'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
 import { TicketLine } from './rows.tsx'
-import { healthText, localized, reasonLabel, valueLabel, readableMarkers } from './text.ts'
+import { healthText, localized, reasonLabel, valueLabel, readableMarkers, when } from './text.ts'
 import { CheckSetupButton, ConfirmButton, Hint, LabelValue, LoadState, Section, SetupMessage, When } from './widgets.tsx'
 
 function ProblemLine({ problem, onChanged }: { problem: Problem; onChanged: () => Promise<void> }) {
@@ -57,6 +57,65 @@ function ProblemLine({ problem, onChanged }: { problem: Problem; onChanged: () =
       attempts: problem.outgoing.attempts }),
       raw(problem.outgoing.error), undefined)
   }
+}
+
+/** A failed or blocked Ticket belongs in the same folded row as a Source or runtime problem, not in its own card. */
+const failedTicket = (ticket: TicketRow): boolean =>
+  ticket.stage === 'person' && (ticket.action === 'failed' || ticket.action === 'blocked')
+
+/**
+ * UX batch 1's one-row aggregate. Every underlying problem keeps its own actionable row when expanded, so folding hides
+ * nothing; the summary carries the automatic retry count and the latest attempt, and disappears with the last problem.
+ */
+function ProblemGroup({ problems, tickets, onChanged }: { problems: readonly Problem[]; tickets: readonly TicketRow[]
+  onChanged: () => Promise<void> }) {
+  const { t, call } = usePanel()
+  const [open, setOpen] = useState(false)
+  const source = problems.find((problem): problem is Extract<Problem, { kind: 'source-error' }> => problem.kind === 'source-error')
+  const retryTicket = tickets.find(ticket => ticket.actions.retry)
+  const times = [...problems.flatMap(problem => problem.kind === 'source-error' ? [problem.source.health.at]
+    : problem.kind === 'eval-overdue' || problem.kind === 'eval-unavailable' ? [problem.thread.lastAt] : []),
+  ...tickets.map(ticket => ticket.updatedAt)].filter((at): at is string => !!at).sort()
+  const retries = Math.max(0, ...problems.flatMap(problem => problem.kind === 'source-error'
+    ? [Number(problem.source.health.values?.count) || 0]
+    : problem.kind === 'outgoing' ? [problem.outgoing.attempts] : []))
+  const disable = async () => {
+    const settings = await call('GET settings')
+    const row = settings.sources.find(candidate => candidate.id === source!.source.id)
+    if (!row) throw new Error(t('noticeSourceGone'))
+    await call('PUT settings/:block', { block: `source:${source!.source.id}`,
+      body: { value: { ...row.value, enabled: false }, revision: row.revision } })
+    await onChanged()
+  }
+  const retry = async () => {
+    await call('POST tickets/:id/retry', { id: retryTicket!.id })
+    await onChanged()
+  }
+  return <li className="dt-row dt-link dt-att dt-att-error dt-problem-group">
+    <div className="dt-row-main">
+      <div className="dt-att-what">{t('problemAggregateTitle')} <Tag tone="danger">
+        {t('problemAggregateCount', { count: problems.length + tickets.length })}</Tag></div>
+      {(() => { const latest = times.at(-1); return <p className="dt-hint">{latest ? t('problemAggregateSummary', {
+        sources: problems.filter(problem => problem.kind === 'source-error').length, tasks: tickets.length,
+        problems: problems.filter(problem => problem.kind !== 'source-error').length, time: when(latest, t('lang')) })
+        : t('problemAggregateSummaryNoTime', { sources: problems.filter(problem => problem.kind === 'source-error').length,
+          tasks: tickets.length, problems: problems.filter(problem => problem.kind !== 'source-error').length })}</p> })()}
+      {retries > 0 && <p className="dt-hint">{t('problemAggregateRetries', { count: retries })}</p>}
+      <div className="dt-row-meta dt-row-buttons">
+        {retryTicket && <ConfirmButton variant="outline" icon="refresh" label={t('retry')} title={t('retry')}
+          message={t('problemAggregateRetryConfirm', { task: retryTicket.title })} onConfirm={retry} />}
+        {source && <ConfirmButton variant="outline" icon="pause" label={t('noticeDisableSource', { source: localized(t, source.source.title) })}
+          title={t('noticeDisableSourceTitle')} message={t('noticeDisableSourceConfirm')} onConfirm={disable} />}
+        <Button variant="outline" size="sm" onClick={() => setOpen(value => !value)}>{open ? t('problemAggregateHide')
+          : t('problemAggregateShow')}</Button>
+      </div>
+      {open && <ul className="dt-list dt-cards dt-problem-group-list">
+        {problems.map((problem, index) => <ProblemLine key={`problem-${index}`} problem={problem} onChanged={onChanged} />)}
+        {tickets.map(ticket => <TicketLine key={ticket.id} ticket={ticket} question onChanged={onChanged} />)}
+      </ul>}
+      <p className="dt-hint">{t('problemAggregateClear')}</p>
+    </div>
+  </li>
 }
 
 function ApprovalLine({ approval, onChanged }: { approval: ApprovalRow; onChanged: () => Promise<void> }) {
@@ -161,14 +220,19 @@ function EntryPage({ data, error, reload }: { data: OverviewView; error?: Error;
   const stat = (label: string, value: ReactNode) => <span className="dt-stat">
     <span className="dt-stat-label">{label}</span><span className="dt-stat-value">{value}</span>
   </span>
-  const needs = data.approvals.length + data.person.length + data.problems.length
+  const failed = data.person.filter(failedTicket)
+  const grouped = errorAggregate() && (data.problems.length > 0 || failed.length > 0)
+  const person = grouped ? data.person.filter(ticket => !failedTicket(ticket)) : data.person
+  // The section counts the underlying items even when one aggregate row carries them, so folding hides no volume.
+  const needs = data.approvals.length + person.length + data.problems.length + (grouped ? failed.length : 0)
   return <>
     {error && <LoadState error={error} loading={false} />}
     <Section title={t('entryNeeds')} count={needs} icon="inbox" hint={t('entryNeedsHint')}>
       {needs ? <ul className="dt-list dt-cards">
         {data.approvals.map(approval => <ApprovalLine key={approval.id} approval={approval} onChanged={reload} />)}
-        {data.person.map(ticket => <TicketLine key={ticket.id} ticket={ticket} question onChanged={reload} />)}
-        {data.problems.map((problem, index) => <ProblemLine key={`problem-${index}`} problem={problem} onChanged={reload} />)}
+        {person.map(ticket => <TicketLine key={ticket.id} ticket={ticket} question onChanged={reload} />)}
+        {grouped ? <ProblemGroup problems={data.problems} tickets={failed} onChanged={reload} />
+          : data.problems.map((problem, index) => <ProblemLine key={`problem-${index}`} problem={problem} onChanged={reload} />)}
       </ul> : <Hint>{t('entryNeedsNone')}</Hint>}
     </Section>
     <Section title={t('entryRunning')} count={data.running.length} icon="running" hint={t('entryRunningHint')}
@@ -196,6 +260,9 @@ function EntryPage({ data, error, reload }: { data: OverviewView; error?: Error;
 function LegacyOverview({ data, error, reload }: { data: OverviewView; error?: Error; reload: () => Promise<void> }) {
   const { t, navigate } = usePanel()
   const { setup } = usePanelData()
+  const failed = data.person.filter(failedTicket)
+  const grouped = errorAggregate() && (data.problems.length > 0 || failed.length > 0)
+  const person = grouped ? data.person.filter(ticket => !failedTicket(ticket)) : data.person
   const stat = (label: string, value: ReactNode, route?: Route) => <span className="dt-stat">
     <span className="dt-stat-label">{label}</span>
     {route ? <button type="button" className="dt-textlink dt-stat-value" onClick={() => navigate(route)}>{value}</button> : <span
@@ -212,14 +279,14 @@ function LegacyOverview({ data, error, reload }: { data: OverviewView; error?: E
       <ul className="dt-list dt-cards">{data.approvals.map(approval => <ApprovalLine key={approval.id} approval={approval}
         onChanged={reload} />)}</ul>
     </Section>}
-    <Section title={t('pendingTickets')} count={data.person.length}>
-      {data.person.length ? <ul className="dt-list dt-cards">{data.person.map(ticket => <TicketLine key={ticket.id} ticket={ticket} question
+    <Section title={t('pendingTickets')} count={person.length + (grouped ? failed.length : 0)}>
+      {person.length ? <ul className="dt-list dt-cards">{person.map(ticket => <TicketLine key={ticket.id} ticket={ticket} question
         onChanged={reload} />)}</ul>
         : <Hint>{t('needsYouNone')}</Hint>}
     </Section>
-    {data.problems.length > 0 && <Section title={t('problems')} count={data.problems.length}>
-      <ul className="dt-list dt-cards">{data.problems.map((problem, index) => <ProblemLine key={index} problem={problem}
-        onChanged={reload} />)}</ul>
+    {(data.problems.length > 0 || failed.length > 0) && <Section title={t('problems')} count={data.problems.length + (grouped ? failed.length : 0)}>
+      <ul className="dt-list dt-cards">{grouped ? <ProblemGroup problems={data.problems} tickets={failed} onChanged={reload} />
+        : data.problems.map((problem, index) => <ProblemLine key={index} problem={problem} onChanged={reload} />)}</ul>
     </Section>}
     <Section title={t('lastDay')} action={more({ page: 'trigger', query: { filter: 'recent' } })}>
       {/* Received and evaluated counts operate on Triggers rather than Threads or Decisions, so they do not link to filtered views. */}
