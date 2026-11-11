@@ -1,8 +1,9 @@
 /** Executor Session tools for reading ticket context, acknowledging requests, managing threads, handing back out-of-scope triggers, and reporting status. */
 import { z } from 'zod'
 import { ARTIFACT_KINDS, PREVIEW_KINDS, liveTicket, runningAssignment, type EngineForExecutor, type Ticket } from '@superagent/kernel'
+import { CliError } from '../../infra/commands.ts'
 import { IM_WORDS } from '../../infra/text.ts'
-import { claimPull, readPull } from '../../sources/github-pull.ts'
+import { claimPull, readGithubThread, readPull } from '../../sources/github-pull.ts'
 import type { SourceContext } from '../../sources/host.ts'
 import { readResource, type ResourceHost } from '../resources.ts'
 import type { Store } from '../store.ts'
@@ -36,6 +37,25 @@ export interface ExecutorToolsHost {
   sendReplies(): Promise<void>
 }
 
+/**
+ * Refuses a GitHub Thread the Source cannot poll. It reads only its configured repository, so a Thread from another
+ * repository would fail every poll for as long as the Ticket follows it; its comments can never reach the Ticket.
+ */
+async function followableGithubThread(host: ExecutorToolsHost, source: string, id: string, signal: AbortSignal): Promise<void> {
+  if (source !== 'github' || id.startsWith('ci:')) return
+  const number = Number(id)
+  // Canonical form only: polling and triggers key on `github:<number>`, so `github:012` would store a Subscription
+  // whose Thread key never matches a delivery.
+  if (!Number.isInteger(number) || number <= 0 || String(number) !== id) throw new Error('A GitHub thread key uses the canonical github:<number> form, such as github:12')
+  // Setup resolves the repository; before that the Source polls nothing, and the follow can be stored like any other.
+  if (!host.github.configured()) return
+  try { await readGithubThread(host.github, number, signal) }
+  catch (error) {
+    if (!(error instanceof CliError) || error.code !== 404) throw error
+    throw new Error(`GitHub thread github:${number} is not in ${host.github.deployment.repository}; the GitHub Source only reads its configured repository, so its comments there would never reach this ticket`)
+  }
+}
+
 export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
   const ticketId = ticket.id
   // A parent owner is this ticket's worker; the domain records that worker as the reviewer in every disposition.
@@ -67,18 +87,22 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
     }),
     tool({
       name: 'orchestrator_thread_follow',
-      description: 'Follow a related thread, such as an Issue or another PR, for context only.',
+      description: 'Follow a related thread, such as an Issue or another PR, for context only. A GitHub Thread must be an Issue or PR in the Source\'s configured repository.',
       schema: z.object({
         thread: z.string().describe('Thread key, such as github:<number>.'),
         reason: z.string().trim().min(1).max(300).describe('How it relates, in one sentence.'),
       }).strict(),
-      execute: async args => host.store.atomic(() => {
+      execute: async (args, signal) => {
         const at = args.thread.indexOf(':')
         if (at < 1 || at === args.thread.length - 1) throw new Error('A thread key is <source>:<id>, such as github:<number>')
-        const followed = host.engine.followForContext(ticketId, { source: args.thread.slice(0, at), id: args.thread.slice(at + 1) })
-        if (followed) host.sessions.notify(...threadFollowedNotice(ticketId, args.thread, args.reason))
-        return { followed, thread: args.thread }
-      }),
+        const ref = { source: args.thread.slice(0, at), id: args.thread.slice(at + 1) }
+        await followableGithubThread(host, ref.source, ref.id, signal)
+        return host.store.atomic(() => {
+          const followed = host.engine.followForContext(ticketId, ref)
+          if (followed) host.sessions.notify(...threadFollowedNotice(ticketId, args.thread, args.reason))
+          return { followed, thread: args.thread }
+        })
+      },
     }),
     tool({
       name: 'orchestrator_trigger_handback',

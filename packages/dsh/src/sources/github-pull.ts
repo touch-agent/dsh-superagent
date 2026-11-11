@@ -15,6 +15,13 @@ const PullSchema = z.looseObject({
 export type Pull = z.infer<typeof PullSchema> & { number: number }
 export const readPull = async (ctx: SourceContext, number: number, signal?: AbortSignal): Promise<Pull> =>
   ({ ...await ctx.commands.withSignal(signal).api(PullSchema, `pulls/${number}`), number })
+const ThreadSchema = z.looseObject({ number: z.number() })
+/**
+ * Reads the Issue or PR a GitHub Thread key names, from the Source's configured repository. A 404 means the Source
+ * cannot poll that Thread at all: it is not in the one repository the Source reads.
+ */
+export const readGithubThread = async (ctx: SourceContext, number: number, signal?: AbortSignal): Promise<{ number: number }> =>
+  ctx.commands.withSignal(signal).api(ThreadSchema, `issues/${number}`)
 const pullNumber = (thread: string): number | undefined => thread.startsWith(`${SOURCE}:`) ? Number(thread.slice(SOURCE.length + 1)) : undefined
 export const pullsOf = (ticket: Pick<Ticket, 'follows'>, open = false): number[] =>
   (ticket.follows ?? []).filter(item => !open || !item.closed).flatMap(item => pullNumber(item.thread) ?? [])
