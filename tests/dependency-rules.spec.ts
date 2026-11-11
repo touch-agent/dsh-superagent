@@ -80,12 +80,14 @@ function apiValueViolations(text: string, file = ''): string[] {
     const clause = /^import\s+(?:type\s+)?([\s\S]*?)\s+from\s+/.exec(statement)?.[1] ?? null
     if (illegal(clause)) violations.push(`${file}: ${statement}`)
   }
-  for (const match of text.matchAll(/^export\s+(?:type\s+)?([\s\S]*?)\s+from\s+['"]\.\.\/app\/api\.ts['"]/gm)) {
+  for (const match of text.matchAll(/^export\s+(?:type\s+)?(\{[^}]*\}|\*(?:\s+as\s+\w+)?)\s+from\s+['"]\.\.\/app\/api\.ts['"]/gm)) {
     const statement = match[0]
     if (/^export\s+type\s/.test(statement)) continue
     if (illegal(match[1]!)) violations.push(`${file}: ${statement}`)
   }
   for (const match of text.matchAll(/\bimport\s*\(\s*['"]\.\.\/app\/api\.ts['"]\s*\)/g)) {
+    // A `typeof import(...)` is a type query, not a value import.
+    if (/typeof\s*$/.test(text.slice(0, match.index))) continue
     violations.push(`${file}: ${match[0]}`)
   }
   return violations
@@ -145,6 +147,8 @@ describe('the dependency rules of docs/007-architecture.md', () => {
       "import defaults from '../app/api.ts'",
       "import '../app/api.ts'",
       "const api = await import('../app/api.ts')",
+      "export type ApiModule = typeof import('../app/api.ts')",
+      "export type { Api } from '../app/api.ts'",
       "export * from '../app/api.ts'",
       "export { TICKET_FILTERS as filters } from '../app/api.ts'",
       "export { filter } from '../app/api.ts'",
