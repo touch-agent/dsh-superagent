@@ -71,12 +71,12 @@ export function apply(ctx: Context): void {
 
 | Field | Required | What it declares |
 | --- | --- | --- |
-| `id` | yes | The stable Source id, matching `^[a-z][a-z0-9-]*$`. It is the registration key and appears in `source:<id>`, the Source Policy and the `source:<id>` settings block. |
+| `id` | yes | The stable Source id, matching `^[a-z][a-z0-9-]*$`. It keys registration and the Source Policy entry, names the Source in `source:<id>`, and names its `source:<id>` settings block. |
 | `title` | yes | The localized `{ zh, en }` display name on the Source card. |
 | `description` | yes | The localized `{ zh, en }` one-line explanation beside the title. |
 | `auth` | yes | `{ kind, fields }`: how the Source signs in (`cli`, `app` or `none`) and which keys in `fields` carry the credential; `kind: 'none'` names none. |
 | `fields` | yes | The ordered `FieldSpec[]` that renders the configuration form; an empty list is legal for a Source with nothing to configure. |
-| `health` | yes | The health entry names registration claims; an empty list is legal. Use the kind's name, never `sync:<id>`. |
+| `health` | yes | The health entries the Source may report; registration claims them and an empty list is legal. Use the kind's name, never `sync:<id>`. |
 | `limits` | no | Polling defaults the panel suggests, currently `pollSeconds`. It does not replace the adapter's configuration defaults. |
 | `extra` | no | A `Record<string, unknown>` escape hatch for metadata a future field adds. Parsing preserves it, but the panel and registry ignore it today; do not put behavior or admission there. |
 

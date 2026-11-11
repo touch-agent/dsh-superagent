@@ -35,12 +35,13 @@ function tableRows(file: string, heading: string): string[] {
   if (start < 0) throw new Error(`${file} has no "${heading}" section; add it so tests/docs.spec.ts can find the table`)
   const end = lines.findIndex((line, index) => index > start && /^#{2,3} /.test(line))
   const section = lines.slice(start + 1, end < 0 ? undefined : end)
-  const first = section.findIndex(line => line.startsWith('| '))
+  const first = section.findIndex(line => line.trimStart().startsWith('|'))
   if (first < 0) throw new Error(`${file} has no table under "${heading}"; add one so tests/docs.spec.ts can read it`)
   const table: string[] = []
   for (const line of section.slice(first)) {
-    if (!line.startsWith('| ')) break
-    table.push(line)
+    const row = line.trimStart()
+    if (!row.startsWith('|')) break
+    table.push(row.trimEnd())
   }
   // The first two rows are the header and its separator.
   return table.slice(2)
@@ -64,9 +65,9 @@ function manifestFields(): string[] {
   if (fields.length === 0) throw new Error(`${MANIFEST_SOURCE}'s SourceManifest interface declares no fields in the expected form`)
   return fields
 }
-/** The SourceManifest field names documented in the manifest guide's table. */
+/** The SourceManifest field names documented in the manifest guide's table; the first code span names the field. */
 function documentedManifestFields(): string[] {
-  return tableRows(MANIFEST_GUIDE, 'Manifest fields').flatMap(row => codeSpans(cell(row)))
+  return tableRows(MANIFEST_GUIDE, 'Manifest fields').flatMap(row => codeSpans(cell(row)).slice(0, 1))
 }
 /** Every route key declared on `Api`, read from its interface rather than a second list. */
 function apiRoutes(): string[] {
@@ -238,18 +239,28 @@ describe('documentation', () => {
   })
   it('documents every public management route, and only routes that exist', () => {
     const routes = apiRoutes()
-    const documented = [...new Set(documentedRoutes())]
+    const documented = documentedRoutes()
+    const seen = new Map<string, string>()
+    const duplicates: string[] = []
+    for (const route of documented) {
+      const shape = routeShape(route)
+      if (seen.has(shape)) duplicates.push(route)
+      else seen.set(shape, route)
+    }
+    const documentedUnique = [...seen.values()]
     const publicRoutes = [...PUBLIC_ROUTES]
     const shapes = new Set(publicRoutes.map(routeShape))
-    const documentedShapes = new Set(documented.map(routeShape))
+    const documentedShapes = new Set(seen.keys())
     const problems = [
       ...publicRoutes.filter((route, index) => publicRoutes.indexOf(route) !== index).map(route =>
         `${API_SOURCE} lists ${route} in PUBLIC_ROUTES more than once`),
       ...publicRoutes.filter(route => !routes.includes(route)).map(route =>
         `${API_SOURCE} lists ${route} in PUBLIC_ROUTES, but Api declares no such route; remove it or add the route`),
+      ...duplicates.map(route =>
+        `${DEPLOYMENT_GUIDE} documents ${route} more than once in the Management API table; keep one row`),
       ...publicRoutes.filter(route => !documentedShapes.has(routeShape(route))).map(route =>
         `public route ${route} is missing from the Management API table in ${DEPLOYMENT_GUIDE}; add a row for \`${route}\``),
-      ...documented.filter(route => !shapes.has(routeShape(route))).map(route =>
+      ...documentedUnique.filter(route => !shapes.has(routeShape(route))).map(route =>
         `${DEPLOYMENT_GUIDE} documents ${route} in the Management API table, but ${API_SOURCE} does not list it in PUBLIC_ROUTES; add it there or remove the row`),
     ]
     expect(problems).toEqual([])
