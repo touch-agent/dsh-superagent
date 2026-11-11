@@ -39,7 +39,7 @@ A person can send an owned follow-up to Eval from the panel. If the main Session
 
 ### Context-only subscriptions
 
-An Executor can follow a related Thread, such as another Issue or pull request, for context. Its messages reach the Ticket but grant no authority or follow-up strength. Human messages there do not resume an ended Ticket unless the main Session attaches a message from that Thread. Notes from the main Session about other work are also context only.
+An Executor can follow a related Thread, such as another Issue or pull request, for context. Its messages reach the Ticket but grant no authority or follow-up strength. Human messages there do not resume an ended Ticket unless the main Session attaches a message from that Thread. Notes from the main Session about other work are also context only. A GitHub Thread must be an Issue or pull request in the GitHub Source's configured repository, the only repository its polling reads; following one elsewhere is refused, since its comments could never reach the Ticket and the unreadable Thread would fail every poll.
 
 Human messages that reach no Ticket, including Threads whose Tickets were stopped by a person, take the Eval path. Bot messages take that path independently of their delivery to subscribed Tickets.
 

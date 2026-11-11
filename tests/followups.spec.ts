@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { CHAT, feishu, startRuntime, type Host } from './fixtures/host.ts'
 import { repliedTo } from '@superagent/dsh/app/links.ts'
 import { inputMessage } from '@superagent/dsh/executor/dsh.ts'
+import { CliError, Commands } from '@superagent/dsh/infra/commands.ts'
 
 let h: Host | undefined
 afterEach(async () => { await h?.stop(); h = undefined })
@@ -169,6 +170,12 @@ it('lets a worker follow a related thread for context, which the main Session he
     reason: 'The issue it fixes.' } })])
   expect(h.relays(h.runtime.masterId)).toEqual([])
   await expect(h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github', reason: 'x' })).rejects.toThrow(/<source>:<id>/)
+  // A GitHub Thread outside the Source's repository would be polled against the wrong repository on every round: refuse it
+  // instead of storing a Subscription the Source can never read.
+  vi.mocked(Commands.prototype.gh).mockRejectedValueOnce(new CliError('gh: Not Found (HTTP 404)', 404, 1))
+  await expect(h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github:12', reason: 'The PR it fixes.' }))
+    .rejects.toThrow(/only reads its configured repository/)
+  expect(h.runtime.store.threads.get('github:12')).toBeUndefined()
   expect(await h.runTool(h.runtime.masterId, 'orchestrator_ticket_note', { ticket_id: ticket.id, text: 'Ticket B renamed the setting.' }))
     .toMatchObject({ reason: 'Noted for the worker' })
   await h.runtime.idle()

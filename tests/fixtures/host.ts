@@ -137,7 +137,11 @@ export async function startRuntime(seed?: (store: Store) => void, resume?: strin
   const directory = resume ?? mkdtempSync(join(tmpdir(), 'orchestrator-host-'))
   const AGENT = join(directory, 'agent-gh'), BOT = join(directory, 'lark-bot')
   const repository = { default_branch: 'master', permissions: { push: true } }
-  vi.spyOn(Commands.prototype, 'gh').mockImplementation(async args => args[1] === 'user' ? { login: 'agent-bot' } : repository)
+  const issue = (number: number) => ({ id: number, number, title: `Issue ${number}`, state: 'open', body: '',
+    created_at: '2026-09-01T00:00:00Z', html_url: `https://github.com/acme/widgets/issues/${number}`, user: { login: 'alice', type: 'User' } })
+  vi.spyOn(Commands.prototype, 'gh').mockImplementation(async args => args[1] === 'user' ? { login: 'agent-bot' }
+    : /\/issues\/\d+$/.test(args[1] ?? '') ? issue(Number(args[1]!.split('/').at(-1)))
+    : repository)
   vi.spyOn(Commands.prototype, 'lark').mockResolvedValue({ users: [{ member_id: MEMBER, name: 'Alice' }], has_more: false })
   vi.spyOn(Commands.prototype, 'git').mockResolvedValue('')
   vi.spyOn(Commands.prototype, 'run').mockResolvedValue('{"ok":true,"data":{}}')
