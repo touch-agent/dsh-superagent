@@ -23,7 +23,7 @@ export interface ContextEntry {
   scope: string
   strength: ContextStrength
   inheritance: ContextInheritance
-  /** Character ceiling the assembler applies to `text`. */
+  /** Character ceiling the assembler applies to `text`; the host enforces 1..4000. */
   truncation: number
   text: string
 }
@@ -80,9 +80,15 @@ export interface ContextSnapshot {
   ticketId: string
   rootTicketId: string
   assignmentId?: string
-  /** Present dimensions, in reading order. */
+  /**
+   * Present dimensions in reading order. A dimension is present when its subject exists and it took part in the merge,
+   * even if its only entry lost a key merge to a more specific source.
+   */
   dimensions: ContextDimension[]
-  /** Dimensions that did not participate because their subject did not exist. */
+  /**
+   * Dimensions not assembled because their subject did not exist. In a blocked snapshot this also includes the failed
+   * dimension and any later one that was never reached; `blocked.dimension` names the failure.
+   */
   absent: ContextDimension[]
   entries: ContextEntryManifest[]
   merges: ContextMergeDecision[]

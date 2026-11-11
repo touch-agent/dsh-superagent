@@ -472,11 +472,16 @@ export class DshExecutor implements Executor {
     if (!ticket || !liveTicket(ticket) || latestAssignment(ticket)?.id !== assignmentId) return
     this.failed(ticketId, String(error))
   }
-  /** Records a `blocked` report on the ticket and relays it: a profile launch that cannot satisfy its snapshot waits for a person. */
-  private blocked(ticketId: string, summary: string, question?: string): void {
+  /**
+   * Records a `blocked` report on the ticket and relays it. A child's blocked assembly travels the parent-owner path
+   * through the child report, not a second main-Session notice; a profile launch that cannot satisfy its snapshot keeps
+   * the existing main-Session relay.
+   */
+  private blocked(ticketId: string, summary: string, question?: string, parentOwns = false): void {
     this.host.store.atomic(() => {
       const updated = this.host.engine.report(ticketId, { state: 'blocked', summary, ...(question ? { question } : {}) })
-      const relay = question && !updated.parentTicketId ? reportRelay(updated, { state: 'blocked', summary, question })
+      const relay = parentOwns && updated.parentTicketId ? undefined
+        : question && !updated.parentTicketId ? reportRelay(updated, { state: 'blocked', summary, question })
         : resultRelay(updated, 'blocked', summary)
       if (relay) this.relay(relay)
     })
@@ -514,7 +519,7 @@ export class DshExecutor implements Executor {
     const assembly = this.host.contextAssembly(ticket, assignment)
     this.host.engine.contextAssembled(ticket.id, assignment.id, assembly.snapshot)
     this.recordContext(ticket, assignment, assembly)
-    if (assembly.state === 'blocked') { this.blocked(ticket.id, assembly.block.summary, assembly.block.question); return }
+    if (assembly.state === 'blocked') { this.blocked(ticket.id, assembly.block.summary, assembly.block.question, true); return }
     const source = sourceTrigger(this.host, ticket)
     const workspace = ticket.execution?.directory ?? ''
     if (!current()) return

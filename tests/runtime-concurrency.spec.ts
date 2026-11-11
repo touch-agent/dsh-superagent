@@ -948,6 +948,16 @@ it('runs a child in its own worker session with restricted tools, counts both sl
   await h.runtime.idle()
   await waitUntil(() => h.tools.has(`worker-${child.id}`))
   const childTools = h.tools.get(`worker-${child.id}`)!
+  // The child assembles the root's organization/user/task plus its own subtask and agent, not the parent's private process.
+  const childContext = (h.relays(`worker-${child.id}`)[0] as {
+    context_assembly: { state: string; dimensions: string[]; sources: Record<string, string>; entries: { key: string; text: string }[] }
+  }).context_assembly
+  expect(childContext).toMatchObject({ state: 'assembled', dimensions: expect.arrayContaining(['organization', 'user', 'task', 'subtask', 'agent']),
+    sources: expect.objectContaining({ task: `ticket:${ticket.id}` }) })
+  const childEntries = new Map(childContext.entries.map(entry => [entry.key, entry]))
+  expect(childEntries.get('task:goal')!.text).toMatch(/^Root goal: /)
+  expect(childEntries.get('task:goal')!.text).not.toContain('child work')
+  expect(childEntries.get('subtask:goal')!.text).toContain('child work')
   expect(childTools.has('orchestrator_child')).toBe(true)
   expect(childTools.has('subagent')).toBe(false)
   expect(childTools.has('send_message')).toBe(false)

@@ -63,8 +63,8 @@ export type ContextAssembly =
 
 /** Raised internally when a source that owns a dimension cannot be read; the assembler turns it into a blocked result. */
 class Unreadable extends Error {
-  constructor(readonly dimension: ContextDimension, readonly cause: unknown) {
-    super(`${dimension} source is unreadable`)
+  constructor(readonly dimension: ContextDimension | undefined, readonly cause: unknown) {
+    super(`${dimension ?? 'context'} source is unreadable`)
   }
 }
 /** Raised when a required dimension's subject does not exist, which is a fail-closed condition, not an absence. */
@@ -74,6 +74,7 @@ class Missing extends Error {
 
 const stable = (value: unknown): string => JSON.stringify(value)
 const digest = (text: string): string => `sha256:${createHash('sha256').update(text).digest('hex')}`
+const MAX_ENTRY_TRUNCATION = 4_000
 const DIMENSION_ORDER = new Map(CONTEXT_DIMENSIONS.map((dimension, index) => [dimension, index]))
 /** How specific a scope is, read from its prefix; only equal-strength defaults use it. */
 const SCOPE_RANK: Record<string, number> = { organization: 0, user: 1, group: 2, task: 3, subtask: 4, agent: 5 }
@@ -85,11 +86,17 @@ const scopeRank = (scope: string): number => SCOPE_RANK[scope.split(':', 1)[0] ?
 const entryRank = (entry: Pick<ContextEntry, 'scope' | 'dimension'>): number =>
   Math.max(scopeRank(entry.scope), SCOPE_RANK[entry.dimension] ?? -1)
 const safeMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 200)
+/** One bounded conflict detail for the snapshot and the question, even when a host injects many keys. */
+const conflictDetail = (conflicts: ContextConflict[]): string => {
+  const keys = conflicts.map(conflict => conflict.key)
+  const shown = keys.slice(0, 8).join(', ')
+  return (keys.length > 8 ? `${shown} (+${keys.length - 8} more)` : shown).slice(0, 300)
+}
 
 type ResolvedEntry = ContextEntry & { truncated?: true }
 
 /** Reads one dimension's source, attributing any failure to that dimension for the blocked snapshot. */
-function read<T>(dimension: ContextDimension, work: () => T): T {
+function read<T>(dimension: ContextDimension | undefined, work: () => T): T {
   try { return work() } catch (error) { throw new Unreadable(dimension, error) }
 }
 
@@ -174,12 +181,20 @@ function agentDimension(ticket: Ticket, assignment: Assignment | undefined): Con
   ]
 }
 
-/** Applies the character ceiling to one entry and remembers that it did. */
-function truncate(entry: ContextEntry): ResolvedEntry {
+/** Rejects a malformed entry before it can lose a merge silently. */
+function validate(entry: ContextEntry): ContextEntry {
   if (!entry.key.trim() || !entry.text.trim()) throw new Error('context entry has an empty key or text')
-  if (!Number.isInteger(entry.truncation) || entry.truncation <= 0) throw new Error(`context entry ${entry.key} has no positive truncation`)
-  const text = entry.text.slice(0, entry.truncation)
-  return { ...entry, text, ...(text.length < entry.text.length ? { truncated: true as const } : {}) }
+  if (!Number.isInteger(entry.truncation) || entry.truncation <= 0 || entry.truncation > MAX_ENTRY_TRUNCATION) {
+    throw new Error(`context entry ${entry.key} has a truncation outside 1..${MAX_ENTRY_TRUNCATION}`)
+  }
+  return entry
+}
+
+/** Applies the character ceiling to one chosen entry and remembers that it did. */
+function truncate(entry: ContextEntry): ResolvedEntry {
+  const checked = validate(entry)
+  const text = checked.text.slice(0, checked.truncation)
+  return { ...checked, text, ...(text.length < checked.text.length ? { truncated: true as const } : {}) }
 }
 
 /**
@@ -187,20 +202,21 @@ function truncate(entry: ContextEntry): ResolvedEntry {
  * Different text at the same strength and scope is a conflict: no source is guessed, and the caller stops the assembly.
  */
 export function mergeContextEntries(entries: readonly ContextEntry[]): { entries: ResolvedEntry[]; merges: ContextMergeDecision[]; conflicts: ContextConflict[] } {
-  const byKey = new Map<string, ResolvedEntry[]>()
+  // Compare full text first: truncating before the merge could turn two different constraints into an apparent agreement.
+  const byKey = new Map<string, ContextEntry[]>()
   for (const entry of entries) {
-    const resolved = truncate(entry)
-    const group = byKey.get(resolved.key)
-    if (group) group.push(resolved)
-    else byKey.set(resolved.key, [resolved])
+    const checked = validate(entry)
+    const group = byKey.get(checked.key)
+    if (group) group.push(checked)
+    else byKey.set(checked.key, [checked])
   }
   const chosen: ResolvedEntry[] = []
   const merges: ContextMergeDecision[] = []
   const conflicts: ContextConflict[] = []
   for (const [key, group] of [...byKey].sort(([left], [right]) => left.localeCompare(right))) {
-    if (group.length === 1) { chosen.push(group[0]!); continue }
-    const label = (entry: ResolvedEntry) => `${entry.dimension}:${entry.source}`
-    const conflict = (strength: ContextStrength, candidates: ResolvedEntry[]) => conflicts.push({ key, strength,
+    if (group.length === 1) { chosen.push(truncate(group[0]!)); continue }
+    const label = (entry: ContextEntry) => `${entry.dimension}:${entry.source}`
+    const conflict = (strength: ContextStrength, candidates: ContextEntry[]) => conflicts.push({ key, strength,
       dimensions: [...new Set(candidates.map(entry => entry.dimension))].sort((left, right) => DIMENSION_ORDER.get(left)! - DIMENSION_ORDER.get(right)!),
       sources: candidates.map(label) })
     const constraints = group.filter(entry => entry.strength === 'constraint')
@@ -211,7 +227,7 @@ export function mergeContextEntries(entries: readonly ContextEntry[]): { entries
       if (new Set(constraints.map(entry => entry.text)).size > 1) { conflict('constraint', constraints); continue }
       const rank = Math.max(...constraints.map(entryRank))
       const winner = constraints.filter(entry => entryRank(entry) === rank).sort((left, right) => label(left).localeCompare(label(right)))[0]!
-      chosen.push(winner)
+      chosen.push(truncate(winner))
       merges.push({ key, winner: label(winner), losers: group.filter(entry => entry !== winner).map(label) })
       continue
     }
@@ -220,7 +236,7 @@ export function mergeContextEntries(entries: readonly ContextEntry[]): { entries
     // A more specific default wins even when its text differs; only defaults at the same rank with different text are unresolved.
     if (new Set(top.map(entry => entry.text)).size > 1) { conflict('default', top); continue }
     const winner = [...top].sort((left, right) => label(left).localeCompare(label(right)))[0]!
-    chosen.push(winner)
+    chosen.push(truncate(winner))
     merges.push({ key, winner: label(winner), losers: group.filter(entry => entry !== winner).map(label) })
   }
   return { entries: chosen.sort((left, right) => DIMENSION_ORDER.get(left.dimension)! - DIMENSION_ORDER.get(right.dimension)!
@@ -263,13 +279,15 @@ function promptOf(snapshot: ContextSnapshot, entries: ResolvedEntry[]): ContextP
 function blocked(ticket: Ticket, at: string, block: ContextBlock, conflicts: ContextConflict[] = [], entries: ResolvedEntry[] = [],
   merges: ContextMergeDecision[] = [], present: ContextDimension[] = [], sources: Partial<Record<ContextDimension, string>> = {}): ContextAssembly {
   const absent = CONTEXT_DIMENSIONS.filter(dimension => !present.includes(dimension))
-  const snapshot = snapshotOf({ state: 'blocked', at, ticket, entries, merges, conflicts, present, absent, sources, blocked: block })
+  const detail = block.detail.slice(0, 300)
+  const bounded = { ...block, detail }
+  const snapshot = snapshotOf({ state: 'blocked', at, ticket, entries, merges, conflicts, present, absent, sources, blocked: bounded })
   const summary = block.reason === 'conflict'
-    ? `Context assembly blocked on a context conflict: ${block.detail}`
-    : `Context assembly blocked: ${block.detail}`
+    ? `Context assembly blocked on a context conflict: ${detail}`
+    : `Context assembly blocked: ${detail}`
   const question = block.reason === 'conflict'
-    ? `Two context entries disagree and the assembly did not choose one. Decide which applies, then resume the Ticket: ${block.detail}.`
-    : `Context assembly could not run: ${block.detail}. Restore the missing or unreadable source, then resume the Ticket.`
+    ? `Two context entries disagree and the assembly did not choose one. Decide which applies, then resume the Ticket: ${detail}.`
+    : `Context assembly could not run: ${detail}. Restore the missing or unreadable source, then resume the Ticket.`
   return { state: 'blocked', snapshot, block: { summary: summary.slice(0, 300), question: question.slice(0, 500) } }
 }
 
@@ -280,52 +298,70 @@ function blocked(ticket: Ticket, at: string, block: ContextBlock, conflicts: Con
  */
 export function assembleContext(host: ContextAssemblyHost, ticket: Ticket, assignment?: Assignment, now = new Date()): ContextAssembly {
   const at = now.toISOString()
+  // What was successfully resolved before a failure; the blocked snapshot must not claim the other dimensions are absent.
+  const collected: ContextEntry[] = []
+  const present: ContextDimension[] = []
+  const sources: Partial<Record<ContextDimension, string>> = {}
+  const take = (dimension: ContextDimension, entries: ContextEntry[]): void => {
+    if (!entries.length) return
+    collected.push(...entries)
+    present.push(dimension)
+  }
   try {
-    const root = ticket.parentTicketId ? host.ticket(ticket.rootTicketId ?? ticket.parentTicketId) : ticket
+    const rootId = ticket.parentTicketId ? ticket.rootTicketId ?? ticket.parentTicketId : ticket.id
+    const root = ticket.parentTicketId ? read('task', () => host.ticket(rootId)) : ticket
     if (!root) throw new Missing('task', 'the root Ticket is unavailable')
-    if (!root.mandate) throw new Missing('task', 'the root Ticket has no Mandate')
-    const origin = host.trigger(root.origin.triggerId)
-    if (!origin) throw new Missing('task', 'the origin Trigger is unavailable')
 
-    const task = taskDimension(root, origin)
     // A lightweight Ticket has no Assignment or agent; its assembly is exactly the task dimension (docs/011 §C.3).
     if (ticketForm(ticket) === 'lightweight') {
-      const merged = mergeContextEntries(task)
+      const origin = read('task', () => host.trigger(root.origin.triggerId))
+      if (!origin) throw new Missing('task', 'the origin Trigger is unavailable')
+      const merged = mergeContextEntries(taskDimension(root, origin))
       if (merged.conflicts.length) {
-        return blocked(ticket, at, { reason: 'conflict', detail: merged.conflicts.map(conflict => conflict.key).join(', ') },
+        return blocked(ticket, at, { reason: 'conflict', detail: conflictDetail(merged.conflicts) },
           merged.conflicts, merged.entries, merged.merges, ['task'], { task: `ticket:${root.id}` })
       }
       const snapshot = snapshotOf({ state: 'assembled', at, ticket, entries: merged.entries, merges: merged.merges, conflicts: [],
-        present: ['task'], absent: CONTEXT_DIMENSIONS.filter(dimension => dimension !== 'task'),
-        sources: { task: `ticket:${root.id}` } })
+        present: ['task'], absent: CONTEXT_DIMENSIONS.filter(dimension => dimension !== 'task'), sources: { task: `ticket:${root.id}` } })
       return { state: 'assembled', snapshot, prompt: promptOf(snapshot, merged.entries) }
     }
 
     const policy = read('organization', () => host.policyVersion())
     const prompt = read('organization', () => host.promptRevision())
-    const organization = organizationDimension(policy, prompt)
+    take('organization', organizationDimension(policy, prompt))
+    sources.organization = `policy:${policy};prompt:${prompt}`
+
+    const origin = read('task', () => host.trigger(root.origin.triggerId))
+    if (!origin) throw new Missing('task', 'the origin Trigger is unavailable')
+
     const user = userDimension(origin)
+    take('user', user)
+    if (user.length) sources.user = `trigger:${origin.id}`
+
     const group = groupDimension(host, root)
-    const subtask = ticket.parentTicketId ? subtaskDimension(ticket) : []
-    const agent = agentDimension(ticket, assignment)
-    const extra = host.entries?.(ticket) ?? []
-    const carried = new Set([...organization, ...user, ...group, ...task, ...subtask, ...agent].map(entry => entry.dimension))
+    take('group', group)
+    if (group.length) sources.group = group[0]!.scope
+
+    take('task', taskDimension(root, origin))
+    sources.task = `ticket:${root.id}`
+
+    if (ticket.parentTicketId) take('subtask', subtaskDimension(ticket))
+    if (present.includes('subtask')) sources.subtask = `ticket:${ticket.id}#delegation`
+
+    take('agent', agentDimension(ticket, assignment))
+    if (assignment) sources.agent = `assignment:${assignment.id}`
+
+    const extra = read(undefined, () => host.entries?.(ticket) ?? [])
+    const carried = new Set(present)
     for (const entry of extra) {
       if (!DIMENSION_ORDER.has(entry.dimension)) throw new Error(`unknown context dimension ${String(entry.dimension)}`)
       // Presence first: extra entries add facts to a dimension that exists, never conjure one the subject lacks.
       if (!carried.has(entry.dimension)) throw new Error(`context dimension ${entry.dimension} has no present subject`)
     }
 
-    const merged = mergeContextEntries([...organization, ...user, ...group, ...task, ...subtask, ...agent, ...extra])
-    const present = [...new Set([...organization, ...user, ...group, ...task, ...subtask, ...agent, ...extra].map(entry => entry.dimension))]
-      .sort((left, right) => DIMENSION_ORDER.get(left)! - DIMENSION_ORDER.get(right)!)
-    const sources: Partial<Record<ContextDimension, string>> = { organization: `policy:${policy};prompt:${prompt}`,
-      task: `ticket:${root.id}`, agent: assignment ? `assignment:${assignment.id}` : '' }
-    if (user.length) sources.user = `trigger:${origin.id}`
-    if (group.length) sources.group = `${group[0]!.scope}`
-    if (subtask.length) sources.subtask = `ticket:${ticket.id}#delegation`
+    const merged = mergeContextEntries([...collected, ...extra])
     if (merged.conflicts.length) {
-      return blocked(ticket, at, { reason: 'conflict', detail: merged.conflicts.map(conflict => conflict.key).join(', ') },
+      return blocked(ticket, at, { reason: 'conflict', detail: conflictDetail(merged.conflicts) },
         merged.conflicts, merged.entries, merged.merges, present, sources)
     }
     const absent = CONTEXT_DIMENSIONS.filter(dimension => !present.includes(dimension))
@@ -334,10 +370,11 @@ export function assembleContext(host: ContextAssemblyHost, ticket: Ticket, assig
     return { state: 'assembled', snapshot, prompt: promptOf(snapshot, merged.entries) }
   } catch (error) {
     if (error instanceof Unreadable) {
-      return blocked(ticket, at, { reason: 'unreadable', dimension: error.dimension,
-        detail: `${error.dimension} source could not be read: ${safeMessage(error.cause)}` })
+      const label = error.dimension ? `${error.dimension} source` : 'a context source'
+      return blocked(ticket, at, { reason: 'unreadable', ...(error.dimension ? { dimension: error.dimension } : {}),
+        detail: `${label} could not be read: ${safeMessage(error.cause)}` }, [], [], [], present, sources)
     }
-    if (error instanceof Missing) return blocked(ticket, at, { reason: 'missing', dimension: error.dimension, detail: error.message })
-    return blocked(ticket, at, { reason: 'unreadable', detail: `context assembly failed: ${safeMessage(error)}` })
+    if (error instanceof Missing) return blocked(ticket, at, { reason: 'missing', dimension: error.dimension, detail: error.message }, [], [], [], present, sources)
+    return blocked(ticket, at, { reason: 'unreadable', detail: `context assembly failed: ${safeMessage(error)}` }, [], [], [], present, sources)
   }
 }

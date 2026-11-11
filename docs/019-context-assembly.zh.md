@@ -34,7 +34,7 @@
 - **organization 只带引用，不复制正文**：Policy 与 prompts 的正文已经在系统 prompt 中；装配层重复一份会分叉。条目记录当前版本，使快照可审查、可回放。
 - **user 只装发起人**：群组任务不合并其他成员身份；bot/CI 发起的 Trigger 没有 user 维度，而不是伪造一个人。身份不跨 Source 映射。
 - **group 沿用 T5-03 的 scope 词汇**：`contextGroupDimension` 的 scope 是 `<source>:<space>`；装配器在比较同强度默认时，scope 无已知前缀就回退到维度 rank，因此群组约定仍比组织默认具体、比任务默认宽。
-- **task 是根 Ticket 的任务**：对子 Ticket 也装根的目标、Mandate scope 引用与来源；`task` 条目不包含新的验收条件，也不复制 Mandate/Decision。
+- **task 是根 Ticket 的任务**：对子 Ticket 也装根的目标、Mandate scope 引用与来源；`task:goal` 取 `goalOf` 的 statement（与 E0 同一目标投影，statement 本身可能就是 delegation goal 或 Mandate scope，因为那是任务目标），但不复制 Mandate 的 strength/basis/maxActionLevel 等授权字段，也不复制 Decision。
 - **subtask 是当前子 Ticket 自己的**：目标、scope、attempt 与最近局部报告；不包含父 owner 的对话、兄弟子 Ticket 或父的私有过程。
 - **agent 是执行单元**：角色、workspace、Assignment 与 profile 生效 hash；模型/工具/工具的授权上限仍由 T5-07 的会话解析与角色上限决定，装配只记录引用。
 - **轻量 Ticket** 没有 Assignment/worker，装配结果**只有 task 维度**，其余五个维度写入 `absent`；不伪造 agent 或群组。
@@ -64,9 +64,9 @@
 | --- | --- |
 | `state` | `assembled` 或 `blocked` |
 | `ticketId` / `rootTicketId` / `assignmentId` | 装配对象；轻量 Ticket 没有 assignmentId |
-| `dimensions` / `absent` | 生效维度与缺席维度，均按阅读顺序，缺席不生成空层 |
+| `dimensions` / `absent` | 生效维度与缺席维度，均按阅读顺序，缺席不生成空层。blocked 时 `dimensions` 是失败前已成功解析的维度，`absent` 是未装配的维度（含失败维度），失败指针在 `blocked.dimension` |
 | `entries` | `key/dimension/source/scope/strength/inheritance/truncation/chars/digest/truncated?`；**无 text** |
-| `merges` / `conflicts` | 合并胜者与冲突；`conflicts` 非空时 `state=blocked` |
+| `merges` / `conflicts` | 合并胜者与冲突；`conflicts` 非空时 `state=blocked`。比较用完整文本，截断只作用于胜者，避免截断后把不同约束误判为同意 |
 | `sources` | 每个维度来源的版本/身份摘要（Policy+prompt、Trigger、group key、根 Ticket、delegation、worker/Assignment） |
 | `hash` | 对上述事实字段（不含 hash 与 `assembledAt`）的 `sha256`；同一 Assignment 的事实重放同 hash，读取时刻不同也相同 |
 | `contentHash` | 只覆盖维度、条目摘要、合并与冲突的 `sha256`；仅 Assignment 身份变化时不变，用于判断后续消息是否需要重复装配结果 |
@@ -89,7 +89,7 @@
 | Policy/prompt/group 等来源读取抛错 | `blocked`，`unreadable`，带维度与有界错误信息 |
 | 同强度不可分序的条目冲突 | `blocked`，`conflict`，列出 key 与来源 |
 
-Executor 会先记录带 `blocked` 的快照与 trace，再以 `blocked` 报告和一条 `question` 请人决定（root Ticket 形成 Attention；child Ticket 走父 owner 的报告路径）。该 Assignment 不进入 workspace prepare，也不会重试；人解决冲突/恢复来源后，新的 Assignment 重新装配。没有 `fallback` 或「静默省略该维度」的路径。
+Executor 会先记录带 `blocked` 的快照与 trace，再以 `blocked` 报告和一条 `question` 请人决定（root Ticket 形成 Attention；child Ticket 只走父 owner 的 child-report 路径，不再额外向主会话发一条 worker_report）。该 Assignment 不进入 workspace prepare，也不会重试；人解决冲突/恢复来源后，新的 Assignment 重新装配。没有 `fallback` 或「静默省略该维度」的路径。
 
 ## 6. 与相邻任务的接口
 
@@ -103,21 +103,21 @@ Executor 会先记录带 `blocked` 的快照与 trace，再以 `blocked` 报告�
 
 ## 7. 验收与测试
 
-`tests/context.spec.ts`（14 用例）：
+`tests/context.spec.ts`（18 用例）：
 
 | 场景 | 断言 |
 | --- | --- |
 | 六维各自来源 | root 的 organization/user/group/task/agent 与 absent subtask；child 六维齐全；来源、scope、强度、继承与 HASH |
 | 缺席 | bot origin 无 user；无私聊群组；轻量 Ticket 只有 task |
 | 合并 | constraint > default；同强度默认按 scope；完全同文去重；merges 记录 winner/losers |
-| 冲突 | 同强度冲突 blocked，conflicts 记录，不选胜者，question 请人裁定 |
-| 缺失/不可读 | 无 Assignment/无 Mandate/无 delegation/来源抛错均 blocked，不默认 |
+| 冲突 | 约束/默认同强度冲突均 blocked，conflicts 记录，不选胜者，question 请人裁定；截断前比较完整文本 |
+| 缺失/不可读 | 无 Assignment/无 Mandate/无 delegation/来源抛错均 blocked，不默认；已解析维度不会被误报为 absent |
 | 退订/离开 | 下一次装配 group 缺席、hash 变化，Ticket 不被改写 |
 | 快照 | 无 text、digest/hash 可重放、来源版本变化 hash 变化 |
 | 授权隔离 | 无 action level/approval/admission 维度；task mandate 只引用并声明 grants nothing |
 | 截断 | 每个条目按 truncation 截断并记录 truncated/chars |
-| 子工单 | 只读根，不读 parent/sibling 私有过程；根目标 + 自己的 subtask |
-| 边界 | 无效条目 fail closed |
+| 子工单 | 只读根，不读 parent/sibling 私有过程；根目标 + 自己的 subtask；runtime 子工单首条消息也覆盖 |
+| 边界 | 无效条目、超上限的 host truncation、大量冲突 key 的 detail 均有界 fail closed |
 
 运行：`pnpm exec vitest run tests/context.spec.ts tests/runtime.spec.ts tests/trace.spec.ts`。
 
@@ -127,7 +127,7 @@ Executor 会先记录带 `blocked` 的快照与 trace，再以 `blocked` 报告�
 - `ContextAssemblyHost.entries` 是给尚无内置载体的维度（个人偏好、术语表）预留的合并入口；当前 Runtime 不传值，因此生产装配只有六个内置来源。它不进入授权路径。
 - 轻量 Ticket 的 inline 执行器不生成 worker prompt，所以装配器支持其「只有 task」的形态并写入快照，但 inline 路径没有注入点；这是「没有 Assignment 就没有 agent 维度」的直接结果，不是遗漏。
 - 快照不含正文，回放比较 digest/hash；需要人读原文时仍走既有 `trigger/<id>`、`ticket/<id>/assignment` 等白名单资源。
-- 截断目前是逐条目字符上限（表 §2 的 truncation），没有额外的全局装配预算；内置六个来源的合计远低于一条 worker 消息，宿主通过 `entries` 增加来源时须自带每项上限。
+- 截断目前是逐条目字符上限（表 §2 的 truncation），没有额外的全局装配预算；内置六个来源的合计远低于一条 worker 消息，宿主通过 `entries` 增加来源时须自带每项上限，单个条目上限被强制为 4000 字符。
 - 来源可信度沿用 Source 既有的安装/认证边界；装配器不新增信任评分，只把来源读取失败或缺失视为不可用。
 - user 维度只装根 Ticket 的 origin 发起人，不把后续操作者替换进同一份任务上下文；操作者身份仍由当前 Trigger/Input 携带。
 - task 维度只装目标、Mandate 引用与来源；验收条件与交付物已经在 Goal/Review/Assignment 文本中，装配不复制它们，避免第二份验收事实。

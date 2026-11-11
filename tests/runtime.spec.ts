@@ -281,9 +281,12 @@ it('relays an explicit member mention as a candidate and creates the ticket, ack
   expect(assignment.context).toMatchObject({ state: 'assembled', dimensions: ['organization', 'user', 'group', 'task', 'agent'],
     absent: ['subtask'], assignmentId: assignment.id })
   expect(assignment.context!.entries.every(item => !('text' in item))).toBe(true)
-  expect(runtime.store.spans.trace(traceId(trigger.id))).toEqual(expect.arrayContaining([
-    expect.objectContaining({ kind: 'context', assignmentId: assignment.id, data: expect.objectContaining({ state: 'assembled',
-      dimensions: ['organization', 'user', 'group', 'task', 'agent'], absent: ['subtask'] }) })]))
+  const contextSpan = runtime.store.spans.trace(traceId(trigger.id)).find(span => span.kind === 'context')!
+  expect(contextSpan).toMatchObject({ assignmentId: assignment.id, data: expect.objectContaining({ state: 'assembled',
+    dimensions: ['organization', 'user', 'group', 'task', 'agent'], absent: ['subtask'] }) })
+  // The trace names what applied and hashes it, never the text or the entry list.
+  expect(contextSpan.data).not.toHaveProperty('entries')
+  expect(JSON.stringify(contextSpan.data)).not.toContain(trigger.text)
   expect(await route({ kind: 'accept', trigger_id: trigger.id, title: 'again', worktree_name: worktreeName, acknowledgement: 'x' })).toMatchObject({ ticket: { ticket_id: ticket.id } })
 })
 
@@ -803,6 +806,45 @@ it('records an admission table change in the Policy history as one line for its 
   await runtime.settings.save('policy', { ...policy, sources: { ...policy.sources, feishu: { ...policy.sources.feishu!, admission: { [CHAT]: { unlistedAddressed: 'explicit' } } } } }, runtime.store.blockRevision('policy'), 'panel')
   expect(policyVersion(runtime.store.settings())).not.toBe(version)
   expect(policyHistory(runtime.store, runtime.sources, policyVersion(runtime.store.settings())).items[0]!.changes).toEqual([{ code: 'sourceAdmission', source: 'feishu', part: true }])
+})
+
+it('blocks a launch with a missing context source, records the snapshot and trace, and starts no worker', async () => {
+  const { ticket, sessionId } = await acceptedTicket()
+  await runTool(sessionId, 'orchestrator_report', { state: 'failed', summary: 'LlmError: offline' })
+  const before = relays(sessionId).length
+  const { mandate: _removed, ...withoutMandate } = runtime.store.tickets.get(ticket.id)!
+  runtime.store.tickets.save(withoutMandate)
+  runtime.engine.retryTicket(ticket.id)
+  await runtime.idle()
+  const blockedTicket = runtime.store.tickets.get(ticket.id)!
+  const assignment = blockedTicket.assignments.at(-1)!
+  expect(waitsForPerson(blockedTicket)).toBe(true)
+  expect(blockedTicket.attention?.question).toContain('no Mandate')
+  expect(assignment.report).toMatchObject({ state: 'blocked', summary: expect.stringContaining('Context assembly blocked') })
+  expect(assignment.context).toMatchObject({ state: 'blocked', dimensions: ['organization', 'user', 'group'],
+    absent: ['task', 'subtask', 'agent'], blocked: { reason: 'missing', dimension: 'task' } })
+  expect(runtime.store.spans.trace(traceId(ticket.origin.triggerId))).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: 'context', assignmentId: assignment.id, data: expect.objectContaining({ state: 'blocked',
+      reason: 'missing', dimension: 'task' }) })]))
+  // The blocked launch stops before a workspace is prepared or the worker is prompted.
+  expect(relays(sessionId)).toHaveLength(before)
+  expect(runtime.store.tickets.get(ticket.id)!.execution).toEqual(ticket.execution)
+})
+
+it('repeats the assembled context only when its content changes', async () => {
+  const { ticket, sessionId } = await acceptedTicket()
+  await runTool(sessionId, 'orchestrator_report', { state: 'failed', summary: 'LlmError: offline' })
+  runtime.engine.retryTicket(ticket.id)
+  await runtime.idle()
+  expect(relays(sessionId).at(-1)).toEqual({ ticket_id: ticket.id, assignment: 2, note: expect.stringContaining('A person retried this ticket') })
+
+  await runTool(sessionId, 'orchestrator_report', { state: 'failed', summary: 'LlmError: offline again' })
+  const changed = runtime.store.tickets.get(ticket.id)!
+  runtime.store.tickets.save({ ...changed, mandate: { ...changed.mandate!, scope: 'a changed task scope' } })
+  runtime.engine.retryTicket(ticket.id)
+  await runtime.idle()
+  expect(relays(sessionId).at(-1)).toMatchObject({ ticket_id: ticket.id, assignment: 3,
+    context_assembly: expect.objectContaining({ state: 'assembled', dimensions: ['organization', 'user', 'group', 'task', 'agent'] }) })
 })
 
 it('retries only a failed, blocked or undelivered ticket with a new assignment, and finds tickets by title in search, and reports unavailable Evals as a problem', async () => {

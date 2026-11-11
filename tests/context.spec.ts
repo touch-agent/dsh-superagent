@@ -206,10 +206,15 @@ describe('context assembly', () => {
     const noAssignment = blocked(assembleContext(hostFor([root], [trigger('t-root')]).host, root, undefined, new Date(AT)))
     expect(noAssignment.snapshot.blocked?.reason).toBe('missing')
     expect(noAssignment.snapshot.blocked).toMatchObject({ reason: 'missing', dimension: 'agent' })
+    // Do not claim the resolved dimensions are absent just because the last one blocked the assembly.
+    expect(noAssignment.snapshot.dimensions).toEqual(['organization', 'user', 'task'])
+    expect(noAssignment.snapshot.absent).toEqual(['group', 'subtask', 'agent'])
 
     const noMandate = ticket('root', { mandate: undefined })
     const missingTask = blocked(assembleContext(hostFor([noMandate], [trigger('t-root')]).host, noMandate, assignment('a1'), new Date(AT)))
     expect(missingTask.snapshot.blocked).toMatchObject({ reason: 'missing', dimension: 'task' })
+    expect(missingTask.snapshot.dimensions).toEqual(['organization', 'user'])
+    expect(missingTask.snapshot.blocked?.detail).toContain('no Mandate')
 
     const child = ticket('child', { decisionId: undefined, mandate: undefined, parentTicketId: 'root', rootTicketId: 'root' })
     const missingSubtask = blocked(assembleContext(hostFor([root, child], [trigger('t-root')]).host, child, assignment('a-c'), new Date(AT)))
@@ -221,11 +226,13 @@ describe('context assembly', () => {
     const unreadableGroup = blocked(assembleContext(hostFor([root], [trigger('t-root')], {
       group: () => { throw new Error('shared-space lookup failed') } }).host, root, assignment('a1'), new Date(AT)))
     expect(unreadableGroup.snapshot.blocked).toMatchObject({ reason: 'unreadable', dimension: 'group' })
+    expect(unreadableGroup.snapshot.dimensions).toEqual(['organization', 'user'])
     expect(unreadableGroup.block.summary).toContain('shared-space lookup failed')
 
     const unreadablePolicy = blocked(assembleContext(hostFor([root], [trigger('t-root')], {
       policy: () => { throw new Error('policy store unavailable') } }).host, root, assignment('a1'), new Date(AT)))
     expect(unreadablePolicy.snapshot.blocked).toMatchObject({ reason: 'unreadable', dimension: 'organization' })
+    expect(unreadablePolicy.snapshot.dimensions).toEqual([])
   })
 
   it('drops the group from the next snapshot after the Ticket leaves the shared space, without rewriting the Ticket', () => {
@@ -292,6 +299,57 @@ describe('context assembly', () => {
     const order = result.prompt.entries.map(value => dimensionIndex.get(value.dimension)!)
     expect(order).toEqual([...order].sort((left, right) => left - right))
     expect(result.snapshot.entries.find(value => value.key === 'user:long')).toMatchObject({ chars: 40, truncated: true })
+  })
+
+  it('fails closed when two equal-strength defaults disagree at the same scope rank', () => {
+    const root = ticket('root')
+    const entries = [
+      entry({ key: 'reply:style', dimension: 'task', source: 'a', scope: 'task:root', text: 'Short' }),
+      entry({ key: 'reply:style', dimension: 'task', source: 'b', scope: 'task:root', text: 'Long' }),
+    ]
+    const result = blocked(assembleContext(hostFor([root], [trigger('t-root')], { entries: () => entries }).host,
+      root, assignment('a1'), new Date(AT)))
+    expect(result.snapshot.conflicts).toEqual([{ key: 'reply:style', strength: 'default', dimensions: ['task'],
+      sources: ['task:a', 'task:b'] }])
+    expect(result.snapshot.blocked?.reason).toBe('conflict')
+  })
+
+  it('compares full text before truncation, so a hidden difference still conflicts', () => {
+    const root = ticket('root')
+    const entries = [
+      entry({ key: 'reply:long', dimension: 'task', source: 'a', scope: 'task:root', strength: 'constraint',
+        truncation: 20, text: `${'x'.repeat(20)}A` }),
+      entry({ key: 'reply:long', dimension: 'task', source: 'b', scope: 'task:root', strength: 'constraint',
+        truncation: 20, text: `${'x'.repeat(20)}B` }),
+    ]
+    const result = blocked(assembleContext(hostFor([root], [trigger('t-root')], { entries: () => entries }).host,
+      root, assignment('a1'), new Date(AT)))
+    expect(result.snapshot.conflicts[0]).toMatchObject({ key: 'reply:long', strength: 'constraint' })
+    expect(result.snapshot.blocked?.reason).toBe('conflict')
+  })
+
+  it('bounds a conflict detail even when a host supplies many conflicting keys', () => {
+    const root = ticket('root')
+    const entries = [
+      ...Array.from({ length: 12 }, (_, index): ContextEntry => entry({ key: `reply:k${index}`, dimension: 'task',
+        source: 'a', scope: 'task:root', text: 'a' })),
+      ...Array.from({ length: 12 }, (_, index): ContextEntry => entry({ key: `reply:k${index}`, dimension: 'task',
+        source: 'b', scope: 'task:root', text: 'b' })),
+    ]
+    const result = blocked(assembleContext(hostFor([root], [trigger('t-root')], { entries: () => entries }).host,
+      root, assignment('a1'), new Date(AT)))
+    expect(result.snapshot.conflicts).toHaveLength(12)
+    expect(result.snapshot.blocked!.detail.length).toBeLessThanOrEqual(300)
+    expect(result.block.question.length).toBeLessThanOrEqual(500)
+  })
+
+  it('rejects a host entry whose truncation ceiling is unbounded', () => {
+    const root = ticket('root')
+    const result = blocked(assembleContext(hostFor([root], [trigger('t-root')], {
+      entries: () => [entry({ key: 'user:huge', dimension: 'user', text: 'x', truncation: 10_000 })] }).host,
+    root, assignment('a1'), new Date(AT)))
+    expect(result.snapshot.blocked?.reason).toBe('unreadable')
+    expect(result.snapshot.blocked?.detail).toContain('truncation outside')
   })
 
   it('merges keyed entries without a text copy and rejects an invalid extra entry', () => {
