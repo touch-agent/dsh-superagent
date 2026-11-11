@@ -136,7 +136,7 @@ it('shows the E1 selected detail with the E0 goal, decision and result, and no w
   expect(item.textContent).toContain(zh['tasksRole.parentWorker'])
   expect(item.textContent).not.toMatch(/worker-|Assignment|sessionId|assignmentId|workerId/)
   const blocked = row('整理迁移说明')!
-  expect(blocked.textContent).toContain(zh['activityStatus.blocked'])
+  expect(blocked.textContent).toContain(zh['stage.blocked'])
 })
 
 it('rolls back to the plan tree with taskView.v1=off and offers no list view', async () => {

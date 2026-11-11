@@ -546,6 +546,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-notice-card-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 6px; min-width: 0; padding: 12px 12px 10px; }
 .dt-notice-close { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-caption); cursor: pointer; }
 .dt-notice-close:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.dt-notice-unread { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-bg-info, #2f6fed); }
 .dt-notice-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding-right: 20px; }
 .dt-notice-time { color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
 .dt-notice-title { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }

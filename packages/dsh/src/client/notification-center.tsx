@@ -23,6 +23,7 @@ type Group = typeof GROUPS[number]
 
 interface NoticeCenter {
   items: readonly Notice[]
+  read: ReadonlySet<string>
   unread: number
   open: boolean
   openDrawer: () => void
@@ -68,11 +69,12 @@ function NoticeActions({ notice, onAction, busy, compact = false }: { notice: No
   </div>
 }
 
-function NoticeBody({ notice, compact = false }: { notice: Notice; compact?: boolean }) {
+function NoticeBody({ notice, compact = false, unread = false }: { notice: Notice; compact?: boolean; unread?: boolean }) {
   const { t } = usePanel()
   const [details, setDetails] = useState(false)
   return <>
     <div className="dt-notice-head">
+      {unread && <span className="dt-notice-unread" role="img" aria-label={t('noticeUnreadMark')} />}
       <span className="dt-tag" data-tone={kindTone(notice.kind)}>{kindLabel(t, notice.kind)}</span>
       <span className="dt-notice-time">{when(notice.at, t('lang'))}</span>
       {notice.kind === 'system' && notice.attempts !== undefined
@@ -103,7 +105,8 @@ function ToastCard({ notice, onDone, onAction, onOpenDrawer, busy }: { notice: N
     return () => clearTimeout(timer)
   }, [paused, notice.id])
   return <article className="dt-notice-card" role="group" aria-label={notice.title} onMouseEnter={() => setPaused(true)}
-    onMouseLeave={() => setPaused(false)}>
+    onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)}
+    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPaused(false) }}>
     <div className="dt-notice-card-bar" data-kind={notice.kind} />
     <div className="dt-notice-card-body">
       <button type="button" className="dt-notice-close" aria-label={t('close')} title={t('close')} onClick={onDone}>
@@ -126,6 +129,7 @@ function Drawer({ center }: { center: NoticeCenter }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [center])
   const items = group === 'all' ? center.items : center.items.filter(item => item.kind === group)
+  const unreadIn = (kind?: Group) => center.items.filter(item => (!kind || item.kind === kind) && !center.read.has(item.id)).length
   return createPortal(<div className="dt-drawer-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) center.closeDrawer() }}>
     <aside className="dt-drawer" role="dialog" aria-modal="true" aria-labelledby="dt-drawer-title">
       <header className="dt-drawer-head">
@@ -140,13 +144,13 @@ function Drawer({ center }: { center: NoticeCenter }) {
         <div className="dt-pills" role="group" aria-label={t('notifications')}>
           <Pill active={group === 'all'} onClick={() => setGroup('all')}>{t('noticeGroup.all')}{center.unread ? ` · ${center.unread}` : ''}</Pill>
           {GROUPS.map(kind => <Pill key={kind} active={group === kind} onClick={() => setGroup(kind)}>
-            {kindLabel(t, kind)} {center.items.filter(item => item.kind === kind).length}</Pill>)}
+            {kindLabel(t, kind)}{unreadIn(kind) ? ` · ${unreadIn(kind)}` : ''}</Pill>)}
         </div>
         <Button variant="outline" size="sm" disabled={!center.unread} onClick={center.markAllRead}>{t('noticeMarkAllRead')}</Button>
       </div>
       <div className="dt-drawer-list">
         {items.length ? items.map(notice => <article key={notice.id} className="dt-notice-item" data-kind={notice.kind}>
-          <NoticeBody notice={notice} />
+          <NoticeBody notice={notice} unread={!center.read.has(notice.id)} />
           <NoticeActions notice={notice} onAction={center.onAction} busy={center.busy} />
         </article>) : <p className="dt-hint">{t('noticeEmpty')}</p>}
       </div>
@@ -267,11 +271,12 @@ export function NotificationHost({ children }: { children: ReactNode }) {
   // The drawer and the floating cards are separate switches: turning the drawer off must keep the cards that the
   // overlay switch still allows, and turning both off returns the page untouched.
   if (!active) return <>{children}</>
-  const center: NoticeCenter = { items, unread, open, openDrawer: () => setOpen(true), closeDrawer: () => setOpen(false),
+  const center: NoticeCenter = { items, read, unread, open, openDrawer: () => setOpen(true), closeDrawer: () => setOpen(false),
     markAllRead, onAction: action, busy }
   const body = <>
     {children}
-    {overlay.current && createPortal(<div className="dt-notice-stack">
+    {overlay.current && createPortal(<div className="dt-notice-stack" role="status" aria-live="polite"
+      aria-label={t('notifications')}>
       {cards.map(notice => <ToastCard key={notice.id} notice={notice} busy={busy} onAction={action}
         onDone={() => { setCards(current => current.filter(item => item.id !== notice.id)); setTimeout(pump, 0) }}
         {...drawerOn ? { onOpenDrawer: () => setOpen(true) } : {}} />)}

@@ -52,7 +52,8 @@ export function orderTasks(tasks: readonly TaskView[]): TaskView[] {
   return ordered
 }
 
-const statusLabel = (t: T, status: ActivityStatus): string => t(`activityStatus.${status}`)
+const statusLabel = (t: T, status: ActivityStatus): string => status === 'blocked' ? t('stage.blocked')
+  : status === 'failed' ? t('stage.failed') : t(`activityStatus.${status}`)
 const kindLabel = (t: T, node: TaskNode): string => t(`tasksKind.${node.kind}`)
 
 /** Internal navigation for a Ticket or Thread, and a new tab for a source URL. */

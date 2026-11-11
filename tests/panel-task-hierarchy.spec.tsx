@@ -47,6 +47,8 @@ it('opens one task level from the list and shows goal, owner, children, delivera
   expect(detail.textContent).toContain('补迁移说明')
   expect(detail.textContent).toContain(zh.taskHierarchyReportedFailed)
   expect(detail.textContent).toContain('缺少迁移目标')
+  expect(detail.textContent).toContain(zh['stage.blocked'])
+  expect(detail.textContent).not.toContain(zh['activityStatus.blocked'])
   expect(detail.textContent).toContain(zh.taskHierarchyDeliverables)
   expect(detail.textContent).toContain('docs/migration.md · r1')
   expect(detail.textContent).toContain(zh.taskHierarchyBlockers)
@@ -59,6 +61,9 @@ it('opens one task level from the list and shows goal, owner, children, delivera
   expect(detail.querySelector('.dt-e0-technical')?.textContent).toContain('t1')
   await click(zh.taskHierarchyOpenSession)
   expect(server.opened).toEqual(['worker-t1'])
+  // The child level has no working-session entry of its own; only the root level does.
+  await click(detail.querySelector<HTMLElement>('.dt-task-levels button')!)
+  expect(document.querySelector('.dt-task-detail')!.textContent).not.toContain(zh.taskHierarchyOpenSession)
 })
 
 it('keeps the compact selected-row goal when ux.taskHierarchy.v1 is off', async () => {

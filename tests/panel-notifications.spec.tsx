@@ -31,8 +31,10 @@ it('shows an unread badge, opens the drawer from the bell and groups notices by 
   // Each item answers what happened, what you can do and what ignoring it costs.
   expect(drawer()!.textContent).toContain(zh.noticeApprovalConsequence)
   expect(all('.dt-notice-item[data-kind="attention"]').length).toBe(2)
+  expect(drawer()!.querySelectorAll('.dt-notice-unread').length).toBeGreaterThan(0)
   await click(zh.noticeMarkAllRead)
   expect(bell()?.querySelector('.dt-bell-badge')).toBeNull()
+  expect(drawer()!.querySelectorAll('.dt-notice-unread')).toHaveLength(0)
 })
 
 it('approves and hands a Source over to Settings from the drawer without leaving the notice', async () => {

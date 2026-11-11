@@ -27,6 +27,9 @@ export function nextStep(task: TaskView, t: T): string {
   return t('taskHierarchyNextWorking')
 }
 
+const statusLabel = (t: T, status: TaskView['status']): string => status === 'blocked' ? t('stage.blocked')
+  : status === 'failed' ? t('stage.failed') : t(`activityStatus.${status}`)
+
 const profileText = (t: T, profile: { id: string; revision: number } | undefined): string =>
   profile ? t('taskHierarchyOwnerProfile', profile) : t('taskHierarchyOwnerDefault')
 
@@ -46,7 +49,7 @@ function Blocker({ task, t }: { task: TaskView; t: T }) {
   const label = task.blocker.kind === 'delivery' ? t('taskHierarchyNextDelivery')
     : task.blocker.kind === 'orphaned' ? t('tasksNeedsOwner')
       : task.blocker.kind === 'child' ? `${task.blocker.count ?? 0} ${t('taskHierarchyChildren')}`
-        : t(`activityStatus.${task.blocker.kind}`)
+        : task.blocker.kind === 'blocked' ? t('stage.blocked') : t('stage.failed')
   return <div className="dt-task-report">
     <Tag tone={task.blocker.kind === 'failed' ? 'danger' : 'warning'}>{label}</Tag>
     {task.blocker.kind === 'child' ? <span>{t('taskHierarchyChildBlocker', { count: task.blocker.count ?? 0 })}</span>
@@ -91,7 +94,7 @@ function LevelRow({ task, t, onEnter }: { task: TaskView; t: T; onEnter: () => v
   return <li className="dt-task-level" data-status={task.status}>
     <div className="dt-task-level-head">
       <button type="button" className="dt-task-level-title" onClick={onEnter}>{task.title}</button>
-      <Tag tone={STATUS_TONE[task.status]}>{t(`activityStatus.${task.status}`)}</Tag>
+      <Tag tone={STATUS_TONE[task.status]}>{statusLabel(t, task.status)}</Tag>
       {task.terminal && <Tag tone="quiet">{t(`tasksTerminal.${task.terminal}`)}</Tag>}
     </div>
     <div className="dt-task-level-meta">
@@ -118,14 +121,21 @@ function LevelRow({ task, t, onEnter }: { task: TaskView; t: T; onEnter: () => v
 export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskView; store: TasksViewClient
   onBack: () => void; onOpenTicket: (id: string) => void }) {
   const { t, navigate, openSession, notify } = usePanel()
-  useTasksView(store)
-  const [stack, setStack] = useState<TaskView[]>([task])
-  useEffect(() => { setStack([task]) }, [task.id])
-  const focus = stack.at(-1) ?? task
-  useEffect(() => { if (focus.childSummary?.total) store.ensureDetail(focus.id) }, [store, focus.id, focus.childSummary?.total])
+  const snapshot = useTasksView(store)
+  // Entries keep the row a person entered from; every render resolves the same id against the newest poll answer,
+  // so an open detail does not freeze at the first render while the list keeps moving underneath it.
+  const [stack, setStack] = useState<Array<{ id: string; task: TaskView }>>(() => [{ id: task.id, task }])
+  useEffect(() => {
+    setStack(current => current[0]?.id === task.id ? current : [{ id: task.id, task }])
+  }, [task.id, task])
+  const resolved = stack.map(entry => entry.id === task.id ? task : store.detailOf(entry.id)?.task ?? store.findTask(entry.id) ?? entry.task)
+  const focus = resolved.at(-1) ?? task
+  const ids = stack.map(entry => entry.id).join('\u0000')
+  const generatedAt = snapshot.data?.generatedAt
+  useEffect(() => { for (const entry of stack) store.ensureDetail(entry.id) }, [store, ids, generatedAt])
   const detail = store.detailOf(focus.id)
   const children = detail?.children ?? focus.children ?? []
-  const sessionId = focus.worker?.sessionId ?? focus.execution.sessionId
+  const sessionId = focus.parentTicketId ? undefined : focus.worker?.sessionId ?? focus.execution.sessionId
   const deeper = (focus.childSummary?.total ?? 0) - children.length
   const source = useMemo(() => focus.sources.map(item => item.source).find(Boolean) ?? focus.origin.source, [focus])
   return <section className="dt-task-detail" aria-label={t('taskHierarchyGoal')}>
@@ -134,9 +144,9 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
         <Button variant="ghost" size="sm" icon={<Icon name="chevron-left" size={14} />} onClick={() => {
           if (stack.length > 1) setStack(stack.slice(0, -1)); else onBack()
         }}>{stack.length > 1 ? t('taskHierarchyParent') : t('taskHierarchyBack')}</Button>
-        {stack.length > 1 && <p className="dt-hint">{stack.map(item => item.title).join(' / ')}</p>}
+        {stack.length > 1 && <p className="dt-hint">{resolved.map(item => item.title).join(' / ')}</p>}
         <h2 className="dt-task-detail-title">{focus.title}</h2>
-        <div className="dt-task-level-meta">{t('taskHierarchyStatus')} · {t(`activityStatus.${focus.status}`)}
+        <div className="dt-task-level-meta">{t('taskHierarchyStatus')} · {statusLabel(t, focus.status)}
           {source && ` · ${t('taskHierarchySource')} ${valueLabel(t, 'source', source)}`}</div>
       </div>
       <Button variant="outline" size="sm" icon={<Icon name="external" size={13} />}
@@ -165,7 +175,7 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
     <div className="dt-task-detail-section">
       <h4>{t('taskHierarchyChildren')}</h4>
       {children.length ? <ul className="dt-task-levels">{children.map(child => <LevelRow key={child.id} task={child} t={t}
-        onEnter={() => { store.ensureDetail(child.id); setStack([...stack, child]) }} />)}</ul>
+        onEnter={() => { store.ensureDetail(child.id); setStack([...stack, { id: child.id, task: child }]) }} />)}</ul>
         : focus.childSummary?.total ? <p className="dt-hint">{t('loading')}</p> : <p className="dt-hint">{t('taskHierarchyNoChildren')}</p>}
       {deeper > 0 && <p className="dt-hint">{t('taskHierarchyMore', { count: deeper })}</p>}
     </div>
