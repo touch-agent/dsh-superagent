@@ -1,5 +1,6 @@
 ---
 '@superagent/dsh': minor
+'@superagent/kernel': minor
 ---
 
 Assemble the six context dimensions per Assignment (T5-04). A host-side
