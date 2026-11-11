@@ -231,7 +231,19 @@ const overviewView = (): ApiResponse<'GET overview'> => {
       duplicates: { sends: 6, repeated: 0 },
       recovery: { interrupted: 1, recovered: 1, medianSeconds: 30 },
       throughput: { decisions: 5, perHour: 0.2 },
-      approval: { samples: 3, medianSeconds: 20, p90Seconds: 60 } },
+      approval: { samples: 3, medianSeconds: 20, p90Seconds: 60 },
+      organization: {
+        tickets: { roots: 1, children: 0, open: 1, openChildren: 0, maxDepth: 0, medianDepth: 0, depthDistribution: { '0': 1 } },
+        children: { active: 0, maxActivePerRoot: 0, rootsWithActiveChildren: 0, orphaned: 0, unresolved: 0 },
+        parentReview: { samples: 0, medianSeconds: null, p90Seconds: null },
+      },
+      attention: {
+        results: 1,
+        notifications: { sends: 2, perResult: 2, kinds: { acknowledgement: 1, reply: 1, notice: 0 } },
+        activity: { quiet: 1, feed: 2, notice: 0, noticesPerResult: 0 },
+        autoOpen: { samples: 0, closeRate: null, status: 'not-collected' as const, reason: 'fixture' },
+        clickDepth: { samples: 0, medianClicks: null, status: 'not-collected' as const, reason: 'fixture' },
+      } },
     policyVersion: 'abcdef1234567890',
   }
 }

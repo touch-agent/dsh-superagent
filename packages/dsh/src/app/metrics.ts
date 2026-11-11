@@ -1,12 +1,14 @@
 /**
  * Health metrics of one Store: how long a Trigger waits for its first judgement, whether any message went to one
  * conversation twice for the same ticket, how long work stayed stalled after the host restarted, how many judgements the
- * Evals produce per hour, and how long approvals waited for a decision.
+ * Evals produce per hour, how long approvals waited for a decision, and the read-only organization and attention costs a
+ * replacement changes.
  *
  * The panel shows them read-only and `GET metrics` returns the same figures, so an operator can check the system
  * without reading the database. Every figure is derived from stored rows; a missing sample is `null`, never a zero.
  */
 import type { Store } from './store.ts'
+import { attentionMetrics, organizationMetrics, type AttentionMetrics, type OrganizationMetrics } from './replacement.ts'
 
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
@@ -40,6 +42,10 @@ export interface MetricsView {
   throughput: { decisions: number; perHour: number }
   /** Time from an Approval being requested to its decision, over the last 24 hours; a withdrawal is not a decision. */
   approval: { samples: number; medianSeconds: number | null; p90Seconds: number | null }
+  /** Organization cost, derived from the stored task tree rather than any task view. */
+  organization: OrganizationMetrics
+  /** What results cost in messages and graded events, with the browser-only measures marked not collected. */
+  attention: AttentionMetrics
 }
 
 /**
@@ -96,5 +102,7 @@ export function metrics(store: Store, now = Date.now()): MetricsView {
     recovery: { interrupted: Number(interrupted?.n ?? 0), recovered: gaps.length, medianSeconds: quantile(gaps, 0.5) },
     throughput: { decisions, perHour: Math.round((decisions / (DAY / HOUR)) * 10) / 10 },
     approval: { samples: approvalDelays.length, medianSeconds: quantile(approvalDelays, 0.5), p90Seconds: quantile(approvalDelays, 0.9) },
+    organization: organizationMetrics(store),
+    attention: attentionMetrics(store),
   }
 }
