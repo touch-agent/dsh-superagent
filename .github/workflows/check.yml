@@ -17,8 +17,9 @@ jobs:
           node-version: 24
           cache: pnpm
       # The lockfile also guards the workspace shape: `packages/kernel` and `packages/dsh` are importers, and the run fails if a
-      # manifest and the lockfile disagree. The kernel boundary and the layer rules are tests, so `pnpm test` is what refuses a
-      # host dependency inside `packages/kernel` or a Source that imports `src/app`; nothing here needs a separate job.
+      # manifest and the lockfile disagree. X-02 runs the dependency rules as `pnpm check:arch` inside `pnpm check`: it refuses a
+      # host dependency inside `packages/kernel`, a Source that imports `src/app`, or a bundle entry that is more than a re-export.
+      # The transitional scanners in tests/ still run through `pnpm test` for one release; see docs/007-architecture.md.
       - run: pnpm install --frozen-lockfile
       # X-11 composes an installed profile through the host's own `dsh --dump-config`. The CLI is the host, not a workspace
       # dependency, so install the version `engines.dsh` admits; a host without it must make this step fail rather than skip the test.

@@ -1,4 +1,11 @@
-/** Verifies that the kernel stays a host-free workspace package: it may import only its own files and Node built-ins. */
+/**
+ * Verifies that the kernel stays a host-free workspace package: it may import only its own files and Node built-ins.
+ *
+ * @deprecated X-02 transitional: `.dependency-cruiser.mjs` checks the imports, and
+ * `tests/dependency-rules.spec.ts` keeps the manifest assertion. This scanner stays
+ * for one release; it is deleted in the release after the one that ships the config.
+ * See "Architecture checks" in docs/007-architecture.md.
+ */
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

@@ -1,4 +1,11 @@
-/** Verifies the layer rules of docs/007-architecture.md: a Source never depends on the host, the panel sees the host side only through types and the documented plain values, and no source crosses into packages/ by relative path. */
+/**
+ * Verifies the layer rules of docs/007-architecture.md: a Source never depends on the host, the panel sees the host side only through types and the documented plain values, and no source crosses into packages/ by relative path.
+ *
+ * @deprecated X-02 transitional: `.dependency-cruiser.mjs` enforces these rules, and
+ * `tests/dependency-rules.spec.ts` proves they catch a new violation. This scanner
+ * stays for one release; it is deleted in the release after the one that ships the
+ * config. See "Architecture checks" in docs/007-architecture.md.
+ */
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,10 +25,14 @@ const VALUE_MODULES = new Set(['../admission.ts', '../limits.ts', '../setup.ts',
 /** `packages/dsh/src/app/api.ts` is a whitelist for its filter constants, which are its whole value surface. */
 const FILTER_CONSTANTS: Record<string, readonly string[]> = { '../app/api.ts': ['TICKET_FILTERS', 'THREAD_FILTERS'] }
 
-/** Every TypeScript file under a tree, as a path relative to the repository root. */
+/**
+ * Every TypeScript file under a tree, as a path relative to the repository root.
+ * `tests/fixtures` is data for the tests, including dependency-cruiser's deliberately
+ * violating fixtures, so it is not source under the layer rules.
+ */
 function files(tree: string): string[] {
   return readdirSync(join(ROOT, tree), { recursive: true, encoding: 'utf8' })
-    .filter(path => /\.tsx?$/.test(path))
+    .filter(path => /\.tsx?$/.test(path) && !path.startsWith('fixtures/'))
     .map(path => `${tree}/${path}`)
 }
 
