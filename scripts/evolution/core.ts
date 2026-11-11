@@ -1305,7 +1305,7 @@ export function runEvolution(input: EvolutionInput): EvolutionReport {
     if (!baseline) { reject('noBaseline'); continue }
     if (diagnosis.withheld) { reject(diagnosis.withheld); continue }
     if (candidate.profile?.moving) { reject('movingProfile'); continue }
-    if (intent.proposedRevision === intent.baseRevision) { reject('sameRevision'); continue }
+    if (intent.baseRevision >= intent.proposedRevision) { reject('invalidRevisionOrder'); continue }
     const baselineMatches = intent.baseline.kind === 'legacy'
       ? baseline.profile === null
       : baseline.profile?.id === intent.baseline.profileId && baseline.profile.revision === intent.baseline.revision

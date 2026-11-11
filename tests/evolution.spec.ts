@@ -380,6 +380,12 @@ it('maps raw Ticket records to sanitized samples with rework, review, failure an
   expect(JSON.stringify(mapped)).not.toMatch(/rev-1|person/)
 })
 
+it('refuses a proposal whose base revision is not older than the revision it proposes', () => {
+  const report = runEvolution(input(undefined, { intents: [intent({ baseRevision: 3 })] }))
+  expect(report.proposals).toHaveLength(0)
+  expect(report.observation.withheld).toContainEqual({ id: 'exp-docs', reason: 'invalidRevisionOrder' })
+})
+
 it('is deterministic and exposes no write, apply, save or activate path', () => {
   const first = runEvolution(input(undefined, { evidence: evidence(passEvidence()) }))
   const second = runEvolution(input(undefined, { evidence: evidence(passEvidence()) }))
