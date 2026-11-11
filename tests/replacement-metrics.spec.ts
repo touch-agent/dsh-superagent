@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { Assignment, Delegation, Ticket } from '@superagent/kernel'
 import { attentionMetrics, organizationMetrics } from '@superagent/dsh/app/replacement.ts'
 import { Store } from '@superagent/dsh/app/store.ts'
+import { metrics } from '@superagent/dsh/app/metrics.ts'
 
 const directories: string[] = []
 function store(): Store {
@@ -111,6 +112,17 @@ describe('attention metrics', () => {
     expect(view.activity).toEqual({ quiet: 2, feed: 3, notice: 2, noticesPerResult: 2 })
     expect(view.autoOpen).toMatchObject({ samples: 0, closeRate: null, status: 'not-collected' })
     expect(view.clickDepth).toMatchObject({ samples: 0, medianClicks: null, status: 'not-collected' })
+    db.close()
+  })
+
+  it('is exposed through the existing GET metrics view without changing the health figures', () => {
+    const db = store()
+    seed(db)
+    const view = metrics(db, Date.parse(at(30)))
+    expect(view.organization.tickets.maxDepth).toBe(2)
+    expect(view.organization.children.active).toBe(1)
+    expect(view.attention.results).toBe(1)
+    expect(view.ttfa).toEqual({ samples: 0, medianSeconds: null, p90Seconds: null })
     db.close()
   })
 
