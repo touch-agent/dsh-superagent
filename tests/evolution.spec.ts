@@ -117,7 +117,7 @@ function intent(overrides: Partial<ProposalIntent> = {}): ProposalIntent {
 
 /** One replay outcome; null tokens mean the harness could not report usage. */
 function outcome(success: boolean, overrides: Partial<ReplayOutcome> = {}): ReplayOutcome {
-  return { success, reworked: false, blocked: false, reviewRejected: false, dispatchToReadySeconds: 100, tokens: null, ...overrides }
+  return { success, reworked: false, blocked: false, failed: false, reviewRejected: false, dispatchToReadySeconds: 100, tokens: null, ...overrides }
 }
 
 /** A paired replay where the candidate wins 258 of 360 against a 216 baseline. */

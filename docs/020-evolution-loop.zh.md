@@ -77,7 +77,7 @@ T5-05 要的是一条**独立于执行 worker** 的「观察 → 总结 → 进�
 
 1. **预登记完整性**：评测集 id/revision 与 intent 一致；holdout 非空；holdout 与观察样本 id 不相交；观察环境、回放环境和 manifest 的环境指纹一致；回放证据的 baseline/candidate 摘要等于提案的基线/候选 `effectiveHash`；停止样本量不得小于按 MDE 算出的所需样本量。
 2. **样本量**：`n` 按基线率、MDE、α、power 的两比例公式计算；不足直接 `insufficient(sampleSize)`，不因区间看起来好就淘汰样本量规则。
-3. **护栏**：返工率、阻塞率、p90 dispatch→ready、review 拒绝率不得比基线恶化超过预登记阈值；token 可得时按预登记的相对增长阈值护栏，货币成本不可得时**不设成本门**。
+3. **护栏**：返工率、阻塞/失败率、p90 dispatch→ready、review 拒绝率不得比基线恶化超过预登记阈值；token 可得时按预登记的相对增长阈值护栏，货币成本不可得时**不设成本门**。
 4. **主指标**：配对回放用 McNemar 精确检验 + 配对差 95% 区间；随机分配用两比例 z 检验 + 差值区间。
    - `pass`：差值 ≥ MDE、95% 区间下界 >0，且双侧 p < 预登记 α；
    - `no-difference`：达到预登记样本且区间上界 < MDE（可明确写「没有可测差异」）；

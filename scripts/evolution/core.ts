@@ -140,6 +140,7 @@ export interface ReplayOutcome {
   success: boolean
   reworked: boolean
   blocked: boolean
+  failed: boolean
   reviewRejected: boolean
   dispatchToReadySeconds: number | null
   tokens: EvolutionSample['tokens']
@@ -683,7 +684,7 @@ export function parseIntents(value: unknown): ProposalIntent[] {
 
 function parseOutcome(value: unknown, path: string): ReplayOutcome {
   if (!isRecord(value)) throw new EvolutionInputError('invalidReplayOutcome', path)
-  onlyKeys(value, ['success', 'reworked', 'blocked', 'reviewRejected', 'dispatchToReadySeconds', 'tokens'], path)
+  onlyKeys(value, ['success', 'reworked', 'blocked', 'failed', 'reviewRejected', 'dispatchToReadySeconds', 'tokens'], path)
   let tokens: ReplayOutcome['tokens'] = null
   if (value.tokens !== null) {
     if (!isRecord(value.tokens)) throw new EvolutionInputError('invalidTokens', `${path}.tokens`)
@@ -700,6 +701,7 @@ function parseOutcome(value: unknown, path: string): ReplayOutcome {
     success: booleanAt(value.success, `${path}.success`),
     reworked: booleanAt(value.reworked, `${path}.reworked`),
     blocked: booleanAt(value.blocked, `${path}.blocked`),
+    failed: booleanAt(value.failed, `${path}.failed`),
     reviewRejected: booleanAt(value.reviewRejected, `${path}.reviewRejected`),
     dispatchToReadySeconds: nullableNumber(value.dispatchToReadySeconds, `${path}.dispatchToReadySeconds`),
     tokens,
@@ -1107,7 +1109,7 @@ function guardrailValues(outcomes: ReplayOutcome[]): { reworkRate: number | null
   const tokens = outcomes.flatMap(outcome => outcome.tokens === null ? [] : [outcome.tokens.input + outcome.tokens.output + outcome.tokens.cacheRead + outcome.tokens.cacheWrite + outcome.tokens.reasoning])
   return {
     reworkRate: outcomes.filter(outcome => outcome.reworked).length / n,
-    blockedRate: outcomes.filter(outcome => outcome.blocked).length / n,
+    blockedRate: outcomes.filter(outcome => outcome.blocked || outcome.failed).length / n,
     p90DispatchToReadySeconds: quantile(latencies, 0.9),
     reviewRejectionRate: outcomes.filter(outcome => outcome.reviewRejected).length / n,
     tokensPerRun: tokens.length === n ? tokens.reduce((sum, value) => sum + value, 0) / n : null,
