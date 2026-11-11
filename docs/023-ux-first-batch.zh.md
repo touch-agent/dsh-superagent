@@ -115,4 +115,4 @@
 - 任务详情按需加载一层，深层需要逐层打开；这是为了不把整棵树放进一次响应。
 - 来源健康 `at` 只在新轮询失败时写入；历史健康记录没有时间时，聚合行会退化为可用字段中的最新时间。
 - 本批不改变 Approval、Mandate、Dispatch 或 Store schema；E2/E3 记录与设置写入路径不变。
-- 新增客户端界面使 `packages/dsh/lib/client.js` 从约 562 KB 预算增到 644.7 KB；本次把该文件预算调到 650 KB、总预算调到 1.665 MB，仍按 `pnpm check:size` 守门。
+- 新增客户端界面使 `packages/dsh/lib/client.js` 从约 562 KB 预算增到 646.4 KB；本次把该文件预算调到 650 KB、总预算调到 1.665 MB，仍按 `pnpm check:size` 守门。
