@@ -1,0 +1,1362 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Superagent 普通用户界面 · 设计原型</title>
+<style>
+  :root {
+    --canvas: #f6f7f9;
+    --surface: #ffffff;
+    --rail: #fbfbfc;
+    --ink: #191b21;
+    --ink-2: #555b66;
+    --ink-3: #8a909c;
+    --line: #e7e9ee;
+    --line-strong: #d9dce3;
+    --accent: #3b5bfd;
+    --accent-ink: #2d47d6;
+    --accent-soft: #eef1ff;
+    --accent-line: #dbe1ff;
+    --green: #15803d;
+    --green-soft: #ecfdf3;
+    --amber: #b45309;
+    --amber-soft: #fff7ed;
+    --red: #b91c1c;
+    --red-soft: #fef2f2;
+    --violet: #6d28d9;
+    --violet-soft: #f5f3ff;
+    --shadow-sm: 0 1px 2px rgba(16, 24, 40, .04);
+    --shadow-md: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px rgba(16, 24, 40, .06);
+    --shadow-lg: 0 24px 64px rgba(16, 24, 40, .16);
+    --r-card: 14px;
+    --r-ctl: 10px;
+    --rail-w: 256px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; font-family: var(--font); color: var(--ink); background: var(--canvas);
+    font-size: 14px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+  }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  h1, h2, h3, p { margin: 0; }
+  svg { display: block; }
+  .app { display: flex; min-height: 100vh; }
+  body.mode-shell .plugin-rail, body.mode-plugin .shell-rail { display: none; }
+
+  /* ---------- left rail ---------- */
+  .rail {
+    width: var(--rail-w); flex: 0 0 var(--rail-w); background: var(--rail);
+    border-right: 1px solid var(--line); padding: 18px 14px 12px; display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 2px 6px 18px; }
+  .brand-mark { width: 24px; height: 24px; color: var(--ink); }
+  .brand-name { font-size: 15px; font-weight: 700; letter-spacing: .2px; }
+  .brand-badge { font-size: 8.5px; font-weight: 700; letter-spacing: .6px; border: 1px solid var(--ink); border-radius: 4px; padding: 2px 4px; transform: translateY(1px); }
+  .new-chat {
+    display: flex; align-items: center; justify-content: center; gap: 8px; height: 40px; border-radius: var(--r-ctl);
+    border: 1px solid var(--line-strong); background: var(--surface); font-weight: 600; box-shadow: var(--shadow-sm);
+  }
+  .new-chat:hover { border-color: #c8ccd6; background: #fff; }
+  .primary-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 16px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px; border: 0; border-radius: 9px;
+    background: transparent; color: var(--ink-2); font-weight: 500; text-align: left; width: 100%;
+  }
+  .nav-item:hover { background: #f0f1f4; color: var(--ink); }
+  .nav-item.active { background: #eceef3; color: var(--ink); font-weight: 600; }
+  .nav-item .ico { width: 18px; height: 18px; color: var(--ink-3); flex: 0 0 18px; }
+  .nav-item.active .ico, .nav-item:hover .ico { color: var(--ink); }
+  .nav-item .grow { flex: 1; }
+  .count {
+    min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff;
+    font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .count.quiet { background: #e6e8ee; color: var(--ink-2); }
+  .rail-sep { height: 1px; background: var(--line); margin: 14px 4px; }
+  .rail-label { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; margin: 2px 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .3px; color: var(--ink-3); }
+  .rail-label button { border: 0; background: none; color: var(--ink-3); font-size: 11.5px; padding: 2px; }
+  .rail-label button:hover { color: var(--ink); }
+  .pinned {
+    display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; border: 1px solid var(--accent-line);
+    background: linear-gradient(180deg, #f7f8ff 0%, #f1f4ff 100%); border-radius: 11px; padding: 10px 10px;
+  }
+  .pinned:hover { border-color: #c3ccff; }
+  .pinned-ico { width: 30px; height: 30px; border-radius: 8px; background: var(--surface); border: 1px solid var(--accent-line); display: grid; place-items: center; color: var(--accent); flex: 0 0 30px; }
+  .pinned-main { min-width: 0; }
+  .pinned-main strong { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
+  .pinned-main small { display: block; color: var(--ink-3); font-size: 11.5px; margin-top: 1px; }
+  .mini-badge { font-size: 9.5px; font-weight: 700; color: var(--accent-ink); background: #fff; border: 1px solid var(--accent-line); border-radius: 4px; padding: 0 4px; line-height: 15px; }
+  .recent { display: flex; flex-direction: column; gap: 1px; }
+  .recent-item { border: 0; background: none; text-align: left; padding: 7px 8px; border-radius: 8px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+  .recent-item:hover { background: #f0f1f4; color: var(--ink); }
+  .recent-item span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .recent-item .ico { width: 15px; height: 15px; color: var(--ink-3); flex: 0 0 15px; }
+  .rail-spacer { flex: 1; }
+  .rail-foot { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 10px; display: flex; flex-direction: column; gap: 2px; }
+  .foot-btn { display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 9px; border: 0; background: none; border-radius: 8px; color: var(--ink-2); text-align: left; }
+  .foot-btn:hover { background: #f0f1f4; color: var(--ink); }
+  .foot-btn .ico { width: 16px; height: 16px; color: var(--ink-3); }
+  .account { display: flex; align-items: center; gap: 9px; padding: 8px 9px 2px; margin-top: 2px; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; background: #e4e7ee; color: var(--ink-2); font-size: 10.5px; font-weight: 700; display: inline-grid; place-items: center; flex: 0 0 24px; }
+  .avatar.ai { background: var(--accent-soft); color: var(--accent-ink); }
+  .account small { color: var(--ink-3); font-size: 11.5px; display: block; line-height: 1.3; }
+  .account strong { font-size: 12.5px; font-weight: 600; display: block; line-height: 1.3; }
+
+  /* ---------- stage ---------- */
+  .stage { flex: 1; min-width: 0; height: 100vh; overflow: auto; }
+  .screen { display: none; max-width: 1120px; margin: 0 auto; padding: 30px 40px 64px; }
+  .screen.active { display: block; }
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+  .topbar h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.3px; font-weight: 700; }
+  .topbar .sub { color: var(--ink-3); margin-top: 3px; font-size: 13.5px; }
+  .topbar-actions { display: flex; align-items: center; gap: 8px; padding-top: 5px; }
+  .search {
+    display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; border: 1px solid var(--line);
+    background: var(--surface); border-radius: var(--r-ctl); color: var(--ink-3); min-width: 220px; box-shadow: var(--shadow-sm);
+  }
+  .search input { border: 0; outline: 0; background: none; width: 100%; color: var(--ink); }
+  .search input::placeholder { color: var(--ink-3); }
+  .icon-btn { width: 34px; height: 34px; border: 1px solid var(--line); background: var(--surface); border-radius: 9px; display: grid; place-items: center; color: var(--ink-2); }
+  .icon-btn:hover { border-color: var(--line-strong); color: var(--ink); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 9px; height: 34px; padding: 0 13px; font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .btn:hover { border-color: #c5cad5; background: #fff; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+  .btn.ghost:hover { background: #eef0f4; color: var(--ink); }
+  .btn.sm { height: 30px; padding: 0 11px; font-size: 12.5px; border-radius: 8px; }
+  .btn.danger { color: var(--red); border-color: #f0caca; background: #fff; }
+  .btn.danger:hover { background: var(--red-soft); }
+  .link { border: 0; background: none; color: var(--accent-ink); font-weight: 600; font-size: 12.5px; padding: 4px 2px; border-radius: 6px; }
+  .link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+  /* ---------- attention ---------- */
+  .attention { background: #f2f4ff; border: 1px solid var(--accent-line); border-radius: var(--r-card); padding: 18px; }
+  .attention-head { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+  .attention-head .pulse { width: 26px; height: 26px; border-radius: 8px; background: var(--accent); color: #fff; display: grid; place-items: center; box-shadow: 0 4px 10px rgba(59, 91, 253, .25); }
+  .attention-head h2 { font-size: 15.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .attention-head h2 .count { background: #fff; color: var(--accent-ink); }
+  .attention-head p { color: #5b6480; font-size: 12.5px; margin-left: auto; }
+  .attention-list { display: flex; flex-direction: column; gap: 8px; }
+  .attention-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid #e3e7f7; border-radius: 10px; padding: 11px 12px; }
+  .att-badge { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: 0 0 30px; font-size: 11px; font-weight: 700; }
+  .att-badge.review { background: var(--violet-soft); color: var(--violet); }
+  .att-badge.ask { background: var(--amber-soft); color: var(--amber); }
+  .att-main { min-width: 0; flex: 1; }
+  .att-main strong { display: block; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .att-main p { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .att-meta { color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+  .attention-row .btn { flex: 0 0 auto; }
+
+  /* ---------- filters / sections ---------- */
+  .filters { display: flex; align-items: center; gap: 4px; margin: 22px 0 24px; }
+  .chip { border: 1px solid transparent; background: none; color: var(--ink-2); height: 32px; padding: 0 11px; border-radius: 8px; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: 0 0 auto; }
+  .chip:hover { background: #eef0f4; }
+  .chip.active { background: var(--surface); border-color: var(--line); color: var(--ink); box-shadow: var(--shadow-sm); }
+  .chip em { font-style: normal; color: var(--ink-3); font-weight: 500; }
+  .filters .spacer { flex: 1; }
+  .sort { color: var(--ink-3); font-size: 12px; display: flex; align-items: center; gap: 4px; }
+  .section { margin-top: 26px; }
+  .section-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .section-head h2 { font-size: 14px; font-weight: 700; letter-spacing: .1px; display: flex; align-items: center; gap: 7px; }
+  .section-head h2 .muted-count { color: var(--ink-3); font-weight: 600; }
+  .section-head p { color: var(--ink-3); font-size: 12px; }
+  .section-head .spacer { flex: 1; }
+  .task-grid { display: flex; flex-direction: column; gap: 10px; }
+  .task-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 16px 18px 14px; box-shadow: var(--shadow-sm); cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+  .task-card:hover { border-color: #cfd4e0; box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .task-top { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
+  .state-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+  .state-dot.running { background: var(--accent); box-shadow: 0 0 0 3px rgba(59, 91, 253, .14); animation: breathe 2.4s ease-in-out infinite; }
+  .state-dot.waiting { background: var(--amber); box-shadow: 0 0 0 3px rgba(180, 83, 9, .13); }
+  .state-dot.review { background: #7c5cff; box-shadow: 0 0 0 3px rgba(124, 92, 255, .14); }
+  .state-dot.done { background: var(--green); }
+  .state-dot.error { background: var(--red); }
+  @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 3px rgba(59,91,253,.14); } 50% { box-shadow: 0 0 0 5px rgba(59,91,253,.07); } }
+  .task-top h3 { font-size: 14px; font-weight: 600; letter-spacing: -.1px; }
+  .task-top .spacer { flex: 1; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 6px; background: #f1f2f5; color: var(--ink-2); font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .tag .ico { width: 12px; height: 12px; }
+  .tag.conv { background: var(--accent-soft); color: var(--accent-ink); }
+  .tag.github { background: #f3f4f6; color: #374151; }
+  .tag.feishu { background: #ecf7ff; color: #0b6ea8; }
+  .state-label { font-size: 11.5px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+  .task-now { color: var(--ink-2); font-size: 13px; margin: 0 0 12px 17px; }
+  .task-now strong { color: var(--ink); font-weight: 600; }
+  .progress { height: 5px; border-radius: 999px; background: #edeff3; margin-left: 17px; overflow: hidden; }
+  .progress > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #6f86ff, var(--accent)); }
+  .task-foot { display: flex; align-items: center; gap: 9px; margin: 11px 0 0 17px; color: var(--ink-3); font-size: 11.5px; }
+  .task-foot .who { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); }
+  .task-foot .who .avatar { width: 18px; height: 18px; font-size: 8.5px; flex: 0 0 18px; }
+  .task-foot .spacer { flex: 1; }
+  .task-foot .btn { height: 28px; padding: 0 10px; font-size: 12px; }
+
+  .done-list { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; box-shadow: var(--shadow-sm); }
+  .done-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid #f0f1f4; cursor: pointer; }
+  .done-row:first-child { border-top: 0; }
+  .done-row:hover { background: #fafbfc; }
+  .done-check { width: 22px; height: 22px; border-radius: 50%; background: var(--green-soft); color: var(--green); display: grid; place-items: center; flex: 0 0 22px; }
+  .done-main { flex: 1; min-width: 0; }
+  .done-main strong { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .done-main p { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .done-time { color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+  .footnote { margin-top: 28px; color: var(--ink-3); font-size: 12px; display: flex; align-items: center; gap: 7px; }
+  .footnote .ico { width: 14px; height: 14px; flex: 0 0 14px; }
+
+  /* ---------- detail ---------- */
+  .back { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); font-size: 12.5px; font-weight: 600; border: 0; background: none; padding: 4px 2px; border-radius: 6px; margin-bottom: 16px; }
+  .back:hover { color: var(--ink); }
+  .detail-head { display: flex; align-items: flex-start; gap: 18px; }
+  .detail-head .main { flex: 1; min-width: 0; }
+  .detail-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .detail-title h1 { font-size: 24px; letter-spacing: -.3px; font-weight: 700; }
+  .status-pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+  .status-pill.running { background: var(--accent-soft); color: var(--accent-ink); }
+  .status-pill.waiting { background: var(--amber-soft); color: var(--amber); }
+  .status-pill.review { background: #f4f0ff; color: #6d3bd4; }
+  .status-pill.done { background: var(--green-soft); color: var(--green); }
+  .detail-sub { color: var(--ink-3); font-size: 12.5px; margin-top: 6px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .detail-sub .sep { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-3); display: inline-block; }
+  .detail-actions { display: flex; gap: 8px; padding-top: 4px; }
+  .detail-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(260px, .9fr); gap: 18px; margin-top: 26px; align-items: start; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 18px; box-shadow: var(--shadow-sm); }
+  .card + .card { margin-top: 14px; }
+  .card h2 { font-size: 13px; font-weight: 700; letter-spacing: .2px; color: var(--ink); display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
+  .card h2 .ico { width: 15px; height: 15px; color: var(--ink-3); }
+  .now-title { font-size: 16px; font-weight: 600; letter-spacing: -.2px; margin-bottom: 5px; }
+  .now-desc { color: var(--ink-2); font-size: 13px; }
+  .steps { display: flex; flex-direction: column; gap: 0; margin-top: 16px; }
+  .step { display: flex; gap: 11px; position: relative; padding-bottom: 16px; }
+  .step:last-child { padding-bottom: 0; }
+  .step::before { content: ""; position: absolute; left: 10px; top: 22px; bottom: 0; width: 1px; background: var(--line); }
+  .step:last-child::before { display: none; }
+  .step-dot { width: 21px; height: 21px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: #fff; flex: 0 0 21px; display: grid; place-items: center; color: transparent; z-index: 1; }
+  .step.done .step-dot { background: var(--green); border-color: var(--green); color: #fff; }
+  .step.active .step-dot { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .step-dot svg { width: 11px; height: 11px; }
+  .step-main { min-width: 0; padding-top: 1px; }
+  .step-main strong { font-size: 12.5px; font-weight: 600; display: block; }
+  .step.active .step-main strong { color: var(--accent-ink); }
+  .step-main small { color: var(--ink-3); font-size: 11.5px; display: block; margin-top: 1px; }
+  .step-time { margin-left: auto; color: var(--ink-3); font-size: 11px; white-space: nowrap; padding-top: 2px; }
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .tl-row { display: flex; gap: 10px; padding: 8px 0; }
+  .tl-icon { width: 24px; height: 24px; border-radius: 7px; background: #f3f4f7; color: var(--ink-2); display: grid; place-items: center; flex: 0 0 24px; }
+  .tl-icon.accent { background: var(--accent-soft); color: var(--accent-ink); }
+  .tl-main { flex: 1; min-width: 0; }
+  .tl-main strong { font-size: 12.5px; font-weight: 600; display: block; }
+  .tl-main p { color: var(--ink-3); font-size: 11.5px; }
+  .tl-time { color: var(--ink-3); font-size: 11px; white-space: nowrap; padding-top: 1px; }
+  .artifact { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+  .artifact + .artifact { margin-top: 8px; }
+  .artifact .file-ico { width: 32px; height: 32px; border-radius: 8px; background: #f4f5f8; color: var(--ink-2); display: grid; place-items: center; flex: 0 0 32px; }
+  .artifact .a-main { flex: 1; min-width: 0; }
+  .artifact strong { font-size: 12.5px; display: block; font-weight: 600; }
+  .artifact small { color: var(--ink-3); font-size: 11px; }
+  .empty-hint { color: var(--ink-3); font-size: 12px; background: #fafbfc; border: 1px dashed var(--line-strong); border-radius: 10px; padding: 14px; text-align: center; }
+  .side .card { padding: 16px; }
+  .source-line { display: flex; align-items: flex-start; gap: 9px; }
+  .source-line .ico { width: 15px; height: 15px; color: var(--ink-3); margin-top: 2px; }
+  .source-line strong { font-size: 12.5px; display: block; font-weight: 600; }
+  .source-line p { font-size: 11.5px; color: var(--ink-3); }
+  .quote { margin-top: 10px; border-left: 2px solid var(--accent-line); background: #f8f9ff; border-radius: 0 8px 8px 0; padding: 8px 10px; color: var(--ink-2); font-size: 12px; }
+  .side-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-top: 1px solid #f1f2f5; font-size: 12px; color: var(--ink-3); }
+  .side-row:first-of-type { border-top: 0; }
+  .side-row span:last-child { color: var(--ink-2); }
+  details.advanced { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+  details.advanced summary { cursor: pointer; color: var(--ink-3); font-size: 11.5px; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 5px; }
+  details.advanced summary::-webkit-details-marker { display: none; }
+  details.advanced .kv { display: flex; gap: 8px; padding: 6px 0 0; font-size: 11px; color: var(--ink-3); }
+  details.advanced .kv code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2); background: #f4f5f8; border-radius: 4px; padding: 1px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---------- drawer ---------- */
+  .backdrop { position: fixed; inset: 0; background: rgba(15, 18, 26, .34); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 40; }
+  .backdrop.show { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 430px; max-width: 92vw; background: var(--surface); z-index: 50; transform: translateX(104%); transition: transform .24s cubic-bezier(.2,.7,.3,1); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; }
+  .drawer.show { transform: translateX(0); }
+  .drawer-head { display: flex; align-items: center; gap: 10px; padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
+  .drawer-head h2 { font-size: 16px; font-weight: 700; }
+  .drawer-head .spacer { flex: 1; }
+  .drawer-body { flex: 1; overflow: auto; padding: 6px 20px 24px; }
+  .notice-group { padding: 14px 0 4px; }
+  .notice-group > h3 { font-size: 11px; letter-spacing: .4px; color: var(--ink-3); font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .notice { display: flex; gap: 10px; padding: 11px 10px; border-radius: 10px; cursor: pointer; position: relative; }
+  .notice:hover { background: #f7f8fa; }
+  .notice.unread { background: #f6f8ff; box-shadow: inset 2px 0 0 var(--accent); }
+  .notice-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; flex: 0 0 28px; }
+  .notice-ico.review { background: var(--violet-soft); color: var(--violet); }
+  .notice-ico.ask { background: var(--amber-soft); color: var(--amber); }
+  .notice-ico.progress { background: var(--accent-soft); color: var(--accent-ink); }
+  .notice-ico.system { background: #f1f2f5; color: var(--ink-2); }
+  .notice-main { flex: 1; min-width: 0; padding-right: 12px; }
+  .notice-main strong { display: block; font-size: 12.5px; font-weight: 600; padding-right: 4px; }
+  .notice-main p { color: var(--ink-3); font-size: 11.5px; margin-top: 1px; }
+  .notice-main .notice-task { color: var(--ink-2); font-size: 11.5px; margin-top: 3px; display: flex; align-items: center; gap: 5px; }
+  .notice-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .notice-time { color: var(--ink-3); font-size: 10.5px; white-space: nowrap; }
+  .drawer-foot { border-top: 1px solid var(--line); padding: 11px 20px; display: flex; align-items: center; justify-content: space-between; color: var(--ink-3); font-size: 11.5px; }
+
+  /* ---------- chat ---------- */
+  .chat-wrap { max-width: 820px; margin: 0 auto; }
+  .session-head { display: flex; align-items: center; gap: 9px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+  .session-head h1 { font-size: 15px; font-weight: 700; }
+  .session-head .sub { color: var(--ink-3); font-size: 12px; }
+  .session-head .spacer { flex: 1; }
+  .msg { display: flex; gap: 12px; padding: 20px 2px; }
+  .msg + .msg { border-top: 1px solid #f1f2f5; }
+  .msg .avatar { width: 28px; height: 28px; flex: 0 0 28px; font-size: 11px; }
+  .msg-main { min-width: 0; flex: 1; }
+  .msg-who { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+  .msg-who strong { font-size: 12.5px; }
+  .msg-who time { color: var(--ink-3); font-size: 11px; }
+  .msg-body { font-size: 13.5px; color: var(--ink-2); }
+  .msg-body p + p { margin-top: 8px; }
+  .inline-task { margin-top: 10px; border: 1px solid var(--line); background: #fbfcff; border-radius: 12px; padding: 13px 14px; box-shadow: var(--shadow-sm); }
+  .inline-task .it-top { display: flex; align-items: center; gap: 8px; }
+  .inline-task .it-top strong { font-size: 13px; }
+  .inline-task .it-top .state-label { margin-left: auto; color: var(--accent-ink); }
+  .inline-task p { color: var(--ink-3); font-size: 12px; margin-top: 3px; }
+  .inline-task .it-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .inline-task .progress { margin: 10px 0 0; }
+  .composer { position: sticky; bottom: 0; background: linear-gradient(180deg, rgba(246,247,249,0), var(--canvas) 26%); padding: 18px 0 8px; }
+  .composer-box { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow-md); }
+  .composer-box .placeholder { color: var(--ink-3); font-size: 13.5px; padding: 3px 0 14px; }
+  .composer-row { display: flex; align-items: center; gap: 8px; }
+  .composer-row .spacer { flex: 1; }
+  .send { width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; display: grid; place-items: center; }
+
+  /* ---------- advanced ---------- */
+  .ops-banner { display: flex; align-items: center; gap: 10px; background: #fff8ed; border: 1px solid #f5dfba; color: #8a5a12; border-radius: 12px; padding: 11px 14px; font-size: 12.5px; margin-bottom: 20px; }
+  .ops-banner .spacer { flex: 1; }
+  .ops-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .ops-head h1 { font-size: 20px; font-weight: 700; }
+  .ops-search { margin-left: auto; }
+  .ops-tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--line); margin: 10px 0 24px; overflow: auto; }
+  .ops-tab { border: 0; background: none; padding: 9px 1px 11px; color: var(--ink-2); font-weight: 600; font-size: 13px; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .ops-tab.active { color: var(--ink); border-bottom-color: var(--ink); }
+  .ops-tab:hover { color: var(--ink); }
+  .ops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .ops-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .ops-card h3 { font-size: 12.5px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+  .ops-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid #f1f2f5; font-size: 12px; color: var(--ink-2); }
+  .ops-row:first-of-type { border-top: 0; }
+  .ops-row .spacer { flex: 1; }
+  .ops-row .muted { color: var(--ink-3); font-size: 11px; }
+  .ops-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--ink-3); }
+
+  /* ---------- host shell: plugin-side adaptation ---------- */
+  .eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: .9px; color: var(--accent-ink); margin-bottom: 6px; text-transform: uppercase; }
+  body.mode-shell .eyebrow { display: none; }
+  .proto-bar { position: fixed; right: 14px; bottom: 14px; z-index: 30; display: flex; align-items: center; gap: 3px; background: rgba(25,27,33,.92); color: #fff; padding: 4px; border-radius: 999px; box-shadow: var(--shadow-md); font-size: 11px; }
+  .proto-bar span { padding: 0 8px; color: rgba(255,255,255,.66); }
+  .proto-bar button { border: 0; background: transparent; color: rgba(255,255,255,.72); border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 600; }
+  .proto-bar button.active { background: #fff; color: var(--ink); }
+  body.clean .proto-bar { display: none; }
+  .ws-head { display: flex; align-items: center; gap: 4px; padding: 0 8px; margin: 2px 0 4px; color: var(--ink-3); font-size: 11.5px; font-weight: 600; }
+  .ws-head .grow { flex: 1; }
+  .ws-head .mini { width: 20px; height: 20px; border: 0; background: none; border-radius: 5px; display: grid; place-items: center; color: var(--ink-3); }
+  .ws-head .mini:hover { background: #eef0f4; color: var(--ink); }
+  .ws-row { display: flex; align-items: center; gap: 7px; width: 100%; border: 0; background: none; padding: 5px 8px; border-radius: 7px; color: var(--ink-2); font-size: 12.5px; font-weight: 600; text-align: left; }
+  .ws-row:hover { background: #f0f1f4; }
+  .ws-row .ico { width: 15px; height: 15px; color: var(--ink-3); }
+  .ws-row .grow { flex: 1; }
+  .session-row { display: flex; align-items: center; gap: 7px; width: 100%; border: 0; background: none; padding: 6px 8px; border-radius: 7px; color: var(--ink-2); font-size: 12.5px; text-align: left; }
+  .session-row:hover { background: #f0f1f4; color: var(--ink); }
+  .session-row.active { background: #eceef3; color: var(--ink); font-weight: 600; }
+  .session-row .lead { width: 16px; height: 16px; flex: 0 0 16px; display: grid; place-items: center; color: var(--ink-3); }
+  .session-row .lead .ico { width: 14px; height: 14px; }
+  .session-row .label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .session-row .stamp { color: var(--ink-3); font-size: 10.5px; white-space: nowrap; }
+  .session-row .mini-badge { flex: 0 0 auto; }
+  .session-row.task-session .lead { color: var(--accent-ink); }
+  .archived-row { display: flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--ink-3); font-size: 11.5px; padding: 7px 8px; border-radius: 7px; text-align: left; }
+  .archived-row:hover { background: #f0f1f4; color: var(--ink-2); }
+  .archived-row .ico { width: 13px; height: 13px; }
+  .archive-note { margin: 0 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1080px) {
+    :root { --rail-w: 216px; }
+    .screen { padding: 24px 24px 56px; }
+    .detail-grid, .ops-grid { grid-template-columns: 1fr; }
+    .attention-head p { display: none; }
+  }
+  @media (max-width: 560px) {
+    .filters { overflow-x: auto; margin-right: -16px; padding-right: 16px; }
+    .filters .sort { display: none; }
+    .topbar-actions .search { min-width: 0; }
+  }
+  @media (max-width: 820px) {
+    .rail { display: none; }
+    .screen { padding: 20px 16px 48px; }
+    .topbar { flex-direction: column; gap: 12px; }
+    .topbar-actions { width: 100%; }
+    .search { flex: 1; min-width: 0; }
+    .attention-row { flex-wrap: wrap; }
+    .att-meta { display: none; }
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
+</style>
+</head>
+<body class="mode-plugin">
+<div class="proto-bar" aria-label="原型视图切换">
+  <span>原型</span>
+  <button data-mode="plugin" class="active">插件内方案</button>
+  <button data-mode="shell">宿主增强</button>
+</div>
+<div class="app">
+  <!-- ============ HOST RAIL (plugin-only mode) ============ -->
+  <aside class="rail plugin-rail" aria-label="DSH 侧栏">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.5 8.2c0-2 1.6-3.6 3.6-3.6h9.8c2 0 3.6 1.6 3.6 3.6v3.1c0 1.6-.9 2.5-2.4 2.5H9l-3.8 3.1v-3.4c-1.1-.5-1.7-1.5-1.7-2.9V8.2Z"/>
+        <path d="M8.4 9.1h7.2M8.4 12.1h4.4"/>
+      </svg>
+      <span class="brand-name">deepseek</span>
+      <span class="brand-badge">HARNESS</span>
+    </div>
+
+    <button class="new-chat" data-screen="chat">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      新会话
+    </button>
+
+    <nav class="primary-nav">
+      <button class="nav-item" data-screen="files">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l7 3.5-7 3.5-7-3.5 7-3.5Z"/><path d="M5 10.5l7 3.5 7-3.5M5 14.5l7 3.5 7-3.5"/></svg>
+        <span class="grow">插件</span>
+      </button>
+      <button class="nav-item active" data-screen="tasks" aria-current="page">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h9l3.5 1.75v2.5L15 9.5H6a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z"/><path d="M10 9.5v10.25a1.75 1.75 0 0 0 3.5 0V9.5"/><path d="M10 15.5h3.5"/></svg>
+        <span class="grow">Superagent</span>
+        <span class="count">2</span>
+      </button>
+      <button class="nav-item" data-screen="settings">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 1.5"/></svg>
+        <span class="grow">自动化任务</span>
+      </button>
+      <button class="nav-item" data-screen="settings">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/></svg>
+        <span class="grow">更多</span>
+      </button>
+    </nav>
+
+    <div class="rail-sep"></div>
+    <div class="ws-head">
+      <span class="grow">工作区</span>
+      <button class="mini" aria-label="搜索会话"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></button>
+      <button class="mini" aria-label="排序"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M7 12h10M10 17h4"/></svg></button>
+      <button class="mini" aria-label="新建"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    </div>
+    <button class="ws-row">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2.5h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-9.5Z"/></svg>
+      <span class="grow">工作台</span>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--ink-3)"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+
+    <button class="session-row" data-screen="chat">
+      <span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.3-4.1A7.5 7.5 0 1 1 20 11.5Z"/></svg></span>
+      <span class="label">主对话 · 和助手</span>
+      <span class="mini-badge">主</span>
+    </button>
+    <button class="session-row task-session" data-detail="rehearsal">
+      <span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg></span>
+      <span class="label">任务 · 替换演练</span>
+      <span class="stamp">3 分钟</span>
+    </button>
+    <button class="session-row task-session" data-detail="renewal">
+      <span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg></span>
+      <span class="label">任务 · Q4 客户续约材料</span>
+      <span class="stamp">12 分钟</span>
+    </button>
+    <button class="session-row task-session" data-detail="report">
+      <span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg></span>
+      <span class="label">任务 · 修复导出报表空值</span>
+      <span class="stamp">10 分钟</span>
+    </button>
+    <button class="session-row task-session" data-detail="review-meeting">
+      <span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg></span>
+      <span class="label">任务 · 下周评审会材料</span>
+      <span class="stamp">1 小时</span>
+    </button>
+    <div class="archive-note">
+      <button class="archived-row">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="4" y="5" width="16" height="4" rx="1"/><path d="M6 9v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9M10 13h4"/></svg>
+        17 个已结束会话已归档
+      </button>
+    </div>
+
+    <div class="rail-spacer"></div>
+    <div class="rail-foot">
+      <button class="foot-btn" data-screen="settings">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.1.37.3.7.6 1 .3.3.7.4 1.1.4H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5.6Z"/></svg>
+        设置
+      </button>
+      <div class="account">
+        <span class="avatar">张</span>
+        <span><strong>张宁</strong><small>产品团队</small></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ RAIL (standalone shell concept) ============ -->
+  <aside class="rail shell-rail" aria-label="主导航">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.5 8.2c0-2 1.6-3.6 3.6-3.6h9.8c2 0 3.6 1.6 3.6 3.6v3.1c0 1.6-.9 2.5-2.4 2.5H9l-3.8 3.1v-3.4c-1.1-.5-1.7-1.5-1.7-2.9V8.2Z"/>
+        <path d="M8.4 9.1h7.2M8.4 12.1h4.4"/>
+      </svg>
+      <span class="brand-name">deepseek</span>
+      <span class="brand-badge">HARNESS</span>
+    </div>
+
+    <button class="new-chat" data-screen="chat" data-newchat>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      新对话
+    </button>
+
+    <nav class="primary-nav">
+      <button class="nav-item active" data-screen="tasks" aria-current="page">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M8 9.5l2 2 3.5-3.5M8 16h6"/></svg>
+        <span class="grow">任务</span>
+        <span class="count">2</span>
+      </button>
+      <button class="nav-item" data-drawer="notifications">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 1 0-12 0c0 4-1.5 5.5-2 6h16c-.5-.5-2-2-2-6Z"/><path d="M10 19a2.2 2.2 0 0 0 4 0"/></svg>
+        <span class="grow">通知</span>
+        <span class="count">5</span>
+      </button>
+      <button class="nav-item" data-screen="files">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2.5h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-9.5Z"/></svg>
+        <span class="grow">文件</span>
+      </button>
+      <button class="nav-item" data-screen="settings">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.1.37.3.7.6 1 .3.3.7.4 1.1.4H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5.6Z"/></svg>
+        <span class="grow">设置</span>
+      </button>
+    </nav>
+
+    <div class="rail-sep"></div>
+    <div class="rail-label">固定</div>
+    <button class="pinned" data-screen="chat">
+      <span class="pinned-ico">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L3.5 9.7l5.9-.9L12 3.5Z"/></svg>
+      </span>
+      <span class="pinned-main">
+        <strong>和助手的对话 <span class="mini-badge">主</span></strong>
+        <small>所有任务从这里开始</small>
+      </span>
+    </button>
+
+    <div class="rail-label" style="margin-top:14px">最近对话 <button>全部</button></div>
+    <div class="recent">
+      <button class="recent-item" data-screen="chat">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-3.1-6.3"/><path d="M20 4v4.5h-4.5"/></svg>
+        <span>Q4 客户续约材料</span>
+      </button>
+      <button class="recent-item" data-screen="chat">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-3.1-6.3"/><path d="M20 4v4.5h-4.5"/></svg>
+        <span>导出报表空值修复</span>
+      </button>
+      <button class="recent-item" data-screen="chat">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-3.1-6.3"/><path d="M20 4v4.5h-4.5"/></svg>
+        <span>下周评审会材料</span>
+      </button>
+    </div>
+
+    <div class="rail-spacer"></div>
+    <div class="rail-foot">
+      <button class="foot-btn" data-screen="advanced">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.4-3 7.6-7 9.5-4-1.9-7-5.1-7-9.5V6l7-3Z"/><path d="M9.5 12l1.8 1.8 3.4-3.6"/></svg>
+        运维视图
+      </button>
+      <div class="account">
+        <span class="avatar">张</span>
+        <span><strong>张宁</strong><small>产品团队</small></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ STAGE ============ -->
+  <main class="stage">
+
+    <!-- TASK HOME -->
+    <section id="screen-tasks" class="screen active" aria-labelledby="tasks-title">
+      <div class="topbar">
+        <div>
+          <p class="eyebrow">Superagent · 任务中心</p>
+          <h1 id="tasks-title">任务</h1>
+          <p class="sub">你交代的事，和它们的进展</p>
+        </div>
+        <div class="topbar-actions">
+          <label class="search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
+            <input type="search" placeholder="搜索任务、结果或对话" aria-label="搜索" />
+          </label>
+          <button class="icon-btn" data-drawer="notifications" aria-label="通知，5 条未读" title="通知" style="position:relative">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 1 0-12 0c0 4-1.5 5.5-2 6h16c-.5-.5-2-2-2-6Z"/><path d="M10 19a2.2 2.2 0 0 0 4 0"/></svg>
+            <span style="position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--accent);border:1.5px solid #fff"></span>
+          </button>
+          <button class="btn sm" data-screen="advanced">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 3l7 3v5.5c0 4.4-3 7.6-7 9.5-4-1.9-7-5.1-7-9.5V6l7-3Z"/><path d="M9.5 12l1.8 1.8 3.4-3.6"/></svg>
+            运维
+          </button>
+        </div>
+      </div>
+
+      <section class="attention" aria-labelledby="attention-title">
+        <div class="attention-head">
+          <span class="pulse">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 8v5"/><path d="M12 17h.01"/></svg>
+          </span>
+          <h2 id="attention-title">需要你处理 <span class="count">2</span></h2>
+          <p>这几件事停下来等你，处理完就会继续</p>
+        </div>
+        <div class="attention-list">
+          <div class="attention-row">
+            <span class="att-badge review">审</span>
+            <div class="att-main">
+              <strong>PR #131 已就绪，等你检查</strong>
+              <p>修复导出报表空值问题 · 3 个文件，+48 / −12</p>
+            </div>
+            <span class="att-meta">10 分钟前</span>
+            <button class="btn primary sm" data-detail="report">查看并批准</button>
+          </div>
+          <div class="attention-row">
+            <span class="att-badge ask">问</span>
+            <div class="att-main">
+              <strong>评审会材料要包含上季度数据吗？</strong>
+              <p>下周评审会材料 · 包含会让材料多 6 页</p>
+            </div>
+            <span class="att-meta">1 小时前</span>
+            <button class="btn sm" data-detail="review-meeting">回答</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="filters" role="group" aria-label="筛选任务">
+        <button class="chip active" data-filter="all">全部 <em>6</em></button>
+        <button class="chip" data-filter="person">待我处理 <em>2</em></button>
+        <button class="chip" data-filter="running">进行中 <em>2</em></button>
+        <button class="chip" data-filter="done">已完成 <em>2</em></button>
+        <span class="spacer"></span>
+        <span class="sort">按最近更新
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </span>
+      </div>
+
+      <section class="section" data-group="running">
+        <div class="section-head">
+          <h2>进行中 <span class="muted-count">2</span></h2>
+          <p>不用你盯着；有结果或需要你时会提醒</p>
+          <span class="spacer"></span>
+          <button class="link" data-screen="tasks">查看全部</button>
+        </div>
+        <div class="task-grid">
+          <article class="task-card" data-detail="rehearsal" tabindex="0" role="button" aria-label="查看任务：替换演练">
+            <div class="task-top">
+              <span class="state-dot running"></span>
+              <h3>替换演练</h3>
+              <span class="tag conv">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.3-4.1A7.5 7.5 0 1 1 20 11.5Z"/></svg>
+                来自对话
+              </span>
+              <span class="spacer"></span>
+              <span class="state-label">执行中 2 / 3</span>
+            </div>
+            <p class="task-now">正在核对：<strong>3 条可回退边界</strong>，完成后会给你演练报告</p>
+            <div class="progress"><span style="width: 52%"></span></div>
+            <div class="task-foot">
+              <span class="who"><span class="avatar ai">AI</span> 数字员工</span>
+              <span>·</span>
+              <span>更新于 3 分钟前</span>
+              <span class="spacer"></span>
+              <button class="btn sm" data-detail="rehearsal" onclick="event.stopPropagation()">查看</button>
+            </div>
+          </article>
+
+          <article class="task-card" data-detail="renewal" tabindex="0" role="button" aria-label="查看任务：Q4 客户续约材料">
+            <div class="task-top">
+              <span class="state-dot running"></span>
+              <h3>Q4 客户续约材料</h3>
+              <span class="tag feishu">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.3-4.1A7.5 7.5 0 1 1 20 11.5Z"/></svg>
+                来自飞书
+              </span>
+              <span class="spacer"></span>
+              <span class="state-label">执行中 2 / 4</span>
+            </div>
+            <p class="task-now">正在汇总 <strong>12 家客户</strong>的用量与到期时间，预计 20 分钟</p>
+            <div class="progress"><span style="width: 61%"></span></div>
+            <div class="task-foot">
+              <span class="who"><span class="avatar ai">AI</span> 数字员工</span>
+              <span>·</span>
+              <span>更新于 12 分钟前</span>
+              <span class="spacer"></span>
+              <button class="btn sm" data-detail="renewal" onclick="event.stopPropagation()">查看</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" data-group="done">
+        <div class="section-head">
+          <h2>最近完成</h2>
+          <p>结果都在，随时可以打开</p>
+          <span class="spacer"></span>
+          <button class="link">查看全部</button>
+        </div>
+        <div class="done-list">
+          <div class="done-row" data-detail="contract">
+            <span class="done-check">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>
+            </span>
+            <div class="done-main">
+              <strong>供应商合同条款比对</strong>
+              <p>已提取 14 条关键条款，生成差异表 · 交付结果</p>
+            </div>
+            <span class="done-time">今天 15:20</span>
+            <button class="btn sm">打开结果</button>
+          </div>
+          <div class="done-row" data-detail="pricing">
+            <span class="done-check">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>
+            </span>
+            <div class="done-main">
+              <strong>新版定价页文案</strong>
+              <p>已给出 3 版候选，并标注适用场景 · 交付结果</p>
+            </div>
+            <span class="done-time">昨天 18:02</span>
+            <button class="btn sm">打开结果</button>
+          </div>
+        </div>
+      </section>
+
+      <p class="footnote">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+        没有出现的任务，直接在主对话里问我；我只在需要你决定时提醒你。
+      </p>
+    </section>
+
+    <!-- CHAT -->
+    <section id="screen-chat" class="screen" aria-labelledby="chat-title">
+      <div class="chat-wrap">
+        <div class="topbar" style="margin-bottom:14px">
+          <div>
+            <h1 id="chat-title" style="font-size:22px">和助手的对话</h1>
+            <p class="sub">所有任务从这里开始，也可以在这里追问任何一件事</p>
+          </div>
+        </div>
+        <div class="session-head">
+          <span class="mini-badge">主</span>
+          <span class="sub" style="margin-left:0">固定对话 · 不会随任务增多被淹没</span>
+          <span class="spacer"></span>
+          <button class="btn sm" data-drawer="notifications" aria-label="待你处理 2 条，打开通知">
+            <span class="state-dot waiting"></span>
+            待你处理
+            <span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:#fff;font-size:10px;font-weight:700">2</span>
+          </button>
+        </div>
+
+        <div class="msg">
+          <span class="avatar">张</span>
+          <div class="msg-main">
+            <div class="msg-who"><strong>张宁</strong><time>17:04</time></div>
+            <div class="msg-body"><p>帮我把 Q4 客户续约材料整理一下，重点看用量下滑和快到期的那几家。</p></div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <span class="avatar ai">AI</span>
+          <div class="msg-main">
+            <div class="msg-who"><strong>数字员工</strong><time>17:04</time></div>
+            <div class="msg-body">
+              <p>收到。我先汇总 12 家客户的用量、到期时间和最近一次沟通记录，再圈出需要优先跟进的名单。</p>
+              <div class="inline-task">
+                <div class="it-top">
+                  <span class="state-dot running"></span>
+                  <strong>Q4 客户续约材料</strong>
+                  <span class="state-label">进行中 · 61%</span>
+                </div>
+                <p>第 2/4 步：汇总用量与到期时间 · 预计 20 分钟</p>
+                <div class="progress"><span style="width: 61%"></span></div>
+                <div class="it-foot">
+                  <span class="tag feishu">
+                    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.3-4.1A7.5 7.5 0 1 1 20 11.5Z"/></svg>
+                    也接入了飞书群
+                  </span>
+                  <span class="spacer"></span>
+                  <button class="link" data-detail="renewal">查看任务</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <span class="avatar ai">AI</span>
+          <div class="msg-main">
+            <div class="msg-who"><strong>数字员工</strong><time>17:12</time></div>
+            <div class="msg-body"><p>替换演练那边已经核对完第 1 条边界，剩余 2 条。两件事都在推进，有需要你决定的我会单独提醒。</p></div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div class="composer-box">
+            <div class="placeholder">发消息，或交代一件事…</div>
+            <div class="composer-row">
+              <button class="icon-btn" aria-label="添加附件">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <span class="tag">数字员工</span>
+              <span class="spacer"></span>
+              <button class="send" aria-label="发送">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TASK DETAIL -->
+    <section id="screen-detail" class="screen" aria-labelledby="detail-title">
+      <button class="back" data-screen="tasks">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+        返回任务
+      </button>
+      <div class="detail-head">
+        <div class="main">
+          <div class="detail-title">
+            <h1 id="detail-title">替换演练</h1>
+            <span class="status-pill running" id="detail-status"><span class="state-dot running" style="width:6px;height:6px;flex-basis:6px"></span>进行中</span>
+          </div>
+          <p class="detail-sub">
+            <span id="detail-origin">来自对话</span><span class="sep"></span>
+            <span id="detail-time">17:04 由你发起</span><span class="sep"></span>
+            <span>负责人：数字员工</span><span class="sep"></span>
+            <span id="detail-updated">最近更新 3 分钟前</span>
+          </p>
+        </div>
+        <div class="detail-actions" id="detail-actions">
+          <button class="btn">补充说明</button>
+          <button class="btn danger">停止任务</button>
+        </div>
+      </div>
+
+      <div class="detail-grid">
+        <div>
+          <div class="card">
+            <h2>
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg>
+              现在在做什么
+            </h2>
+            <p class="now-title" id="detail-now-title">正在核对 3 条可回退边界</p>
+            <p class="now-desc" id="detail-now-desc">逐条确认替换后能否回到原状态，并记录前后关键指标。下一步会生成演练报告，预计还需 12 分钟。</p>
+            <div class="steps" id="detail-steps">
+              <div class="step done">
+                <span class="step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>
+                <div class="step-main"><strong>确认演练范围与验收标准</strong><small>3 条边界、可回退、指标可对比</small></div>
+                <span class="step-time">17:04</span>
+              </div>
+              <div class="step active">
+                <span class="step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/></svg></span>
+                <div class="step-main"><strong>核对可回退边界</strong><small>已完成 1 / 3 条 · 行为等价性检查中</small></div>
+                <span class="step-time">进行中</span>
+              </div>
+              <div class="step">
+                <span class="step-dot"></span>
+                <div class="step-main"><strong>生成演练报告</strong><small>含替换前后指标与回退验证结论</small></div>
+                <span class="step-time">等待中</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 8v5l3 2"/><circle cx="12" cy="12" r="8.5"/></svg>
+              进展
+            </h2>
+            <div class="timeline" id="detail-timeline">
+              <div class="tl-row">
+                <span class="tl-icon accent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>
+                <div class="tl-main"><strong>收到请求</strong><p>你在对话里说「做替换演练」</p></div>
+                <span class="tl-time">17:04</span>
+              </div>
+              <div class="tl-row">
+                <span class="tl-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h7"/></svg></span>
+                <div class="tl-main"><strong>已确认范围</strong><p>3 条边界、行为等价、失败可回退</p></div>
+                <span class="tl-time">17:05</span>
+              </div>
+              <div class="tl-row">
+                <span class="tl-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                <div class="tl-main"><strong>第 1 条边界核对通过</strong><p>行为等价，可回退；继续第 2 条</p></div>
+                <span class="tl-time">17:12</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M13 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V9l-6-6Z"/><path d="M13 3v6h6"/></svg>
+              交付物
+            </h2>
+            <div class="artifact" id="detail-artifact">
+              <span class="file-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M13 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V9l-6-6Z"/><path d="M13 3v6h6"/></svg></span>
+              <div class="a-main"><strong>替换演练报告</strong><small>生成中 · 完成后会出现在这里</small></div>
+              <span class="tag">预计 12 分钟</span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="side">
+          <div class="card">
+            <h2>
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.3-4.1A7.5 7.5 0 1 1 20 11.5Z"/></svg>
+              来路
+            </h2>
+            <div class="source-line">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.3-4.1A7.5 7.5 0 1 1 20 11.5Z"/></svg>
+              <div><strong id="detail-source-title">来自和助手的对话</strong><p id="detail-source-sub">你在 17:04 的这条消息</p></div>
+            </div>
+            <div class="quote" id="detail-quote">“做替换演练。重点是真实换一条边界，能回退，指标可对比。”</div>
+            <button class="link" style="margin-top:8px" data-screen="chat">查看原消息</button>
+          </div>
+
+          <div class="card">
+            <h2>
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M18 9a6 6 0 1 0-12 0c0 4-1.5 5.5-2 6h16c-.5-.5-2-2-2-6Z"/><path d="M10 19a2.2 2.2 0 0 0 4 0"/></svg>
+              你会收到
+            </h2>
+            <div class="side-row"><span>完成时</span><span>通知 + 对话内一条结果</span></div>
+            <div class="side-row"><span>需要你时</span><span>只发一条，带明确问题</span></div>
+            <div class="side-row"><span>不会收到</span><span>中间步骤的重复提醒</span></div>
+          </div>
+
+          <div class="card">
+            <h2>
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/></svg>
+              高级详情
+            </h2>
+            <p style="color:var(--ink-3);font-size:11.5px">给需要排查问题的同学；日常不用打开。</p>
+            <details class="advanced">
+              <summary>展开技术信息
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+              </summary>
+              <div class="kv"><span style="width:64px">任务 ID</span><code id="detail-kv-id">ticket_8f3a…</code></div>
+              <div class="kv"><span style="width:64px">执行会话</span><code id="detail-kv-session">worker-8f3a…</code></div>
+              <div class="kv"><span style="width:64px">工作目录</span><code id="detail-kv-dir">system/work/rehearsal</code></div>
+              <div class="kv"><span style="width:64px">触发记录</span><code id="detail-kv-trigger">conversation #2041</code></div>
+            </details>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ADVANCED / OPS -->
+    <section id="screen-advanced" class="screen" aria-labelledby="ops-title">
+      <div class="ops-banner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+        <span>你正在<strong>运维视图</strong>：用于排查和配置。日常使用请回任务视图。</span>
+        <span class="spacer"></span>
+        <button class="btn sm" data-screen="tasks">回到任务</button>
+      </div>
+      <div class="ops-head">
+        <h1 id="ops-title">Superagent</h1>
+        <label class="search ops-search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
+          <input type="search" placeholder="搜索任务、来源或记录" aria-label="搜索运维记录" />
+        </label>
+      </div>
+      <div class="ops-tabs" role="tablist">
+        <button class="ops-tab active" role="tab">概览</button>
+        <button class="ops-tab" role="tab">任务记录</button>
+        <button class="ops-tab" role="tab">来源</button>
+        <button class="ops-tab" role="tab">触发</button>
+        <button class="ops-tab" role="tab">评估</button>
+        <button class="ops-tab" role="tab">执行</button>
+        <button class="ops-tab" role="tab">设置</button>
+      </div>
+      <div class="ops-grid">
+        <div class="ops-card">
+          <h3>运行状态 <span class="tag">今天</span></h3>
+          <div class="ops-row"><span class="state-dot running"></span><span>执行中</span><span class="spacer"></span><strong>2</strong></div>
+          <div class="ops-row"><span class="state-dot waiting"></span><span>等待你处理</span><span class="spacer"></span><strong>2</strong></div>
+          <div class="ops-row"><span class="state-dot done"></span><span>今日完成</span><span class="spacer"></span><strong>5</strong></div>
+          <div class="ops-row"><span>执行器</span><span class="spacer"></span><span class="muted">运行 2 · 空闲 1 · 排队 0</span></div>
+        </div>
+        <div class="ops-card">
+          <h3>来源健康 <span class="tag">运维</span></h3>
+          <div class="ops-row"><span>GitHub</span><span class="spacer"></span><span class="state-label" style="color:var(--amber)">异常 · 已重试 237 次</span></div>
+          <div class="ops-row"><span>飞书</span><span class="spacer"></span><span class="state-label" style="color:var(--green)">正常</span></div>
+          <div class="ops-row"><span>对话</span><span class="spacer"></span><span class="state-label" style="color:var(--green)">内置</span></div>
+          <div class="ops-row"><span class="spacer"></span><button class="link">查看诊断</button><button class="link">停用来源</button></div>
+        </div>
+        <div class="ops-card">
+          <h3>最近执行记录</h3>
+          <div class="ops-row"><span class="ops-code">worker-8f3a</span><span class="spacer"></span><span class="muted">执行中 · 3 分钟前</span></div>
+          <div class="ops-row"><span class="ops-code">worker-2b71</span><span class="spacer"></span><span class="muted">已完成 · 15:20</span></div>
+          <div class="ops-row"><span class="ops-code">worker-6c02</span><span class="spacer"></span><span class="muted">已完成 · 昨天</span></div>
+        </div>
+        <div class="ops-card">
+          <h3>24 小时指标</h3>
+          <div class="ops-row"><span>触发 → 首次判断（中位）</span><span class="spacer"></span><strong>1.2s</strong></div>
+          <div class="ops-row"><span>判断 / 小时</span><span class="spacer"></span><strong>7.5</strong></div>
+          <div class="ops-row"><span>审批等待（中位）</span><span class="spacer"></span><strong>4m</strong></div>
+          <div class="ops-row"><span>重复外发</span><span class="spacer"></span><strong>0</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FILES / SETTINGS placeholders to make nav complete -->
+    <section id="screen-files" class="screen" aria-labelledby="files-title">
+      <div class="topbar"><div><h1 id="files-title">文件</h1><p class="sub">每个任务的交付结果和原始材料都在这里</p></div></div>
+      <div class="card">
+        <h2>最近文件</h2>
+        <div class="artifact"><span class="file-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M13 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V9l-6-6Z"/><path d="M13 3v6h6"/></svg></span><div class="a-main"><strong>供应商合同条款差异表.xlsx</strong><small>供应商合同条款比对 · 今天 15:20</small></div><button class="btn sm">打开</button></div>
+        <div class="artifact"><span class="file-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M13 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V9l-6-6Z"/><path d="M13 3v6h6"/></svg></span><div class="a-main"><strong>替换演练报告（生成中）.md</strong><small>替换演练 · 17:12</small></div><span class="tag">12 分钟</span></div>
+      </div>
+    </section>
+
+    <section id="screen-settings" class="screen" aria-labelledby="settings-title">
+      <div class="topbar"><div><h1 id="settings-title">设置</h1><p class="sub">通知、来源和团队的偏好</p></div></div>
+      <div class="card">
+        <h2>通知</h2>
+        <div class="side-row"><span>需要我处理</span><span>应用内 + 桌面通知</span></div>
+        <div class="side-row"><span>任务完成</span><span>应用内</span></div>
+        <div class="side-row"><span>每日进展摘要</span><span>每天 18:00</span></div>
+        <div class="side-row"><span>系统异常</span><span>只在持续失败时提醒</span></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ NOTIFICATIONS DRAWER ============ -->
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="drawer" id="drawer-notifications" aria-labelledby="notif-title" aria-modal="true" role="dialog">
+    <div class="drawer-head">
+      <h2 id="notif-title">通知</h2>
+      <span class="count quiet" style="background:var(--accent);color:#fff">5</span>
+      <span class="spacer"></span>
+      <button class="link">全部标为已读</button>
+      <button class="icon-btn" id="close-drawer" aria-label="关闭通知">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="drawer-body">
+      <div class="notice-group">
+        <h3>需要你处理 <span class="count" style="min-width:18px;height:18px;font-size:10px">2</span></h3>
+        <div class="notice unread">
+          <span class="notice-ico review"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4l-5 2v5c0 4 2.5 7 5 8 2.5-1 5-4 5-8V6L9 4Z"/><path d="M7 11l1.4 1.4L11 9.6"/></svg></span>
+          <div class="notice-main">
+            <strong>PR #131 等你检查</strong>
+            <p>修复导出报表空值问题 · 3 个文件，+48 / −12</p>
+            <div class="notice-task"><span class="tag">任务</span> 修复导出报表空值问题</div>
+            <div class="notice-actions"><button class="btn primary sm" data-detail="report">查看并批准</button><button class="btn ghost sm">稍后</button></div>
+          </div>
+          <span class="notice-time">10 分钟</span>
+        </div>
+        <div class="notice unread">
+          <span class="notice-ico ask"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9.5 9.2a2.5 2.5 0 1 1 3.9 2.1c-.9.6-1.4 1.1-1.4 2.1"/><path d="M12 17h.01"/></svg></span>
+          <div class="notice-main">
+            <strong>需要确认评审范围</strong>
+            <p>评审会材料要包含上季度数据吗？包含会多 6 页</p>
+            <div class="notice-task"><span class="tag">任务</span> 下周评审会材料</div>
+            <div class="notice-actions"><button class="btn sm" data-detail="review-meeting">回答</button><button class="btn ghost sm">稍后</button></div>
+          </div>
+          <span class="notice-time">1 小时</span>
+        </div>
+      </div>
+
+      <div class="notice-group">
+        <h3>进展</h3>
+        <div class="notice unread">
+          <span class="notice-ico progress"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>
+          <div class="notice-main">
+            <strong>替换演练第 2 步开始</strong>
+            <p>已核对第 1 条边界，剩余 2 条</p>
+            <div class="notice-task"><span class="tag">任务</span> 替换演练</div>
+          </div>
+          <span class="notice-time">3 分钟</span>
+        </div>
+        <div class="notice unread">
+          <span class="notice-ico progress"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 13l4-4 3 3 6-6"/><path d="M17 6h3v3"/></svg></span>
+          <div class="notice-main">
+            <strong>客户用量已汇总 12 / 12</strong>
+            <p>正在整理需优先跟进的名单</p>
+            <div class="notice-task"><span class="tag">任务</span> Q4 客户续约材料</div>
+          </div>
+          <span class="notice-time">12 分钟</span>
+        </div>
+        <div class="notice unread">
+          <span class="notice-ico progress"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>
+          <div class="notice-main">
+            <strong>供应商合同条款比对已完成</strong>
+            <p>已生成差异表，可以打开查看</p>
+            <div class="notice-task"><span class="tag">任务</span> 供应商合同条款比对</div>
+          </div>
+          <span class="notice-time">2 小时</span>
+        </div>
+      </div>
+
+      <div class="notice-group">
+        <h3>系统</h3>
+        <div class="notice">
+          <span class="notice-ico system"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 8v5"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="8.5"/></svg></span>
+          <div class="notice-main">
+            <strong>GitHub 连接异常，已自动重试 237 次</strong>
+            <p>最近一次：仓库无权限或地址不正确（非网络问题）</p>
+            <div class="notice-actions"><button class="btn sm">查看原因</button><button class="btn sm">停用来源</button></div>
+          </div>
+          <span class="notice-time">5 分钟</span>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <span>只在需要你决定或结果就绪时提醒</span>
+      <button class="link" data-screen="settings">通知设置</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  if (params.get('clean') === '1') document.body.classList.add('clean');
+  const screens = ['tasks', 'chat', 'detail', 'advanced', 'files', 'settings'];
+  const navButtons = [...document.querySelectorAll('[data-screen]')];
+  const drawer = document.getElementById('drawer-notifications');
+  const backdrop = document.getElementById('backdrop');
+
+
+  // Task details are data-driven so every entry opens the right example.
+  const ICON_CHECK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>';
+  const ICON_DOT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/></svg>';
+  const ICON_LIST = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h7"/></svg>';
+  const ICON_PLUS = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+  const ICON_DOC = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M13 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V9l-6-6Z"/><path d="M13 3v6h6"/></svg>';
+
+  const DETAILS = {
+    rehearsal: {
+      title: '替换演练', status: '进行中', statusClass: 'running',
+      origin: '来自对话', time: '17:04 由你发起', updated: '最近更新 3 分钟前',
+      nowTitle: '正在核对 3 条可回退边界',
+      nowDesc: '逐条确认替换后能否回到原状态，并记录前后关键指标。下一步会生成演练报告，预计还需 12 分钟。',
+      steps: [
+        { state: 'done', title: '确认演练范围与验收标准', sub: '3 条边界、可回退、指标可对比', time: '17:04' },
+        { state: 'active', title: '核对可回退边界', sub: '已完成 1 / 3 条 · 行为等价性检查中', time: '进行中' },
+        { state: '', title: '生成演练报告', sub: '含替换前后指标与回退验证结论', time: '等待中' }
+      ],
+      timeline: [
+        { title: '收到请求', desc: '你在对话里说「做替换演练」', time: '17:04', icon: 'check', accent: true },
+        { title: '已确认范围', desc: '3 条边界、行为等价、失败可回退', time: '17:05', icon: 'list' },
+        { title: '第 1 条边界核对通过', desc: '行为等价，可回退；继续第 2 条', time: '17:12', icon: 'plus' }
+      ],
+      artifact: { title: '替换演练报告', sub: '生成中 · 完成后会出现在这里', tag: '预计 12 分钟', action: '' },
+      quote: '“做替换演练。重点是真实换一条边界，能回退，指标可对比。”',
+      sourceTitle: '来自和助手的对话', sourceSub: '你在 17:04 的这条消息',
+      actions: 'normal',
+      kv: { id: 'ticket_8f3a…', session: 'worker-8f3a…', dir: 'system/work/rehearsal', trigger: 'conversation #2041' }
+    },
+    renewal: {
+      title: 'Q4 客户续约材料', status: '进行中', statusClass: 'running',
+      origin: '来自飞书', time: '今天 17:02 由你发起', updated: '最近更新 12 分钟前',
+      nowTitle: '正在汇总 12 家客户的用量与到期时间',
+      nowDesc: '从飞书群和续约表读取数据，圈出需要优先跟进的客户。下一步生成续约材料初稿，预计 20 分钟。',
+      steps: [
+        { state: 'done', title: '收到需求', sub: '来自飞书群 · 续约跟进', time: '17:02' },
+        { state: 'active', title: '汇总用量与到期时间', sub: '12 / 12 家已汇总 · 正在排优先级', time: '进行中' },
+        { state: '', title: '生成续约材料初稿', sub: '含续约风险与建议动作', time: '等待中' }
+      ],
+      timeline: [
+        { title: '收到请求', desc: '飞书群里提出整理 Q4 续约材料', time: '17:02', icon: 'check', accent: true },
+        { title: '已接上数据源', desc: '续约表 + 用量明细', time: '17:04', icon: 'list' },
+        { title: '客户用量已汇总 12 / 12', desc: '正在整理需优先跟进的名单', time: '17:12', icon: 'plus' }
+      ],
+      artifact: { title: 'Q4 客户续约材料（生成中）', sub: '完成后可打开', tag: '预计 20 分钟', action: '' },
+      quote: '“帮我 Q4 客户续约材料整理一下，重点看用量下滑和快到期的。”',
+      sourceTitle: '来自飞书群 · 续约跟进', sourceSub: '你在 17:02 的这条消息',
+      actions: 'normal',
+      kv: { id: 'ticket_b2c1…', session: 'worker-b2c1…', dir: 'system/work/renewal', trigger: 'feishu message #…' }
+    },
+    report: {
+      title: '修复导出报表空值问题', status: '待你确认 · 审阅', statusClass: 'review',
+      origin: '来自对话', time: '今天 17:20 由你发起', updated: '最近更新 10 分钟前',
+      nowTitle: 'PR #131 已就绪，等你检查',
+      nowDesc: '修复了导出报表遇到空单元格时的崩溃；3 个文件，+48 / −12。批准后合并。',
+      steps: [
+        { state: 'done', title: '定位空值路径', sub: '复现空行导出崩溃', time: '17:22' },
+        { state: 'done', title: '修复并补测试', sub: '覆盖空单元格与空行', time: '17:35' },
+        { state: 'active', title: '等你批准', sub: '批准后合并', time: '现在' }
+      ],
+      timeline: [
+        { title: '收到请求', desc: '你说导出报表有空行时直接报错', time: '17:20', icon: 'check', accent: true },
+        { title: '已定位问题', desc: '空单元格未做判空', time: '17:22', icon: 'list' },
+        { title: '已提交 PR #131', desc: '3 个文件，+48 / −12', time: '17:35', icon: 'plus' },
+        { title: '等你批准', desc: '批准后合并', time: '现在', icon: 'check' }
+      ],
+      artifact: { title: 'PR #131 · 修复导出报表空值', sub: '3 个文件，+48 / −12', tag: '待批准', action: '查看 PR' },
+      quote: '“导出报表有空行时直接报错，帮忙修一下。”',
+      sourceTitle: '来自和助手的对话', sourceSub: '你在 17:20 的这条消息',
+      actions: 'review',
+      kv: { id: 'ticket_31af…', session: 'worker-31af…', dir: 'system/work/report', trigger: 'conversation #…' }
+    },
+    'review-meeting': {
+      title: '下周评审会材料', status: '待你确认 · 待回答', statusClass: 'waiting',
+      origin: '来自对话', time: '今天 16:40 由你发起', updated: '最近更新 1 小时前',
+      nowTitle: '评审会材料要包含上季度数据吗？',
+      nowDesc: '包含会让材料多 6 页，但论证更完整；不包含则更聚焦本季度。你回答后我继续生成。',
+      steps: [
+        { state: 'done', title: '收集本季度数据', sub: '用量、收入、重点客户', time: '16:42' },
+        { state: 'done', title: '搭好材料框架', sub: '背景、进展、下一步', time: '17:00' },
+        { state: 'active', title: '等你确认范围', sub: '是否包含上季度对比', time: '现在' }
+      ],
+      timeline: [
+        { title: '收到请求', desc: '你说先把评审会材料框架搭起来', time: '16:40', icon: 'check', accent: true },
+        { title: '已收集本季度数据', desc: '用量、收入、重点客户', time: '16:42', icon: 'list' },
+        { title: '已暂停，等你回答', desc: '问题：是否包含上季度数据', time: '17:00', icon: 'plus' }
+      ],
+      artifact: { title: '评审会材料初稿', sub: '等待范围确认后继续', tag: '暂停', action: '' },
+      quote: '“下周评审会的材料，先把框架搭起来。”',
+      sourceTitle: '来自和助手的对话', sourceSub: '你在 16:40 的这条消息',
+      actions: 'question',
+      kv: { id: 'ticket_7d2e…', session: 'worker-7d2e…', dir: 'system/work/review', trigger: 'conversation #…' }
+    },
+    contract: {
+      title: '供应商合同条款比对', status: '已完成', statusClass: 'done',
+      origin: '来自飞书', time: '今天 11:20 由你发起', updated: '今天 15:20 完成',
+      nowTitle: '已提取 14 条关键条款，生成差异表',
+      nowDesc: '比对了 3 家供应商的付款、违约、续约条款；差异表可直接打开。',
+      steps: [
+        { state: 'done', title: '读取 3 份合同', sub: '付款、违约、续约', time: '11:30' },
+        { state: 'done', title: '提取 14 条关键条款', sub: '按风险等级标注', time: '14:50' },
+        { state: 'done', title: '生成差异表', sub: '可直接打开', time: '15:20' }
+      ],
+      timeline: [
+        { title: '收到请求', desc: '飞书群里发来 3 份合同', time: '11:20', icon: 'check', accent: true },
+        { title: '已读取合同', desc: '3 份，共 42 页', time: '11:30', icon: 'list' },
+        { title: '已生成差异表', desc: '14 条关键条款', time: '15:20', icon: 'check' }
+      ],
+      artifact: { title: '供应商合同条款差异表.xlsx', sub: '3 家供应商 · 14 条关键条款', tag: '已完成', action: '打开' },
+      quote: '“把这三家供应商的合同条款比一下，重点看付款和违约。”',
+      sourceTitle: '来自飞书群 · 采购', sourceSub: '你在 11:20 的这条消息',
+      actions: 'done',
+      kv: { id: 'ticket_5c8e…', session: 'worker-5c8e…', dir: 'system/work/contract', trigger: 'feishu message #…' }
+    },
+    pricing: {
+      title: '新版定价页文案', status: '已完成', statusClass: 'done',
+      origin: '来自对话', time: '昨天 18:02 由你发起', updated: '昨天 18:02 完成',
+      nowTitle: '已给出 3 版文案，并标注适用场景',
+      nowDesc: '分别面向新客户、老客户升级和渠道合作；可直接打开对比。',
+      steps: [
+        { state: 'done', title: '明确目标受众', sub: '新客户 / 升级 / 渠道', time: '17:40' },
+        { state: 'done', title: '写 3 版文案', sub: '每版 1 个主标题 + 3 条卖点', time: '17:55' },
+        { state: 'done', title: '标注适用场景', sub: '可直接对比', time: '18:02' }
+      ],
+      timeline: [
+        { title: '收到请求', desc: '你说新版定价页要三个方向', time: '17:38', icon: 'check', accent: true },
+        { title: '已明确受众', desc: '新客户 / 升级 / 渠道', time: '17:40', icon: 'list' },
+        { title: '3 版文案已完成', desc: '并标注适用场景', time: '18:02', icon: 'check' }
+      ],
+      artifact: { title: '新版定价页文案（3 版）', sub: '新客户 / 升级 / 渠道', tag: '已完成', action: '打开' },
+      quote: '“新版定价页的文案，给我三个方向。”',
+      sourceTitle: '来自和助手的对话', sourceSub: '你在昨天的这条消息',
+      actions: 'done',
+      kv: { id: 'ticket_9a1b…', session: 'worker-9a1b…', dir: 'system/work/pricing', trigger: 'conversation #…' }
+    }
+  };
+
+  function openDetail(key) {
+    const d = DETAILS[key] || DETAILS.rehearsal;
+    document.getElementById('detail-title').textContent = d.title;
+    const status = document.getElementById('detail-status');
+    status.className = 'status-pill ' + d.statusClass;
+    status.innerHTML = '<span class="state-dot ' + d.statusClass + '" style="width:6px;height:6px;flex-basis:6px"></span>' + d.status;
+    document.getElementById('detail-origin').textContent = d.origin;
+    document.getElementById('detail-time').textContent = d.time;
+    document.getElementById('detail-updated').textContent = d.updated;
+    document.getElementById('detail-now-title').textContent = d.nowTitle;
+    document.getElementById('detail-now-desc').textContent = d.nowDesc;
+    document.getElementById('detail-steps').innerHTML = d.steps.map(s => {
+      const mark = s.state === 'done' ? ICON_CHECK : s.state === 'active' ? ICON_DOT : '';
+      return '<div class="step ' + s.state + '"><span class="step-dot">' + mark + '</span><div class="step-main"><strong>' + s.title + '</strong><small>' + s.sub + '</small></div><span class="step-time">' + s.time + '</span></div>';
+    }).join('');
+    document.getElementById('detail-timeline').innerHTML = d.timeline.map(t => {
+      const icon = t.icon === 'list' ? ICON_LIST : t.icon === 'plus' ? ICON_PLUS : ICON_CHECK;
+      return '<div class="tl-row"><span class="tl-icon ' + (t.accent ? 'accent' : '') + '">' + icon + '</span><div class="tl-main"><strong>' + t.title + '</strong><p>' + t.desc + '</p></div><span class="tl-time">' + t.time + '</span></div>';
+    }).join('');
+    const a = d.artifact;
+    document.getElementById('detail-artifact').innerHTML = '<span class="file-ico">' + ICON_DOC + '</span><div class="a-main"><strong>' + a.title + '</strong><small>' + a.sub + '</small></div>' + (a.action ? '<button class="btn sm">' + a.action + '</button>' : '<span class="tag">' + a.tag + '</span>');
+    document.getElementById('detail-quote').textContent = d.quote;
+    document.getElementById('detail-source-title').textContent = d.sourceTitle;
+    document.getElementById('detail-source-sub').textContent = d.sourceSub;
+    document.getElementById('detail-kv-id').textContent = d.kv.id;
+    document.getElementById('detail-kv-session').textContent = d.kv.session;
+    document.getElementById('detail-kv-dir').textContent = d.kv.dir;
+    document.getElementById('detail-kv-trigger').textContent = d.kv.trigger;
+    const actions = document.getElementById('detail-actions');
+    if (d.actions === 'review') actions.innerHTML = '<button class="btn primary">批准并合并</button><button class="btn">退回</button>';
+    else if (d.actions === 'question') actions.innerHTML = '<button class="btn primary">回答</button><button class="btn">稍后</button>';
+    else if (d.actions === 'done') actions.innerHTML = '<button class="btn primary">打开结果</button><button class="btn">再次执行</button>';
+    else actions.innerHTML = '<button class="btn">补充说明</button><button class="btn danger">停止任务</button>';
+    show('detail');
+  }
+
+  function show(name) {
+    if (!screens.includes(name)) name = 'tasks';
+    document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === `screen-${name}`));
+    navButtons.forEach(b => {
+      if (b.classList.contains('nav-item')) b.classList.toggle('active', b.dataset.screen === name);
+      if (b.classList.contains('nav-item')) {
+        if (b.dataset.screen === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+      }
+    });
+    document.querySelector('.stage').scrollTop = 0;
+    closeDrawer();
+  }
+  navButtons.forEach(b => b.addEventListener('click', (e) => {
+    if (b.dataset.drawer) { e.preventDefault(); openDrawer(); return; }
+    show(b.dataset.screen);
+  }));
+  document.querySelectorAll('[data-detail]').forEach(el => el.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    openDetail(el.dataset.detail || 'rehearsal');
+  }));
+  function openDrawer() { drawer.classList.add('show'); backdrop.classList.add('show'); document.body.style.overflow = 'hidden'; }
+  function closeDrawer() { drawer.classList.remove('show'); backdrop.classList.remove('show'); document.body.style.overflow = ''; }
+  backdrop.addEventListener('click', closeDrawer);
+  document.getElementById('close-drawer').addEventListener('click', closeDrawer);
+  document.querySelectorAll('[data-drawer="notifications"]').forEach(b => b.addEventListener('click', openDrawer));
+  document.querySelector('#drawer-notifications .link').addEventListener('click', () => {
+    document.querySelectorAll('#drawer-notifications .notice.unread').forEach(n => n.classList.remove('unread'));
+    const c = document.querySelector('#notif-title + .count');
+    if (c) c.textContent = '0';
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+  document.querySelectorAll('.chip[data-filter]').forEach(chip => chip.addEventListener('click', () => {
+    document.querySelectorAll('.chip[data-filter]').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+  }));
+  // Keyboard access for task cards
+  document.querySelectorAll('.task-card').forEach(card => card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(card.dataset.detail || 'rehearsal'); }
+  }));
+  // Prototype-only: switch between the installable plugin surface and the host-level concept.
+  function setMode(mode) {
+    document.body.classList.toggle('mode-plugin', mode === 'plugin');
+    document.body.classList.toggle('mode-shell', mode === 'shell');
+    document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    show('tasks');
+  }
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  if (params.get('mode') === 'shell') setMode('shell');
+</script>
+</body>
+</html>
