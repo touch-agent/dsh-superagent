@@ -68,9 +68,7 @@ export const githubManifest: SourceManifest = {
     { key: 'observeComments', type: 'switch', label: { zh: '接收仓库里的评论', en: 'Receive comments in the repository' },
       hint: { zh: '打开后，Issue 和 PR 上没有 @ 智能体的评论和代码评论也会收到，由策略的接收表决定是否成为候选。', en: 'Comments and review comments on Issues and PRs that do not mention the agent are received too, and the Policy\'s admission table decides whether they become candidates.' } },
     { key: 'observeCi', type: 'switch', label: { zh: '接收默认分支的 CI', en: 'Receive the default branch\'s CI' },
-      hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.' } },
-    { key: 'humanIdentity', type: 'switch', label: { zh: '区分同一账号上的人工动作', en: 'Distinguish human actions on the agent account' },
-      hint: { zh: '打开后，智能体账号上提交的 APPROVED / CHANGES_REQUESTED review 视为人的批准或打回；正文以 [人] 或 HUMAN: 开头的评论视为人的指令，不需要 @ 智能体。该账号其余评论、COMMENTED review、Issue 和 PR 正文仍视为智能体的输出或讨论，不产生工单。智能体自己始终只提交 COMMENTED review，绝不 approve。关闭则恢复原行为：该账号的消息全部忽略。', en: 'On the agent\'s account, a submitted APPROVED or CHANGES_REQUESTED review is a person\'s decision, and a comment whose body starts with [人] or HUMAN: is a person\'s instruction that needs no mention. The account\'s other comments, COMMENTED reviews, and Issue or PR bodies remain agent output or discussion and start no Ticket. The agent itself always submits COMMENTED reviews and never approves. Turn this off to restore the old behavior: every message from the account is ignored.' } }],
+      hint: { zh: '打开后，默认分支的 CI 失败和恢复会收到，由策略的接收表决定是否成为候选。', en: 'Failures of the default branch\'s CI, and its recovery, are received, and the Policy\'s admission table decides whether they become candidates.' } }],
   health: ['github'],
   limits: { pollSeconds: 60 },
 }
