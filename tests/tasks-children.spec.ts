@@ -26,7 +26,8 @@ const seed = (store: Store, tickets: Ticket[]) => { for (const item of tickets) 
 
 it('keeps the board to roots with child counts and loads direct children only on detail', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
-  const root = tracked('root1', { assignments: [assignment('ra', { state: 'progress', summary: 'working', at })] })
+  const root = tracked('root1', { profile: { id: 'docs-owner', revision: 2 },
+    assignments: [assignment('ra', { state: 'progress', summary: 'working', at })] })
   const waiting = child('c1', { assignments: [assignment('c1a', { state: 'waiting', summary: 'waiting on parent', at })] })
   const dropped = child('c2', { ended: { at, by: 'executor', outcome: 'dropped' }, assignments: [assignment('c2a')] })
   const cancelled = child('c4', { ended: { at, by: 'executor', outcome: 'stopped' },
@@ -41,6 +42,8 @@ it('keeps the board to roots with child counts and loads direct children only on
   expect(board.totals).toMatchObject({ tickets: 1, children: 4 })
   expect(board.tasks[0]!.childSummary).toMatchObject({ total: 4, live: 2, waiting: 1, cancelled: 1, orphaned: 1 })
   expect(board.tasks[0]!.children).toBeUndefined()
+  expect(board.tasks[0]!.owner).toEqual({ role: 'owner', profile: { id: 'docs-owner', revision: 2 } })
+  expect(board.tasks[0]!.blocker).toMatchObject({ kind: 'child', count: 2 })
 
   const detail = taskDetail(host(store), 'root1', 1, new Date('2026-09-22T12:00:00Z'))!
   expect(detail.children.map(item => item.id).sort()).toEqual(['c1', 'c2', 'c3', 'c4'])
@@ -49,7 +52,8 @@ it('keeps the board to roots with child counts and loads direct children only on
   expect(byId.get('c1')).toMatchObject({ status: 'idle', depth: 1, parentTicketId: 'root1', parentOwner: { role: 'owner' } })
   expect(byId.get('c2')).toMatchObject({ terminal: 'dropped', status: 'done' })
   expect(byId.get('c4')).toMatchObject({ terminal: 'stopped', status: 'done', delegation: { resolution: { kind: 'cancelled' } } })
-  expect(byId.get('c3')).toMatchObject({ status: 'blocked', delegation: { orphaned: { reason: 'parent gone' } } })
+  expect(byId.get('c3')).toMatchObject({ status: 'blocked', delegation: { orphaned: { reason: 'parent gone' } },
+    parentOwner: { role: 'owner', profile: { id: 'docs-owner', revision: 2 } }, blocker: { kind: 'orphaned' } })
 })
 
 it('gives a person attention for a failed child only when no living ancestor owner can decide it', () => {

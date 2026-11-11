@@ -149,6 +149,7 @@ it('points a setup problem at the settings that fix it', async () => {
   const scroll = vi.fn()
   Element.prototype.scrollIntoView = scroll
   await mount()
+  await click(zh.problemAggregateShow)
   expect(text()).toContain(zh.problemSetup)
   expect(text()).toContain(zh['setup.agentCliUnset'])
   // Nothing runs while setup waits, so the Executor says so instead of counting.
@@ -170,6 +171,7 @@ it('points a setup problem at the settings that fix it', async () => {
   server.setup = { ...server.setup, problem: problemOf('gitTooOld') }
   await remount()
   await click(zh['tab.overview'])
+  await click(zh.problemAggregateShow)
   await click(find(zh.problemSetup, 'button, a, [role="button"]'))
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['settingsGroup.deployment'])
   expect(text()).toContain('部署检查未通过：git 没有读取 dsh-superagent 为 github.com 写的凭据配置')
@@ -179,6 +181,7 @@ it('shows a failed Feishu bot check as a problem of the Feishu Source only, with
   server.setup = { ...server.setup, feishuProblem: problemOf('feishuBotNotReady', { app: 'cli_bot', status: 'missing' }),
     accounts: { ...server.setup.accounts!, feishu: null } }
   await mount()
+  await click(zh.problemAggregateShow)
   expect(text()).toContain(zh.problemSetupFeishu)
   expect(text()).not.toContain('飞书 来源异常')
   await click(find(zh.problemSetupFeishu, 'button, a, [role="button"]'))

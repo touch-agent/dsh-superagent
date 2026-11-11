@@ -40,6 +40,6 @@ export function pause(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /** Returns an error health once `failures` consecutive polls fail, or undefined so a single network interruption stays quiet. */
-export function pollFailure(failures: number, threshold: number, error: unknown): Health | undefined {
-  return failures >= threshold ? health('error', 'pollFailures', { count: String(failures), error: String(error) }) : undefined
+export function pollFailure(failures: number, threshold: number, error: unknown, at = new Date().toISOString()): Health | undefined {
+  return failures >= threshold ? { ...health('error', 'pollFailures', { count: String(failures), error: String(error) }), at } : undefined
 }

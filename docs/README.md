@@ -6,7 +6,7 @@ evolution set, then the plan set when you are picking up work.
 | Layer | Where | What it answers |
 | --- | --- | --- |
 | Numbered mechanism and operations | `docs/000`–`docs/010` | How the system works, how it is authorized, operated and extended. |
-| Design and evolution | `docs/011`–`docs/021` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, the reusable profile layer over the worker role, and the task-first interface proposal. |
+| Design and evolution | `docs/011`–`docs/023` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, the reusable profile layer over the worker role, the task-first interface proposal, and the first implemented UX slice. |
 | Plans | [`plan/`](plan/README.md) | What to build, in what order, and the current status of every task. |
 | Runbooks and evidence | [`runbooks/`](runbooks/why-not-sent.md), [`images/`](images/), [`prototypes/`](prototypes/ux-redesign.html) | What to do when something is stuck; the before/after captures and the clickable prototype the documents cite. |
 
@@ -70,12 +70,13 @@ replacement.
 | 020 | [Evolution loop](020-evolution-loop.zh.md) | The offline observe→summarize→propose→verify loop: sanitized samples, effective-hash and task-family aggregation, confidence downgrades, versioned proposals, the pre-registered holdout/MDE gate, the document-only approval queue, human apply and rollback; no write path. |
 | 021 | [Interface redesign](021-ux-redesign.zh.md) | The revised task-first Superagent interface proposal: the main Agent as the first entry, the workspace replaced by a task view, the goal → task → subtask hierarchy with owners, sessions, deliverables, blockers and reports, a right-side notification overlay plus drawer, and a four-item main menu with operations in settings; includes the plugin-extension mapping (including what needs host work), phased rollout, before/after captures and a clickable prototype (proposal, not implemented). |
 | 022 | [Harness extension requests](022-harness-extension-requests.zh.md) | The upstream request set behind 021's host-dependent gaps: a sidebar top seat and nav overrides, session-row presentation and archiving, a workspace-list seat, settings groups and icons, notification badges, and session-row trailing metadata; per item it gives the shipped capability, the gap, an interface sketch, MVP and later stages, host impact, rollback, priority and a no-host-change fallback, with DSH `0.2.1-rc.5` evidence (proposal, not implemented). |
+| 023 | [UX first batch](023-ux-first-batch.zh.md) | The implemented task hierarchy, notification drawer/overlay, folded error aggregation, default-surface terminology and rollback flags. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
 is the golden-path E2E; 015 is the E0 read model that follows from 011's
 attention principle; 017 provides the group dimension; 018 is the display-level
-checklist T5-02 lands; 019 assembles the six dimensions per Assignment; 020 is the offline evolution loop that consumes their telemetry and never applies its own proposals; 021 applies 018's levels to the default surface and the revised task-first interface (proposal); 022 audits 021's host-dependent gaps and sorts them into existing capability, additive seat and whole-region replacement. 011 §6
+checklist T5-02 lands; 019 assembles the six dimensions per Assignment; 020 is the offline evolution loop that consumes their telemetry and never applies its own proposals; 021 applies 018's levels to the default surface and the revised task-first interface (proposal); 022 audits 021's host-dependent gaps and sorts them into existing capability, additive seat and whole-region replacement; 023 implements the proposal's first task-hierarchy, notification and error-aggregation slice with rollback flags. 011 §6
 cross-checks the existing documents; conflicts are resolved in 011 §7.
 
 ## Plans

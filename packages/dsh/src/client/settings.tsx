@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import type { StateView } from './api.ts'
 import { InfoTip, Switch } from './controls.tsx'
-import { EVENTS_AUTO_OPEN, autoOpenPreference, featureEnabled, setAutoOpenPreference } from './features.ts'
+import { ERROR_AGGREGATE, EVENTS_AUTO_OPEN, NOTIFY_DRAWER, NOTIFY_OVERLAY, TASK_HIERARCHY, autoOpenPreference, featureEnabled,
+  notifyAutoDismiss, setAutoOpenPreference, setFeature, setNotifyAutoDismiss } from './features.ts'
 import { Hint } from './widgets.tsx'
 import { DeploymentPage, type DeploymentForm } from './deployment.tsx'
 import { EvalSettings } from './eval.tsx'
@@ -21,6 +22,11 @@ const STAGE_GROUPS: readonly SettingsGroup[] = ['source', 'eval', 'execution']
 function DisplaySettings() {
   const { t } = usePanel()
   const [autoOpen, setAutoOpen] = useState(autoOpenPreference)
+  const [overlay, setOverlay] = useState(() => featureEnabled(NOTIFY_OVERLAY))
+  const [autoDismiss, setAutoDismiss] = useState(notifyAutoDismiss)
+  const [drawer, setDrawer] = useState(() => featureEnabled(NOTIFY_DRAWER))
+  const [hierarchy, setHierarchy] = useState(() => featureEnabled(TASK_HIERARCHY))
+  const [aggregate, setAggregate] = useState(() => featureEnabled(ERROR_AGGREGATE))
   const available = featureEnabled(EVENTS_AUTO_OPEN)
   return <div className="dt-form">
     <div className="dt-form dt-block">
@@ -31,6 +37,47 @@ function DisplaySettings() {
           setAutoOpenPreference(next) }} />
       </div>
       <Hint>{available ? t('eventsAutoOpenStable') : t('eventsAutoOpenDisabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('notificationOverlaySection')}<InfoTip text={t('notificationOverlayHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('notificationOverlaySetting')}<InfoTip text={t('notificationOverlayHint')} /></div>
+        <Switch checked={overlay} label={t('notificationOverlaySetting')} onChange={next => { setOverlay(next)
+          setFeature(NOTIFY_OVERLAY, next) }} />
+      </div>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('notificationAutoDismissSetting')}<InfoTip text={t('notificationAutoDismissHint')} /></div>
+        <Switch checked={autoDismiss} label={t('notificationAutoDismissSetting')} onChange={next => { setAutoDismiss(next)
+          setNotifyAutoDismiss(next) }} />
+      </div>
+      <Hint>{overlay ? t('notificationOverlayHint') : t('notificationOverlayDisabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('notificationDrawerSection')}<InfoTip text={t('notificationDrawerHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('notificationDrawerSetting')}</div>
+        <Switch checked={drawer} label={t('notificationDrawerSetting')} onChange={next => { setDrawer(next)
+          setFeature(NOTIFY_DRAWER, next) }} />
+      </div>
+      <Hint>{t('notificationDrawerHint')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('taskHierarchySection')}<InfoTip text={t('taskHierarchyHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('taskHierarchySetting')}<InfoTip text={t('taskHierarchyHint')} /></div>
+        <Switch checked={hierarchy} label={t('taskHierarchySetting')} onChange={next => { setHierarchy(next)
+          setFeature(TASK_HIERARCHY, next) }} />
+      </div>
+      <Hint>{hierarchy ? t('taskHierarchyHint') : t('taskHierarchyDisabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('errorAggregateSection')}<InfoTip text={t('errorAggregateHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('errorAggregateSetting')}<InfoTip text={t('errorAggregateHint')} /></div>
+        <Switch checked={aggregate} label={t('errorAggregateSetting')} onChange={next => { setAggregate(next)
+          setFeature(ERROR_AGGREGATE, next) }} />
+      </div>
+      <Hint>{aggregate ? t('errorAggregateHint') : t('errorAggregateDisabled')}</Hint>
     </div>
   </div>
 }

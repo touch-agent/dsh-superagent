@@ -1028,7 +1028,7 @@ it('reports GitHub as failing only after the configured number of consecutive fa
   const eof = new Error('Get "https://api.github.com/x": EOF')
   expect(pollFailure(1, 3, eof)).toBeUndefined()
   expect(pollFailure(2, 3, eof)).toBeUndefined()
-  expect(pollFailure(3, 3, eof)).toEqual({ state: 'error', detail: '3 consecutive failed polls; last: Error: Get "https://api.github.com/x": EOF', code: 'pollFailures', values: { count: '3', error: 'Error: Get "https://api.github.com/x": EOF' } })
+  expect(pollFailure(3, 3, eof, '2026-09-23T12:00:00Z')).toEqual({ state: 'error', detail: '3 consecutive failed polls; last: Error: Get "https://api.github.com/x": EOF', code: 'pollFailures', values: { count: '3', error: 'Error: Get "https://api.github.com/x": EOF' }, at: '2026-09-23T12:00:00Z' })
   expect(githubKind.schema.parse({})).toEqual({ repository: '', cli: '', pollSeconds: 60, failuresBeforeError: 3, observeIssues: false,
     observePulls: false, observeComments: false, observeCi: false })
 })

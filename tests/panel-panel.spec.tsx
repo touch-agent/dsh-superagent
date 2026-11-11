@@ -23,7 +23,7 @@ it('opens a search result older than the newest page around its Trigger', async 
   await mount()
   await type(field<HTMLInputElement>(zh.searchLabel), 'message')
   await act(async () => { field<HTMLInputElement>(zh.searchLabel).closest('form')!.requestSubmit() }); await settle()
-  expect(text()).toContain('找到 0 个工单、0 个线程、1 条触发')
+  expect(text()).toContain('找到 0 个任务、0 个来源会话、1 条消息')
   await click(all('.dt-search-results button').find(button => button.textContent === 'message e1')!)
   expect(server.requests.some(request => request.path.includes('around=e1'))).toBe(true)
   expect(document.querySelector('.dt-highlight')?.textContent).toContain('message e1')
