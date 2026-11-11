@@ -367,9 +367,15 @@ describe('github source', () => {
     // The switch is the rollback: without it, the same signals are automated output.
     expect(commentTrigger({ id: 21, body: '[人] fix', user: { login: 'Agent-Bot', type: 'User' } },
       { number: 7, isPr: true }, 'conversation', 'agent-bot').human).toBe(false)
-    // A bot stays a bot even with both human signals; the existing bot list still governs its candidates.
+    // A bot stays a bot even with both human signals, including when the deployment itself signs in as a bot.
     expect(commentTrigger({ id: 22, state: 'APPROVED', body: '[人] fix', user: { login: 'ci[bot]', type: 'Bot' } },
       { number: 7, isPr: true }, 'review', 'agent-bot', true)).toMatchObject({ human: false })
+    const botSelf = commentTrigger({ id: 23, state: 'APPROVED', body: '[人] fix', user: { login: 'agent[bot]', type: 'Bot' } },
+      { number: 7, isPr: true }, 'review', 'agent[bot]', true)
+    expect(botSelf).toMatchObject({ human: false })
+    expect(botSelf.meta).not.toHaveProperty('humanIdentity')
+    // A dismissed review keeps its body but is no longer a fresh instruction.
+    expect(self({ state: 'DISMISSED', body: '[人] fix' }, 'review').human).toBe(false)
   })
   it('reads the address of an Issue, a PR or a review comment of the repository, and nothing else', () => {
     expect(githubAddress('https://api.github.com/repos/acme/widgets/pulls/9', 'acme/widgets')).toEqual({ number: 9, pr: true })

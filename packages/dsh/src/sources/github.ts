@@ -5,7 +5,7 @@ import { sameName } from '../infra/text.ts'
 import { GithubAccountsSchema } from '../deployment.ts'
 import { CliError, validItems, type Tally } from '../infra/commands.ts'
 import { ciCounts, ciFact, ciFailures, ciSummary, githubThreadContext, pullChecks } from './github-read.ts'
-import { branchCiTrigger, ciTrigger, commentTrigger, CommentSchema, githubAddress, humanSignal, issueTrigger, IssueSchema, pullTrigger, SOURCE }
+import { branchCiTrigger, ciTrigger, commentTrigger, CommentSchema, githubAddress, humanSignal, isHumanLogin, issueTrigger, IssueSchema, pullTrigger, SOURCE }
   from './github-trigger.ts'
 import { githubLink, probeGithub, sendGithub, withdrawGithub } from './github-channel.ts'
 import type { GithubComment, PullRef } from './github-trigger.ts'
@@ -267,7 +267,7 @@ async function readStream(ctx: SourceContext, round: Round, id: string, path: st
     if (!number || !fresh(item.updated_at ?? item.created_at, 'comments')) continue
     const kind = id === 'comments' ? 'conversation' : 'inline'
     // A shared account contributes only its human signals; with comments unobserved, other comments stay unread.
-    const signal = own && config.humanIdentity ? humanSignal(item, kind) : undefined
+    const signal = own && config.humanIdentity && isHumanLogin(item.user) ? humanSignal(item, kind) : undefined
     if (own && !signal) continue
     if (!config.observeComments && !signal) continue
     const isPr = id === 'review-comments' || /\/pull\//.test(item.html_url ?? '')
@@ -431,7 +431,7 @@ async function intakeComments(ctx: SourceContext, ref: PullRef, since: string, r
       const timestamp = Date.parse(comment.updated_at ?? comment.submitted_at ?? comment.created_at ?? '')
       if (!Number.isFinite(timestamp) || timestamp < Date.parse(since)) continue
       // The agent's own output is skipped unless the shared account supplies one of the two human signals.
-      const signal = sameName(comment.user.login, login) && config?.humanIdentity
+      const signal = sameName(comment.user.login, login) && config?.humanIdentity && isHumanLogin(comment.user)
         ? humanSignal(comment, kind, ref.prAuthor) : undefined
       if (sameName(comment.user.login, login) && !signal) continue
       // A review decision without a body still reaches the ticket: a worker may be waiting for that approval.

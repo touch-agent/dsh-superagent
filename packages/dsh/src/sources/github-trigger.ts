@@ -73,8 +73,12 @@ export const humanMark = (body: string | null | undefined): boolean =>
  */
 export function humanSignal(comment: GithubComment, kind: 'conversation' | 'inline' | 'review',
   prAuthor?: string): 'review' | 'mark' | undefined {
-  if (kind === 'review' && HUMAN_REVIEW_STATES.has(comment.state ?? '')) {
-    return prAuthor && sameName(prAuthor, comment.user.login) ? undefined : 'review'
+  if (kind === 'review') {
+    if (HUMAN_REVIEW_STATES.has(comment.state ?? '')) {
+      return prAuthor && sameName(prAuthor, comment.user.login) ? undefined : 'review'
+    }
+    // A reviewed-then-dismissed record is not a new instruction; only a submitted plain review carries a mark.
+    if (comment.state && comment.state !== 'COMMENTED') return undefined
   }
   return humanMark(comment.body) ? 'mark' : undefined
 }
@@ -91,14 +95,15 @@ export function commentTrigger(comment: GithubComment, ref: PullRef, kind: 'conv
   const version = comment.updated_at ?? comment.submitted_at ?? ''
   const id = key('github-comment', comment.html_url ?? `github:${ref.number}`, String(comment.id), version)
   const own = sameName(comment.user.login, agent)
-  const signal = sharedAccount && own ? humanSignal(comment, kind, ref.prAuthor) : undefined
-  return { id, source: SOURCE, threads: [{ source: SOURCE, id: String(ref.number) }], ...author(comment.user, !own || !!signal), at,
+  const signal = sharedAccount && own && isHumanLogin(comment.user) ? humanSignal(comment, kind, ref.prAuthor) : undefined
+  const human = isHumanLogin(comment.user) && (!own || !!signal)
+  return { id, source: SOURCE, threads: [{ source: SOURCE, id: String(ref.number) }], ...author(comment.user, human), at,
     text: commentText(comment, kind),
     ...(signal === 'mark' || mentions(comment.body ?? '', agent) ? { addressed: 'mention' as const } : {}),
     channel: githubChannel(ref.number, comment.html_url ?? undefined),
     ...(comment.html_url ?? ref.url ? { url: comment.html_url ?? ref.url } : {}),
     meta: { number: ref.number, isPr: ref.isPr, ...(ref.prAuthor ? { prAuthor: ref.prAuthor } : {}), commentId: comment.id, kind,
-      ...signal ? { humanIdentity: signal } : {},
+      ...signal && human ? { humanIdentity: signal } : {},
       ...comment.path ? { path: comment.path, line: comment.line ?? comment.original_line ?? null } : {},
       ...comment.in_reply_to_id ? { inReplyTo: comment.in_reply_to_id } : {} } }
 }
