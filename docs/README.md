@@ -46,9 +46,11 @@ constraint before scope, fail closed, and a read-only snapshot without text.
 020 closes the loop above them: an offline observer reads sanitized telemetry,
 a proposal carries its evidence and pre-registered holdout gate, and only a
 person can apply it. 021 applies 018's exposure levels to the whole default
-surface as a task-first proposal: one main conversation, one task inbox and
-one notification layer, with the operating surfaces kept behind an explicit
-entry; its before/after captures and clickable prototype ship with it.
+surface as a task-first proposal: a main Agent entry, a task view that replaces
+the workspace, a task hierarchy with owners, sessions, deliverables, blockers
+and reports, a right-side notification overlay plus drawer, and a four-item
+main menu with operations moved into settings; its before/after captures,
+extension-point annotations and clickable prototype ship with it.
 
 | # | Document | Role |
 | --- | --- | --- |
@@ -62,13 +64,13 @@ entry; its before/after captures and clickable prototype ship with it.
 | 018 | [Exposure levels](018-exposure-levels.zh.md) | The E0–E3 display levels and the element-by-element default-surface inventory: attention cost, deeper entry and rollback for each surface, plus the T5-02 walkthrough evidence. |
 | 019 | [Context assembly](019-context-assembly.zh.md) | The per-Assignment six-layer assembler: presence first, constraint before scope, conflict escalation, the read-only snapshot and `context` trace stage, fail-closed behavior, and child-ticket inheritance and flattening rules. |
 | 020 | [Evolution loop](020-evolution-loop.zh.md) | The offline observe→summarize→propose→verify loop: sanitized samples, effective-hash and task-family aggregation, confidence downgrades, versioned proposals, the pre-registered holdout/MDE gate, the document-only approval queue, human apply and rollback; no write path. |
-| 021 | [Interface redesign](021-ux-redesign.zh.md) | The task-first Superagent interface proposal: task inbox, task detail, notification layer, terminology, plugin-extension mapping and phased rollout, with host-enhancement trade-offs, same-viewport before/after captures and a clickable prototype (proposal, not implemented). |
+| 021 | [Interface redesign](021-ux-redesign.zh.md) | The revised task-first Superagent interface proposal: the main Agent as the first entry, the workspace replaced by a task view, the goal → task → subtask hierarchy with owners, sessions, deliverables, blockers and reports, a right-side notification overlay plus drawer, and a four-item main menu with operations in settings; includes the plugin-extension mapping (including what needs host work), phased rollout, before/after captures and a clickable prototype (proposal, not implemented). |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
 is the golden-path E2E; 015 is the E0 read model that follows from 011's
 attention principle; 017 provides the group dimension; 018 is the display-level
-checklist T5-02 lands; 019 assembles the six dimensions per Assignment; 020 is the offline evolution loop that consumes their telemetry and never applies its own proposals; 021 applies 018's levels to the default surface and the task-first interface (proposal). 011 §6
+checklist T5-02 lands; 019 assembles the six dimensions per Assignment; 020 is the offline evolution loop that consumes their telemetry and never applies its own proposals; 021 applies 018's levels to the default surface and the revised task-first interface (proposal). 011 §6
 cross-checks the existing documents; conflicts are resolved in 011 §7.
 
 ## Plans
