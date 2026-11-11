@@ -1278,7 +1278,8 @@ function guardrailComparison(
 }
 
 /** The conclusion from all proposals and gates; no gate may recommend adoption without a pass. */
-function conclusionOf(proposals: EvolutionProposal[], gates: GateResult[], sampleCount: number, intentCount: number): EvolutionReport['conclusion'] {
+function conclusionOf(proposals: EvolutionProposal[], gates: GateResult[], sampleCount: number, intentCount: number,
+  withheld: { id: string; reason: string }[]): EvolutionReport['conclusion'] {
   if (sampleCount === 0) return { kind: 'insufficient-evidence', summary: 'No observation samples were available; nothing was proposed.', reasons: ['noSamples'] }
   const ready = proposals.filter(proposal => proposal.status === 'ready-for-human-approval')
   if (ready.length > 0) {
@@ -1293,7 +1294,10 @@ function conclusionOf(proposals: EvolutionProposal[], gates: GateResult[], sampl
   if (intentCount === 0) {
     return { kind: 'insufficient-evidence', summary: 'No candidate experience with an explicit diff and pre-registered experiment was supplied; the observation is recorded only.', reasons: ['noCandidateExperience'] }
   }
-  return { kind: 'insufficient-evidence', summary: 'Evidence is insufficient for adoption; extend the observation or run the missing holdout replay.', reasons: gates.flatMap(result => result.reasons).filter(reason => reason !== 'belowMde').slice(0, 4) }
+  const reasons = [...new Set([...gates.flatMap(result => result.reasons), ...withheld.map(item => item.reason)])]
+    .filter(reason => reason !== 'belowMde').slice(0, 4)
+  return { kind: 'insufficient-evidence', summary: 'Evidence is insufficient for adoption; extend the observation or run the missing holdout replay.',
+    reasons: reasons.length > 0 ? reasons : ['insufficientEvidence'] }
 }
 
 /** Build the approval queue document from ready proposals; nothing here applies a proposal. */
@@ -1428,7 +1432,7 @@ export function runEvolution(input: EvolutionInput): EvolutionReport {
     proposals,
     gates,
     approvalQueue: queueOf(proposals, generatedAt),
-    conclusion: conclusionOf(proposals, gates, samples.records.length, intents.length),
+    conclusion: conclusionOf(proposals, gates, samples.records.length, intents.length, withheld),
     guarantees: { liveConfiguration: 'unchanged', autoApply: false, authorizationFields: 'refused', samplePrivateText: 'refused', proposalText: 'author-supplied', externalCredentials: false },
   }
 }

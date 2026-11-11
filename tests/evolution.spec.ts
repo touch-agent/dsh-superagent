@@ -388,6 +388,13 @@ it('refuses a proposal whose base revision is not older than the revision it pro
   expect(report.observation.withheld).toContainEqual({ id: 'exp-docs', reason: 'invalidRevisionOrder' })
 })
 
+it('reports the withheld reason in the conclusion when no gate could run', () => {
+  const report = runEvolution(input(undefined, { intents: [intent({ proposedRevision: 3 })] }))
+  expect(report.gates).toHaveLength(0)
+  expect(report.conclusion.kind).toBe('insufficient-evidence')
+  expect(report.conclusion.reasons).toContain('noCandidateSamples')
+})
+
 it('does not read a result before the pre-registered stopping sample', () => {
   const experiment = intent().experiment
   const report = runEvolution(input(undefined, {
