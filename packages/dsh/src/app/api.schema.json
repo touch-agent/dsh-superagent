@@ -1,0 +1,556 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/touch-agent/dsh-superagent/api.schema.json",
+  "title": "dsh-superagent management API request contract",
+  "description": "Generated from packages/dsh/src/app/api-contract.ts by scripts/check-api-schema.mjs; do not hand-edit. Response shapes are the route handlers' return types, not part of this document.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "GET state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "x-public": true
+    },
+    "GET overview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "after": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 50,
+              "x-dsh-clamp": 200
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "quiet",
+                "feed",
+                "notice"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "GET tasks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET goals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET goals/:id": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET spaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET contexts/groups": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET profiles/:id": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET profiles/:id/metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET tasks/:id": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5,
+              "default": 1
+            }
+          }
+        }
+      }
+    },
+    "GET search": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "q": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          "required": [
+            "q"
+          ]
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "GET sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "x-public": true
+    },
+    "GET settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "x-public": true
+    },
+    "POST sources/:id/labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET threads": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "filter": {
+              "type": "string",
+              "enum": [
+                "subscribed",
+                "evaluating",
+                "recent",
+                "all"
+              ],
+              "default": "subscribed"
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "x-dsh-clamp": 1000
+            }
+          }
+        }
+      }
+    },
+    "GET threads/:key": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 50,
+              "x-dsh-clamp": 100
+            },
+            "before": {
+              "type": "string"
+            },
+            "around": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "POST threads/:key/unsubscribe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET triggers/:id/trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "POST triggers/:id/requeue": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET decisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "default": ""
+            },
+            "window": {
+              "type": "string",
+              "enum": [
+                "24h"
+              ]
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 30,
+              "x-dsh-clamp": 200
+            }
+          }
+        }
+      }
+    },
+    "POST decisions/:id/dismiss": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET tickets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "person",
+                "working",
+                "idle",
+                "ended"
+              ],
+              "default": "open"
+            },
+            "origin": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "x-dsh-clamp": 1000
+            }
+          }
+        }
+      }
+    },
+    "GET tickets/:id": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET tickets/:id/timeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "POST tickets/:id/retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "x-public": true
+    },
+    "POST tickets/:id/stop": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "x-public": true
+    },
+    "POST tickets/:id/approve": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "reviewRevision": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "reviewRevision"
+          ]
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "x-public": true
+    },
+    "POST outbox/:id/recall": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "x-public": true
+    },
+    "POST approvals/:id/approve": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": [
+                "read",
+                "draft",
+                "commit",
+                "send",
+                "spend"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "x-public": true
+    },
+    "POST approvals/:id/deny": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "x-public": true
+    },
+    "POST executor/pause": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "paused": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "paused"
+          ]
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "x-public": true
+    },
+    "PUT settings/:block": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "block": {
+              "type": "string",
+              "pattern": "^(?:policy|eval|dispatch|executor|source:[a-z][a-z0-9-]*)$"
+            }
+          },
+          "required": [
+            "block"
+          ]
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "value": {},
+            "revision": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "revision"
+          ]
+        }
+      },
+      "required": [
+        "params",
+        "body"
+      ],
+      "x-public": true
+    },
+    "GET policy/history": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "POST policy-sync/:id": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "x-public": true
+    },
+    "POST setup/check": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "x-public": true
+    },
+    "GET models": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "GET prompts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "x-dsh-strict": true
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "x-dsh-strict": true
+            }
+          }
+        }
+      },
+      "x-public": true
+    },
+    "PUT prompts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "config": {},
+            "baseRevision": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "baseRevision"
+          ]
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "x-public": true
+    },
+    "POST prompts/preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "body": {}
+      },
+      "required": [
+        "body"
+      ]
+    }
+  },
+  "required": [
+    "GET state",
+    "GET overview",
+    "GET metrics",
+    "GET activity",
+    "GET tasks",
+    "GET goals",
+    "GET goals/:id",
+    "GET spaces",
+    "GET contexts/groups",
+    "GET profiles",
+    "GET profiles/:id",
+    "GET profiles/:id/metrics",
+    "GET tasks/:id",
+    "GET search",
+    "GET sources",
+    "GET settings",
+    "POST sources/:id/labels",
+    "GET threads",
+    "GET threads/:key",
+    "POST threads/:key/unsubscribe",
+    "GET triggers/:id/trace",
+    "POST triggers/:id/requeue",
+    "GET decisions",
+    "POST decisions/:id/dismiss",
+    "GET tickets",
+    "GET tickets/:id",
+    "GET tickets/:id/timeline",
+    "POST tickets/:id/retry",
+    "POST tickets/:id/stop",
+    "POST tickets/:id/approve",
+    "POST outbox/:id/recall",
+    "POST approvals/:id/approve",
+    "POST approvals/:id/deny",
+    "POST executor/pause",
+    "PUT settings/:block",
+    "GET policy/history",
+    "POST policy-sync/:id",
+    "POST setup/check",
+    "GET models",
+    "GET prompts",
+    "PUT prompts",
+    "POST prompts/preview"
+  ]
+}
