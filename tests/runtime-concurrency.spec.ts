@@ -442,8 +442,7 @@ describe('a worker whose work runs in the background', () => {
     h.runtime.receive(feishu('2', '再加个测试', { mentions: [], root_id: 'om_1' })); await h.runtime.idle()
     await vi.waitFor(() => {
       const current = latestAssignment(ticket())
-      const previous = latestAssignment(ticket())
-      expect(current?.deliveredAt !== undefined && current.deliveredAt >= previous!.report!.at).toBe(true)
+      expect(current?.deliveredAt !== undefined && current.deliveredAt >= current.report!.at).toBe(true)
     })
     const job = h.jobs.run(one.sessionId)
     idle(one.sessionId); await h.runtime.idle()
