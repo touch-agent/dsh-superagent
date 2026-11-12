@@ -23,7 +23,11 @@ function hierarchy(): TaskBoardView {
     delegation: { parentTicketId: 't1', rootTicketId: 't1', goal: '写迁移说明', attempt: 1, dispositions: [],
       resolution: { kind: 'failed', by: { source: 'dsh', id: 'worker-plan' }, at: '2026-09-23T01:00:00Z', reason: '缺少迁移目标' } },
     goal: { id: 't1-child', statement: '写迁移说明', state: { stage: 'waiting', action: 'blocked' }, results: [] },
-    deliverables: [], blocker: { kind: 'blocked', detail: '缺少迁移目标' },
+    deliverables: [{ key: 't1-child:d1', sources: [], at: '2026-09-23T01:00:00Z', summary: '迁移说明已补',
+      artifact: { kind: 'file', ref: 'https://github.com/acme/widgets/pull/42', revision: 'r1' },
+      previewRef: { kind: 'text/diff', ref: 'https://github.com/acme/widgets/pull/42/files', revision: 'r1' },
+      criteria: [], confirmations: [] }],
+    blocker: { kind: 'blocked', detail: '缺少迁移目标' },
     childSummary: { total: 0, live: 0, queued: 0, working: 0, waiting: 1, review: 0, blocked: 1, failed: 0, orphaned: 0,
       accepted: 0, cancelled: 0, unresolved: 0 } }
   const root: TaskView = { ...board.tasks[0]!, status: 'review', attention: true, durationMs: 7_200_000,
@@ -145,6 +149,7 @@ it('answers decision, result, next step with timing, owner and each child report
   expect(report.textContent).toContain(zh.taskDetailChildGoal)
   expect(report.textContent).toContain('写迁移说明')
   expect(report.textContent).toContain('缺少迁移目标')
+  expect(report.querySelector('a')?.textContent).toBe(zh.taskDetailOpenDeliverable)
 })
 
 it('shows the three first-use lines once and clickable starting points when there is no task', async () => {

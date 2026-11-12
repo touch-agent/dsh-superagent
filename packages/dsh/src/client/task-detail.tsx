@@ -1,8 +1,9 @@
 /**
- * UX batch 1's task hierarchy detail: one Ticket at a time, in the order a person reads work — goal, next step, owner,
- * child levels, deliverables, blocker, reporting and the working session. A child level opens in place, so the whole
- * delegation chain is reachable without turning the default list into a deep tree. Internal ids and Session ids stay
- * inside the collapsed E2 block, and every fact is a projection of `GET tasks`/`GET tasks/:id`.
+ * The task detail: one Ticket at a time, in the order a person reads work. Batch 2 leads with the person's decision,
+ * result, next step with honest timing and a human owner before the goal, then child levels, blockers, reporting and the
+ * working session. A child level opens in place and its report folds out its goal, judgement and deliverables, so the
+ * whole delegation chain is reachable without turning the default list into a deep tree. Internal ids and Session ids
+ * stay inside the collapsed E2 block, and every fact is a projection of `GET tasks`/`GET tasks/:id` and `GET profiles`.
  */
 import { useEffect, useMemo, useState } from 'react'
 import type { TaskView } from '../app/tasks.ts'
@@ -52,7 +53,7 @@ function ownerLabel(t: T, profile: { id: string; revision: number } | undefined,
 /** A direct link only for a real address; a repository-relative ref opens the full record that contains it. */
 const isWeb = (ref: string): boolean => /^https?:\/\//.test(ref)
 const deliverableLink = (item: TaskView['deliverables'][number]): string | undefined =>
-  [item.previewRef.ref, item.artifact.ref].find(isWeb)
+  [item.previewRef?.ref, item.artifact.ref].find(isWeb)
 
 /** How soon this level is expected to move, phrased from what the record actually knows rather than invented. */
 export function estimateText(task: TaskView, t: T): string {
@@ -177,8 +178,8 @@ function Reports({ task, t }: { task: TaskView; t: T }) {
   </>
 }
 
-function LevelRow({ task, t, onEnter, v2 = false, profiles = [] }: { task: TaskView; t: T; onEnter: () => void; v2?: boolean
-  profiles?: readonly ProfileRow[] }) {
+function LevelRow({ task, t, onEnter, onOpenTicket, v2 = false, profiles = [] }: { task: TaskView; t: T; onEnter: () => void
+  onOpenTicket: (id: string) => void; v2?: boolean; profiles?: readonly ProfileRow[] }) {
   const deliverables = task.deliverables.length
   const report = task.delegation?.resolution
   return <li className="dt-task-level" data-status={task.status}>
@@ -205,8 +206,9 @@ function LevelRow({ task, t, onEnter, v2 = false, profiles = [] }: { task: TaskV
           {report.reason && <span>{report.reason}</span>}
           <span className="dt-hint">{when(report.at, t('lang'))}</span></p>
           : <p className="dt-hint">{t('taskDetailChildNoReport')}</p>}
-        {deliverables > 0 && <p className="dt-task-report"><span className="dt-hint">{t('taskDetailDone')}</span>
-          <span>{t('tasksDeliverables', { count: deliverables })}</span></p>}
+        {deliverables > 0 && <><p className="dt-task-report"><span className="dt-hint">{t('taskDetailDone')}</span>
+          <span>{t('tasksDeliverables', { count: deliverables })}</span></p>
+          <Deliverables task={task} t={t} onOpenTicket={onOpenTicket} /></>}
       </div>
     </details> : report && <div className="dt-task-report">
       <Tag tone={report.kind === 'accepted' ? 'success' : 'neutral'}>
@@ -293,7 +295,7 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
     <div className="dt-task-detail-section">
       <h4>{t('taskHierarchyChildren')}</h4>
       {v2 && children.length > 0 && <p className="dt-hint">{t('taskDetailChildReportsHint')}</p>}
-      {children.length ? <ul className="dt-task-levels">{children.map(child => <LevelRow key={child.id} task={child} t={t} v2={v2}
+      {children.length ? <ul className="dt-task-levels">{children.map(child => <LevelRow key={child.id} task={child} t={t} v2={v2} onOpenTicket={onOpenTicket}
         profiles={profiles} onEnter={() => { store.ensureDetail(child.id); setStack([...stack, { id: child.id, task: child }]) }} />)}</ul>
         : focus.childSummary?.total ? <p className="dt-hint">{t('loading')}</p> : <p className="dt-hint">{t('taskHierarchyNoChildren')}</p>}
       {deeper > 0 && <p className="dt-hint">{t('taskHierarchyMore', { count: deeper })}</p>}
