@@ -83,16 +83,20 @@ function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChange
   const sourceLabel = (source: { ticketId: string }) => source.ticketId === ticket.id ? t('reviewSourceRoot') : t('reviewSourceChild')
   const confirmationText = (criterion: NonNullable<TicketPageView['review']>['confirmations'][number]['criterion']) => criterion.reason
     ? reasonLabel(t, criterion.reason) : t('reviewHumanConfirm')
-  // The end state follows the data the page already has: a pending close wins, then an open follow, else the approval ends it.
+  // Mirror `Tickets.followsDone`: own follows win when present, otherwise every follow counts. A pending close wins first.
+  const anchors = ticket.threads.flatMap(thread => thread.anchor ? [thread.anchor] : [])
+  const own = anchors.filter(anchor => anchor.own)
+  const counted = own.length > 0 ? own : anchors
   const approvalEffect = ticket.pendingEnd
     ? t('reviewEffectPendingEnd', { outcome: valueLabel(t, 'outcome', ticket.pendingEnd.outcome) })
-    : ticket.threads.some(thread => thread.anchor?.own && !thread.anchor.closed) ? t('reviewEffectFollows')
+    : counted.some(anchor => !anchor.closed) ? t('reviewEffectFollows')
       : t('reviewEffectEnd')
   if (!review.deliverables.length) return <Section title={t('reviewSection')} icon="review">
     <Hint>{t('reviewUnavailable')}</Hint>
   </Section>
   return <Section title={t('reviewSection')} icon="review">
     <Hint>{t('reviewAggregateHint')}</Hint>
+    <KeyValues rows={[[t('reviewApprovalRevision'), <span className="dt-mono">{review.reviewRevision}</span>]]} />
     {review.deliverables.map(deliverable => {
       const confirmations = review.confirmations.filter(item => deliverable.sources.some(source =>
         source.ticketId === item.source.ticketId && source.assignmentId === item.source.assignmentId))
@@ -110,11 +114,11 @@ function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChange
           // Rules and person confirmations answer different questions; grouping keeps the latter from reading as an instruction.
           ...rules.length > 0 || humans.length > 0 ? [[t('reviewCriteria'), <div className="dt-review-criteria">
             {rules.length > 0 && <div>
-              <p className="dt-hint">{t('reviewRuleGroup')}</p>
+              <p className="dt-hint dt-review-group-label">{t('reviewRuleGroup')}</p>
               <ul className="dt-plain-list">{rules.map((rule, at) => <li key={`rule-${at}`}>{rule}</li>)}</ul>
             </div>}
             {humans.length > 0 && <div>
-              <p className="dt-hint">{t('reviewHumanGroup')}</p>
+              <p className="dt-hint dt-review-group-label">{t('reviewHumanGroup')}</p>
               <ul className="dt-plain-list">{humans.map((human, at) => <li key={`human-${at}`}>{human}</li>)}</ul>
               <p className="dt-hint">{t('reviewHumanCovers')}</p>
             </div>}

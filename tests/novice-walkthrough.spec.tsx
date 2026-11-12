@@ -36,7 +36,8 @@ it('lets a first-time person approve the current delivery from the overview with
   expect(text()).toContain(zh['acceptanceRule.pr.merged'])
   expect(text()).toContain('Check the tone')
   expect(text()).not.toContain('artifact + revision')
-  expect(text()).not.toContain('review-r')
+  expect(text()).toContain('本次修订')
+  expect(text()).toContain('review-rev-1')
   await click(zh.approve)
 
   expect(server.requests).toContainEqual({ path: 'tickets/t1/approve', method: 'POST', body: { reviewRevision: 'review-rev-1' } })

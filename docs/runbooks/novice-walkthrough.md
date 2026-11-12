@@ -56,25 +56,38 @@ pnpm vitest run tests/novice-walkthrough.spec.tsx tests/panel-walkthrough-gaps.s
 
 ## G1–G6 修复记录（本 PR）
 
-只改文案与入口可达性，不改交互模型、不新增数据或权限；术语按 [023 §3](../023-ux-first-batch.zh.md#3-术语) 的改写表（源自 021 §5）统一为「待你确认 / 需要你处理 / 任务」，内部标识仍只在 E2/E3。动作按钮按 021 §5.3 的「查看并批准 / 退回」保留「批准」。
+只改文案与入口可达性，不改交互模型、不新增数据或权限；术语按 [023 §3](../023-ux-first-batch.zh.md#3-术语) 的改写表（源自 021 §5）把默认面统一到「任务」与「待你确认 · 审阅」；概览区块与筛选按 021 §5.1 分别用「需要你处理 N」和「待我处理」。动作按钮按 021 §5.3 的「查看并批准 / 退回」保留现有「批准」，新增「退回」不在本单。内部标识仍只在 E2/E3。
 
 | # | 位置 | 改前 | 改后 | 用户卡点 | 覆盖 |
 | --- | --- | --- | --- | --- | --- |
-| G1 | 概览 · 待我处理卡片 | 卡片标题「修复回归」是唯一看起来可点的文字，没有动作提示 | 标题仍是点击目标；动作区新增「查看并确认」，打开同一工单页 | 新人只能猜标题可点 | `tests/panel-walkthrough-gaps.spec.tsx` 第 1 条、`tests/novice-walkthrough.spec.tsx` |
-| G2 | 概览状态、任务列表状态/筛选、审查提示 | 「待验收」「待审」「需我处理」「审查修订」 | 「待你确认」「需要你处理」；去掉「审查修订」，提示改为「批准只对当前修订有效」 | 同一件事有多种叫法 | `tests/panel-walkthrough-gaps.spec.tsx` 第 1 条、`tests/marks.spec.ts` |
-| G3 | 审查区「批准」按钮下方 | 裸 `review-r`（`reviewRevision` 前 8 位，无标签） | 删掉裸 id；按钮下方写「批准只对上方「修订」有效。」，键值行保留「修订 rev-1」 | 不知道它绑定哪次批准 | 第 2 条断言不出现 `review-r`、保留键值行 |
-| G4 | 审查区批准按钮上方 | 没有批准后说明 | 「批准后：…」按 `pendingEnd`、仍跟随来源、其他三种情况各给一句结果 | 不知道批准会结束任务还是继续等 PR | 第 2–4 条覆盖三种结果 |
-| G5 | 审查区提示 | 「本工单与已接受子工单的交付按 artifact + revision 去重；批准绑定当前审查修订。」 | 「本任务与已接受的子任务交付按文件与修订去重；批准只对当前修订有效。」 | 内部术语读不懂 | 第 2 条断言新文案存在、旧术语不存在 |
-| G6 | 验收标准 | 规则与人工确认混在一列，如「PR 已合并」「Check the tone」并列 | 分成「规则（自动检查）」与「需要你确认」，并说明批准时一并确认、不需另回复 | 把人工确认当成给自己的指令 | 第 2 条断言两组标签和覆盖说明 |
+| G1 | 概览 · 需要你处理卡片 | 卡片标题「修复回归」是唯一看起来可点的文字，没有动作提示 | 标题仍是点击目标；动作区新增「查看并确认」，打开同一任务页 | 新人只能猜标题可点 | `tests/panel-walkthrough-gaps.spec.tsx` 第 1/2 条、`tests/novice-walkthrough.spec.tsx` |
+| G2 | 概览状态/区块、任务列表状态/筛选、审查提示 | 「待验收」「待审」「需我处理」「审查修订」 | 「待你确认 · 审阅」；区块「需要你处理」，筛选「待我处理」，行标签「需要你处理」；去掉「审查修订」，提示改为「批准只对当前修订有效」 | 同一件事有多种叫法 | `tests/panel-walkthrough-gaps.spec.tsx` 第 1/3 条、`tests/marks.spec.ts`、`tests/panel-tasks.spec.tsx` |
+| G3 | 审查区「批准」上方 | 裸 `review-r`（`reviewRevision` 前 8 位，无标签） | 加「本次修订 review-rev-1」键值行；按钮下方写「批准只对上面的「本次修订」有效。」 | 不知道它绑定哪次批准 | 第 4 条断言键值行、完整 id 与提示，不再出现独立裸前缀 |
+| G4 | 审查区批准按钮上方 | 没有批准后说明 | 「批准后：…」按 `pendingEnd`、有 own follow、只有非 own follow、无 follow 四种数据给出结果；pending 文案为「已记录的「…」会生效」 | 不知道批准会结束任务还是继续等关联来源 | 第 5–8 条覆盖四种结果与优先级 |
+| G5 | 审查区提示 | 「本工单与已接受子工单的交付按 artifact + revision 去重；批准绑定当前审查修订。」 | 「本任务与已接受的子任务交付按文件与修订去重；批准只对当前修订有效。」 | 内部术语读不懂 | 第 4 条断言新文案存在、旧术语不存在 |
+| G6 | 验收标准 | 规则与人工确认混在一列，如「PR 已合并」「Check the tone」并列 | 分成「规则（自动检查）」与「需要你确认」，并说明批准时一并确认、不需另回复 | 把人工确认当成给自己的指令 | 第 4 条断言两组标签、归属与覆盖说明 |
 
 ### 视觉证据
 
-同场景、1440×900、light、zh-CN、同一合成 fixture；Before 取本分支的起点 `main@0d24be7`（首次走查之后的面板），After 取本分支构建。截图只截 Superagent 面板，任务标题、负责人、来源与账号均为脱敏 fixture，不使用私有飞书内容。
+同场景、1440×900 视口、light、zh-CN、同一合成 fixture；只截 Superagent 面板（1075×900，文件实际 1076×900）。Before 取本分支的起点 `main@0d24be7`（首次走查之后的面板），After 取本分支构建。任务标题、负责人、来源、账号与交付摘要均为脱敏 fixture，不使用私有飞书内容；`Check the tone` 是 fixture 里“人写的确认事项”，不是面板文案。
 
 | 场景 | Before | After |
 | --- | --- | --- |
-| 概览 · 待我处理：同一张待确认卡片 | [before-overview.png](../images/walkthrough-gaps/before-overview.png) | [after-overview.png](../images/walkthrough-gaps/after-overview.png) |
-| 工单页 · 验收预览：修订、批准后果、规则/人工确认分组 | [before-review.png](../images/walkthrough-gaps/before-review.png) | [after-review.png](../images/walkthrough-gaps/after-review.png) |
+| 概览 · 需要你处理：同一张待确认卡片 | [before-overview.png](../images/walkthrough-gaps/before-overview.png) | [after-overview.png](../images/walkthrough-gaps/after-overview.png) |
+| 任务列表 · 待我处理筛选与行状态 | [before-tasks.png](../images/walkthrough-gaps/before-tasks.png) | [after-tasks.png](../images/walkthrough-gaps/after-tasks.png) |
+| 任务页 · 验收预览：本次修订、批准后果、规则/人工确认分组 | [before-review.png](../images/walkthrough-gaps/before-review.png) | [after-review.png](../images/walkthrough-gaps/after-review.png) |
+
+### 修复后 10 秒复核
+
+同一条路径，After 构建的实际界面原文：
+
+| 步 | After 实际看到 | 10 秒内说出的下一步 | 判定 |
+| --- | --- | --- | --- |
+| 1 | 「需要你处理」；卡片「待你确认 · 审阅 修复回归」；动作「查看并确认」「停止」 | 「点『查看并确认』或标题」 | 通过（agent 与独立首次使用复核） |
+| 2 | 「本次修订 review-rev-1」；「批准后：任务会结束，并出现在最近历史里」；「规则（自动检查）」「需要你确认」 | 「点『批准』」 | 通过（agent 与独立首次使用复核） |
+| 3 | 「已于 … 批准这个修订」；「批准」按钮消失 | 「完成了，不用再点」 | 通过（agent） |
+
+这一步仍不是独立新人复跑：复核者看过截图和 diff，可能受实现者选择影响。C4.5 的通过判定仍按下一节由没看过本记录的人执行。
 
 ## 复跑与判定
 
