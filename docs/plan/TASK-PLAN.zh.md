@@ -613,6 +613,7 @@ graph LR
 | X-12 | 文档结构与计划跟踪：011/012 入 `docs/`、计划文档入 `docs/plan/`、跟踪表校验 | 1 | 文档与计划分散在仓库根，引用与状态易漂移；由 `tests/docs.spec.ts` 固定结构和格式 |
 | X-13 | TRACKING 自动化：计划↔跟踪表↔PR 证据一致性 | 2 | 防止「合并即更新」靠人记；把状态漂移变成 CI 红灯 |
 | X-14 | 上游扩展点提案：DSH 侧栏、设置、会话列表与通知边界 | 2 | 021 Phase 2 需要可提交的宿主契约；先把「插件能做什么」核清，避免把可做项误报成宿主缺口 |
+| X-15 | Git 仓库集成调研：源码类产出的提交、并发、回收与审计 | 2 | 多数源码交付已走 worktree + 分支 + PR，但提交权、并发、回收、审计仍是部署约定；先对比候选并给 PoC 判据，避免直接做内置 SCM |
 
 **X-09 落地（2026-11-10，本 PR）**：首页改为「待我处理 / 正在跑 / 最近历史」三区，`stage = person` 工单与审批进 E0，`working`（queued/running）工单与执行器计数进第二区，`idle` 工单留在 Execution 过滤，最近结束工单按 `ticket.ended` 倒序最多八条进第三区；24 小时流量与健康指标折叠为 E2，tab、过滤器与 E2/E3 记录不删。`GET overview` 新增 `running`/`recent` 投影，侧边栏图标在 SVG 内画 warning 点（宿主 `sidebar.panellist` 无 badge 子槽），每 60 秒读同一 `GET overview`。整页由 `entry.threeZones.v1` 开关控制，关闭恢复旧 Overview；原则 A/B 的逐项核对见 PR review 评论。
 
@@ -655,6 +656,15 @@ graph LR
 - **估时**：2 人日。**依赖**：T5-02 的 018/021 设计输入。**回退**：纯文档，删除即回退；不改运行时、不新增 schema。
 - **泳道**：Platform。
 - **实现（2026-11-11，PR [#61](https://github.com/touch-agent/dsh-superagent/pull/61) 进行中）**：`docs/022-harness-extension-requests.zh.md`；`tests/docs.spec.ts` 文档索引与 `check:tracking` 通过；评审结论见 PR review 评论。
+
+### X-15 Git 仓库集成调研 · Platform · 2 人日
+
+- **目标**：回答「在 agent 产品里集成 git 仓库、把源码类产出交给 git 管理」的可行方案：盘点 `Execution.directory`/`space_lease`/prepare/PR 的现状与缺口，对比每工单 worktree、产品内置 bare repo、只对接 Source 远端仓、宿主 workspace 嵌套四条路线，给出推荐、插件/宿主边界、风险与 PoC 判据；只调研，不实现。
+- **交付**：[`../025-git-repository-integration.zh.md`](../025-git-repository-integration.zh.md)：九维对比（并发隔离、冲突/rebase 归属、凭据、离线、配额/GC、审计、租约生命周期、失败回滚、插件边界）、推荐 A+C、六项产品能力、风险与检测、PoC 指标；索引与 TRACKING 同步。
+- **验收**：`pnpm exec vitest run tests/docs.spec.ts tests/tracking.spec.ts` 与 `pnpm check:tracking` 绿；独立 review 逐项挑战「是否真能落地」，结论写进 PR review 评论；不把提案写成已实现。
+- **估时**：2 人日。**依赖**：013/006/021/022 的现状结论。**回退**：纯文档，删除即回退；不改运行时、不新增 schema。
+- **泳道**：Platform。
+- **进度（2026-11-12，PR 进行中）**：`docs/025-git-repository-integration.zh.md`；索引与 `docs/plan/TRACKING.zh.md` 已同步；评审结论见 PR review 评论。
 
 ---
 

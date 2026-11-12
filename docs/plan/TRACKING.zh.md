@@ -86,6 +86,7 @@
 | X-12 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/31 | PR #31 合并（`19b8c3d`）；`tests/docs.spec.ts` 文档结构与跟踪表校验、计划文档迁入 `docs/plan/` | 2026-11-08 |
 | X-13 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/34 | PR #34 合并 `0c43312`；`scripts/check-tracking.mjs`、`tests/tracking.spec.ts`；CI `tracking` job；`docs/plan/README.md` 的「自动校验」 | 2026-11-11 |
 | X-14 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/61 | PR #61 合并 `39b8a08`；`../022-harness-extension-requests.zh.md`；DSH `0.2.1-rc.5` 类型/实现证据；`tests/docs.spec.ts` 文档索引 | 2026-11-11 |
+| X-15 | 未开始 | — | — | 2026-11-12 |
 | S-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity.spec.ts`；`activity` 表与三级分级 | 2026-11-08 |
 | S-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity-feed.spec.ts`；`endCoveredBy` 单一通知预算 | 2026-11-08 |
 | S-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/runtime.spec.ts` 的 `<stateDir>/system` 目录断言 | 2026-11-08 |
