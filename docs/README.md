@@ -30,7 +30,7 @@ Read 000–010 in order; each builds only on the ones before it.
 
 ## Design and evolution
 
-These fifteen are written in Chinese. 011 and 012 are a cross-referencing pair:
+These sixteen are written in Chinese. 011 and 012 are a cross-referencing pair:
 read 011 for the principles and their cross-check against the existing
 documents, then 012 for the evolution story. 013 applies them to the workspace
 model (space as an execution reference, orthogonal to the task tree). 014
