@@ -612,6 +612,15 @@ graph LR
 
 **优先级（2026-11-08 重评估）**：X-13 立即；X-14 在 021 Phase 2 评审前；X-03 在 M3.5 前；X-09 在 T5-02 前；X-10 在 M4 前；X-12 已完成（PR #31）；X-01/X-02/X-04 作为并行维护项，不占关键路径；X-06 继续守领域测试 <2s。
 
+### X-01 lint + CI · Platform · 2 人日
+
+- **目标**：给全仓库加一道能挡住真实缺陷的 lint，接进 `pnpm check` 与 CI 的 `check` job；不引入风格重排，也不借机改业务逻辑。
+- **交付**：`eslint.config.mjs`（ESLint 10 + `typescript-eslint` 8，project service 复用 `pnpm typecheck` 的 TypeScript program），覆盖 `packages/kernel`、`packages/dsh`、`meta`、`scripts`、`tests`；规则为 `eslint:recommended` + `typescript-eslint:recommended`（未使用声明、显式 `any`、无用表达式等）加 `no-floating-promises`、`no-misused-promises`、`await-thenable`、`no-array-delete`；`pnpm lint`（`--max-warnings=0`）接入 `pnpm check` 与 CI；一次性清掉现有 131 条 finding；豁免逐条就近写明理由并收窄到一行（依赖规则 fixture 作为测试数据整体 ignore，控制字符正则、`{}` 可选请求判定、`PART_KEYS` 仅类型使用、3 处 Vitest mock 类型）；`prefer-const` 因只影响 `beforeEach` 初始化写法而关闭，`no-base-to-string` 评估后不启用（31 处均为 `unknown`/SQLite 展示值的有意字符串化）。
+- **验收**：干净仓库 `pnpm lint` 0 error / 0 warning；临时 probe 让未使用导入、floating promise、显式 `any`、对非 Promise 的 `await`、async 函数进 `() => void` 属性五类同时报错；`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm check:size` 与 `pnpm check` 绿；独立 review 核对「规则真能拦住缺陷」「豁免是否过度」「是否有格式化掩盖逻辑变更」，结论写进 PR review 评论。
+- **估时**：2 人日。**依赖**：无。**回退**：删除 `eslint.config.mjs`、`pnpm lint` 与 `check` 中的一步及三个 devDependency 即回退；规则不改运行时代码。
+- **泳道**：Platform。
+- **实现（2026-11-12，PR [#69](https://github.com/touch-agent/dsh-superagent/pull/69) 进行中）**：`eslint.config.mjs` 的规则集、豁免与「选择 ESLint 而非 oxlint」的理由见 `docs/007-architecture.md` 的「Lint」；清扫包含 38 处未使用声明、22 处 promise 误用、18 处对非 Promise 的 `await`、4 处 rethrow 补 `cause`、3 处多余转义、2 处正则空格、1 处死赋值、1 处不安全可选链断言与 1 处 `this` 别名，并移除一条未启用插件的旧 directive；没有格式化或导入重排，因此 diff 不会掩盖逻辑变更。`pnpm lint` 本机约 9 秒，全量测试 1872 通过。
+
 ### X-02 dependency-cruiser 架构规则 · Platform · 2 人日
 
 - **目标**：把 `tests/layers.spec.ts` 里手写的分层与依赖方向扫描换成 dependency-cruiser 规则，规则变多时仍能逐条说明、逐条拦截；旧扫描器保留一个版本做对照，再删除。

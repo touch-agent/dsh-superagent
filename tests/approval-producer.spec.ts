@@ -2,7 +2,7 @@
  * The runtime's Approval producer: an external Ticket message revalidates the Mandate, waits in the panel queue, and
  * only reaches its Channel once a person or the Policy approves it; a denial, expiry or lower grant never sends it.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { Commands } from '@superagent/dsh/infra/commands.ts'
 import { requestActionApproval } from '@superagent/dsh/app/action-gate.ts'
 import { settingsPolicy } from '@superagent/dsh/policy.ts'
@@ -104,7 +104,7 @@ it('drops a message granted at a lower level than it needs, and keeps it retryab
 })
 
 it('recalls a message that waits for an approval, revoking the request and keeping it unsent', async () => {
-  const { trigger, ticket } = await h.acceptedTicket(feishu('5', '@bot 修一下回归'))
+  const { trigger } = await h.acceptedTicket(feishu('5', '@bot 修一下回归'))
   const receipt = held()
   const approval = request()
   expect(await h.api('POST', `outbox/${receipt.id}/recall`)).toMatchObject({ status: 200, body: { status: 'recalled' } })
@@ -116,7 +116,7 @@ it('recalls a message that waits for an approval, revoking the request and keepi
 })
 
 it('expires an undecided request and records why the message did not go', async () => {
-  const { trigger, ticket } = await h.acceptedTicket(feishu('6', '@bot 修一下回归'))
+  const { trigger } = await h.acceptedTicket(feishu('6', '@bot 修一下回归'))
   const approval = request()
   vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 25 * 60 * 60 * 1000 })
   try { await h.runtime.sendReplies() } finally { vi.useRealTimers() }
@@ -153,7 +153,7 @@ it('recalls a held message after its Approval expired instead of failing the rec
 })
 
 it('revalidates at release, so a Policy lowered while the request waited drops the approved message', async () => {
-  const { trigger, ticket } = await h.acceptedTicket(feishu('9', '@bot 修一下回归'))
+  const { trigger } = await h.acceptedTicket(feishu('9', '@bot 修一下回归'))
   const approval = request()
   const settings = h.runtime.store.settings()
   h.runtime.store.saveSettings({ ...settings, policy: { ...settings.policy, maxActionLevel: 'draft' } })

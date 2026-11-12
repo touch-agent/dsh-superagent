@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Engine, MemoryRepositories, UserError, followupOwners, key, latestAssignment, outboundAction, reviewAggregate, runningAssignment,
   ticketOutcome, ticketStage, waitsForPerson } from '@superagent/kernel'
-import type { Action, Assessor, Assignment, Candidate, EngineOptions, Executor, OutboundMessage, Outcome, Policy, Ticket, Trigger } from '@superagent/kernel'
+import type { Assessor, Assignment, Candidate, EngineOptions, Executor, OutboundMessage, Outcome, Policy, Ticket, Trigger } from '@superagent/kernel'
 
 const member = { source: 'chat', id: 'alice' }
 const guest = { source: 'chat', id: 'guest' }

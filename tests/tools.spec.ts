@@ -481,7 +481,7 @@ it('gives a worker the other messages of the request its ticket was accepted fro
   // Pause while receiving two messages so they are evaluated as a single batch.
   await h.runtime.settings.pause(true, 'panel')
   const first = feishu('1', '@bot 首页的标题'), second = feishu('2', '@bot 改成“浏览网页”', { root_id: 'om_1' })
-  await h.runtime.receive(first); await h.runtime.receive(second)
+  h.runtime.receive(first); h.runtime.receive(second)
   await h.runtime.settings.pause(false, 'panel')
   await h.runtime.pump(); await h.runtime.idle()
   const accepted = await h.route({ kind: 'accept', trigger_id: second.id, title: 'Retitle', worktree_name: 'retitle', acknowledgement: '收到。' })

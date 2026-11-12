@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Engine, MemoryRepositories, reviewAggregate, reviewNeedsApproval, reviewApproved, UserError, latestAssignment,
-  type Assignment, type EngineOptions, type Policy, type Ticket } from '@superagent/kernel'
+  type EngineOptions, type Policy, type Ticket } from '@superagent/kernel'
 
 const person = { source: 'chat', id: 'alice' }
 const owner = { source: 'dsh-superagent', id: 'worker-root' }

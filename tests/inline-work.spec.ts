@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { Engine, MemoryRepositories, traceId, type AssessmentOutcome, type Assessor, type Assignment, type Candidate,
-  type Executor, type InlineExecutor, type Policy, type Span, type Ticket, type TraceSink, type Trigger } from '@superagent/kernel'
+  type Executor, type Policy, type Span, type Ticket, type TraceSink, type Trigger } from '@superagent/kernel'
 import { Store } from '@superagent/dsh/app/store.ts'
 import { SqliteTraceSink } from '@superagent/dsh/app/trace.ts'
 import { InlineWork, repositoryPaths } from '@superagent/dsh/executor/inline.ts'

@@ -13,7 +13,7 @@ import type { IconName } from './controls.tsx'
 import { ConfirmButton } from './widgets.tsx'
 import { usePanel } from './provider.tsx'
 import { noticeItems, unreadOf, type Notice, type NoticeAction } from './notifications.ts'
-import { errorText, localized, when, type T } from './text.ts'
+import { errorText, when, type T } from './text.ts'
 import { hasReadCursor, notifyAutoDismiss, notifyDrawer, notifyOverlay, readNotices, rememberRead } from './features.ts'
 
 const CARD_SECONDS = 8
@@ -69,7 +69,7 @@ function NoticeActions({ notice, onAction, busy, compact = false }: { notice: No
   </div>
 }
 
-function NoticeBody({ notice, compact = false, unread = false }: { notice: Notice; compact?: boolean; unread?: boolean }) {
+function NoticeBody({ notice, unread = false }: { notice: Notice; compact?: boolean; unread?: boolean }) {
   const { t } = usePanel()
   const [details, setDetails] = useState(false)
   return <>

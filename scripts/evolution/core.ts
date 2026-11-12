@@ -1186,7 +1186,7 @@ export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined,
   let baselineOutcomes: ReplayOutcome[]
   let candidateOutcomes: ReplayOutcome[]
   let statistics: GateResult['statistics'] | null
-  let covered = true
+  let covered: boolean
   if (plan.allocation === 'paired-replay') {
     const pairs = evidence.pairs ?? []
     const outside = pairs.filter(pair => !entryIds.has(pair.entryId))

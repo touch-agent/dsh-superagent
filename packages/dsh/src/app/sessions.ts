@@ -66,7 +66,7 @@ export function childShellReason(command: string): string | undefined {
   if (/(?:^|[;&|]\s*)(?:gh\s+(?:pr|issue|api|repo|release|workflow|auth)|git\s+(?:push|remote|fetch|clone)|curl|wget|ssh|scp|sftp|nc|ncat|telnet|osascript)\b/i.test(command)) {
     return 'A child Ticket cannot use the network, GitHub or git remotes; report to your parent owner'
   }
-  if (/sqlite3|\b\S+\.(?:sqlite|db)\b|DSH_SUPERAGENT_DIR|\.dsh[\/]state[\/]superagent/i.test(command)) {
+  if (/sqlite3|\b\S+\.(?:sqlite|db)\b|DSH_SUPERAGENT_DIR|\.dsh[/]state[/]superagent/i.test(command)) {
     return 'A child Ticket cannot read or write the orchestrator state or database'
   }
   return undefined

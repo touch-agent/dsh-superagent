@@ -2,7 +2,7 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
 import { threadKey, type Thread, type Trigger } from '@superagent/kernel'
-import { validItems, type Tally } from '../infra/commands.ts'
+import { type Tally } from '../infra/commands.ts'
 import type { FeishuBot } from '../deployment.ts'
 import { readCommentPage, readComments, readReplies, type CommentPage, type DocCardView } from './feishu-doc-read.ts'
 import { docRef, docThreadRef, docTime, docTrigger, SOURCE, type DocCard, type DocComment, type DocRef, type DocTarget, type DocReply }

@@ -23,8 +23,6 @@ function quantile(values: number[], fraction: number): number | null {
   const sorted = [...values].sort((left, right) => left - right)
   return Math.round(sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(fraction * sorted.length) - 1))]!)
 }
-/** A group's success sample: roots, child resolutions and lightweight runs each follow their own ending rule. */
-interface Success { n: number; successes: number }
 /** One effective configuration's telemetry. */
 export interface ProfileMetricsGroup {
   effectiveHash: string

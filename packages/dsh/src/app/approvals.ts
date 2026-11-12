@@ -1,5 +1,5 @@
 /** The approval commands: request one, decide it under the Policy's auto-approval whitelist, or record a person's decision. */
-import { approvalId, approve, createApproval, deny, expire, UserError, type Action, type ActionLevel, type ActorRef, type Approval,
+import { approvalId, approve, createApproval, deny, expire, UserError, type ActionLevel, type ActorRef, type Approval,
   type ApprovalRequest, type Repositories } from '@superagent/kernel'
 import { isDomainName, type ApprovalPolicy, type WorkHours } from '../policy.ts'
 import type { Store } from './store.ts'

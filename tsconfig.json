@@ -51,6 +51,7 @@
     "tests/**/*.ts",
     "tests/**/*.tsx",
     "meta/**/*.ts",
+    "scripts/**/*.ts",
     "tsdown.config.ts"
   ]
 }

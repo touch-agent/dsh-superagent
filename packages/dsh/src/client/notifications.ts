@@ -7,7 +7,7 @@
 import type { OverviewView, Problem, TicketRow } from './api.ts'
 import type { Route } from './route.ts'
 import { featureEnabled } from './features.ts'
-import { healthText, localized, reasonLabel, setupText, valueLabel, when, type T } from './text.ts'
+import { healthText, localized, reasonLabel, valueLabel, when, type T } from './text.ts'
 
 export type NoticeKind = 'attention' | 'progress' | 'system'
 export type NoticeActionKey = 'approve' | 'deny' | 'retry' | 'view' | 'route' | 'disable-source' | 'open-source'

@@ -2,7 +2,7 @@
 import { acknowledgementAction, withinActionLevel } from './action.ts'
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
-import { channelThread, childResolutionValid, childUnresolved, currentChildReport, depthOf, isChildTicket, latestAssignment, latestReport,
+import { channelThread, childResolutionValid, childUnresolved, currentChildReport, depthOf, isChildTicket, latestAssignment,
   liveTicket, readUntil, rootConsistent, rootTicketIdOf, runningAssignment, settled, threadKey, ticketForm, waitsForPerson } from './model.ts'
 import type { ActorRef, Assignment, ChannelRef, ChildReportDisposition, Delegation, Evaluation, Follow, Mandate, PendingEnd, PolicyEffect,
   ReportState, ThreadRef, Ticket, TicketEndBy, TicketInput, TicketOutcome, Trigger, TriggerDisposition } from './model.ts'

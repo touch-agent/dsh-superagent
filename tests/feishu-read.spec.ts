@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { Commands } from '@superagent/dsh/infra/commands.ts'
 import { testDeployment } from './fixtures/deployment.ts'
-import { feishuRead, readFeishu, feishuReferences, readFeishuLink } from '@superagent/dsh/sources/feishu-read.ts'
+import { feishuRead, readFeishu, readFeishuLink } from '@superagent/dsh/sources/feishu-read.ts'
 import type { FeishuRef } from '@superagent/dsh/sources/feishu-read.ts'
 const commands = new Commands(() => testDeployment(), {}, new AbortController().signal)
 const event: FeishuRef = { triggerId: 'source', chatId: 'oc_chat', messageId: 'om_source' }

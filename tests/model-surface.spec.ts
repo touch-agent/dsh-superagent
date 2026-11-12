@@ -39,7 +39,7 @@ interface Skill { name: string; description: string; content: string }
  */
 const BUDGET: Record<Role, number> = { orchestrator: 61_200, worker: 41_500 }
 const PROMPTS = 'packages/dsh/prompts/, packages/dsh/skills/', TOOLS = 'packages/dsh/src/app/tools/', SESSIONS = 'packages/dsh/src/app/sessions.ts'
-const NOTICES = 'packages/dsh/src/app/notices.ts', LINKS = 'packages/dsh/src/app/links.ts', ASSESSMENT = 'packages/dsh/src/app/assessment.ts'
+const NOTICES = 'packages/dsh/src/app/notices.ts', LINKS = 'packages/dsh/src/app/links.ts'
 const EXECUTOR = 'packages/dsh/src/executor/dsh.ts', ERRORS = 'packages/kernel/src/errors.ts'
 const TICKETS = 'packages/kernel/src/tickets.ts', ASSIGNMENTS = 'packages/kernel/src/assignments.ts'
 /** Regex patterns compiled from `orchestrator_read` resource templates (`<…>` matches one path segment; `…` matches the rest). */
@@ -162,7 +162,7 @@ async function drive(host: Host) {
   // Candidates wait, which the main Session decides in one call: a request it accepts, thanks it ignores, and plain chat in the
   // channel, a proactive candidate whose card shows it touches no rule, which it ignores from its card.
   const request = feishu('1', '@bot 修一下回归'), thanks = feishu('3', '@bot 谢谢'), chat = feishu('4', '中午吃什么', { mentions: [] })
-  await runtime.receive(request); await runtime.receive(thanks); await runtime.receive(chat)
+  runtime.receive(request); runtime.receive(thanks); runtime.receive(chat)
   const routed = await run(master, 'orchestrator_route', { decisions: [
     { kind: 'accept', trigger_id: request.id, title: '修复回归', worktree_name: 'fix-regression', acknowledgement: '收到，修复回归。' },
     { kind: 'ignore', trigger_id: thanks.id, reason: 'Thanks only.' }, { kind: 'ignore', trigger_id: chat.id, reason: 'Lunch chat.' }] }) as
@@ -173,7 +173,7 @@ async function drive(host: Host) {
   const answer = { trigger_id: request.id, purpose: 'answer', text: '是配置。' }
   const refusal = await run(master, 'orchestrator_reply', answer).then(() => '', (error: Error) => error.message)
   const proposal = feishu('5', '把副标题改成“浏览网页”', { mentions: [] })
-  await runtime.receive(proposal)
+  runtime.receive(proposal)
   vi.spyOn(Commands.prototype, 'lark').mockResolvedValue({ items: [{ message_id: 'om_5', chat_id: CHAT }] })
   await run(master, 'orchestrator_eval', { trigger_id: proposal.id })
   const proactive = (await run(master, 'orchestrator_eval_decide', { trigger_id: proposal.id, decision: 'accept', title: '文案修订', worktree_name: 'copy-fix',
@@ -186,20 +186,20 @@ async function drive(host: Host) {
   await run(workerA, 'orchestrator_report', { state: 'progress', summary: 'Needs a decision.', human_action: 'Desktop too?' })
   await run(workerA, 'orchestrator_report', { state: 'progress', summary: 'It reads the config.', human_action: null, reply_to_trigger_id: request.id })
   const other = feishu('9', '@bot 顺便看看这个')
-  await runtime.receive(other)
+  runtime.receive(other)
   await run(master, 'orchestrator_route', { decisions: [{ kind: 'attach', ticket_id: a, trigger_id: other.id }] })
   await run(workerA, 'orchestrator_thread_unrelated', { thread: `feishu:${CHAT}:om_9`, reason: 'It asks for something else.' })
   await run(workerA, 'orchestrator_thread_follow', { thread: `feishu:${CHAT}:om_7`, reason: 'The same settings page.' })
-  await runtime.receive(feishu('7', '@bot 这个页面的按钮也改一下'))
+  runtime.receive(feishu('7', '@bot 这个页面的按钮也改一下'))
   const beyond = feishu('8', '另外把导出也做了', { mentions: [], root_id: 'om_1' })
-  await runtime.receive(beyond)
+  runtime.receive(beyond)
   await runtime.idle()
   await run(workerA, 'orchestrator_trigger_handback', { trigger_id: beyond.id, reason: 'It asks for an export feature.' })
   await run(master, 'orchestrator_ticket_note', { ticket_id: a, text: 'Ticket B changes the same settings page.' })
   await runtime.pump()
   await runtime.idle()
   await run(workerA, 'orchestrator_report', { state: 'ready', summary: 'Done.' })
-  await runtime.receive(feishu('2', '再加一个按钮', { mentions: [], root_id: 'om_1' }))
+  runtime.receive(feishu('2', '再加一个按钮', { mentions: [], root_id: 'om_1' }))
   await vi.waitFor(async () => {
     await runtime.pump()
     expect(runtime.store.tickets.get(a)!.inputs.some(input => input.kind === 'resumed')).toBe(true)
