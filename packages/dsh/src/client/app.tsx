@@ -185,7 +185,8 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
           ...route.query?.from ? { from: route.query.from } : {} })
           : state ? <ExecutionStatus filter={route.query?.filter ?? 'open'} from={route.query?.from} state={state} reload={reload} /> : waiting
       case 'settings': return !consolidated && !state ? waiting
-        : <SettingsPage key={state?.masterId} group={route.query.group} query={route.query}
+        : <SettingsPage key={state?.masterId} group={!consolidated && route.query.group === 'trigger' ? 'source' : route.query.group}
+          query={route.query}
           {...state ? { state } : {}} deploymentForm={deploymentForm} />
     }
   })()
