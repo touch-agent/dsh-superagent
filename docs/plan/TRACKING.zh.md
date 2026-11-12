@@ -75,7 +75,7 @@
 | X-01 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/69 | PR #69 进行中；`eslint.config.mjs`（ESLint 10 + `typescript-eslint` 8，project service 类型感知）覆盖 `packages/kernel`、`packages/dsh`、`meta`、`scripts`、`tests`；`pnpm lint` 接入 `pnpm check` 与 CI；清除 131 条 finding，保留 7 处逐条理由的窄豁免；`pnpm lint` 0/0、全量 1872 测试通过；独立 review 见 PR 评论 | 2026-11-12 |
 | X-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/64 | PR #64 合并 `eee90a2`；`.dependency-cruiser.mjs`；`tests/dependency-rules.spec.ts` 的 clean/violations fixtures；`pnpm check:arch` 接入 `pnpm check` 与 CI；旧扫描器过渡一个版本；独立 review 见 PR #64 review 评论 | 2026-11-11 |
 | X-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/44 | PR #44 合并 `1b91fd8`；`tests/e2e/golden-path.e2e.ts`；`pnpm test:e2e`；CI `e2e` workflow | 2026-11-11 |
-| X-04 | 未开始 | — | — | 2026-11-08 |
+| X-04 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/72 | 42 条路由已从 `api-contract.ts` 派生；`pnpm check:api`、lint、typecheck、构建与 1889 个测试通过；待合并 | 2026-11-12 |
 | X-05 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/62 | PR #62 合并 `ab0fd0a`；`tests/docs.spec.ts` 新增 `SourceManifest` 字段与 `PUBLIC_ROUTES`/Management API 表的一致性检查，缺失项会指名字段或路由与应改文件；`pnpm typecheck`、`tests/docs.spec.ts`、全量 `pnpm test`（本机 `GIT_CONFIG_GLOBAL` 环境下的 2 个既有失败去除该变量后通过）、`pnpm build`、`pnpm check:size` 通过；独立 review 见 PR #62 review 评论 | 2026-11-11 |
 | X-06 | 未开始 | — | — | 2026-11-08 |
 | X-07 | 已完成 | — | `packages/dsh` 与根 meta 切包；`PLUGIN-PACKAGING.zh.md` §3 | 2026-11-08 |
@@ -86,7 +86,7 @@
 | X-12 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/31 | PR #31 合并（`19b8c3d`）；`tests/docs.spec.ts` 文档结构与跟踪表校验、计划文档迁入 `docs/plan/` | 2026-11-08 |
 | X-13 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/34 | PR #34 合并 `0c43312`；`scripts/check-tracking.mjs`、`tests/tracking.spec.ts`；CI `tracking` job；`docs/plan/README.md` 的「自动校验」 | 2026-11-11 |
 | X-14 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/61 | PR #61 合并 `39b8a08`；`../022-harness-extension-requests.zh.md`；DSH `0.2.1-rc.5` 类型/实现证据；`tests/docs.spec.ts` 文档索引 | 2026-11-11 |
-| X-15 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/71 | `../025-git-repository-integration.zh.md`；`pnpm exec vitest run tests/docs.spec.ts tests/tracking.spec.ts`（35 tests）与 `pnpm check:tracking`（84 任务/84 行）通过；独立 review 结论见 PR #71 review 评论 | 2026-11-12 |
+| X-15 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/71 | `../026-git-repository-integration.zh.md`；`pnpm exec vitest run tests/docs.spec.ts tests/tracking.spec.ts`（35 tests）与 `pnpm check:tracking`（84 任务/84 行）通过；独立 review 结论见 PR #71 review 评论 | 2026-11-12 |
 | S-01 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity.spec.ts`；`activity` 表与三级分级 | 2026-11-08 |
 | S-02 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/activity-feed.spec.ts`；`endCoveredBy` 单一通知预算 | 2026-11-08 |
 | S-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/2 | `tests/runtime.spec.ts` 的 `<stateDir>/system` 目录断言 | 2026-11-08 |

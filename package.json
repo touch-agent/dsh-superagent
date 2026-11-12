@@ -57,8 +57,9 @@
     "check:size": "node scripts/check-bundle-size.mjs",
     "check:tracking": "node scripts/check-tracking.mjs",
     "check:arch": "depcruise packages meta tests --config .dependency-cruiser.mjs",
+    "check:api": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/check-api-schema.mjs",
     "lint": "eslint . --max-warnings=0",
-    "check": "pnpm check:tracking && pnpm check:arch && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check:size",
+    "check": "pnpm check:tracking && pnpm check:arch && pnpm check:api && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check:size",
     "evolution": "node scripts/evolution/run.mjs",
     "evolution:export": "node scripts/evolution/export.mjs",
     "changeset": "changeset"
@@ -111,6 +112,7 @@
     "eslint": "10.14.0",
     "globals": "17.14.0",
     "jsdom": "29.1.1",
+    "json-schema-to-ts": "3.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "tsdown": "0.22.14",
