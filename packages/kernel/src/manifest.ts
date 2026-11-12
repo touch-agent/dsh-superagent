@@ -3,12 +3,14 @@
 export interface Localized { zh: string; en: string }
 /** `advanced` folds a rarely changed field (such as a polling tunable) behind the card's Advanced section. */
 interface FieldBase { key: string; label: Localized; hint?: Localized; advanced?: true }
+/** A switch's `requires` names other switch keys that must be on for its effect; the panel offers to turn them on. */
+interface SwitchBase extends FieldBase { type: 'switch'; requires?: readonly string[] }
 /**
  * Configuration field specification; `rows` edits a list of records keyed by its first column, `choose` picks from
  * resolved source labels, and `fact` displays a read-only value from `facts`.
  */
 export type FieldSpec =
-  | FieldBase & { type: 'switch' }
+  | SwitchBase
   | FieldBase & { type: 'select'; options: { value: string; label: Localized }[] }
   | FieldBase & { type: 'number'; min: number; max: number }
   | FieldBase & { type: 'text'; pattern?: string; readonly?: boolean; choose?: Localized }

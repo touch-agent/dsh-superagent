@@ -52,6 +52,13 @@ describe('a manifest form', () => {
     for (const definition of [githubDefinition, feishuDocDefinition])
       expect(definition.manifest.limits?.pollSeconds).toBe(definition.adapter.schema.parse({}).pollSeconds)
   })
+  it('gives the GitHub shared-account switch its two receive dependencies and keeps it off by default', () => {
+    const fields = manifestForm(githubManifest).fields
+    expect(fields.find(field => field.key === 'humanIdentity')).toMatchObject({ type: 'switch', requires: ['observeComments', 'observePulls'] })
+    expect(fields.find(field => field.key === 'observeComments')?.type).toBe('switch')
+    expect(fields.find(field => field.key === 'observePulls')?.type).toBe('switch')
+    expect(githubDefinition.adapter.schema.parse({})).toMatchObject({ humanIdentity: false })
+  })
   it('matches the hand-written GitHub kind it will replace', () => {
     const form = manifestForm(githubManifest)
     expect(form.id).toBe(githubKind.kind)

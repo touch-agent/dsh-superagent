@@ -74,6 +74,16 @@ describe('a Source manifest', () => {
     const result = SourceManifestSchema.safeParse({ ...manifest(), fields })
     expect(issues(result).map(issue => issue.path)).toContainEqual(['fields', fields.length - 1, 'key'])
   })
+  it('accepts a switch that requires other switches, and names a dependency that is not one', () => {
+    const shared = (requires: string[]) => ({ ...manifest(), fields: [...manifest().fields,
+      { key: 'shared', type: 'switch' as const, label: text('Shared account'), requires }] })
+    expect(SourceManifestSchema.safeParse(shared(['observeIssues'])).success).toBe(true)
+    expect(SourceManifestSchema.safeParse(shared([])).success).toBe(false)
+    const notSwitch = SourceManifestSchema.safeParse(shared(['repository']))
+    expect(issues(notSwitch).map(issue => issue.path)).toContainEqual(['fields', manifest().fields.length, 'requires', 0])
+    const dangling = SourceManifestSchema.safeParse(shared(['missing']))
+    expect(issues(dangling).map(issue => issue.path)).toContainEqual(['fields', manifest().fields.length, 'requires', 0])
+  })
   it('names a polling default that cannot be a limit', () => {
     const result = SourceManifestSchema.safeParse({ ...manifest(), limits: { pollSeconds: 0 } })
     expect(issues(result).map(issue => issue.path)).toContainEqual(['limits', 'pollSeconds'])
