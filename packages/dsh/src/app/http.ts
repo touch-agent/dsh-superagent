@@ -3,15 +3,16 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
-import { THREAD_FILTERS, TICKET_FILTERS, type Api, type ApiResponse, type RouteParams } from './api.ts'
+import type { BodyInput, QueryOutput, RouteKey, RouteParams } from './api-contract.ts'
+import { parseBody, parseParams, parseQuery } from './api-parser.ts'
 import { sourceSkills } from './context.ts'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import { PromptConflict, SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInParts, defaultPrompts, savePrompts, type Prompts }
   from './prompts.ts'
-import { policyVersion } from '../policy.ts'
+import { policyVersion, type SettingsBlock } from '../policy.ts'
 import { SettingsConflict, type Settings } from './settings.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
-import { ACTION_LEVELS, UserError, type EngineForPeople, type Ticket } from '@superagent/kernel'
+import { UserError, type EngineForPeople, type Ticket } from '@superagent/kernel'
 import type { Deployment, Machine } from '../deployment.ts'
 import type { DshExecutor } from '../executor/dsh.ts'
 import type { Health } from '../sources/host.ts'
@@ -150,32 +151,13 @@ function promptsView(runtime: HttpHost, revision: number | undefined, offset: nu
 }
 export type PromptsView = ReturnType<typeof promptsView>
 
-interface Input<K extends keyof Api> {
-  params: RouteParams<K>; query: Record<string, string>; body: (maxBytes?: number) => Promise<unknown>
+interface Input<K extends RouteKey> {
+  params: RouteParams<K>; query: QueryOutput<K>; body: (maxBytes?: number) => Promise<BodyInput<K>>
 }
-type Routes = { [K in keyof Api]: (input: Input<K>) => ApiResponse<K> | Promise<ApiResponse<K>> }
-const offset = z.coerce.number().int().nonnegative().catch(0)
-const limit = (fallback: number, max: number) => z.coerce.number().int().positive().catch(fallback).transform(value => Math.min(max, value))
-const TicketsQuery = z.object({ state: z.enum(TICKET_FILTERS).catch('open'),
-  origin: z.string().regex(/^[a-z][a-z0-9-]*$/).optional().catch(undefined), offset, limit: limit(20, 1000) })
-const ThreadsQuery = z.object({ filter: z.enum(THREAD_FILTERS).catch('subscribed'), offset, limit: limit(20, 1000) })
-const TasksQuery = z.object({ depth: z.coerce.number().int().min(1).max(5).catch(1) })
-const ReviewApproval = z.object({ reviewRevision: z.string().min(1) })
-const ThreadQuery = z.object({ limit: limit(50, 100), before: z.string().optional(), around: z.string().optional() })
-const DecisionsQuery = z.object({ kind: z.string().default(''), window: z.literal('24h').optional().catch(undefined), offset,
-  limit: limit(30, 200) })
-const count = z.coerce.number().int().nonnegative()
-const PromptsQuery = z.object({ revision: count.optional(), offset: count.default(0) })
-const SourceBlock = z.templateLiteral(['source:', z.string().regex(/^[a-z][a-z0-9-]*$/)])
-const SettingsBlockSchema = z.union([z.enum(['policy', 'eval', 'dispatch', 'executor']), SourceBlock])
-const SaveRequest = z.object({ value: z.unknown(), revision: z.number().int().nonnegative() })
-const ActivityQuery = z.object({ after: offset, limit: limit(50, 200), level: z.enum(['quiet', 'feed', 'notice']).optional().catch(undefined) })
-const ApprovalDecision = z.object({ level: z.enum(ACTION_LEVELS).optional() })
-
-function routes(runtime: HttpHost): Routes {
+function routes(runtime: HttpHost) {
   const { store } = runtime
   const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
-  const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
+  const promptBody = <K extends RouteKey>(input: Input<K>) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
     'GET state': () => stateView(runtime),
     'GET overview': () => overview(views(runtime), runtime.health, policyVersion(store.settings()),
@@ -203,25 +185,18 @@ function routes(runtime: HttpHost): Routes {
       return profileMetrics(runtime.store, params.id, new Date())
     },
     'GET tasks/:id': ({ params, query }) => {
-      const detail = taskDetail(views(runtime), params.id, TasksQuery.parse(query).depth)
+      const detail = taskDetail(views(runtime), params.id, query.depth)
       if (!detail) throw new RouteError(404, 'Ticket not found')
       return detail
     },
-    'GET activity': ({ query }) => {
-      const { after, limit, level } = ActivityQuery.parse(query)
-      return activityFeed(store.activity, after, limit, level, activityLookup(store))
-    },
-    'GET search': ({ query }) => search(views(runtime), query.q ?? '', runtime.sourceLinks),
+    'GET activity': ({ query }) => activityFeed(store.activity, query.after, query.limit, query.level, activityLookup(store)),
+    'GET search': ({ query }) => search(views(runtime), query.q, runtime.sourceLinks),
     'GET sources': () => sourcesStatus(views(runtime), runtime.health, setupState(runtime)),
     'GET settings': () => settingsView(store, runtime.sources, runtime.health, setupState(runtime), runtime.machine.stateDir),
     'POST sources/:id/labels': ({ params }) => runtime.settings.refreshLabels(params.id),
-    'GET threads': ({ query }) => {
-      const { filter, offset, limit } = ThreadsQuery.parse(query)
-      return threadList(views(runtime), filter, offset, limit)
-    },
+    'GET threads': ({ query }) => threadList(views(runtime), query.filter, query.offset, query.limit),
     'GET threads/:key': ({ params, query }) => {
-      const { limit, before, around } = ThreadQuery.parse(query)
-      const detail = threadDetail(views(runtime), params.key, before, limit, around)
+      const detail = threadDetail(views(runtime), params.key, query.before, query.limit, query.around)
       if (!detail) throw new RouteError(404, 'Thread not found')
       return detail
     },
@@ -236,15 +211,11 @@ function routes(runtime: HttpHost): Routes {
     },
     'GET triggers/:id/trace': ({ params }) => triggerTrace(views(runtime), params.id),
     'GET decisions': ({ query }) => {
-      const { kind, window, offset, limit } = DecisionsQuery.parse(query)
-      const since = window ? new Date(Date.now() - 86_400_000).toISOString() : ''
-      return decisionList(views(runtime), kind.split(',').filter(Boolean), offset, limit, since)
+      const since = query.window ? new Date(Date.now() - 86_400_000).toISOString() : ''
+      return decisionList(views(runtime), query.kind.split(',').filter(Boolean), query.offset, query.limit, since)
     },
     'POST decisions/:id/dismiss': ({ params }) => { runtime.engine.dismiss(params.id); return { dismissed: true } },
-    'GET tickets': ({ query }) => {
-      const { state, origin, offset, limit } = TicketsQuery.parse(query)
-      return ticketList(views(runtime), state, offset, limit, origin)
-    },
+    'GET tickets': ({ query }) => ticketList(views(runtime), query.state, query.offset, query.limit, query.origin),
     'GET tickets/:id': ({ params }) => ticketPage(runtime, params.id),
     'GET tickets/:id/timeline': ({ params }) => {
       const timeline = ticketTimeline(views(runtime), params.id)
@@ -255,13 +226,13 @@ function routes(runtime: HttpHost): Routes {
     'POST tickets/:id/stop': ({ params }) => { const id = ticket(params.id); runtime.engine.stopTicket(id); return { stopped: true } },
     'POST tickets/:id/approve': async ({ params, body }) => {
       const id = ticket(params.id)
-      const { reviewRevision } = ReviewApproval.parse(await body())
+      const { reviewRevision } = await body()
       runtime.engine.reviewTicket(id, PANEL_ACTOR, reviewRevision)
       return { approved: true, reviewRevision }
     },
     'POST outbox/:id/recall': ({ params }) => ({ status: runtime.outbox.recall(decoded(params.id)) }),
     'POST approvals/:id/approve': async ({ params, body }) => {
-      const { level } = ApprovalDecision.parse(await body())
+      const { level } = await body()
       const approval = decideApproval(store, params.id, 'approved', new Date().toISOString(), level)
       if (!approval) throw new RouteError(404, 'Approval not found')
       // A granted message is queued for delivery now; a lower grant settles it as dropped.
@@ -274,38 +245,42 @@ function routes(runtime: HttpHost): Routes {
       runtime.outbox.reconcile()
       return { state: 'denied' as const }
     },
-    'POST executor/pause': async ({ body }) => runtime.settings.pause(z.object({ paused: z.boolean() }).parse(await body()).paused, 'panel'),
+    'POST executor/pause': async ({ body }) => runtime.settings.pause((await body()).paused, 'panel'),
     'PUT settings/:block': async ({ params, body }) => {
-      const block = SettingsBlockSchema.parse(params.block)
+      const block = params.block as SettingsBlock
       const known = !block.startsWith('source:') || runtime.sources.instances().some(instance => `source:${instance.id}` === block)
       if (!known) throw new RouteError(404, 'Source not found')
-      const request = SaveRequest.parse(await body())
+      const request = await body()
       return runtime.settings.save(block, request.value, request.revision, 'panel')
     },
     'GET policy/history': () => policyHistory(store, runtime.sources, policyVersion(store.settings())),
     'POST policy-sync/:id': async ({ params }) => ({ policy: await runtime.settings.sync(params.id) }),
     'POST setup/check': () => { runtime.checkSetup(); return { restarting: true } },
     'GET models': () => runtime.models(),
-    'GET prompts': ({ query }) => { const { revision, offset } = PromptsQuery.parse(query); return promptsView(runtime, revision, offset) },
+    'GET prompts': ({ query }) => promptsView(runtime, query.revision, query.offset),
     'PUT prompts': async input => {
-      const request = z.object({ config: z.unknown(), baseRevision: z.number().int().nonnegative() }).parse(await promptBody(input))
+      const request = await promptBody(input)
       return savePrompts(runtime, request.config, request.baseRevision, 'panel')
     },
     'POST prompts/preview': async input => runtime.prompts.preview(await promptBody(input)),
-  }
+  } satisfies { [K in RouteKey]: (input: Input<K>) => unknown }
 }
 function decoded(segment: string): string {
   try { return decodeURIComponent(segment) } catch { throw new RouteError(400, 'A path segment has a malformed escape') }
 }
-function match(table: Routes, method: string, segments: string[]) {
+/** The handler table the contract types are read from; every contract route must have exactly one handler. */
+export type RouteHandlers = ReturnType<typeof routes>
+type AnyHandler = (input: Input<RouteKey>) => unknown
+function match(table: RouteHandlers, method: string, segments: string[]) {
   for (const [route, run] of Object.entries(table)) {
     const [verb, path] = route.split(' ') as [string, string]
     const pattern = path.split('/')
     const fits = pattern.length === segments.length && pattern.every((part, index) => part.startsWith(':') || part === segments[index])
     if (verb !== method || !fits) continue
-    const params: Record<string, string> = {}
-    pattern.forEach((part, index) => { if (part.startsWith(':')) params[part.slice(1)] = decoded(segments[index]!) })
-    return { run: run as (input: Input<keyof Api>) => unknown, params }
+    const raw: Record<string, string> = {}
+    pattern.forEach((part, index) => { if (part.startsWith(':')) raw[part.slice(1)] = decoded(segments[index]!) })
+    const key = route as RouteKey
+    return { key, run: run as AnyHandler, params: parseParams(key, raw) as RouteParams<RouteKey> }
   }
   return undefined
 }
@@ -411,8 +386,9 @@ export function registerHttp(ctx: Context, runtime: HttpHost): () => void {
         await runtime.ready
         const route = match(table, req.method ?? 'GET', url.pathname.slice('/orchestrator/api/'.length).split('/'))
         if (!route) throw new RouteError(404, 'Unknown operation')
-        const query = Object.fromEntries(url.searchParams)
-        json(res, 200, await route.run({ params: route.params as never, query, body: maxBytes => readBody(req, maxBytes) }))
+        const query = parseQuery(route.key, Object.fromEntries(url.searchParams))
+        const body = (maxBytes?: number) => readBody(req, maxBytes).then(value => parseBody(route.key, value))
+        json(res, 200, await route.run({ params: route.params, query, body } as never))
       } catch (error) { json(res, ...failure(error)) }
     } })]
   return () => { for (const dispose of disposers) dispose() }

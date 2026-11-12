@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { PUBLIC_ROUTES } from '@superagent/dsh/app/api.ts'
+import { PUBLIC_ROUTES, ROUTES } from '@superagent/dsh/app/api-contract.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DOCS = join(ROOT, 'docs')
@@ -22,7 +22,7 @@ function documents(): string[] {
     .map(entry => relative(ROOT, join(entry.parentPath, entry.name)))]
 }
 const MANIFEST_SOURCE = 'packages/kernel/src/manifest.ts'
-const API_SOURCE = 'packages/dsh/src/app/api.ts'
+const API_SOURCE = 'packages/dsh/src/app/api-contract.ts'
 const MANIFEST_GUIDE = 'docs/010-adding-a-source.md'
 const DEPLOYMENT_GUIDE = 'docs/006-deployment.md'
 /**
@@ -69,13 +69,9 @@ function manifestFields(): string[] {
 function documentedManifestFields(): string[] {
   return tableRows(MANIFEST_GUIDE, 'Manifest fields').flatMap(row => codeSpans(cell(row)).slice(0, 1))
 }
-/** Every route key declared on `Api`, read from its interface rather than a second list. */
+/** Every route key declared in the contract, read from the object rather than a second list. */
 function apiRoutes(): string[] {
-  const source = read(API_SOURCE)
-  const start = source.indexOf('export interface Api {')
-  const end = source.indexOf('\n}', start)
-  if (start < 0 || end < 0) throw new Error(`${API_SOURCE} has no readable Api interface`)
-  return [...source.slice(start, end).matchAll(/^ {2}'([^']+)':/gm)].map(match => match[1]!)
+  return Object.keys(ROUTES)
 }
 /** The routes documented in the deployment guide's Management API table. */
 function documentedRoutes(): string[] {

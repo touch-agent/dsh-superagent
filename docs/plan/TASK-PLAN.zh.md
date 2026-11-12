@@ -602,7 +602,7 @@ graph LR
 | X-01 | lint（oxlint 或 eslint）+ CI | 2 | 全量测试没有 lint，风格债会随并行开发放大 |
 | X-02 | dependency-cruiser 架构规则 | 2 | 现有 `tests/layers.spec.ts` 是自己写的扫描器，规则一多就该换工具；两者并存一个版本 |
 | X-03 | E2E golden path（fake host 先行） | 5 | 方案 §10.5 的最后一道门；真宿主依赖 DSH 环境，先用 fake host 跑通 issue→授权→PR→accepted |
-| X-04 | `api.ts` → JSON Schema 单一真相 | 3 | 现在路由、类型、面板三处手写，是 25 条路由的主要维护成本 |
+| X-04 | `api.ts` → JSON Schema 单一真相 | 3 | 现在路由、类型、面板三处手写，是 42 条路由的主要维护成本 |
 | X-05 | 文档-代码一致性检查扩展 | 1 | `docs.spec.ts` 已强制「每个 spec 都在表里」，再扩到「每个 manifest 字段都有文档」 |
 | X-06 | 性能基线守住 | 1 | 领域测试 < 2s 是方案 §10.1 的第 1 条契约，加一个 CI 计时断言 |
 | X-07 | 包切分：`@superagent/dsh` + meta 包 | 3 | 详见 `../../PLUGIN-PACKAGING.zh.md` §3；必须在 M1 前完成，否则 source-kit 会落错包 |
@@ -637,6 +637,8 @@ graph LR
 - **估时**：2 人日。**依赖**：无。**回退**：删除 `.dependency-cruiser.mjs`、`scripts` 里的 `check:arch` 与新 spec 即回退；旧扫描器保留期间始终是第二道检查。
 - **泳道**：Platform。
 - **实现（2026-11-11，PR [#64](https://github.com/touch-agent/dsh-superagent/pull/64)）**：`.dependency-cruiser.mjs` 把上层规则写成 13 条 error 规则；`pnpm check:arch` 接入 `pnpm check` 与 `check` CI job；`tests/dependency-rules.spec.ts` 的 clean fixture 守白名单、violations fixture 逐条覆盖全部规则，并保留 kernel manifest 与 `app/api.ts` 过滤常量的两条断言；`tests/layers.spec.ts`、`tests/kernel-boundary.spec.ts` 标为过渡，配置首次发布后的下一个版本删除。`docs/007-architecture.md` 的「Architecture checks」记录规则、反向测试与退役条件。
+
+**X-04 落地（2026-11-12，PR [#72](https://github.com/touch-agent/dsh-superagent/pull/72) 进行中）**：`packages/dsh/src/app/api-contract.ts` 的 `ROUTES` 成为请求侧唯一作者源，`json-schema-to-ts` 从同一份 schema 推导查询/路径/body 类型，`api-parser.ts` 用 `z.fromJSONSchema` 编译运行期校验器，`http.ts` 的 handler 表由 `RouteKey` 约束，面板 `Api` 的 response 取 handler 返回类型（不写第二份 response schema）；`api-filters.ts` 让浏览器半不引入服务端模块。query 的默认值/回退/`x-dsh-clamp`、body 与 params 的 400 `issues` 均保持原语义。`packages/dsh/src/app/api.schema.json` 由 `scripts/api-schema.ts` 生成，`pnpm check:api` 接入 `pnpm check` 与 CI 检查过期；`tests/api-contract.spec.ts` 覆盖契约↔handler 一一对应、非法请求拒绝、面板类型推导与生成物一致性。实际路由 42 条（原表「25 条」为过期计数）。设计见 [`../025-api-schema.zh.md`](../025-api-schema.zh.md)。
 
 ### X-13 TRACKING 自动化 · Platform · 2 人日
 

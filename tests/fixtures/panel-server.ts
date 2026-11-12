@@ -550,10 +550,10 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
       server.settings = { ...server.settings, sources: { ...server.settings.sources, [source.kind]: { enabled, config } } }
     }
     server.revisions[block] = (server.revisions[block] ?? 0) + 1
-    return { restarting, revision: server.revisions[block] }
+    return { saved: true, revision: server.revisions[block], policy_changed: false, restarting, context_delivery: 'injected' }
   } },
   'GET policy/history': { answer: () => server.history },
-  'POST policy-sync/:id': { answer: ({ params }) => ({ policy: server.settings.policy.sources[params.id] }) },
+  'POST policy-sync/:id': { answer: ({ params }) => ({ policy: server.settings.policy.sources[params.id]! }) },
   'POST setup/check': { answer: () => ({ restarting: true }) },
   'GET models': { answer: () => ({ default: { provider: 'host', model: 'default' }, routableProviders: [], failures: [],
     groups: [{ id: 'worker-provider', name: 'Worker provider', models: [{ id: 'worker-model', name: 'Worker model',
@@ -572,7 +572,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     }
     server.prompts.revision++
     server.prompts.current = promptVersion(server.prompts.revision, Object.keys(overrides).length ? { ...config, overrides } : config)
-    return { revision: server.prompts.revision, context_delivery: 'injected' }
+    return { revision: server.prompts.revision, effect: 'next-request' as const, context_delivery: 'injected' }
   } },
   'POST prompts/preview': { body: true, answer: ({ body }) => {
     const skills = [...server.setup.accounts?.feishu ? ['feishu'] : [], 'github', ...Object.keys(body.skills)].map(name => [name,
