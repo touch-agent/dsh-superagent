@@ -291,7 +291,7 @@ Each model request binds the Session to the current prompt revision. The revisio
 
 [`eslint.config.mjs`](../eslint.config.mjs) is the lint gate, run as `pnpm lint` by `pnpm check` and the `check` CI job. It uses ESLint 10 with `typescript-eslint` 8 and the project service, so the same TypeScript program that `pnpm typecheck` builds also answers the type-aware rules. ESLint was chosen over oxlint because the defects this repository most needs caught are type-dependent — a floating promise, a promise passed where a `void` callback is expected, and `await` on a non-promise — and `typescript-eslint` implements those as its long-standing checked rules. [Oxlint's type-aware linting](https://oxc.rs/docs/guide/usage/linter/type-aware) is newer and would add a second type engine to a repository where lint already takes under ten seconds, so its speed advantage does not pay for that duplication.
 
-The check covers `packages/kernel`, `packages/dsh`, `meta/`, `scripts/` and `tests/`. The rule set is deliberately about defects:
+The check covers `packages/kernel`, `packages/dsh`, `meta/`, `scripts/` and `tests/`. `scripts/**/*.ts` is part of the `tsconfig.json` include, so a new standalone script also has a program for the type-aware rules. The rule set is deliberately about defects:
 
 - `eslint:recommended` and `typescript-eslint:recommended`: unused declarations (type positions included), explicit `any`, unused expressions, `ban-ts-comment`, duplicate or impossible constructs, and the core correctness rules.
 - Type-aware: `no-floating-promises`, `no-misused-promises`, `await-thenable` and `no-array-delete`.
