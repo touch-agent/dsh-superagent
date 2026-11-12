@@ -1,9 +1,3 @@
 {
-  "exemptions": [
-    {
-      "task": "T5-09",
-      "rule": "in-progress-without-pr",
-      "reason": "The PR is opened after the pre-PR checks; the tracking row is updated with the canonical PR URL before review."
-    }
-  ]
+  "exemptions": []
 }
