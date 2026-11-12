@@ -85,12 +85,310 @@
     "GET profiles/:id": {
       "type": "object",
       "additionalProperties": false,
-      "properties": {}
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "required": [
+        "params"
+      ]
     },
     "GET profiles/:id/metrics": {
       "type": "object",
       "additionalProperties": false,
-      "properties": {}
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "required": [
+        "params"
+      ]
+    },
+    "POST profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "profile": {},
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "profile",
+            "reason"
+          ]
+        }
+      },
+      "required": [
+        "body"
+      ]
+    },
+    "POST profiles/:id/revisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "profile": {},
+            "baseRevision": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "profile",
+            "baseRevision",
+            "reason"
+          ]
+        }
+      },
+      "required": [
+        "params",
+        "body"
+      ]
+    },
+    "POST profiles/:id/activate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "revision",
+            "reason"
+          ]
+        }
+      },
+      "required": [
+        "params",
+        "body"
+      ]
+    },
+    "POST profiles/:id/enabled": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "enabled",
+            "reason"
+          ]
+        }
+      },
+      "required": [
+        "params",
+        "body"
+      ]
+    },
+    "POST profiles/:id/retire": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "revision",
+            "reason"
+          ]
+        }
+      },
+      "required": [
+        "params",
+        "body"
+      ]
+    },
+    "POST profiles/:id/rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "reason"
+          ]
+        }
+      },
+      "required": [
+        "params",
+        "body"
+      ]
+    },
+    "PUT profiles/config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "resolve": {
+              "type": "string",
+              "enum": [
+                "snapshot",
+                "legacy"
+              ]
+            },
+            "telemetry": {
+              "type": "boolean"
+            },
+            "defaultProfile": {
+              "type": "string",
+              "pattern": "^$|^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "reason"
+          ]
+        }
+      },
+      "required": [
+        "body"
+      ]
     },
     "GET tasks/:id": {
       "type": "object",
@@ -522,6 +820,13 @@
     "GET profiles",
     "GET profiles/:id",
     "GET profiles/:id/metrics",
+    "POST profiles",
+    "POST profiles/:id/revisions",
+    "POST profiles/:id/activate",
+    "POST profiles/:id/enabled",
+    "POST profiles/:id/retire",
+    "POST profiles/:id/rollback",
+    "PUT profiles/config",
     "GET tasks/:id",
     "GET search",
     "GET sources",

@@ -39,7 +39,7 @@ import { goalBoard, goalDetail } from './goals.ts'
 import { spaceRows } from './spaces.ts'
 import { contextGroupBoard } from './context-groups.ts'
 import type { SpaceLeases } from './spaces.ts'
-import type { Profiles } from './profiles.ts'
+import { ProfileConflict, type Profiles } from './profiles.ts'
 import { profileMetrics } from './profile-metrics.ts'
 
 export interface HttpHost {
@@ -54,8 +54,9 @@ export interface HttpHost {
   readonly executor: Pick<DshExecutor, 'activeCount' | 'isLive'>
   /** Write-lease read model; E2 lists spaces and never authorizes from them. */
   readonly spaces: Pick<SpaceLeases, 'processEpoch'>
-  /** Read-only profile registry and head; profile writing is not a panel or worker operation in Phase 1. */
-  readonly profiles: Pick<Profiles, 'list' | 'detail' | 'config'>
+  /** Profile registry. Writes exist only on this loopback management surface, never as a worker tool. */
+  readonly profiles: Pick<Profiles, 'list' | 'detail' | 'config' | 'save' | 'validateDraft' | 'activate' | 'retire' | 'rollback'
+    | 'setEnabled' | 'saveOperatorConfig'>
   readonly outbox: Pick<Outbox, 'recall' | 'reconcile'>
   readonly health: Record<string, Health>
   readonly machine: Machine
@@ -106,7 +107,9 @@ function failure(error: unknown): [number, Record<string, unknown>] {
   if (error instanceof RouteError) return [error.status, { error: error.message }]
   if (error instanceof UserError) return [error.missing ? 404 : error.code === 'reviewStale' ? 409 : 400,
     { error: error.message, code: error.code, values: error.values }]
-  if (error instanceof SettingsConflict || error instanceof PromptConflict) return [409, { error: error.message }]
+  if (error instanceof SettingsConflict || error instanceof PromptConflict || error instanceof ProfileConflict) {
+    return [409, { error: error.message }]
+  }
   return [500, { error: error instanceof Error ? error.message : String(error) }]
 }
 
@@ -157,6 +160,12 @@ interface Input<K extends RouteKey> {
 function routes(runtime: HttpHost) {
   const { store } = runtime
   const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
+  const profileDetail = (id: string) => {
+    const detail = runtime.profiles.detail(id)
+    if (!detail) throw new UserError('profileNotFound')
+    return detail
+  }
+  const profileBy = `${PANEL_ACTOR.source}:${PANEL_ACTOR.id}`
   const promptBody = <K extends RouteKey>(input: Input<K>) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
     'GET state': () => stateView(runtime),
@@ -173,16 +182,54 @@ function routes(runtime: HttpHost) {
     'GET spaces': async () => ({ generatedAt: new Date().toISOString(),
       rows: await spaceRows(store, runtime.spaces.processEpoch, id => runtime.executor.isLive(id)) }),
     'GET contexts/groups': () => contextGroupBoard(runtime),
-    'GET profiles': () => ({ generatedAt: new Date().toISOString(), profiles: runtime.profiles.list() }),
-    'GET profiles/:id': ({ params }) => {
-      const detail = runtime.profiles.detail(params.id)
-      if (!detail) throw new RouteError(404, 'Profile not found')
-      return { profile: detail.profile, head: detail.head, revisions: detail.revisions }
-    },
+    'GET profiles': () => ({ generatedAt: new Date().toISOString(), config: runtime.profiles.config(),
+      profiles: runtime.profiles.list() }),
+    'GET profiles/:id': ({ params }) => profileDetail(params.id),
     'GET profiles/:id/metrics': ({ params }) => {
       if (!runtime.profiles.config().telemetry) throw new RouteError(404, 'Profile telemetry is disabled')
-      if (!runtime.profiles.detail(params.id)) throw new RouteError(404, 'Profile not found')
+      if (!runtime.profiles.detail(params.id)) throw new UserError('profileNotFound')
       return profileMetrics(runtime.store, params.id, new Date())
+    },
+    'POST profiles': async ({ body }) => {
+      const request = await body()
+      const definition = runtime.profiles.save(request.profile, 0, { by: profileBy, source: 'panel', reason: request.reason })
+      return profileDetail(definition.id)
+    },
+    'POST profiles/:id/revisions': async ({ params, body }) => {
+      const request = await body()
+      const draft = runtime.profiles.validateDraft(request.profile)
+      if (draft.id !== params.id) throw new RouteError(400, 'The path profile id and the draft id differ')
+      runtime.profiles.save(draft, request.baseRevision, { by: profileBy, source: 'panel', reason: request.reason })
+      return profileDetail(params.id)
+    },
+    'POST profiles/:id/activate': async ({ params, body }) => {
+      const request = await body()
+      runtime.profiles.activate(params.id, request.revision, profileBy, false, request.reason)
+      return profileDetail(params.id)
+    },
+    'POST profiles/:id/enabled': async ({ params, body }) => {
+      const request = await body()
+      runtime.profiles.setEnabled(params.id, request.enabled, profileBy, request.reason)
+      return profileDetail(params.id)
+    },
+    'POST profiles/:id/retire': async ({ params, body }) => {
+      const request = await body()
+      runtime.profiles.retire(params.id, request.revision, profileBy, request.reason)
+      return profileDetail(params.id)
+    },
+    'POST profiles/:id/rollback': async ({ params, body }) => {
+      const request = await body()
+      runtime.profiles.rollback(params.id, profileBy, request.reason)
+      return profileDetail(params.id)
+    },
+    'PUT profiles/config': async ({ body }) => {
+      const request = await body()
+      const { reason: _reason, ...patch } = request
+      const config = runtime.profiles.saveOperatorConfig({
+        ...patch,
+        ...(patch.defaultProfile === '' ? { defaultProfile: undefined } : {}),
+      }, profileBy, request.reason)
+      return { config }
     },
     'GET tasks/:id': ({ params, query }) => {
       const detail = taskDetail(views(runtime), params.id, query.depth)

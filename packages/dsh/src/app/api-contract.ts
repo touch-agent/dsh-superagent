@@ -24,6 +24,7 @@ export interface Schema {
   minimum?: number
   maximum?: number
   minLength?: number
+  maxLength?: number
   pattern?: string
   additionalProperties?: boolean | Schema
   /** A query value is replaced by this when the field is absent or invalid; the parser, not the schema, applies it. */
@@ -101,6 +102,23 @@ const PromptsSave = { type: 'object', properties: { config: {}, baseRevision: { 
   required: ['baseRevision'] } as const satisfies Schema
 const BlockParams = { block: { type: 'string',
   pattern: '^(?:policy|eval|dispatch|executor|source:[a-z][a-z0-9-]*)$' } } as const satisfies Record<string, Schema>
+const ProfileParams = { id: { type: 'string', pattern: '^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$' } } as const satisfies Record<string, Schema>
+/** A profile draft is validated by `Profiles.validateDraft`; the route fixes only the envelope and an audit reason. */
+const profileReason = { type: 'string', minLength: 1, maxLength: 500 } as const satisfies Schema
+const ProfileCreate = { type: 'object', properties: { profile: {}, reason: profileReason },
+  required: ['profile', 'reason'] } as const satisfies Schema
+const ProfileRevision = { type: 'object', properties: { profile: {}, baseRevision: { type: 'integer', minimum: 0 },
+  reason: profileReason }, required: ['profile', 'baseRevision', 'reason'] } as const satisfies Schema
+const ProfileActivate = { type: 'object', properties: { revision: { type: 'integer', minimum: 1 },
+  reason: profileReason }, required: ['revision', 'reason'] } as const satisfies Schema
+const ProfileEnabled = { type: 'object', properties: { enabled: { type: 'boolean' }, reason: profileReason },
+  required: ['enabled', 'reason'] } as const satisfies Schema
+const ProfileRetire = { type: 'object', properties: { revision: { type: 'integer', minimum: 1 },
+  reason: profileReason }, required: ['revision', 'reason'] } as const satisfies Schema
+const ProfileConfig = { type: 'object', properties: { enabled: { type: 'boolean' },
+  resolve: { type: 'string', enum: ['snapshot', 'legacy'] }, telemetry: { type: 'boolean' },
+  defaultProfile: { type: 'string', pattern: '^$|^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$' },
+  reason: profileReason }, required: ['reason'] } as const satisfies Schema
 
 export const ROUTES = {
   'GET state': { public: true },
@@ -113,8 +131,16 @@ export const ROUTES = {
   'GET spaces': {},
   'GET contexts/groups': {},
   'GET profiles': {},
-  'GET profiles/:id': {},
-  'GET profiles/:id/metrics': {},
+  'GET profiles/:id': { params: ProfileParams },
+  'GET profiles/:id/metrics': { params: ProfileParams },
+  'POST profiles': { body: ProfileCreate },
+  'POST profiles/:id/revisions': { params: ProfileParams, body: ProfileRevision },
+  'POST profiles/:id/activate': { params: ProfileParams, body: ProfileActivate },
+  'POST profiles/:id/enabled': { params: ProfileParams, body: ProfileEnabled },
+  'POST profiles/:id/retire': { params: ProfileParams, body: ProfileRetire },
+  'POST profiles/:id/rollback': { params: ProfileParams, body: { type: 'object', properties: { reason: profileReason },
+    required: ['reason'] } },
+  'PUT profiles/config': { body: ProfileConfig },
   'GET tasks/:id': { query: TasksQuery },
   'GET search': { query: SearchQuery, requiredQuery: true },
   'GET sources': { public: true },
@@ -183,6 +209,8 @@ export type QueryOutput<K extends RouteKey> = OutputObject<QuerySchema<K>>
 interface OpaqueBodies {
   'PUT settings/:block': { value: unknown }
   'PUT prompts': { config: PromptConfig }
+  'POST profiles': { profile: unknown }
+  'POST profiles/:id/revisions': { profile: unknown }
 }
 export type BodyInput<K extends RouteKey> = K extends 'POST prompts/preview' ? PromptConfig
   : BodySchema<K> extends JSONSchema

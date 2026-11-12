@@ -20,6 +20,8 @@ import { feishuChannel } from '@superagent/dsh/sources/feishu-trigger.ts'
 import { githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
 import { feishuKind, feishuManifest } from '@superagent/dsh/sources/feishu.ts'
 import { githubKind, githubManifest } from '@superagent/dsh/sources/github.ts'
+import type { ProfileDetailView } from '@superagent/dsh/app/profiles.ts'
+import type { ProfileMetricsView } from '@superagent/dsh/app/profile-metrics.ts'
 import type { Health } from '@superagent/dsh/sources/host.ts'
 import type { SourceKind } from '@superagent/dsh/sources/kind.ts'
 import { manifestForm } from '@superagent/dsh/sources/manifest-form.ts'
@@ -131,8 +133,12 @@ export interface PanelServer {
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
   /** Source cards a test adds as if their plugin had loaded, such as the manifest-only fixture. */
   extraSources: SourceView[]
-  /** The read-only profile registry rows; empty by default so no title or description is invented. */
+  /** The profile registry rows and operator flags; empty by default so no title or description is invented. */
   profiles: ApiResponse<'GET profiles'>['profiles']
+  profileConfig: ApiResponse<'GET profiles'>['config']
+  /** A profile detail and metrics map a management-page test can populate; absent answers 404. */
+  profileDetails: Record<string, ProfileDetailView>
+  profileMetrics: Record<string, ProfileMetricsView>
 }
 export let server: PanelServer
 
@@ -359,6 +365,15 @@ export function taskBoardView(): TaskBoardView {
         branches: [{ id: 't9', title: '整理迁移说明', task: '整理迁移说明', start: '2026-09-23T00:00:00Z', status: 'blocked', lane: 0 }] } }] }
 }
 
+function replyProfileWrite(path: string, body: unknown): ProfileDetailView | Refusal {
+  server.requests.push({ path, method: 'POST', body })
+  if (path.endsWith('/enabled')) {
+    const disabled = (body as { enabled?: boolean }).enabled === false
+    for (const detail of Object.values(server.profileDetails)) detail.head.disabled = disabled
+    for (const row of server.profiles) row.disabled = disabled
+  }
+  return Object.values(server.profileDetails)[0] ?? refuse(400, 'No fixture profile detail')
+}
 function initial(): PanelServer {
   const settings = SettingsSchema.parse({
     policy: { sources: { feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }], syncChat: 'oc_team' },
@@ -378,6 +393,8 @@ function initial(): PanelServer {
     health: {}, down: false, pending: 0, opened: [], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
     extraSources: [],
     profiles: [],
+    profileConfig: { enabled: false, resolve: 'snapshot', telemetry: true },
+    profileDetails: {}, profileMetrics: {},
     approvals: [] as ApprovalRow[],
     setup: { machine: MACHINE, problem: null, feishuProblem: null,
       accounts: { repository: 'acme/widgets', agent: 'agent-bot', feishu: { appId: 'cli_bot', brand: 'feishu', botId: 'ou_bot',
@@ -441,9 +458,22 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   } },
   'GET spaces': { answer: () => server.spaces },
   'GET contexts/groups': { answer: () => ({ generatedAt: '2026-09-23T12:00:00Z', groups: [], totals: { groups: 0, tickets: 0 } }) },
-  'GET profiles': { answer: () => ({ generatedAt: '2026-01-01T00:00:00.000Z', profiles: server.profiles }) },
-  'GET profiles/:id': { answer: () => refuse(404, 'Profile not found') },
-  'GET profiles/:id/metrics': { answer: () => refuse(404, 'Profile not found') },
+  'GET profiles': { answer: () => ({ generatedAt: '2026-01-01T00:00:00.000Z', config: server.profileConfig, profiles: server.profiles }) },
+  'GET profiles/:id': { answer: ({ params }) => server.profileDetails[params.id] ?? refuse(404, 'Profile not found') },
+  'GET profiles/:id/metrics': { answer: ({ params }) => server.profileMetrics[params.id] ?? refuse(404, 'Profile not found') },
+  'POST profiles': { body: true, answer: ({ body }) => replyProfileWrite('POST profiles', body) as Answer<'POST profiles'> },
+  'POST profiles/:id/revisions': { body: true, answer: ({ params, body }) => replyProfileWrite(`POST profiles/${params.id}/revisions`, body) as Answer<'POST profiles/:id/revisions'> },
+  'POST profiles/:id/activate': { body: true, answer: ({ params, body }) => replyProfileWrite(`POST profiles/${params.id}/activate`, body) as Answer<'POST profiles/:id/activate'> },
+  'POST profiles/:id/enabled': { body: true, answer: ({ params, body }) => replyProfileWrite(`POST profiles/${params.id}/enabled`, body) as Answer<'POST profiles/:id/enabled'> },
+  'POST profiles/:id/retire': { body: true, answer: ({ params, body }) => replyProfileWrite(`POST profiles/${params.id}/retire`, body) as Answer<'POST profiles/:id/retire'> },
+  'POST profiles/:id/rollback': { body: true, answer: ({ params, body }) => replyProfileWrite(`POST profiles/${params.id}/rollback`, body) as Answer<'POST profiles/:id/rollback'> },
+  'PUT profiles/config': { body: true, answer: ({ body }) => {
+    const patch = body as Record<string, unknown>
+    server.profileConfig = { ...server.profileConfig, enabled: Boolean(patch.enabled), resolve: patch.resolve === 'legacy' ? 'legacy' : 'snapshot',
+      telemetry: Boolean(patch.telemetry), ...typeof patch.defaultProfile === 'string' && patch.defaultProfile
+        ? { defaultProfile: patch.defaultProfile } : { defaultProfile: undefined } }
+    return { config: server.profileConfig }
+  } },
   'GET tasks/:id': { query: ['depth'], answer: ({ params }) => {
     const task = server.tasks.tasks.find(item => item.id === params.id)
     if (!task) return refuse(404, 'Ticket not found')

@@ -232,6 +232,8 @@ worker 的 prompt 组成（`packages/dsh/src/app/prompts.ts`）：
 | 这个 agent 用哪个模型、哪版 prompt | Profile | 是 |
 | 这个 agent 的评测基准 | Profile 的声明引用 | 是，但不是运行时授权 |
 
+**写路径权限边界（Phase 1.5 复核结论）。** profile 写路由与已有设置/提示词写路由共用同一层本机管理面认证：`Host` 必须是 `127.0.0.1`/`localhost`，请求带 `x-orchestrator-request: 1`，可选 `Origin` 校验；没有为 profile 新增远程、worker 工具或 Source 可达的写入口。即本机进程本来就能调用同一管理面的设置写入，这不是 profile 引入的新边界；profile 写入不能改 Mandate、Action、Approval、Policy、工具注册表或模型审批设置，因此不能借 profile 扩权。模型固定只允许当前 `executor.model`，想换更强模型必须走既有 `PUT settings/executor` 的显式设置写，不会因为“能写 profile”而获得换模型能力。内置 `worker-default` 只读；写路径的 actor 固定为 `panel:local`、`source=panel`，并记录 required `reason`。剩余风险是本机进程可调用管理面，属于部署的既有本机信任边界，需在网络/OS 权限层解决，不由 profile 管理面单独承担。
+
 **有效工作工具 = 角色工作能力上限 ∩ profile 工作策略（inherit 取上限，list 取名单）∩ 宿主实际可用工具。** 再加上一组**固定的协议工具**（如 `orchestrator_ack`、`orchestrator_report`、`orchestrator_child` 与 thread/trigger 相关工具），它们由 executor 注册、不可被 profile 移除，因为 worker 必须有办法汇报和结束。具体名单以 `tools/executor.ts` 为准，文档不把主 Session 专用工具算进来。`tools.names: []` 只表示没有工作工具，不表示只读；只读要通过真正的只读工具集/权限实现。
 
 Phase 1 **只激活 worker profile**；`orchestrator_route`、`orchestrator_eval_decide`、`orchestrator_settings_save`、`orchestrator_prompts_save` 等主 Session 工具不进入 profile 白名单，仍由角色固定。子 Ticket 的有效工作工具必须 ⊆ 根 profile 的有效工作工具；subagent 同理。任何一层都不能通过 profile 获得角色上限之外的工具，也不能改变 `Mandate`、`maxActionLevel`、审批或验收。工具缺失时在 launch 阶段 fail closed（见 §6.6），不静默降级。
@@ -478,7 +480,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Phase 0 | 本文：定义、边界、指标、实验设计、回滚 | 设计文档 + 计划任务 | 否（docs-only） |
 | Phase 1（T5-07） | worker 注册表、兼容 profile、有效配置快照、Session 解析、trace/API、按 profile 聚合、token 用量尝试采集 | 运行时与测试 | 默认无；自定义 profile 显式开启 |
-| Phase 1.5（可选） | 只读面板 E2、fallback 审计展示 | 面板/小改动 | 只读 |
+| Phase 1.5（T5-07 管理面） | 写/激活/回退路由、Settings › Agent 配置页、模型批准校验、内置只读、停用/回退开关、测试与文档 | 面板 + HTTP | 默认关闭；只影响新工单 |
 | Phase 2（T5-05 扩展） | 预登记对照实验、profile 维度的观察→总结→提案→回放→回归门→人工批准→灰度 | 离线脚本 + 实验/批准队列 | 只影响新工单；人工批准 |
 
 **Phase 1 是本文承诺的最小落地。** Phase 1 的成功是**可观测性门**，不是「profile 更好」；Phase 2 是**价值门**，需要对照实验。Phase 2 不另开任务，作为 T5-05 的 profile 切片，T5-05 的估时和验收相应扩大（§6.8）；只有 Phase 1 的可观测性门通过且人决定继续时才做。
@@ -501,7 +503,18 @@ flowchart LR
 - `packages/dsh/src/app/profile-metrics.ts` 按 `effective.hash`（冻结）或 `run.effectiveHash`（moving）聚合；n<5 只把 rate 置空，计数保留；token 可得/unknown 两态，货币成本恒为 unknown；fallback、censored、closed、child、lightweight 分开计数。`GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics` 只读，不新增表、不改 `SCHEMA_VERSION`。
 - `profiles.config` 仍在独立 KV：`enabled=false` 默认、`resolve=snapshot|legacy`、`telemetry=true`；不在 strict `SettingsSchema` 中。
 
-**明确不做**：自动选择 profile、自动晋升、profile 市场、运行时动态 preset、货币成本估算、per-profile 模型价格表、跨租户、orchestrator profile 激活。
+**Phase 1.5 管理面（2026-11-12）**：
+
+- **写路由**：`POST profiles`、`POST profiles/:id/revisions`、`POST profiles/:id/activate`、`POST profiles/:id/enabled`、`POST profiles/:id/retire`、`POST profiles/:id/rollback`、`PUT profiles/config`。全部只注册在 loopback 管理面，沿用已有 `Host` + `x-orchestrator-request` 同源检查；不是 worker 工具，worker/子代理没有调用入口。写操作记录 actor `panel:local`、时间与 `reason`；新 revision 的 provenance 另记 `source=panel`。
+- **读取路由**：保留 `GET profiles`、`GET profiles/:id`、`GET profiles/:id/metrics`；`GET profiles` 增加 `config`，便于面板在不读内部 Settings 的情况下显示独立开关。
+- **严格拒绝**：`ProfileDraftSchema.strict()` 继续拒绝 `maxActionLevel`、`approval`、`permissionPreset`、`mandateMinutes`、`sources`、`token`、`key` 等授权/凭据字段；写路由不提供任何修改 Mandate、Action、Approval、Policy 或工具注册表的入口。
+- **模型批准**：自定义 profile 的 pinned model 必须与 `settings.executor.model` 完全一致（provider/model/reasoningEffort）；没有配置 worker 模型时创建/保存/激活一律失败关闭。想换模型必须先走既有 `PUT settings/executor`，再让新 profile 固定该模型；profile 自身不能选择“更强模型”。
+- **生命周期**：`ProfileHead` 增加 `disabled` 与 `previousActiveRevision`。内置 `worker-default` 只读、不可停用；`activate` 拒绝退役 revision；`rollback` 只回退到上一次激活前的 revision，且允许激活这次回退目标；`setEnabled(false)` 只停止新工单绑定，不改 revision、不改已绑定快照；`setEnabled(true)` 重新激活当前 revision。`defaultProfile` 在保存开关时校验存在、未停用、运行时可解析且模型已批准。
+- **激活隔离**：`Tickets.create` 读取最新 active/disabled 决定新根工单绑定；`delegate` 仍复制根快照；已绑定 `Ticket.profile` 与 `effective.hash` 不被任何写/激活/回退/停用操作改写。
+- **面板**：Settings 增加「Agent 配置」页（E2）。默认列表只显示名称、说明、当前版本、是否生效与最近绑定时间，不显示内部 id；内部 id、content hash 收在「技术信息」里按需展开。页面支持新建、基于当前版本改版、版本历史、启用/停用、回退上一版、退役、三种独立开关和字段级指标。创建/编辑只允许固定已批准模型、固定提示词版本、从 worker 角色上限收窄工作工具。
+- **测试与文档**：覆盖写路由、危险字段拒绝、模型升级拒绝、内置只读、停用/启用、回退、退役、存量快照不变、默认 profile 校验、面板列表/详情/指标/开关；同步更新 003、004、007、018、TRACKING 与 changeset。
+
+**明确不做**：自动选择 profile、自动晋升、profile 市场、运行时动态 preset、货币成本估算、per-profile 模型价格表、跨租户、orchestrator profile 激活。Phase 1.5 的管理面也不提供多人会签、审批流或远程写入口。
 
 ### 6.3 对现有 assembly/executor/session 的影响
 
@@ -517,7 +530,7 @@ flowchart LR
 | `packages/dsh/src/app/assessment.ts` + `tools/main.ts` | Phase 1 **不加** profile 提案/绑定字段 | 提案不改变 accept 的确定性校验；模型不写配置 |
 | `packages/dsh/src/app/metrics.ts` 或新 `profile-metrics.ts` | 按 `effective.hash` 聚合 | 不替代现有 metrics；未知值 `unknown` |
 | `packages/dsh/src/app/assembly.ts` | 装配 `Profiles`，注入 Sessions/Executor | 依赖顺序显式；不产生循环 |
-| 面板（Phase 1.5） | E2 只读 profile/指标 | E0 不出现 profile/内部 id |
+| 面板（Phase 1.5） | E2 列表/版本/当前生效/字段指标与写操作；内部 id 按需展开 | E0 默认面不出现 profile/内部 id；写入口不改变授权 |
 
 **Preset 不变**：worker/router preset 仍是 DSH 的静态组合；profile 只做「选哪个模型、哪版 prompt、允许哪些已有工作工具」。宿主能 `agentPresets.register()`，但本设计选择不做运行时动态 preset，换取可回退与更小的宿主耦合。
 
@@ -526,7 +539,7 @@ flowchart LR
 - **旧工单**：没有 `profile` 的工单一律按 `legacy` 处理：模型用 `settings.eval.model`/`executor.model`，prompt 用当前 revision（与今天一致），工作工具用角色上限。读取时可以合成一个 `legacy` 视图用于展示/审计，但它是**解析规则，不是不可变快照**（prompt 显示为 `live`），且**不写回** Ticket。
 - **运行中的工单**：部署 Phase 1 时默认 `profiles.config.enabled=false`；已存在的 Ticket 不受影响。开启后，只有新创建/新委派的 Ticket 绑定快照。
 - **prompt 编辑**：兼容 profile 保持 `live`，团队编辑 prompt 仍立即影响后续模型请求（今天的行为）。自定义 profile 必须 `pinned`；编辑 prompt 不会自动改自定义 profile，需要新建 profile revision 或显式 repin，面板/工具应显示「当前 prompt revision 与 profile 引用不一致」。
-- **模型设置**：兼容 profile `inherit` 继续跟随 `eval.model`/`executor.model`；自定义 profile `pinned` 不随设置变化。切换设置只影响兼容 profile 的新 Session。
+- **模型设置**：兼容 profile `inherit` 继续跟随 `eval.model`/`executor.model`；自定义 profile `pinned` 不随设置变化。切换设置只影响兼容 profile 的新 Session。Phase 1.5 起，自定义 profile 只能固定当前 `executor.model`；先换设置里的 worker 模型，再新建或激活固定该模型的 revision。`executor.model=null` 时自定义 profile 的写/激活失败关闭。
 - **无数据库 schema 迁移**：Phase 1 只用 KV（profile 定义/head/flags）与 Ticket JSON（可选快照），`SCHEMA_VERSION` 不变；**不新增 settings 块**，所以旧二进制不会因 strict `SettingsSchema` 解析失败。旧二进制读到带顶层 `profile` 的 Ticket 会忽略未知字段并按 legacy 运行；这是行为回退，不是数据损坏。
 - **健康与失败**：注册表损坏、active revision 缺失、prompt revision 不存在、工具不在宿主时，启动/激活报 health error；只有选中的 profile 整体不可用时新工单才绑定 `legacy`，内容无效的 profile 保留绑定并在 launch `blocked`（§6.6）。
 
@@ -535,6 +548,8 @@ flowchart LR
 | 场景 | 操作 | 影响 |
 | --- | --- | --- |
 | 新配置有问题，想停止扩散 | `profiles.config.enabled=false` | 新工单绑定 legacy；已绑定工单保留快照 |
+| 只想停用一个 profile | `POST profiles/:id/enabled {enabled:false}` | 新工单不绑定它并回退 legacy；revision、head 和已绑定快照不变 |
+| 单个 profile 最近一次激活有问题 | `POST profiles/:id/rollback` | active 指回 `previousActiveRevision`；只影响新工单 |
 | 已绑定快照也要回退解析 | `profiles.config.resolve=legacy` | 只影响新 Session/新请求；运行中的工具/模型不变；prompt 仍可能读最新版本；需要完全一致时重启 Session |
 | 单个 revision 有问题 | 把 active 指针指回上一 revision，并写入 `retiredRevisions` | 只影响新工单；运行中工单不变 |
 | 注册表写坏 | 从 KV 快照/内置 seed 恢复；health 报错 | 不删除历史；不回写 Ticket |
@@ -635,8 +650,8 @@ flowchart LR
 | # | 问题 | 现状/建议 | 谁决定 |
 | --- | --- | --- | --- |
 | Q1 | 自定义 profile 是否必须 pin prompt？ | 必须；兼容 profile 用 `live` 但标 `moving`，只做基线，不进入 A/B | 设计/团队 |
-| Q2 | 谁批准 profile 激活？ | 单一团队 owner/operator；记录 actor/time/reason；不做多人会签 | 团队 |
-| Q3 | profile 管理面放哪里？ | 设置侧（E2），worker 工具不可写；Phase 1 可先 API | 产品/平台 |
+| Q2 | 谁批准 profile 激活？ | 单一团队 owner/operator；记录 actor/time/reason；不做多人会签。Phase 1.5 仍按本机管理面处理，不引入审批流 | 团队 |
+| Q3 | profile 管理面放哪里？ | 设置侧（E2）；Phase 1.5 已落 Settings › Agent 配置页与同源写路由，worker 工具不可写 | 产品/平台 |
 | Q4 | 子 Ticket 是否可换 profile？ | Phase 1 只继承、不换；Phase 2 若允许，只能收紧（子有效工作工具 ⊆ 父），不能扩权 | 设计 |
 | Q5 | router 是否也要 profile？ | Phase 1 不激活；主 Session 的模型/工具/授权邻近工具保持角色固定。Phase 2 再评估，不能把 `route/eval_decide/settings_save` 当 profile 能力 | 设计 |
 | Q6 | 成本怎么采？ | 先从宿主 `assistant/message.usage` 采 token；货币成本要定价表，Phase 1 不做；缺失标 `unknown`，不用单价估算 | 平台/宿主 |

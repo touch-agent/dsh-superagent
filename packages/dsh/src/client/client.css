@@ -619,3 +619,9 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-notice-stack { left: 12px; right: 12px; width: auto; }
 .dt-drawer { width: 100vw; }
 }
+
+/* Agent profile editor: a compact tool checklist and a read-only technical details fold. */
+.dt-checkgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 4px 12px; }
+.dt-check { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+.dt-details > summary { cursor: pointer; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
+.dt-list > .dt-row[data-selected] { background: var(--dsw-alias-bg-module-platform); border-radius: 10px; }

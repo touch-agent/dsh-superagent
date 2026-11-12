@@ -10,6 +10,7 @@ import { Hint } from './widgets.tsx'
 import { DeploymentPage, type DeploymentForm } from './deployment.tsx'
 import { EvalSettings, EvalStatus } from './eval.tsx'
 import { ExecutionSettings, ExecutionStatus } from './execution.tsx'
+import { ProfilesPage } from './profiles.tsx'
 import { PromptsPage } from './prompts.tsx'
 import { usePanel, usePanelData } from './provider.tsx'
 import { DEFAULT_SETTINGS_GROUPS, SETTINGS_GROUPS, settingsRoute, type SettingsGroup } from './route.ts'
@@ -21,13 +22,13 @@ const STAGE_GROUPS: readonly SettingsGroup[] = ['source', 'trigger', 'eval', 'ex
 /** The operations pages keep the same one-line boundary inside Settings as they had as tabs. */
 const OPS_GROUPS: readonly SettingsGroup[] = STAGE_GROUPS
 const NAV: readonly { title: 'settingsNav.work' | 'settingsNav.interface' | 'settingsNav.system'; items: readonly SettingsGroup[] }[] = [
-  { title: 'settingsNav.work', items: ['source', 'trigger', 'eval', 'execution'] },
+  { title: 'settingsNav.work', items: ['source', 'trigger', 'eval', 'execution', 'profiles'] },
   { title: 'settingsNav.interface', items: ['display', 'prompts'] },
   { title: 'settingsNav.system', items: ['deployment'] },
 ]
 /** One icon per page, drawn from the panel's own SVG set so no emoji or remote asset enters the default surface. */
 const GROUP_ICON: Record<SettingsGroup, IconName> = { source: 'inbox', trigger: 'message', eval: 'decision', execution: 'running',
-  display: 'bell', prompts: 'hash', deployment: 'shield' }
+  profiles: 'user', display: 'bell', prompts: 'hash', deployment: 'shield' }
 /** The visible groups: with the batch-2 switch off, trigger stays a tab and the old settings list returns unchanged. */
 export function settingsGroups(consolidated = opsInSettings()): readonly SettingsGroup[] {
   return consolidated ? SETTINGS_GROUPS : DEFAULT_SETTINGS_GROUPS
@@ -172,6 +173,7 @@ export function SettingsPage({ group, query, state, deploymentForm, triggerFilte
         {consolidated && <h3 className="dt-settings-subtitle">{t('settingsConfigTitle')}</h3>}
         <SettingsProvider><ExecutionSettings /></SettingsProvider>
       </>
+      case 'profiles': return <SettingsProvider><ProfilesPage /></SettingsProvider>
       case 'display': return <DisplaySettings />
       case 'prompts': return <PromptsPage />
       case 'deployment': return state ? <DeploymentPage setup={state.setup} form={deploymentForm} />

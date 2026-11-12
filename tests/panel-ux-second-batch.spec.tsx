@@ -60,7 +60,7 @@ it('opens the operations surfaces as Settings pages with grouped nav, icons and 
   await mount()
   expect(tab(zh['tab.settings']).getAttribute('aria-selected')).toBe('true')
   expect(all('.dt-settings-nav-title').map(item => item.textContent)).toEqual(['来源与任务', '界面与偏好', '系统'])
-  expect(all('.dt-settings-link').map(item => item.textContent)).toEqual(['来源', '触发', '评估', '执行', '显示', '提示词', '部署'])
+  expect(all('.dt-settings-link').map(item => item.textContent)).toEqual(['来源', '触发', '评估', '执行', 'Agent 配置', '显示', '提示词', '部署'])
   expect(all('.dt-settings-link').every(item => item.querySelector('svg') !== null)).toBe(true)
   expect(text()).toContain(zh['settingsDescription.source'])
   // The operations list and its configuration share one page; the status list is the same read model as before.
@@ -115,7 +115,7 @@ it('restores the seven first-level entries and the old settings list when ux.ops
   await mount()
   expect(all('[role="tab"]').map(item => item.textContent)).toEqual(['概览', '任务', '来源', '触发', '评估', '执行', '设置'])
   await click(zh['tab.settings'])
-  expect(all('.dt-settings-link').map(item => item.textContent)).toEqual(['来源', '评估', '执行', '显示', '提示词', '部署'])
+  expect(all('.dt-settings-link').map(item => item.textContent)).toEqual(['来源', '评估', '执行', 'Agent 配置', '显示', '提示词', '部署'])
   await click(zh['tab.source'])
   expect(text()).toContain(zh.statusTitle)
   expect(document.querySelector('.dt-settings')).toBeNull()
@@ -126,7 +126,7 @@ it('answers decision, result, next step with timing, owner and each child report
   localStorage.setItem('ux.opsInSettings.v1', 'off')
   server.tasks = hierarchy()
   server.profiles = [{ id: 'worker-plan', title: '迁移文案负责人', description: '负责修改迁移与登录文案', role: 'worker', lastBoundAt: undefined,
-    activeRevision: 2, retiredRevisions: [], updatedBy: 'panel', contentHash: 'hash', moving: false }]
+    activeRevision: 2, previousActiveRevision: undefined, disabled: false, retiredRevisions: [], updatedBy: 'panel', contentHash: 'hash', moving: false }]
   await mount()
   await click(zh['tab.tasks'])
   await click(all('.dt-tasks-row')[0]!)
@@ -169,7 +169,7 @@ it('restores the first-batch detail and skips profile reads when ux.taskDetail.v
   localStorage.setItem('ux.opsInSettings.v1', 'off')
   server.tasks = hierarchy()
   server.profiles = [{ id: 'worker-plan', title: '迁移文案负责人', description: '负责修改迁移与登录文案', role: 'worker',
-    lastBoundAt: undefined, activeRevision: 2, retiredRevisions: [], updatedBy: 'panel', contentHash: 'hash', moving: false }]
+    lastBoundAt: undefined, activeRevision: 2, previousActiveRevision: undefined, disabled: false, retiredRevisions: [], updatedBy: 'panel', contentHash: 'hash', moving: false }]
   await mount()
   await click(zh['tab.tasks'])
   await click(all('.dt-tasks-row')[0]!)

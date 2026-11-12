@@ -47,6 +47,7 @@ E0–E3 是**展示分级**，不是 Ticket、Mandate 或数据库字段。同�
 | --- | --- | --- | --- | --- | --- |
 | 概览 | E0 | 三区结果面；健康与流量折叠 | 只在异常时展开 | 「详情」进入运行健康/指标（E2） | [after-overview](images/exposure-levels/after-overview.png) |
 | 来源 / 触发 / 评估 / 执行 | E2 | 不自动打开；人工切换 | 排障/审计成本，不进入默认叙事 | 概览的异常摘要链接到具体页 | 设置页分组与现有用例 |
+| Agent 配置 | E2 | 不自动打开；列表显示名称、说明、当前版本、是否生效与最近绑定，不显示内部 id | 管理执行配置才需要；默认面不出现 profile 或内部 id | 详情页的版本历史与「技术信息」按需展开内部 id、content hash；指标按需加载 | [after-profiles](images/agent-profile-phase-1-5/after-settings.png)；`tests/panel-profiles.spec.tsx` |
 | 事件栏 | E2 | 默认关闭；标题保留未读计数 | 默认零打扰；只有人打开或显式开启信任期设置才出现 | 手动点「事件」；设置 › 显示可开启首次自动打开一次 | [after-display](images/exposure-levels/after-display.png) |
 | 设置 › 显示 | E2 | 一个开关：首次收到提醒时自动打开事件栏 | 默认关闭；只有主动进设置才看到 | `events.autoOpen.v1` 可整机禁用 | 同上 |
 | 计划树 / 图 | E2 | 见 §2.2 | 见 §2.2 | 见 §2.2 | 见 §2.2 |

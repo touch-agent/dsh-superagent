@@ -29,6 +29,10 @@ export interface ProfilesConfig {
   telemetry: boolean
   /** The profile id code binds to new tickets; absent falls back to the built-in `worker-default`. */
   defaultProfile?: string
+  /** Who last saved the operator switches and when; absent for defaults or an older record. */
+  updatedBy?: string
+  updatedAt?: string
+  updatedReason?: string
 }
 
 export const KV = {
