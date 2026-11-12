@@ -664,7 +664,7 @@ graph LR
 - **验收**：`pnpm exec vitest run tests/docs.spec.ts tests/tracking.spec.ts` 与 `pnpm check:tracking` 绿；独立 review 逐项挑战「是否真能落地」，结论写进 PR review 评论；不把提案写成已实现。
 - **估时**：2 人日。**依赖**：013/006/021/022 的现状结论。**回退**：纯文档，删除即回退；不改运行时、不新增 schema。
 - **泳道**：Platform。
-- **进度（2026-11-12，PR 进行中）**：`docs/025-git-repository-integration.zh.md`；索引与 `docs/plan/TRACKING.zh.md` 已同步；评审结论见 PR review 评论。
+- **进度（2026-11-12，PR [#71](https://github.com/touch-agent/dsh-superagent/pull/71) 进行中）**：`docs/025-git-repository-integration.zh.md`；索引与 `docs/plan/TRACKING.zh.md` 已同步；评审结论见 PR review 评论。
 
 ---
 
