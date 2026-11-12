@@ -20,6 +20,7 @@ function hierarchy(): TaskBoardView {
     origin: { source: 'conversation', triggerId: 'tr9', preview: '补迁移说明', at: '2026-09-23T00:00:00Z' },
     sources: [{ source: 'conversation', label: '主会话' }], execution: { assignments: 1 },
     owner: { role: 'owner', profile: { id: 'worker-plan', revision: 3 } },
+    parentOwner: { role: 'owner', profile: { id: 'worker-plan', revision: 2 } },
     delegation: { parentTicketId: 't1', rootTicketId: 't1', goal: '写迁移说明', attempt: 1, dispositions: [],
       resolution: { kind: 'failed', by: { source: 'dsh', id: 'worker-plan' }, at: '2026-09-23T01:00:00Z', reason: '缺少迁移目标' } },
     goal: { id: 't1-child', statement: '写迁移说明', state: { stage: 'waiting', action: 'blocked' }, results: [] },
@@ -65,7 +66,8 @@ it('opens the operations surfaces as Settings pages with grouped nav, icons and 
   // The operations list and its configuration share one page; the status list is the same read model as before.
   expect(text()).toContain(zh.statusTitle)
   expect(text()).toContain(zh.settingsOpsBoundary)
-
+  // The page is already inside Settings; it does not repeat the standalone "Settings" button.
+  expect(all('.dt-status-head button').map(button => button.textContent)).not.toContain(zh['tab.settings'])
 })
 
 it('opens triggers as a Settings page and keeps the source list as a direct deep link', async () => {
@@ -132,6 +134,7 @@ it('answers decision, result, next step with timing, owner and each child report
   expect(detail.textContent).toContain(zh.taskHierarchyNextReview)
   expect(detail.textContent).toContain(zh.taskDetailDone)
   expect(detail.textContent).toContain('已修好登录回归，等验收。')
+  expect(detail.textContent?.match(/已修好登录回归，等验收。/g)).toHaveLength(1)
   expect(detail.textContent).toContain(zh.taskDetailOpenDeliverable)
   expect(detail.querySelector('a[href="https://github.com/acme/widgets/pull/42/files"]')).not.toBeNull()
   expect(detail.textContent).toContain(zh.taskDetailNextEstimate)
@@ -150,6 +153,38 @@ it('answers decision, result, next step with timing, owner and each child report
   expect(report.textContent).toContain('写迁移说明')
   expect(report.textContent).toContain('缺少迁移目标')
   expect(report.querySelector('a')?.textContent).toBe(zh.taskDetailOpenDeliverable)
+  // Opening the child keeps the upstream owner in human words too.
+  await click(report.closest('li')!.querySelector<HTMLElement>('.dt-task-level-title')!)
+  expect(detail.textContent).toContain('迁移文案负责人 · 第 3 版')
+  expect(detail.textContent).not.toContain('worker-plan')
+})
+
+it('restores the first-batch detail and skips profile reads when ux.taskDetail.v2 is off', async () => {
+  defaults()
+  localStorage.setItem('ux.taskDetail.v2', 'off')
+  localStorage.setItem('ux.opsInSettings.v1', 'off')
+  server.tasks = hierarchy()
+  server.profiles = [{ id: 'worker-plan', title: '迁移文案负责人', description: '负责修改迁移与登录文案', role: 'worker',
+    lastBoundAt: undefined, activeRevision: 2, retiredRevisions: [], updatedBy: 'panel', contentHash: 'hash', moving: false }]
+  await mount()
+  await click(zh['tab.tasks'])
+  await click(all('.dt-tasks-row')[0]!)
+  await click(zh.taskHierarchyOpen)
+  const detail = document.querySelector<HTMLElement>('.dt-task-detail')!
+  expect(detail.querySelector('.dt-task-decision')).toBeNull()
+  expect(detail.textContent).toContain('worker-plan')
+  expect(server.requests.some(request => request.path === 'profiles')).toBe(false)
+})
+
+it('hides the first-use notes and examples when ux.firstUse.v1 is off', async () => {
+  defaults()
+  localStorage.setItem('ux.firstUse.v1', 'off')
+  server.tasks = { ...taskBoardView(), tasks: [], totals: { milestones: 0, tasks: 0, tickets: 0, open: 0, attention: 0 } }
+  await mount()
+  await click(zh['tab.tasks'])
+  expect(text()).not.toContain(zh.firstUseCanDo)
+  expect(document.querySelector('.dt-first-use-empty')).toBeNull()
+  expect(text()).toContain(zh.tasksEmpty)
 })
 
 it('shows the three first-use lines once and clickable starting points when there is no task', async () => {

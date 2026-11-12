@@ -28,7 +28,7 @@
 ### 2.2 任务详情
 
 - 详情仍是 `GET tasks` / `GET tasks/:id?depth=1` 的客户端投影，不新增服务端字段或第二个聚合。
-- 顺序按人的问题排列：决定 → 下一步与预计 → 目标 → 做了什么 → 谁在做 → 子任务 → 阻断 → 向上汇报 → 执行会话 → E2。
+- 顺序按人的问题排列：决定 → 做了什么 → 下一步与预计 → 目标 → 谁在做 → 子任务 → 阻断 → 向上汇报 → 执行会话 → E2。
 - 「需要你决定」只来自 `goal.decision`：回答、验收、补交付、恢复被卡住/未完成。没有决定时写「不需要你做什么」，并说明有事会再找；不把子任务等待上级判断误写成人要处理。
 - 「做了什么」优先用当前 review 的摘要，其次用最近一份产出物的摘要；产出物有 `http(s)` 地址时直接打开，否则提供「查看完整记录」进入任务页。没有结果时写还没有可看的结果，不伪造完成语。
 - 「预计」只写记录能支持的事：等人处理、已结束、还在跑且没有可靠完成时间；有已用时长时附上，不编造 ETA。
@@ -67,7 +67,7 @@
 - `pnpm typecheck`
 - `pnpm vitest run tests/panel-ux-second-batch.spec.tsx tests/panel-overview.spec.tsx tests/panel-settings.spec.tsx tests/panel-task-hierarchy.spec.tsx tests/panel-tasks.spec.tsx tests/panel-execution.spec.tsx tests/panel-eval.spec.tsx tests/panel-source.spec.tsx`
 - `pnpm check`（tracking、arch、lint、全量测试、build、bundle size）；新增客户端界面使 `packages/dsh/lib/client.js` 从 650 KB 预算增到 686 KB，本次把该文件预算调到 700 KB、总预算调到 1.72 MB，仍由 `pnpm check:size` 守门
-- 新增/更新的面板测试覆盖：默认只留三个一级入口；四个系统页的分组/图标/说明与直接链接；七个入口回退；带 id 的详情不选中标签；任务详情的决定、结果、链接、预计、人话负责人与子任务展开；首次说明只出现一次、示例入口、从设置恢复说明。
+- 新增/更新的面板测试覆盖：默认只留三个一级入口；四个系统页的分组/图标/说明与直接链接；七个入口回退；带 id 的详情不选中标签；任务详情的决定、结果、链接、预计、人话负责人、子任务汇报与子任务详情不出现内部 id；任务详情 v2 回退时不请求 Profile 列表；首次说明只出现一次、示例入口、从设置恢复说明，以及关闭 `ux.firstUse.v1` 后回到纯文字空态。
 
 ### 5.1 视觉证据
 

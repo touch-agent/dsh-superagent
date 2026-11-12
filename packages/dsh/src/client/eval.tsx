@@ -12,7 +12,8 @@ import { ConfigHistory, Field, Fields, ModelField, SourceField, numberOf, useBlo
 import { localized, valueLabel, when } from './text.ts'
 import { Hint, LabelValue, LoadMore, LoadState, Section, StatusHead } from './widgets.tsx'
 
-export function EvalStatus({ filter, window, paused }: { filter: DecisionFilter; window: '24h' | undefined; paused: boolean }) {
+export function EvalStatus({ filter, window, paused, embedded = false }: { filter: DecisionFilter; window: '24h' | undefined;
+  paused: boolean; embedded?: boolean }) {
   const { t, call, navigate } = usePanel()
   const [limit, setLimit] = useState(30)
   const { data, error } = usePoll(() => call('GET decisions', { query: { limit, kind: DECISION_KINDS[filter],
@@ -20,7 +21,7 @@ export function EvalStatus({ filter, window, paused }: { filter: DecisionFilter;
   const show = (key: DecisionFilter, last24h: boolean) => navigate({ page: 'eval', query: { ...key === 'work' ? {} : { filter: key },
     ...last24h ? { window: '24h' } : {} } }, true)
   return <>
-    <StatusHead hint={t('evalStatusIntro')} settings="eval" />
+    <StatusHead hint={t('evalStatusIntro')} {...embedded ? {} : { settings: 'eval' }} />
     {paused && <p className="dt-banner">
       {t('evalRecordsPaused')} <button type="button" className="dt-textlink"
         onClick={() => navigate({ page: 'execution' })}>{t('resumeWhere')}</button>

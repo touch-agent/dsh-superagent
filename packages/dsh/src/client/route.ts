@@ -2,6 +2,7 @@
 import { THREAD_FILTERS, TICKET_FILTERS, type ThreadFilter, type TicketFilter, type TicketOrigin } from '../app/api.ts'
 import type { SetupPlace } from '../setup.ts'
 import { DECISION_FILTERS, type DecisionFilter } from './api.ts'
+import { opsInSettings } from './features.ts'
 import type { T } from './text.ts'
 
 export const TABS = ['overview', 'tasks', 'source', 'trigger', 'eval', 'execution', 'settings'] as const
@@ -56,7 +57,7 @@ export function parseRoute(value: unknown): Route | undefined {
 const ROUTE_KEY = 'dsh-superagent/route'
 export interface Location { route: Route; stack: Route[]; group?: SettingsGroup | undefined }
 export const lastSettingsGroup = ({ route, group }: Location): SettingsGroup => route.page === 'settings' ? route.query.group
-  : group ?? 'source'
+  : isOpsTab(route.page) && opsInSettings() ? route.page : group ?? 'source'
 export function initialLocation(): Location {
   try {
     const stored = JSON.parse(sessionStorage.getItem(ROUTE_KEY) ?? 'null') as { route?: unknown; stack?: unknown; group?: unknown } | null

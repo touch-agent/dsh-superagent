@@ -58,6 +58,7 @@ const deliverableLink = (item: TaskView['deliverables'][number]): string | undef
 /** How soon this level is expected to move, phrased from what the record actually knows rather than invented. */
 export function estimateText(task: TaskView, t: T): string {
   if (task.status === 'done') return t('taskDetailEstimateEnded')
+  if (task.status === 'blocked' && !task.goal.decision) return t('taskDetailEstimateBlocked')
   if (task.status === 'review' || task.status === 'answer' || task.status === 'delivery' || task.status === 'failed'
     || task.status === 'blocked') return t('taskDetailEstimateWaiting')
   const elapsed = duration(task.durationMs, t('lang'))
@@ -87,7 +88,9 @@ function Decision({ task, t, onOpenTicket }: { task: TaskView; t: T; onOpenTicke
     {decision ? <>
       <p className="dt-task-report"><Tag tone="warning">{t('tasksDecision')}</Tag>
         <span>{decision.kind === 'answer' ? t('taskHierarchyNextAnswer', { question: decision.question ?? t('noticeNoQuestion') })
-          : nextStep(task, t)}</span></p>
+          : decision.kind === 'review' ? t('taskDetailDecisionReview')
+            : decision.kind === 'delivery' ? t('taskDetailDecisionDelivery')
+              : decision.kind === 'blocked' ? t('taskDetailDecisionBlocked') : t('taskDetailDecisionFailed')}</span></p>
       <div className="dt-actions">
         <Button variant="outline" size="sm" icon={<Icon name="chevron-right" size={13} />} onClick={() => onOpenTicket(task.id)}>
           {t('taskDetailDecisionOpen')}</Button>
@@ -147,7 +150,8 @@ function Blocker({ task, t }: { task: TaskView; t: T }) {
   </div>
 }
 
-function Reports({ task, t }: { task: TaskView; t: T }) {
+function Reports({ task, t, v2 = false, profiles = [] }: { task: TaskView; t: T; v2?: boolean
+  profiles?: readonly ProfileRow[] }) {
   const resolution = task.delegation?.resolution
   return <>
     {task.parentTicketId ? <>
@@ -156,7 +160,8 @@ function Reports({ task, t }: { task: TaskView; t: T }) {
           {resolution?.kind === 'accepted' ? t('taskHierarchyParentAccepted')
             : resolution?.kind === 'cancelled' ? t('taskHierarchyParentRejected')
               : resolution?.kind === 'failed' ? t('taskHierarchyReportedFailed') : t('taskHierarchyWaitingParent')}</Tag>
-        {task.parentOwner && <span>{t('tasksRole.parentWorker')} · {profileText(t, task.parentOwner.profile)}</span>}
+        {task.parentOwner && <span>{t('tasksRole.parentWorker')} · {v2 ? ownerLabel(t, task.parentOwner.profile, profiles).text
+          : profileText(t, task.parentOwner.profile)}</span>}
         {resolution?.at && <span className="dt-hint">{when(resolution.at, t('lang'))}</span>}
       </p>
       {task.delegation?.orphaned && <p className="dt-task-report"><Tag tone="danger">{t('tasksNeedsOwner')}</Tag>
@@ -171,7 +176,7 @@ function Reports({ task, t }: { task: TaskView; t: T }) {
       {task.childSummary.unresolved > 0 && <Tag tone="warning">{task.childSummary.unresolved} {t('taskHierarchyReportsWaiting')}</Tag>}
       {task.childSummary.failed > 0 && <Tag tone="danger">{task.childSummary.failed} {t('taskHierarchyReportsFailed')}</Tag>}
     </p> : <p className="dt-hint">{t('tasksNoResult')}</p>}
-    {task.review?.summary && <p className="dt-task-report"><span>{task.review.summary}</span></p>}
+    {!v2 && task.review?.summary && <p className="dt-task-report"><span>{task.review.summary}</span></p>}
     {task.review?.accepted && <p className="dt-task-report"><Tag tone="success">{t('taskHierarchyAccepted')}</Tag>
       <span>{when(task.review.accepted.at, t('lang'))}</span></p>}
     {task.delegation?.resolution?.reason && <p className="dt-task-report"><span>{task.delegation.resolution.reason}</span></p>}
@@ -270,6 +275,7 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
         onClick={() => onOpenTicket(focus.id)}>{t('tasksOpen')}</Button>
     </div>
     {v2 && <Decision task={focus} t={t} onOpenTicket={onOpenTicket} />}
+    {v2 && <Done task={focus} t={t} onOpenTicket={onOpenTicket} />}
     <div className="dt-task-detail-next"><strong>{t('taskHierarchyNext')}</strong><span>{nextStep(focus, t)}</span>
       {!v2 && (focus.status === 'failed' || focus.status === 'delivery') && <ConfirmRetry task={focus} />}</div>
     {v2 && <p className="dt-task-detail-estimate"><strong>{t('taskDetailNextEstimate')}</strong><span>{estimateText(focus, t)}</span></p>}
@@ -279,7 +285,6 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
       {!v2 && focus.goal.decision && <p className="dt-task-report"><Tag tone="warning">{t('tasksDecision')}</Tag>
         <span>{focus.goal.decision.question ?? valueLabel(t, 'stage', focus.goal.decision.kind ?? '')}</span></p>}
     </div>
-    {v2 && <Done task={focus} t={t} onOpenTicket={onOpenTicket} />}
     {v2 ? <Owner task={focus} t={t} profiles={profiles} /> : <div className="dt-task-detail-section">
       <h4>{t('taskHierarchyOwner')}</h4>
       {focus.form === 'lightweight' ? <Hint>{t('tasksLightweightNote')}</Hint> : <>
@@ -310,7 +315,7 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
     </div>
     <div className="dt-task-detail-section">
       <h4>{t('taskHierarchyReports')}</h4>
-      <Reports task={focus} t={t} />
+      <Reports task={focus} t={t} v2={v2} profiles={profiles} />
     </div>
     <div className="dt-task-detail-section">
       <h4>{t('taskHierarchySession')}</h4>

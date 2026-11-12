@@ -145,12 +145,12 @@ export function SettingsPage({ group, query, state, deploymentForm, triggerFilte
   const groups = settingsGroups(consolidated)
   const live = consolidated ? (() => {
     switch (group) {
-      case 'source': return <SourceStatus />
+      case 'source': return <SourceStatus embedded />
       case 'trigger': return <TriggerStatus filter={triggerFilter ?? 'subscribed'} />
       case 'eval': return <EvalStatus filter={(ops.filter as DecisionFilter | undefined) ?? 'work'} window={ops.window}
-        paused={!!state?.paused} />
+        paused={!!state?.paused} embedded />
       case 'execution': return state ? <ExecutionStatus filter={(ops.filter as TicketFilter | undefined) ?? 'open'}
-        from={ops.from} state={state} reload={reload} /> : <p className="dt-hint">{t('loading')}</p>
+        from={ops.from} state={state} reload={reload} embedded /> : <p className="dt-hint">{t('loading')}</p>
       default: return null
     }
   })() : null
