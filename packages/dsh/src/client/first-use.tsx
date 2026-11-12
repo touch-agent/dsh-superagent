@@ -43,8 +43,8 @@ export function EmptyExamples({ masterId, onAsk }: { masterId?: string; onAsk: (
   return <div className="dt-first-use dt-first-use-empty">
     <p className="dt-hint">{t('firstUseExamples')}</p>
     <div className="dt-first-use-actions">
-      <Button variant="outline" size="sm" icon={<Icon name="message" size={14} />} onClick={ask}
-        title={t('firstUseExampleAskHint')}>{t('firstUseExampleAsk')}</Button>
+      {masterId && <Button variant="outline" size="sm" icon={<Icon name="message" size={14} />} onClick={ask}
+        title={t('firstUseExampleAskHint')}>{t('firstUseExampleAsk')}</Button>}
       <Button variant="outline" size="sm" icon={<Icon name="plus" size={14} />}
         onClick={() => navigate(settingsRoute('source'))} title={t('firstUseExampleSourceHint')}>{t('firstUseExampleSource')}</Button>
     </div>

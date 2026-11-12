@@ -12,7 +12,7 @@ import type { ApiResponse } from '../app/api.ts'
 import { taskDetailV2 } from './features.ts'
 import { usePanel } from './provider.tsx'
 import { useTasksView, type TasksViewClient } from './tasks-view.ts'
-import { duration, errorText, fullTime, valueLabel, when, type T } from './text.ts'
+import { errorText, fullTime, valueLabel, when, type T } from './text.ts'
 import { Hint } from './widgets.tsx'
 
 type ProfileRow = ApiResponse<'GET profiles'>['profiles'][number]
@@ -22,6 +22,8 @@ const STATUS_TONE: Record<TaskView['status'], TagTone> = { queued: 'neutral', wo
 
 /** What this level expects from a person next; a child's waiting state names the parent owner, not a person. */
 export function nextStep(task: TaskView, t: T): string {
+  if (task.parentTicketId && ['review', 'answer', 'delivery', 'blocked', 'failed'].includes(task.status))
+    return t('taskHierarchyNextParent')
   if (task.status === 'review') return t('taskHierarchyNextReview')
   if (task.status === 'answer') return t('taskHierarchyNextAnswer', { question: task.goal.decision?.question ?? t('noticeNoQuestion') })
   if (task.status === 'delivery') return t('taskHierarchyNextDelivery')
@@ -61,9 +63,7 @@ export function estimateText(task: TaskView, t: T): string {
   if (task.status === 'blocked' && !task.goal.decision) return t('taskDetailEstimateBlocked')
   if (task.status === 'review' || task.status === 'answer' || task.status === 'delivery' || task.status === 'failed'
     || task.status === 'blocked') return t('taskDetailEstimateWaiting')
-  const elapsed = duration(task.durationMs, t('lang'))
-  return elapsed ? `${t('taskDetailEstimateElapsed', { duration: elapsed })} ${t('taskDetailEstimateWorking')}`
-    : t('taskDetailEstimateWorking')
+  return t('taskDetailEstimateWorking')
 }
 
 function Deliverables({ task, t, onOpenTicket }: { task: TaskView; t: T; onOpenTicket?: (id: string) => void }) {

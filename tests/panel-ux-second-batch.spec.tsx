@@ -104,6 +104,8 @@ it('keeps a task detail deep link without selecting a tab', async () => {
   await mount()
   expect(all('[role="tab"]').map(item => item.textContent)).toEqual(['概览', '任务', '设置'])
   expect(all('[role="tab"]').some(item => item.getAttribute('aria-selected') === 'true')).toBe(false)
+  // With no selected tab, the first tab remains the keyboard entry point.
+  expect(all('[role="tab"]').map(item => item.tabIndex)).toEqual([0, -1, -1])
   expect(document.querySelector('main[role="tabpanel"]')?.getAttribute('aria-label')).toBe('执行')
 })
 
@@ -156,6 +158,8 @@ it('answers decision, result, next step with timing, owner and each child report
   // Opening the child keeps the upstream owner in human words too.
   await click(report.closest('li')!.querySelector<HTMLElement>('.dt-task-level-title')!)
   expect(detail.textContent).toContain('迁移文案负责人 · 第 3 版')
+  expect(detail.textContent).toContain(zh.taskHierarchyNextParent)
+  expect(detail.textContent).not.toContain(zh.taskHierarchyNextReview)
   expect(detail.textContent).not.toContain('worker-plan')
 })
 
