@@ -61,7 +61,7 @@ function manifestFields(): string[] {
   const end = source.indexOf('\n}', start)
   if (start < 0 || end < 0) throw new Error(`${MANIFEST_SOURCE} has no readable SourceManifest interface`)
   const body = source.slice(start, end)
-  const fields = [...body.matchAll(/^  ([A-Za-z][A-Za-z0-9]*)\??:/gm)].map(match => match[1]!)
+  const fields = [...body.matchAll(/^ {2}([A-Za-z][A-Za-z0-9]*)\??:/gm)].map(match => match[1]!)
   if (fields.length === 0) throw new Error(`${MANIFEST_SOURCE}'s SourceManifest interface declares no fields in the expected form`)
   return fields
 }
@@ -75,7 +75,7 @@ function apiRoutes(): string[] {
   const start = source.indexOf('export interface Api {')
   const end = source.indexOf('\n}', start)
   if (start < 0 || end < 0) throw new Error(`${API_SOURCE} has no readable Api interface`)
-  return [...source.slice(start, end).matchAll(/^  '([^']+)':/gm)].map(match => match[1]!)
+  return [...source.slice(start, end).matchAll(/^ {2}'([^']+)':/gm)].map(match => match[1]!)
 }
 /** The routes documented in the deployment guide's Management API table. */
 function documentedRoutes(): string[] {

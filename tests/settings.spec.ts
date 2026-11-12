@@ -20,6 +20,8 @@ it('refuses a save of a block that another save changed during its model or acco
   const { settings, store } = h.runtime
   const llm = (h.ctx as unknown as { llm: { resolveCallConfig: ReturnType<typeof vi.fn> } }).llm
   const check = deferred<unknown>()
+  // The untyped mock hides that the settings save awaits this promise.
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- The mock's untyped signature loses the promise return type.
   llm.resolveCallConfig.mockImplementationOnce(() => check.promise)
   const executor = store.settings().executor
   const revision = store.blockRevision('executor')

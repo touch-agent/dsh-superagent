@@ -159,13 +159,12 @@ export class Runtime extends Service implements SourceHost {
     this.runtimeHealth.set({ state: 'ready', detail: 'Orchestrator is ready', at: now() })
   }
   private httpHost(): HttpHost {
-    const runtime = this
     const { store, sources, prompts, profiles, sessions, settings, engine, executor, spaces, outbox, masterId, ready, setup, passes } = this
-    return { store, sources, prompts, profiles, sessions, settings, engine, executor, spaces, outbox, health: runtime.health, machine: this.machine, masterId, ready,
+    return { store, sources, prompts, profiles, sessions, settings, engine, executor, spaces, outbox, health: this.health, machine: this.machine, masterId, ready,
       sourceLinks: this.assembled.sourceLinks,
       get deployment() { return setup.deployment },
       get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem },
-      configured: () => setup.configured(), links: () => runtime.links(), ticketEnvironment: ticket => runtime.ticketEnvironment(ticket),
+      configured: () => setup.configured(), links: () => this.links(), ticketEnvironment: ticket => this.ticketEnvironment(ticket),
       checkSetup: () => { setup.check() }, requestPass: () => { passes.request() }, models: () => this.ctx.sessionController.modelCatalog() }
   }
   /** Idempotent stop; concurrent or repeated calls share the same shutdown promise. */

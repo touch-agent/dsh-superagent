@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Assignment, ChannelRef, ContextEntry, ContextSnapshot, Thread, Ticket, Trigger } from '@superagent/kernel'
-import { CONTEXT_DIMENSIONS, traceId } from '@superagent/kernel'
+import type { Assignment, ChannelRef, ContextEntry, Thread, Ticket, Trigger } from '@superagent/kernel'
+import { CONTEXT_DIMENSIONS } from '@superagent/kernel'
 import { assembleContext, mergeContextEntries, type ContextAssembly, type ContextAssemblyHost } from '@superagent/dsh/app/context-assembly.ts'
 import { contextGroupOf, type ContextGroupReadHost, type ContextGroupView } from '@superagent/dsh/app/context-groups.ts'
 
@@ -77,8 +77,6 @@ const entry = (values: Pick<ContextEntry, 'key' | 'dimension' | 'text'> & Partia
   source: `test:${values.key}`, scope: `${values.dimension}:${values.key}`, strength: 'default', inheritance: 'private',
   truncation: 500, ...values,
 })
-
-const byKey = (snapshot: ContextSnapshot) => new Map(snapshot.entries.map(item => [item.key, item]))
 
 describe('context assembly', () => {
   it('assembles each present dimension from its own source and records the absent one', () => {

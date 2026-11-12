@@ -240,7 +240,7 @@ function readPrStates(file) {
     value = JSON.parse(readFileSync(file, 'utf8'))
   }
   catch (error) {
-    throw new Error(`could not read --pr-states ${file}: ${error.message}`)
+    throw new Error(`could not read --pr-states ${file}: ${error.message}`, { cause: error })
   }
   if (value === null || typeof value !== 'object' || Array.isArray(value))
     throw new Error('--pr-states must be a JSON object of PR URL to OPEN, MERGED, CLOSED or NOT_FOUND')
@@ -278,7 +278,7 @@ async function queryPrStates(urls) {
       })
     }
     catch (error) {
-      throw new Error(`could not query PR #${number}: ${error.message}; run without --check-prs for the offline checks`)
+      throw new Error(`could not query PR #${number}: ${error.message}; run without --check-prs for the offline checks`, { cause: error })
     }
     if (response.status === 404) {
       states.set(url, 'NOT_FOUND')

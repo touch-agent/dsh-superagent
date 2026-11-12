@@ -103,7 +103,7 @@ describe('conversation dispatch', () => {
 describe('conversation dispatch through the Engine', () => {
   it('creates one ticket with a local mandate, and a second dispatch creates none', () => {
     const repo = new MemoryRepositories()
-    let settings = SettingsSchema.parse({})
+    const settings = SettingsSchema.parse({})
     const sources = new SourceRegistry(() => settings)
     sources.registerDefinition(conversationDefinition)
     const engine = new Engine({ repo, scope: sources, policy: () => settingsPolicy(settings, sources),

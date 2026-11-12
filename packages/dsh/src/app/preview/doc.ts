@@ -516,7 +516,7 @@ function similarity(before: string, after: string): number {
 }
 
 /** Words in Latin scripts, one token per CJK character, and one token per whitespace run or punctuation mark. */
-const INLINE_TOKEN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*|\s+|[^\s\p{L}\p{N}]/gu
+const INLINE_TOKEN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*|\s+|[^\s\p{L}\p{N}]/gu
 
 /** Compare two changed paragraphs token by token, coalescing adjacent segments; undefined when too large or identical. */
 function inlineDiff(before: string, after: string): DocInline[] | undefined {

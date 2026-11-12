@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import type { ProfileRunEffective, Ticket } from '@superagent/kernel'
 import { KV } from '@superagent/dsh/kv.ts'
 import { Store } from '@superagent/dsh/app/store.ts'
@@ -9,7 +9,6 @@ import { Prompts } from '@superagent/dsh/app/prompts.ts'
 import { Profiles, ProfileConflict, ProfileDraftSchema, runEffective, type ProfileDraft } from '@superagent/dsh/app/profiles.ts'
 import { profileWorkTools } from '@superagent/dsh/app/sessions.ts'
 import { profileMetrics } from '@superagent/dsh/app/profile-metrics.ts'
-import { WORK_TOOL_NAMES } from '@superagent/dsh/app/work-tools.ts'
 
 const NOW = '2026-11-10T12:00:00.000Z'
 const draft = (extra: Partial<ProfileDraft> = {}): ProfileDraft => ({ id: 'worker-docs', title: 'Docs worker',

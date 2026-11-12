@@ -140,8 +140,6 @@ function MilestoneRow({ milestone, collapsed, toggle, onOpen }: { milestone: Tas
   return <TreeRow node={{ ...milestone, title }} depth={0} collapsed={collapsed} toggle={toggle} onOpen={onOpen} />
 }
 
-const SHORT = 30
-const truncate = (text: string): string => text.length > SHORT ? `${text.slice(0, SHORT - 1)}…` : text
 const WIDTH = 1000
 // A fixed label column keeps titles clear of the fork and merge curves; the time area starts after it.
 const PAD = 32

@@ -235,7 +235,7 @@ describe('spaces in the runtime', () => {
   it('releases the lease when a person ends the Ticket', async () => {
     const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一'))
     expect(h.runtime.spaces.all().filter(row => row.ticketId === ticket.id).map(row => row.state)).toEqual(['active'])
-    await h.runtime.engine.stopTicket(ticket.id)
+    h.runtime.engine.stopTicket(ticket.id)
     await h.runtime.idle()
     await vi.waitFor(() => expect(h.runtime.spaces.all().filter(row => row.ticketId === ticket.id).map(row => row.state)).toEqual(['released']), { timeout: 5000 })
   })

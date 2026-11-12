@@ -82,7 +82,7 @@ export function usePoll<T>(load: () => Promise<T>, deps: readonly unknown[], int
       } catch (failure) {
         if (active) setState(previous => ({ ...previous, error: failure instanceof Error ? failure : new Error(String(failure)) }))
       } finally {
-        if (active) timer = setTimeout(run, document.hidden ? intervalMs * HIDDEN_FACTOR : intervalMs)
+        if (active) timer = setTimeout(() => { void run() }, document.hidden ? intervalMs * HIDDEN_FACTOR : intervalMs)
       }
     }
     const run = () => (queue = queue.then(once))
@@ -91,7 +91,6 @@ export function usePoll<T>(load: () => Promise<T>, deps: readonly unknown[], int
     void run()
     document.addEventListener('visibilitychange', shown)
     return () => { active = false; clearTimeout(timer); document.removeEventListener('visibilitychange', shown) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, intervalMs])
   const reload = useCallback(() => refresh.current(), [])
   return { data: state.data, error: state.error, reload }
@@ -102,6 +101,7 @@ export type DecisionFilter = typeof DECISION_FILTERS[number]
 export const DECISION_KINDS: Readonly<Record<DecisionFilter, string>> = { work: 'accept,reopen', stop: 'stop', ignore: 'ignore',
   unavailable: 'unavailable', all: '' }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- `{}` is the test for an all-optional request, not an alias for any object.
 export type Call = <K extends keyof Api>(route: K, ...request: {} extends ApiRequest<K> ? [request?: ApiRequest<K>] : [request: ApiRequest<K>])
   => Promise<ApiResponse<K>>
 /** Build a typed route caller that resolves localized error messages on each request. */

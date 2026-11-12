@@ -59,7 +59,7 @@ it('delivers nothing to a ticket a person stopped while an earlier ticket\'s del
   const held = holdSession(two.sessionId, gate.promise)
   const resumed = h.runtime.settings.pause(false, 'panel')
   await waitUntil(held)
-  await h.runtime.engine.stopTicket(one.ticket.id)
+  h.runtime.engine.stopTicket(one.ticket.id)
   const before = h.deliveries.mock.calls.length
   gate.resolve(); await resumed; await h.runtime.idle()
   expect(h.deliveries.mock.calls.slice(before).map(([call]) => call.sessionId)).not.toContain(one.sessionId)
@@ -74,7 +74,7 @@ it('drops a delivery whose ticket a person stopped while it waited for the worke
   const held = holdSession(one.sessionId, gate.promise)
   const resumed = h.runtime.settings.pause(false, 'panel')
   await waitUntil(held)
-  await h.runtime.engine.stopTicket(one.ticket.id)
+  h.runtime.engine.stopTicket(one.ticket.id)
   const before = h.deliveries.mock.calls.length
   gate.resolve(); await resumed; await h.runtime.idle()
   expect(h.deliveries.mock.calls.slice(before).map(([call]) => call.sessionId)).not.toContain(one.sessionId)
@@ -440,7 +440,11 @@ describe('a worker whose work runs in the background', () => {
     // A person asks for more; the worker starts the tests in the background and ends its turn.
     await new Promise(resolve => setTimeout(resolve, 5))
     h.runtime.receive(feishu('2', '再加个测试', { mentions: [], root_id: 'om_1' })); await h.runtime.idle()
-    await vi.waitFor(() => expect(latestAssignment(ticket())?.deliveredAt! >= latestAssignment(ticket())!.report!.at).toBe(true))
+    await vi.waitFor(() => {
+      const current = latestAssignment(ticket())
+      const previous = latestAssignment(ticket())
+      expect(current?.deliveredAt !== undefined && current.deliveredAt >= previous!.report!.at).toBe(true)
+    })
     const job = h.jobs.run(one.sessionId)
     idle(one.sessionId); await h.runtime.idle()
     await new Promise(resolve => setTimeout(resolve, 10))
@@ -967,7 +971,7 @@ it('runs a child in its own worker session with restricted tools, counts both sl
   await h.runTool(`worker-${child.id}`, 'orchestrator_report', { state: 'blocked', summary: 'need a parent decision' })
   expect(h.relays(h.runtime.masterId).map(item => JSON.stringify(item)).join('\n')).not.toContain(child.id)
   expect(h.runtime.store.tickets.get(ticket.id)!.inputs.some(input => input.kind === 'child-report' && input.childTicketId === child.id)).toBe(true)
-  await h.runtime.engine.stopTicket(ticket.id)
+  h.runtime.engine.stopTicket(ticket.id)
   await h.runtime.idle()
   expect(h.runtime.store.tickets.get(child.id)?.ended).toMatchObject({ outcome: 'stopped' })
   expect(h.runtime.executor.activeCount()).toBe(0)

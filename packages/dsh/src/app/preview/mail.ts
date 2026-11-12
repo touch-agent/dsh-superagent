@@ -239,6 +239,8 @@ function displayName(raw: string, what: string): string | undefined {
   if (name.length >= 2 && name.startsWith('"') && name.endsWith('"')) name = name.slice(1, -1).replace(/\\"/g, '"').trim()
   // A name that contains angle brackets can swallow a second address in a joined string; refuse it rather than
   // showing one recipient while silently dropping another.
+  // The control range is the input this check rejects; it is the reason the regex exists.
+  // eslint-disable-next-line no-control-regex -- Control characters are the input this validation rejects.
   if (/[\u0000-\u001f\u007f<>]/.test(name)) {
     throw new TypeError(`${what} has a display name with a control character or angle bracket`)
   }

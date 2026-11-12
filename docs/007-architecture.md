@@ -287,6 +287,29 @@ Each model request binds the Session to the current prompt revision. The revisio
 
 **Retiring the old scanners (X-02).** `tests/layers.spec.ts` and `tests/kernel-boundary.spec.ts` still run for one release, so both scanners agree while the tool is new. They are deleted in the release after the one that first ships `.dependency-cruiser.mjs`; the checks they alone carried (the kernel manifest and the filter-constant bindings) already moved to `tests/dependency-rules.spec.ts`.
 
+### Lint
+
+[`eslint.config.mjs`](../eslint.config.mjs) is the lint gate, run as `pnpm lint` by `pnpm check` and the `check` CI job. It uses ESLint 10 with `typescript-eslint` 8 and the project service, so the same TypeScript program that `pnpm typecheck` builds also answers the type-aware rules. ESLint was chosen over oxlint because the defects this repository most needs caught are type-dependent — a floating promise, a promise passed where a `void` callback is expected, and `await` on a non-promise — and `typescript-eslint` implements those as its long-standing checked rules. [Oxlint's type-aware linting](https://oxc.rs/docs/guide/usage/linter/type-aware) is newer and would add a second type engine to a repository where lint already takes under ten seconds, so its speed advantage does not pay for that duplication.
+
+The check covers `packages/kernel`, `packages/dsh`, `meta/`, `scripts/` and `tests/`. The rule set is deliberately about defects:
+
+- `eslint:recommended` and `typescript-eslint:recommended`: unused declarations (type positions included), explicit `any`, unused expressions, `ban-ts-comment`, duplicate or impossible constructs, and the core correctness rules.
+- Type-aware: `no-floating-promises`, `no-misused-promises`, `await-thenable` and `no-array-delete`.
+
+Nothing formats, reorders imports, renames or enforces a house style. `prefer-const` is off: it only flagged setup variables assigned once in a `beforeEach`, where a `const` cannot express the lifecycle. `no-base-to-string` was evaluated and not adopted, because all 31 findings were deliberate stringification of `Record<string, unknown>` and SQLite display values, and exempting them would have needed 31 directives.
+
+A temporary probe file containing an unused import, a floating promise, an explicit `any`, `await` on a non-promise and an async function assigned to a `() => void` property failed with exactly those five rules; it was removed. The one-time cleanup removed 38 unused declarations and fixed 22 misused-promise call sites, 18 non-promise awaits, four rethrows without `cause`, three useless regex escapes, two regex spaces, one dead store, one unsafe optional-chain assertion and one `this` alias, and removed a stale `react-hooks/exhaustive-deps` directive for a plugin this config does not load. No business rule changed; the diff consists of removals, two regex spellings, a `void` around an existing timer callback, `cause` on rethrows, and test doubles that return nothing.
+
+Exemptions are narrow and carry their reason at the line:
+
+- `tests/fixtures/dependency-rules/**` is ignored: those files are the import violations `tests/dependency-rules.spec.ts` reads as test data.
+- `no-control-regex` in `packages/dsh/src/app/preview/mail.ts` and `sheet.ts`: control characters are the input and the placeholder format those functions read.
+- `@typescript-eslint/no-empty-object-type` in `packages/dsh/src/client/api.ts`: `{}` is the `{} extends ApiRequest<K>` all-optional request test.
+- `@typescript-eslint/no-unused-vars` in `packages/dsh/src/app/prompts.ts`: `PartKey` is derived from `PART_KEYS`; the value is never read.
+- `@typescript-eslint/no-misused-promises` at three Vitest mock sites, where the mock helper's type loses the promise return type the test awaits.
+
+Follow-up: narrow a noisy rule with an option or one reasoned directive rather than a broad ignore; revisit `no-base-to-string` if the display values become typed, and reconsider oxlint if its type-aware rules cover the promise rules and the second type engine becomes the larger cost.
+
 ### Source-specific dependencies
 
 Some generic modules still refer directly to GitHub or Feishu:

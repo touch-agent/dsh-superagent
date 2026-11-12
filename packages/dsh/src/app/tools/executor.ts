@@ -52,7 +52,7 @@ async function followableGithubThread(host: ExecutorToolsHost, source: string, i
   try { await readGithubThread(host.github, number, signal) }
   catch (error) {
     if (!(error instanceof CliError) || error.code !== 404) throw error
-    throw new Error(`GitHub thread github:${number} is not in ${host.github.deployment.repository}; the GitHub Source only reads its configured repository, so its comments there would never reach this ticket`)
+    throw new Error(`GitHub thread github:${number} is not in ${host.github.deployment.repository}; the GitHub Source only reads its configured repository, so its comments there would never reach this ticket`, { cause: error })
   }
 }
 

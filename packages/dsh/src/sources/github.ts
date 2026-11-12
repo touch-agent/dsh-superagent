@@ -8,7 +8,7 @@ import { ciCounts, ciFact, ciFailures, ciSummary, githubThreadContext, pullCheck
 import { branchCiTrigger, ciTrigger, commentTrigger, CommentSchema, githubAddress, humanSignal, isHumanLogin, issueTrigger, IssueSchema, pullTrigger, SOURCE }
   from './github-trigger.ts'
 import { githubLink, probeGithub, sendGithub, withdrawGithub } from './github-channel.ts'
-import type { GithubComment, PullRef } from './github-trigger.ts'
+import type { PullRef } from './github-trigger.ts'
 import { observePull, pullsOf, readPull, type Pull } from './github-pull.ts'
 import { health, sourceContext, type SourceContext } from './host.ts'
 import { KV } from '../kv.ts'

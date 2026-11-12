@@ -550,6 +550,8 @@ function mapFormulaReferences(formula: string,
       row,
     }, whole) ?? whole
   })
+  // NUL delimits the placeholders this line substitutes, so the control characters are the format.
+  // eslint-disable-next-line no-control-regex -- NUL is the placeholder delimiter this parser reads.
   return mapped.replace(/\u0000(\d+)\u0000/g, (_whole, index: string) => literals[Number(index)] ?? '')
 }
 

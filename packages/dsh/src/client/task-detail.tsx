@@ -120,7 +120,7 @@ function LevelRow({ task, t, onEnter }: { task: TaskView; t: T; onEnter: () => v
  */
 export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskView; store: TasksViewClient
   onBack: () => void; onOpenTicket: (id: string) => void }) {
-  const { t, navigate, openSession, notify } = usePanel()
+  const { t, openSession, notify } = usePanel()
   const snapshot = useTasksView(store)
   // Entries keep the row a person entered from; every render resolves the same id against the newest poll answer,
   // so an open detail does not freeze at the first render while the list keeps moving underneath it.

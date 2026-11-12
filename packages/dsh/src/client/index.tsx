@@ -2,7 +2,6 @@
  * Browser plugin entry point: the sidebar icon and management panel, the New Session main-Session entry, the in-Session
  * Status view that reuses the management page, the right Events tab with its unread title, and the Plugin Manager config view.
  */
-import { useCallback, useEffect, useRef } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SidebarPanelIconOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -79,7 +78,7 @@ export function apply(ctx: ClientContext): void {
     try {
       await openKnownSession(ctx.sessions, id as SessionId, target => { ctx.uiWorkspace.openSession(target) }, new AbortController().signal)
     } catch (error) {
-      if (error instanceof SessionNavigationError) throw new Error(t(error.code === 'not-ready' ? 'sessionListNotReady' : 'sessionNotListed'))
+      if (error instanceof SessionNavigationError) throw new Error(t(error.code === 'not-ready' ? 'sessionListNotReady' : 'sessionNotListed'), { cause: error })
       throw error
     }
   }

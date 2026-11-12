@@ -44,7 +44,7 @@ function setup(strength: 'explicit' | 'inferred' = 'inferred', bodies = Array.fr
   const assessor = new MasterAssessor(host)
   const policy: Policy = { version: 'v1', paused: false, evalTimeoutMs: 600_000, gate: () => ({ admissible: true, strength, basis: { via: 'followup' } }),
     revalidate: () => ({ ok: true }), mandateLimits: () => ({ maxActionLevel: 'send' }), admitsInferred: rules => rules.length > 0 }
-  const executor: Executor = { start: async () => {}, deliver: async () => {}, stop: async () => {} }
+  const executor: Executor = { start: () => {}, deliver: () => {}, stop: () => {} }
   const scope = { scope: () => ({ listened: true as const, observed: true }) }
   const outbox = { send: () => {}, status: () => undefined, withdraw: () => {}, recall: () => 'recalled' as const }
   engine = new Engine({ repo, policy: () => policy, scope, assessor, executor, outbox })

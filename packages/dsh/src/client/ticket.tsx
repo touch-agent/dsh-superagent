@@ -88,7 +88,7 @@ function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChange
   </Section>
   return <Section title={t('reviewSection')} icon="review">
     <Hint>{t('reviewAggregateHint')}</Hint>
-    {review.deliverables.map((deliverable, index) => {
+    {review.deliverables.map(deliverable => {
       const confirmations = review.confirmations.filter(item => deliverable.sources.some(source =>
         source.ticketId === item.source.ticketId && source.assignmentId === item.source.assignmentId))
       const criteria = [
