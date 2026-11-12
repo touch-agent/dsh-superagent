@@ -93,7 +93,7 @@ it('labels the approval revision, states the effect, and separates rules from pe
 it('says a pending close takes effect after approval, and wins over an open follow', async () => {
   reviewTicket()
   server.ticketDetails.t1 = { ...server.ticketDetails.t1!, pendingEnd: { by: 'thread', outcome: 'merged',
-    at: '2026-09-22T00:00:00Z' }, threads: [{ ...server.ticketDetails.t1!.threads[0]!, anchor: { own: true } }] }
+    at: '2026-09-22T00:00:00Z' }, threads: [{ ...server.ticketDetails.t1!.threads[0]!, anchor: { own: true, follow: true } }] }
   await mount()
   await click('查看并确认')
   expect(text()).toContain('已记录的「PR 已合并」会生效')
@@ -103,7 +103,7 @@ it('says a pending close takes effect after approval, and wins over an open foll
 it('counts an open follow when the task opened none', async () => {
   reviewTicket()
   server.ticketDetails.t1 = { ...server.ticketDetails.t1!,
-    threads: [{ ...server.ticketDetails.t1!.threads[0]!, anchor: { own: false } }] }
+    threads: [{ ...server.ticketDetails.t1!.threads[0]!, anchor: { own: false, follow: true } }] }
   await mount()
   await click('查看并确认')
   expect(text()).toContain('任务会继续等待关联来源结束；来源结束后任务才结束。')
@@ -118,10 +118,19 @@ it('ends once the only follows are closed', async () => {
   expect(text()).toContain('批准后：任务会结束，并出现在最近历史里。')
 })
 
+it('does not treat a bound Channel as a follow', async () => {
+  reviewTicket()
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!,
+    threads: [{ ...server.ticketDetails.t1!.threads[0]!, anchor: { own: false } }] }
+  await mount()
+  await click('查看并确认')
+  expect(text()).toContain('批准后：任务会结束，并出现在最近历史里。')
+})
+
 it('says an own open follow still has to end before the task can end', async () => {
   reviewTicket()
   server.ticketDetails.t1 = { ...server.ticketDetails.t1!,
-    threads: [{ ...server.ticketDetails.t1!.threads[0]!, anchor: { own: true } }] }
+    threads: [{ ...server.ticketDetails.t1!.threads[0]!, anchor: { own: true, follow: true } }] }
   await mount()
   await click('查看并确认')
   expect(text()).toContain('任务会继续等待关联来源结束；来源结束后任务才结束。')

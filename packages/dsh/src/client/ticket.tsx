@@ -83,10 +83,10 @@ function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChange
   const sourceLabel = (source: { ticketId: string }) => source.ticketId === ticket.id ? t('reviewSourceRoot') : t('reviewSourceChild')
   const confirmationText = (criterion: NonNullable<TicketPageView['review']>['confirmations'][number]['criterion']) => criterion.reason
     ? reasonLabel(t, criterion.reason) : t('reviewHumanConfirm')
-  // Mirror `Tickets.followsDone`: own follows win when present, otherwise every follow counts. A pending close wins first.
-  const anchors = ticket.threads.flatMap(thread => thread.anchor ? [thread.anchor] : [])
-  const own = anchors.filter(anchor => anchor.own)
-  const counted = own.length > 0 ? own : anchors
+  // Mirror `Tickets.followsDone`: own follows win when present, otherwise every follow counts. Channel anchors are not follows.
+  const follows = ticket.threads.flatMap(thread => 'anchor' in thread && thread.anchor && 'follow' in thread.anchor ? [thread.anchor] : [])
+  const own = follows.filter(anchor => anchor.own)
+  const counted = own.length > 0 ? own : follows
   const approvalEffect = ticket.pendingEnd
     ? t('reviewEffectPendingEnd', { outcome: valueLabel(t, 'outcome', ticket.pendingEnd.outcome) })
     : counted.some(anchor => !anchor.closed) ? t('reviewEffectFollows')
