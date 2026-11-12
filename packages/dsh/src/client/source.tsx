@@ -159,14 +159,14 @@ function SourceRow({ source }: { source: SourceStatusRow }) {
   </li>
 }
 
-export function SourceStatus() {
+export function SourceStatus({ embedded = false }: { embedded?: boolean } = {}) {
   const { t, call, navigate } = usePanel()
   const { setup } = usePanelData()
   const { data, error } = usePoll(() => call('GET sources'), [])
   // Global deployment setup problems halt all Sources and show at the top; Source-specific setup problems show on that Source's row.
   const elsewhere = setup?.problem?.place === 'deployment' ? setup.problem : undefined
   return <div className="dt-form">
-    <StatusHead hint={t('sourceStatusIntro')} settings="source" />
+    <StatusHead hint={t('sourceStatusIntro')} {...embedded ? {} : { settings: 'source' }} />
     {elsewhere && <p className="dt-error">
       <SetupMessage problem={elsewhere} lead /> <button type="button" className="dt-textlink"
         onClick={() => navigate(setupPage(elsewhere.place))}>{t('setupFixLink')}</button>

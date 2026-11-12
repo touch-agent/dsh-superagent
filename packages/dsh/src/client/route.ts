@@ -2,12 +2,19 @@
 import { THREAD_FILTERS, TICKET_FILTERS, type ThreadFilter, type TicketFilter, type TicketOrigin } from '../app/api.ts'
 import type { SetupPlace } from '../setup.ts'
 import { DECISION_FILTERS, type DecisionFilter } from './api.ts'
+import { opsInSettings } from './features.ts'
 import type { T } from './text.ts'
 
 export const TABS = ['overview', 'tasks', 'source', 'trigger', 'eval', 'execution', 'settings'] as const
 export type Tab = typeof TABS[number]
-export const SETTINGS_GROUPS = ['source', 'eval', 'execution', 'display', 'prompts', 'deployment'] as const
+/** The operational surfaces UX batch 2 folds into Settings; off, they return as first-level tabs. */
+export const OPS_TABS = ['source', 'trigger', 'eval', 'execution'] as const
+export type OpsTab = typeof OPS_TABS[number]
+export const isOpsTab = (tab: Tab): tab is OpsTab => (OPS_TABS as readonly string[]).includes(tab)
+export const SETTINGS_GROUPS = ['source', 'trigger', 'eval', 'execution', 'display', 'prompts', 'deployment'] as const
 export type SettingsGroup = typeof SETTINGS_GROUPS[number]
+/** Trigger joins Settings in batch 2; with `ux.opsInSettings.v1` off it stays a tab and not a Settings page. */
+export const DEFAULT_SETTINGS_GROUPS: readonly SettingsGroup[] = SETTINGS_GROUPS.filter(group => group !== 'trigger')
 export type Route = { page: 'overview' | 'tasks' | 'source'; id?: undefined; query?: undefined }
   | { page: 'trigger'; id?: undefined; query?: { filter?: ThreadFilter } }
   | { page: 'trigger'; id: string; query?: { trigger?: string } }
@@ -50,7 +57,7 @@ export function parseRoute(value: unknown): Route | undefined {
 const ROUTE_KEY = 'dsh-superagent/route'
 export interface Location { route: Route; stack: Route[]; group?: SettingsGroup | undefined }
 export const lastSettingsGroup = ({ route, group }: Location): SettingsGroup => route.page === 'settings' ? route.query.group
-  : group ?? 'source'
+  : isOpsTab(route.page) && opsInSettings() ? route.page : group ?? 'source'
 export function initialLocation(): Location {
   try {
     const stored = JSON.parse(sessionStorage.getItem(ROUTE_KEY) ?? 'null') as { route?: unknown; stack?: unknown; group?: unknown } | null

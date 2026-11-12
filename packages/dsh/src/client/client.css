@@ -308,7 +308,7 @@ div.dt-preview-head { color: var(--dsw-alias-label-secondary); }
 .dt-more-link { font-size: 12px; font-weight: 400; }
 .dt-settings { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 24px; align-items: start; }
 .dt-settings-nav { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; }
-.dt-settings-link { padding: 6px 10px; border: 0; border-radius: 8px; background: none; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.dt-settings-link { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 0; border-radius: 8px; background: none; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
 .dt-settings-link:hover { color: var(--dsw-alias-label-primary); }
 .dt-settings-link[aria-current='page'] { background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-primary); font-weight: 500; }
 .dt-settings-link[data-stage] + .dt-settings-link:not([data-stage]) { margin-top: 10px; }
@@ -588,6 +588,33 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-task-level-meta { color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
 .dt-task-report { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; line-height: 17px; color: var(--dsw-alias-label-secondary); }
 .dt-task-report-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+/* Settings groups and page descriptions: the operations pages keep a short label, icon and one-line boundary. */
+.dt-settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.dt-settings-nav-group + .dt-settings-nav-group { margin-top: 10px; }
+.dt-settings-nav-title { margin: 0 0 2px; padding: 0 10px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.02em; color: var(--dsw-alias-label-caption); }
+.dt-settings-link svg { flex: none; color: var(--dsw-alias-label-caption); }
+.dt-settings-link[aria-current='page'] svg { color: inherit; }
+.dt-settings-head { display: flex; flex-direction: column; gap: 4px; }
+.dt-settings-head .dt-hint { margin: 0; }
+.dt-settings-boundary { padding: 8px 10px; border-radius: 8px; background: var(--dsw-alias-bg-layer-2); }
+.dt-settings-subtitle { margin: 8px 0 0; font-size: 12px; line-height: 18px; font-weight: 600; color: var(--dsw-alias-label-secondary); }
+.dt-settings-ops { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* First use: three labelled lines and two starting points when there is no task yet. */
+.dt-first-use { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 12px; background: var(--dsw-alias-bg-layer-2); }
+.dt-first-use-line { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; line-height: 20px; }
+.dt-first-use-label { flex: 0 0 auto; font-weight: 600; color: var(--dsw-alias-label-secondary); }
+.dt-first-use-text { min-width: 0; color: var(--dsw-alias-label-primary); }
+.dt-first-use-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dt-first-use-empty { border-style: dashed; background: transparent; }
+/* Deeper task detail: the decision card, the expected timing, the result summary and per-child reports. */
+.dt-task-detail-estimate { display: flex; gap: 6px; margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+.dt-task-detail-estimate strong { flex: none; }
+.dt-task-decision { padding: 10px 12px; border: 0.5px solid var(--dsw-alias-border-l3); border-inline-start: 3px solid var(--dsw-alias-bg-warning); border-radius: 10px; background: var(--dsw-alias-bg-layer-2); }
+.dt-task-decision[data-decision='none'] { border-inline-start-color: var(--dsw-alias-border-l3); }
+.dt-task-done .dt-row-quote { white-space: normal; }
+.dt-task-child-report { font-size: 11px; line-height: 17px; }
+.dt-task-child-report summary { cursor: pointer; color: var(--dsw-alias-label-secondary); }
+.dt-task-child-report-body { display: flex; flex-direction: column; gap: 4px; padding: 6px 0 0 14px; }
 @media (max-width: 720px) {
 .dt-notice-stack { left: 12px; right: 12px; width: auto; }
 .dt-drawer { width: 100vw; }

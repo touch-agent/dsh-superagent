@@ -103,12 +103,14 @@ export function SegmentedTabs<V extends string>({ items, value, onChange, label,
     for (const tab of list.current.children) observer.observe(tab)
     return () => { observer.disconnect() }
   }, [measure, items.length])
+  // A detail route selects no tab; the first tab still has to be reachable by keyboard.
+  const focusable = items.some(item => item.value === value) ? value : items[0]?.value
   return <div ref={list} role="tablist" aria-label={label} className={cx('dt-tabs', className)} data-more={more} onScroll={measure}
     style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }} onKeyDown={event => walk(event,
-      items.map(item => item.value), value, onChange)}>
+      items.map(item => item.value), focusable ?? value, onChange)}>
     {items.map(item => <button key={item.value} type="button" role="tab" id={item.id} aria-controls={item.panelId}
       aria-selected={item.value === value}
-      tabIndex={item.value === value ? 0 : -1} className="dt-tab" onClick={() => onChange(item.value)}>{item.label}</button>)}
+      tabIndex={item.value === focusable ? 0 : -1} className="dt-tab" onClick={() => onChange(item.value)}>{item.label}</button>)}
   </div>
 }
 export function SegmentedControl<V extends string>({ options, value, onChange, label, disabled, className }: {

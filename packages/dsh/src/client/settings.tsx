@@ -1,32 +1,52 @@
-/** Settings tab shell routing between stage settings (Sources, Eval, Execution), display preferences, Prompts, and Deployment. */
+/** Settings tab shell routing between stage settings (Sources, Triggers, Eval, Execution), display preferences, Prompts, and Deployment. */
 import { useState } from 'react'
-import type { StateView } from './api.ts'
-import { InfoTip, Switch } from './controls.tsx'
-import { ERROR_AGGREGATE, EVENTS_AUTO_OPEN, NOTIFY_DRAWER, NOTIFY_OVERLAY, TASK_HIERARCHY, autoOpenPreference, featureEnabled,
-  notifyAutoDismiss, setAutoOpenPreference, setFeature, setNotifyAutoDismiss } from './features.ts'
+import type { DecisionFilter, StateView } from './api.ts'
+import type { TicketFilter } from '../app/api.ts'
+import { Button, Icon, InfoTip, Switch, type IconName } from './controls.tsx'
+import { ERROR_AGGREGATE, EVENTS_AUTO_OPEN, FIRST_USE, NOTIFY_DRAWER, NOTIFY_OVERLAY, OPS_IN_SETTINGS, TASK_DETAIL_V2,
+  TASK_HIERARCHY, autoOpenPreference, featureEnabled, notifyAutoDismiss, opsInSettings, restoreFirstUse, setAutoOpenPreference,
+  setFeature, setNotifyAutoDismiss } from './features.ts'
 import { Hint } from './widgets.tsx'
 import { DeploymentPage, type DeploymentForm } from './deployment.tsx'
-import { EvalSettings } from './eval.tsx'
-import { ExecutionSettings } from './execution.tsx'
+import { EvalSettings, EvalStatus } from './eval.tsx'
+import { ExecutionSettings, ExecutionStatus } from './execution.tsx'
 import { PromptsPage } from './prompts.tsx'
-import { usePanel } from './provider.tsx'
-import { SETTINGS_GROUPS, settingsRoute, type SettingsGroup } from './route.ts'
+import { usePanel, usePanelData } from './provider.tsx'
+import { DEFAULT_SETTINGS_GROUPS, SETTINGS_GROUPS, settingsRoute, type SettingsGroup } from './route.ts'
 import { SettingsProvider } from './settings-kit.tsx'
-import { SourceSettings } from './source.tsx'
+import { SourceSettings, SourceStatus } from './source.tsx'
+import { TriggerStatus } from './trigger.tsx'
 
-const STAGE_GROUPS: readonly SettingsGroup[] = ['source', 'eval', 'execution']
+const STAGE_GROUPS: readonly SettingsGroup[] = ['source', 'trigger', 'eval', 'execution']
+/** The operations pages keep the same one-line boundary inside Settings as they had as tabs. */
+const OPS_GROUPS: readonly SettingsGroup[] = STAGE_GROUPS
+const NAV: readonly { title: 'settingsNav.work' | 'settingsNav.interface' | 'settingsNav.system'; items: readonly SettingsGroup[] }[] = [
+  { title: 'settingsNav.work', items: ['source', 'trigger', 'eval', 'execution'] },
+  { title: 'settingsNav.interface', items: ['display', 'prompts'] },
+  { title: 'settingsNav.system', items: ['deployment'] },
+]
+/** One icon per page, drawn from the panel's own SVG set so no emoji or remote asset enters the default surface. */
+const GROUP_ICON: Record<SettingsGroup, IconName> = { source: 'inbox', trigger: 'message', eval: 'decision', execution: 'running',
+  display: 'bell', prompts: 'hash', deployment: 'shield' }
+/** The visible groups: with the batch-2 switch off, trigger stays a tab and the old settings list returns unchanged. */
+export function settingsGroups(consolidated = opsInSettings()): readonly SettingsGroup[] {
+  return consolidated ? SETTINGS_GROUPS : DEFAULT_SETTINGS_GROUPS
+}
 /**
  * Display preferences belong to this browser, like the unread cursor: they are not policy and are not saved to the Store.
  * The Events tab's first automatic open is a trust-phase exception and defaults off in the stable phase.
  */
 function DisplaySettings() {
-  const { t } = usePanel()
+  const { t, notify } = usePanel()
   const [autoOpen, setAutoOpen] = useState(autoOpenPreference)
   const [overlay, setOverlay] = useState(() => featureEnabled(NOTIFY_OVERLAY))
   const [autoDismiss, setAutoDismiss] = useState(notifyAutoDismiss)
   const [drawer, setDrawer] = useState(() => featureEnabled(NOTIFY_DRAWER))
   const [hierarchy, setHierarchy] = useState(() => featureEnabled(TASK_HIERARCHY))
   const [aggregate, setAggregate] = useState(() => featureEnabled(ERROR_AGGREGATE))
+  const [consolidated, setConsolidated] = useState(() => featureEnabled(OPS_IN_SETTINGS))
+  const [detail, setDetail] = useState(() => featureEnabled(TASK_DETAIL_V2))
+  const [onboarding, setOnboarding] = useState(() => featureEnabled(FIRST_USE))
   const available = featureEnabled(EVENTS_AUTO_OPEN)
   return <div className="dt-form">
     <div className="dt-form dt-block">
@@ -79,32 +99,105 @@ function DisplaySettings() {
       </div>
       <Hint>{aggregate ? t('errorAggregateHint') : t('errorAggregateDisabled')}</Hint>
     </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('opsInSettingsSection')}<InfoTip text={t('opsInSettingsHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('opsInSettingsSetting')}<InfoTip text={t('opsInSettingsHint')} /></div>
+        <Switch checked={consolidated} label={t('opsInSettingsSetting')} onChange={next => { setConsolidated(next)
+          setFeature(OPS_IN_SETTINGS, next) }} />
+      </div>
+      <Hint>{consolidated ? t('opsInSettingsHint') : t('opsInSettingsDisabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('taskDetailV2Section')}<InfoTip text={t('taskDetailV2Hint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('taskDetailV2Setting')}<InfoTip text={t('taskDetailV2Hint')} /></div>
+        <Switch checked={detail} label={t('taskDetailV2Setting')} onChange={next => { setDetail(next)
+          setFeature(TASK_DETAIL_V2, next) }} />
+      </div>
+      <Hint>{detail ? t('taskDetailV2Hint') : t('taskDetailV2Disabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('firstUseSection')}<InfoTip text={t('firstUseHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('firstUseSetting')}<InfoTip text={t('firstUseHint')} /></div>
+        <Switch checked={onboarding} label={t('firstUseSetting')} onChange={next => { setOnboarding(next)
+          setFeature(FIRST_USE, next) }} />
+      </div>
+      <Hint>{onboarding ? t('firstUseHint') : t('firstUseDisabled')}</Hint>
+      {onboarding && <div className="dt-row-buttons">
+        <Button variant="outline" size="sm" icon={<Icon name="refresh" size={14} />}
+          onClick={() => { restoreFirstUse(); notify(t('firstUseRestored')) }}>{t('firstUseRestore')}</Button>
+      </div>}
+    </div>
   </div>
 }
 
-export function SettingsPage({ group, query, state, deploymentForm }: {
-  group: SettingsGroup; query: { source?: string; version?: string }; state: StateView; deploymentForm: DeploymentForm
+export function SettingsPage({ group, query, state, deploymentForm, triggerFilter, ops = {} }: {
+  group: SettingsGroup; query: { source?: string; version?: string }; state?: StateView; deploymentForm: DeploymentForm
+  triggerFilter?: Parameters<typeof TriggerStatus>[0]['filter']
+  /** The direct-link filters an operations list opened from Overview or a notice carries into this page. */
+  ops?: { filter?: string; window?: '24h'; from?: 'conversation' }
 }) {
   const { t, navigate } = usePanel()
+  const { reload } = usePanelData()
+  const consolidated = opsInSettings()
+  const groups = settingsGroups(consolidated)
+  const live = consolidated ? (() => {
+    switch (group) {
+      case 'source': return <SourceStatus embedded />
+      case 'trigger': return <TriggerStatus filter={triggerFilter ?? 'subscribed'} />
+      case 'eval': return <EvalStatus filter={(ops.filter as DecisionFilter | undefined) ?? 'work'} window={ops.window}
+        paused={!!state?.paused} embedded />
+      case 'execution': return state ? <ExecutionStatus filter={(ops.filter as TicketFilter | undefined) ?? 'open'}
+        from={ops.from} state={state} reload={reload} embedded /> : <p className="dt-hint">{t('loading')}</p>
+      default: return null
+    }
+  })() : null
   const content = (() => {
     switch (group) {
-      case 'source': return <SettingsProvider><SourceSettings {...query.source ? { focus: query.source } : {}} /></SettingsProvider>
-      case 'eval': return <SettingsProvider><EvalSettings version={query.version} /></SettingsProvider>
-      case 'execution': return <SettingsProvider><ExecutionSettings /></SettingsProvider>
+      case 'source': return <>
+        {live && <div className="dt-settings-ops">{live}</div>}
+        {consolidated && <h3 className="dt-settings-subtitle">{t('settingsConfigTitle')}</h3>}
+        <SettingsProvider><SourceSettings {...query.source ? { focus: query.source } : {}} /></SettingsProvider>
+      </>
+      case 'trigger': return live ?? <TriggerStatus filter={triggerFilter ?? 'subscribed'} />
+      case 'eval': return <>
+        {live && <div className="dt-settings-ops">{live}</div>}
+        {consolidated && <h3 className="dt-settings-subtitle">{t('settingsConfigTitle')}</h3>}
+        <SettingsProvider><EvalSettings version={query.version} /></SettingsProvider>
+      </>
+      case 'execution': return <>
+        {live && <div className="dt-settings-ops">{live}</div>}
+        {consolidated && <h3 className="dt-settings-subtitle">{t('settingsConfigTitle')}</h3>}
+        <SettingsProvider><ExecutionSettings /></SettingsProvider>
+      </>
       case 'display': return <DisplaySettings />
       case 'prompts': return <PromptsPage />
-      case 'deployment': return <DeploymentPage setup={state.setup} form={deploymentForm} />
+      case 'deployment': return state ? <DeploymentPage setup={state.setup} form={deploymentForm} />
+        : <p className="dt-hint">{t('loading')}</p>
     }
   })()
   return <div className="dt-settings">
     <nav className="dt-settings-nav" aria-label={t('tab.settings')}>
-      {SETTINGS_GROUPS.map(value => <button key={value} type="button" className="dt-settings-link" data-stage={STAGE_GROUPS.includes(value)
-        || undefined}
-        aria-current={value === group ? 'page' : undefined} onClick={() => navigate(settingsRoute(value),
-          true)}>{t(`settingsGroup.${value}`)}</button>)}
+      {NAV.map(section => {
+        const items = section.items.filter(item => groups.includes(item))
+        if (!items.length) return null
+        return <div className="dt-settings-nav-group" key={section.title}>
+          <p className="dt-settings-nav-title">{t(section.title)}</p>
+          {items.map(value => <button key={value} type="button" className="dt-settings-link"
+            data-stage={STAGE_GROUPS.includes(value) || undefined}
+            aria-current={value === group ? 'page' : undefined} onClick={() => navigate(settingsRoute(value),
+              true)}><Icon name={GROUP_ICON[value]} size={15} />{t(`settingsGroup.${value}`)}</button>)}
+        </div>
+      })}
     </nav>
     <div className="dt-settings-body">
-      <h2 className="dt-settings-title">{t(`settingsGroup.${group}`)}</h2>
+      <div className="dt-settings-head">
+        <h2 className="dt-settings-title">{t(`settingsGroup.${group}`)}</h2>
+        <p className="dt-hint">{t(`settingsDescription.${group}`)}</p>
+      </div>
+      {opsInSettings() && OPS_GROUPS.includes(group) && <p className="dt-hint dt-settings-boundary">{t('settingsOpsBoundary')}</p>}
       {content}
     </div>
   </div>

@@ -13,8 +13,8 @@ import { localized, valueLabel } from './text.ts'
 import { ConfirmButton, Hint, LabelValue, LoadMore, LoadState, Section, StatusHead, When } from './widgets.tsx'
 import type { SpaceRow } from '../app/spaces.ts'
 
-export function ExecutionStatus({ filter: current, from, state, reload }: {
-  filter: TicketFilter; from?: TicketOrigin | undefined; state: StateView; reload: () => Promise<void>
+export function ExecutionStatus({ filter: current, from, state, reload, embedded = false }: {
+  filter: TicketFilter; from?: TicketOrigin | undefined; state: StateView; reload: () => Promise<void>; embedded?: boolean
 }) {
   const { t, call, navigate } = usePanel()
   const [limit, setLimit] = useState(20)
@@ -30,7 +30,7 @@ export function ExecutionStatus({ filter: current, from, state, reload }: {
     : { tone: 'ongoing', label: t('executorRunning') }
   const action = paused ? 'resumeProcessing' : 'pauseProcessing'
   return <>
-    <StatusHead hint={t('executionStatusIntro')} settings="execution" />
+    <StatusHead hint={t('executionStatusIntro')} {...embedded ? {} : { settings: 'execution' }} />
     <div className="dt-row-meta dt-status-line">
       <span className="dt-status-text" data-state={status.tone}>{status.label}</span>
       {!state.setup.problem && <>

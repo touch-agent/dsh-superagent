@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { usePoll, type ApprovalRow, type OverviewView, type Problem, type TicketRow } from './api.ts'
 import { Button, Icon, Tag } from './controls.tsx'
 import { entryThreeZones, errorAggregate } from './features.ts'
+import { FirstUseNotes } from './first-use.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
 import { TicketLine } from './rows.tsx'
@@ -327,6 +328,9 @@ export function OverviewPage() {
   const { call } = usePanel()
   const { data, error, reload } = usePoll(() => call('GET overview'), [])
   if (!data) return <LoadState error={error} loading />
-  return entryThreeZones() ? <EntryPage data={data} error={error} reload={reload} />
-    : <LegacyOverview data={data} error={error} reload={reload} />
+  return <>
+    <FirstUseNotes />
+    {entryThreeZones() ? <EntryPage data={data} error={error} reload={reload} />
+      : <LegacyOverview data={data} error={error} reload={reload} />}
+  </>
 }

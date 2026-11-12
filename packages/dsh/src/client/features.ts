@@ -20,12 +20,20 @@ export const NOTIFY_DRAWER = 'ux.notifyDrawer.v1'
 export const NOTIFY_OVERLAY = 'ux.notifyOverlay.v1'
 /** UX batch 1's one-row problem aggregate; off restores one row per system problem. */
 export const ERROR_AGGREGATE = 'ux.errorAggregate.v1'
+/** UX batch 2's settings consolidation: the Source, trigger, Eval and execution surfaces live in Settings; off restores their tabs. */
+export const OPS_IN_SETTINGS = 'ux.opsInSettings.v1'
+/** UX batch 2's deepened task detail: what is decided, what was done, the next step with an estimate, and a human owner. */
+export const TASK_DETAIL_V2 = 'ux.taskDetail.v2'
+/** UX batch 2's first-use explanation and clickable empty-state examples; off leaves the plain task list and empty hint. */
+export const FIRST_USE = 'ux.firstUse.v1'
 /** The person's per-browser preference, like the unread cursor: absent means the stable-phase default, off. */
 const AUTO_OPEN_PREF = 'dsh-superagent/events-auto-open'
 /** Whether a floating card closes itself after the hold window; a browser preference, not policy. */
 const NOTIFY_AUTO_DISMISS_PREF = 'dsh-superagent/notify-auto-dismiss'
 /** Read notice ids, capped; a browser preference so a reload does not re-announce everything. */
 const NOTIFY_READ_PREF = 'dsh-superagent/notify-read'
+/** Whether the first-use notes were read once in this browser; a display preference, not an acceptance. */
+const FIRST_USE_PREF = 'dsh-superagent/first-use-dismissed'
 
 /** Whether a switch is on; absent or unreadable storage means the default (on). */
 export function featureEnabled(name: string): boolean {
@@ -67,6 +75,10 @@ export const taskHierarchy = (): boolean => featureEnabled(TASK_HIERARCHY)
 export const notifyDrawer = (): boolean => featureEnabled(NOTIFY_DRAWER)
 export const notifyOverlay = (): boolean => featureEnabled(NOTIFY_OVERLAY)
 export const errorAggregate = (): boolean => featureEnabled(ERROR_AGGREGATE)
+/** UX batch 2: each surface can fall back to the pre-batch tab or hint on its own. */
+export const opsInSettings = (): boolean => featureEnabled(OPS_IN_SETTINGS)
+export const taskDetailV2 = (): boolean => featureEnabled(TASK_DETAIL_V2)
+export const firstUse = (): boolean => featureEnabled(FIRST_USE)
 
 /** Whether a floating card auto-closes; on by default, and off keeps it until a person closes it. */
 export const notifyAutoDismiss = (): boolean => {
@@ -93,4 +105,15 @@ export const rememberRead = (ids: Iterable<string>): void => {
     const next = [...new Set(ids)].slice(-500)
     globalThis.localStorage?.setItem(NOTIFY_READ_PREF, JSON.stringify(next))
   } catch { /* a blocked storage is not a failure */ }
+}
+/** Whether the three-line first-use notes were already read in this browser. */
+export const firstUseDismissed = (): boolean => {
+  try { return globalThis.localStorage?.getItem(FIRST_USE_PREF) === 'on' } catch { return false }
+}
+export const dismissFirstUse = (): void => {
+  try { globalThis.localStorage?.setItem(FIRST_USE_PREF, 'on') } catch { /* a blocked storage is not a failure */ }
+}
+/** Show the notes again from Settings › Display; only the browser preference changes. */
+export const restoreFirstUse = (): void => {
+  try { globalThis.localStorage?.removeItem(FIRST_USE_PREF) } catch { /* a blocked storage is not a failure */ }
 }
