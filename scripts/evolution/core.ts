@@ -254,12 +254,76 @@ export interface GateResult {
 /** One guardrail's two group values, its pre-registered threshold and whether it passed. */
 export type GuardrailComparison = Record<string, { baseline: number | null; candidate: number | null; threshold: number | null; status: 'pass' | 'fail' | 'unknown' }>
 
+/**
+ * The Phase 2 value verdict. Exactly one outcome is reported:
+ * `improvement` and `guardrail-regression` are evidence-backed decisions, `no-difference` means no
+ * improvement reached the pre-registered MDE, and `insufficient-evidence` means Phase 1 could not
+ * produce an admissible comparison yet. A missing measure is never rounded into a zero.
+ */
+export type ValueOutcome = 'improvement' | 'no-difference' | 'guardrail-regression' | 'insufficient-evidence'
+
+/** One pre-registered metric's judgment; unavailable data stays `unknown`, never `0`. */
+export interface ValueMetricJudgment {
+  state: 'available' | 'unknown'
+  unit: 'rate' | 'seconds' | 'tokens-per-run'
+  baseline: number | null
+  candidate: number | null
+  change: number | null
+  threshold: number | null
+  verdict: 'improved' | 'no-difference' | 'below-mde' | 'regressed' | 'within-threshold' | 'unknown'
+  detail: string
+}
+
+/** Coverage of the metrics the value gate must consider, including an explicit unknown cost. */
+export interface ValueMetrics {
+  success: ValueMetricJudgment
+  rework: ValueMetricJudgment
+  reviewFindings: ValueMetricJudgment
+  latency: ValueMetricJudgment
+  cost: ValueMetricJudgment
+  blocked: ValueMetricJudgment
+  /** No pricing table exists, so monetary cost is always unknown and never a gate. */
+  monetaryCost: { state: 'unknown'; detail: string }
+}
+
+/**
+ * The value gate classifies the Phase 1 gate; it does not relax, replace or re-derive the
+ * pre-registered sample size, stopping rule, alpha, MDE or holdout checks.
+ */
+export interface ValueGateResult {
+  schema: 'evolution.value-gate.v1'
+  proposalId: string
+  outcome: ValueOutcome
+  recommendation: 'adopt' | 'do-not-adopt'
+  summary: string
+  reasons: string[]
+  criteria: {
+    preRegistrationComplete: boolean
+    evidenceSufficient: boolean
+    significantImprovement: boolean
+    noGuardrailRegression: boolean
+    /** The comparison uses exact stored values; display rounding cannot promote a proposal. */
+    unroundedComparison: true
+  }
+  metrics: ValueMetrics
+  phase1: {
+    gateOutcome: GateOutcome
+    requiredPerGroup: number | null
+    mde: number
+    alpha: number
+    power: number
+    stoppingAfterSamples: number
+    holdout: string[]
+  }
+  statistics: GateResult['statistics']
+}
+
 /** A versioned proposal. It is a document; `applied` is always false and `decidedBy` always null here. */
 export interface EvolutionProposal {
   schema: 'evolution.proposal.v1'
   id: string
   status: 'pending-evidence' | 'ready-for-human-approval' | 'not-adopted'
-  recommendation: 'adopt' | 'do-not-adopt' | 'observe-more'
+  recommendation: 'adopt' | 'do-not-adopt'
   hypothesis: string
   confidence: Confidence
   evidence: EvolutionDiagnosis['evidence'] & { evalSet: { id: string; revision: number }; holdout: string[] }
@@ -272,6 +336,7 @@ export interface EvolutionProposal {
   diff: ProfileDiff
   experiment: ExperimentPlan
   gate: GateResult
+  valueGate: ValueGateResult
   approval: { required: true; status: 'pending' | 'blocked' | 'not-requested'; decidedBy: null; decidedAt: null }
   applied: false
   liveConfigChange: false
@@ -300,6 +365,8 @@ export interface EvolutionReport {
   }
   proposals: EvolutionProposal[]
   gates: GateResult[]
+  /** The Phase 2 verdict for every gate that ran, in the same order as `gates`. */
+  valueGates: ValueGateResult[]
   approvalQueue: ApprovalQueue
   conclusion: { kind: 'propose' | 'no-measurable-difference' | 'reject' | 'insufficient-evidence'; summary: string; reasons: string[] }
   guarantees: { liveConfiguration: 'unchanged'; autoApply: false; authorizationFields: 'refused'; samplePrivateText: 'refused'; proposalText: 'author-supplied'; externalCredentials: false }
@@ -1142,9 +1209,9 @@ function guardrailValues(outcomes: ReplayOutcome[]): { reworkRate: number | null
 export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined, evalSet: EvalSetManifest | undefined, observationIds: Set<string>, observationEnvironments: string[] = []): GateResult {
   const checks: GateResult['checks'] = []
   const reasons: string[] = []
-  const insufficient = (reason: string): GateResult => {
+  const insufficient = (reason: string, statistics: GateResult['statistics'] = null): GateResult => {
     if (!reasons.includes(reason)) reasons.push(reason)
-    return { proposalId: plan.id, outcome: 'insufficient', reasons, checks, requiredPerGroup: plan.requiredPerGroup, statistics: null }
+    return { proposalId: plan.id, outcome: 'insufficient', reasons, checks, requiredPerGroup: plan.requiredPerGroup, statistics }
   }
   checks.push({ check: 'pre-registered-eval-set', status: evalSet ? 'pass' : 'fail',
     detail: evalSet ? `${evalSet.id}@${evalSet.revision}` : 'missing manifest' })
@@ -1228,7 +1295,8 @@ export function gate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined,
   checks.push({ check: 'stopping-rule', status: 'pass', detail: `reached ${plan.stopping.afterSamples} per group` })
   if (statistics.guardrails['p90DispatchToReadySeconds']?.status === 'unknown') {
     checks.push({ check: 'guardrails', status: 'unknown', detail: 'p90 dispatch-to-ready latency is unavailable' })
-    return insufficient('guardrailUnknown')
+    // Keep the available statistics so the value gate can still report a definite guardrail failure.
+    return insufficient('guardrailUnknown', statistics)
   }
   const guardrailFailures = Object.entries(statistics.guardrails).filter(([, value]) => value.status === 'fail').map(([name]) => name)
   checks.push({ check: 'guardrails', status: guardrailFailures.length === 0 ? 'pass' : 'fail',
@@ -1279,25 +1347,199 @@ function guardrailComparison(
   }
 }
 
-/** The conclusion from all proposals and gates; no gate may recommend adoption without a pass. */
-function conclusionOf(proposals: EvolutionProposal[], gates: GateResult[], sampleCount: number, intentCount: number,
-  withheld: { id: string; reason: string }[]): EvolutionReport['conclusion'] {
+/** Map each pre-registered guardrail to the value-metric slot it covers. */
+const GUARDRAIL_METRICS: Record<string, { metric: 'rework' | 'reviewFindings' | 'latency' | 'cost' | 'blocked'; unit: ValueMetricJudgment['unit']; label: string }> = {
+  reworkRate: { metric: 'rework', unit: 'rate', label: 'rework rate' },
+  blockedRate: { metric: 'blocked', unit: 'rate', label: 'blocked/failed rate' },
+  p90DispatchToReadySeconds: { metric: 'latency', unit: 'seconds', label: 'p90 dispatch-to-ready latency' },
+  reviewRejectionRate: { metric: 'reviewFindings', unit: 'rate', label: 'review rejection rate' },
+  tokensPerRun: { metric: 'cost', unit: 'tokens-per-run', label: 'token usage per run' },
+}
+
+/** The Phase 1 checks that make a comparison admissible at all; a value decision cannot skip them. */
+const PRE_REGISTRATION_REASONS = new Set([
+  'evalSetMismatch', 'noHoldout', 'holdoutOverlap', 'holdoutMismatch', 'observationEnvironmentMismatch',
+  'environmentMismatch', 'evidenceConfigurationMismatch', 'allocationMismatch', 'stoppingBeforePower',
+])
+
+/** A metric with no admissible measurement; it stays null so a missing value cannot become a zero. */
+function unavailableMetric(unit: ValueMetricJudgment['unit'], detail: string): ValueMetricJudgment {
+  return { state: 'unknown', unit, baseline: null, candidate: null, change: null, threshold: null, verdict: 'unknown', detail }
+}
+
+/** Judge the primary success metric from the exact (unrounded) statistics. */
+function successMetric(plan: ExperimentPlan, statistics: GateResult['statistics']): ValueMetricJudgment {
+  if (statistics === null || statistics.baseline.rate === null || statistics.candidate.rate === null) {
+    return unavailableMetric('rate', 'No root-success rate is available for both groups.')
+  }
+  const difference = statistics.difference
+  const significant = difference >= plan.mde && statistics.ci.lower > 0
+    && statistics.pValue !== null && statistics.pValue < plan.alpha
+  let verdict: ValueMetricJudgment['verdict']
+  let detail: string
+  if (significant) {
+    verdict = 'improved'
+    detail = `Exact difference ${(difference * 100).toFixed(3)}pp reaches the ${(plan.mde * 100).toFixed(3)}pp MDE; interval lower ${(statistics.ci.lower * 100).toFixed(3)}pp > 0 and p ${statistics.pValue!.toFixed(4)} < ${plan.alpha}.`
+  } else if (statistics.ci.upper < 0) {
+    verdict = 'regressed'
+    detail = `The interval is entirely below zero (${(statistics.ci.upper * 100).toFixed(3)}pp); the candidate is worse than the baseline.`
+  } else if (difference < plan.mde && statistics.ci.upper < plan.mde) {
+    verdict = 'no-difference'
+    detail = `The interval upper bound ${(statistics.ci.upper * 100).toFixed(3)}pp is below the ${(plan.mde * 100).toFixed(3)}pp MDE.`
+  } else if (difference < plan.mde) {
+    verdict = 'below-mde'
+    detail = `The exact difference ${(difference * 100).toFixed(3)}pp is below the ${(plan.mde * 100).toFixed(3)}pp MDE, even if display rounding would show it at the threshold.`
+  } else {
+    verdict = 'unknown'
+    detail = `The exact difference ${(difference * 100).toFixed(3)}pp is at or above the MDE, but the interval or p-value does not support adoption.`
+  }
+  return { state: 'available', unit: 'rate', baseline: statistics.baseline.rate, candidate: statistics.candidate.rate,
+    change: difference, threshold: plan.mde, verdict, detail }
+}
+
+/** Judge one guardrail from the Phase 1 comparison; an unavailable cost stays unknown, not zero. */
+function guardrailMetric(name: string, comparison: GuardrailComparison | undefined): ValueMetricJudgment {
+  const definition = GUARDRAIL_METRICS[name]!
+  const entry = comparison?.[name]
+  if (!entry || entry.baseline === null || entry.candidate === null || entry.threshold === null) {
+    if (name === 'tokensPerRun') {
+      return unavailableMetric('tokens-per-run', 'The host did not report token usage on every run; cost is unknown, not zero, and no cost gate is applied.')
+    }
+    if (name === 'reviewRejectionRate') {
+      return unavailableMetric('rate', 'Review acceptance or rejection is unavailable; review findings stay unknown and are not counted as zero.')
+    }
+    return unavailableMetric(definition.unit, `${definition.label} is unavailable on both groups; it is unknown, not a pass.`)
+  }
+  const change = entry.candidate - entry.baseline
+  // Token growth is pre-registered as a relative threshold; every other guardrail is an absolute one.
+  const threshold = name === 'tokensPerRun' ? entry.baseline * entry.threshold : entry.threshold
+  const verdict: ValueMetricJudgment['verdict'] = entry.status === 'fail' ? 'regressed' : 'within-threshold'
+  const detail = name === 'tokensPerRun'
+    ? `${definition.label} changed by ${(change).toFixed(0)} tokens/run against an allowed ${(threshold).toFixed(0)} (${(entry.threshold * 100).toFixed(1)}% growth).`
+    : `${definition.label} changed by ${(change * (definition.unit === 'rate' ? 100 : 1)).toFixed(3)}${definition.unit === 'rate' ? 'pp' : definition.unit === 'seconds' ? 's' : ''} against the pre-registered threshold ${(entry.threshold * (definition.unit === 'rate' ? 100 : 1)).toFixed(3)}.`
+  return { state: 'available', unit: definition.unit, baseline: entry.baseline, candidate: entry.candidate,
+    change, threshold, verdict, detail }
+}
+
+/** Assemble the required metric coverage for one comparison. */
+function valueMetricsOf(plan: ExperimentPlan, result: GateResult): ValueMetrics {
+  const guardrails = result.statistics?.guardrails
+  return {
+    success: successMetric(plan, result.statistics),
+    rework: guardrailMetric('reworkRate', guardrails),
+    reviewFindings: guardrailMetric('reviewRejectionRate', guardrails),
+    latency: guardrailMetric('p90DispatchToReadySeconds', guardrails),
+    cost: guardrailMetric('tokensPerRun', guardrails),
+    blocked: guardrailMetric('blockedRate', guardrails),
+    monetaryCost: { state: 'unknown',
+      detail: 'No pricing table exists; monetary cost cannot be derived from token counts and is not a gate. Do not write "lower cost" from this report.' },
+  }
+}
+
+/**
+ * Classify one Phase 1 gate result as the four-outcome value verdict. Adoption requires both a
+ * significant improvement and no guardrail regression; everything else is `do-not-adopt` with a
+ * reason. This function reads the gate result and never changes a configuration.
+ */
+export function valueGateOf(plan: ExperimentPlan, result: GateResult): ValueGateResult {
+  const statistics = result.statistics
+  const metrics = valueMetricsOf(plan, result)
+  const guardrailEntries = statistics === null ? [] : Object.entries(statistics.guardrails)
+  const guardrailFailures = guardrailEntries.filter(([, value]) => value.status === 'fail')
+    .map(([name]) => GUARDRAIL_METRICS[name]?.metric ?? name)
+  const unknownGuardrails = guardrailEntries.filter(([name, value]) => value.status === 'unknown' && name !== 'tokensPerRun')
+    .map(([name]) => GUARDRAIL_METRICS[name]?.metric ?? name)
+  const significantImprovement = statistics !== null && statistics.baseline.rate !== null && statistics.candidate.rate !== null
+    && statistics.difference >= plan.mde && statistics.ci.lower > 0
+    && statistics.pValue !== null && statistics.pValue < plan.alpha
+  const noGuardrailRegression = statistics !== null && guardrailFailures.length === 0 && unknownGuardrails.length === 0
+  const evidenceSufficient = result.outcome !== 'insufficient' && statistics !== null
+  const preRegistrationComplete = !result.reasons.some(reason => PRE_REGISTRATION_REASONS.has(reason))
+
+  let outcome: ValueOutcome
+  if (statistics === null) outcome = 'insufficient-evidence'
+  // A known guardrail regression is decisive even when another guardrail (or the interval) is unknown.
+  else if (guardrailFailures.length > 0) outcome = 'guardrail-regression'
+  else if (!evidenceSufficient) outcome = 'insufficient-evidence'
+  else if (significantImprovement && noGuardrailRegression) outcome = 'improvement'
+  else if (result.outcome === 'no-difference' || result.outcome === 'reject') outcome = 'no-difference'
+  else outcome = 'insufficient-evidence'
+
+  const reasons: string[] = []
+  let summary: string
+  if (outcome === 'improvement') {
+    reasons.push('significantImprovement', 'noGuardrailRegression')
+    summary = 'The pre-registered primary metric improved at or above the MDE with no available guardrail regression; recommend adoption.'
+  } else if (outcome === 'guardrail-regression') {
+    reasons.push('guardrailRegression')
+    for (const metric of guardrailFailures) reasons.push(`guardrail:${metric}`)
+    summary = `A guardrail regressed past its pre-registered threshold (${guardrailFailures.join(', ')}); do not adopt.`
+  } else if (outcome === 'no-difference') {
+    if (result.reasons.includes('regression')) reasons.push('primaryRegression')
+    else if (result.reasons.includes('belowMde')) reasons.push('belowMde')
+    else reasons.push('noImprovement')
+    reasons.push('noDifference')
+    summary = 'No improvement reached the pre-registered MDE; keep the current configuration rather than adopt.'
+  } else {
+    reasons.push(...result.reasons)
+    if (reasons.length === 0) reasons.push('insufficientEvidence')
+    summary = 'Phase 1 evidence is insufficient for a value decision; do not adopt yet and extend or rerun the pre-registered experiment.'
+  }
+
+  return {
+    schema: 'evolution.value-gate.v1',
+    proposalId: plan.id,
+    outcome,
+    recommendation: outcome === 'improvement' ? 'adopt' : 'do-not-adopt',
+    summary,
+    reasons,
+    criteria: { preRegistrationComplete, evidenceSufficient, significantImprovement, noGuardrailRegression, unroundedComparison: true },
+    metrics,
+    phase1: {
+      gateOutcome: result.outcome,
+      requiredPerGroup: result.requiredPerGroup,
+      mde: plan.mde,
+      alpha: plan.alpha,
+      power: plan.power,
+      stoppingAfterSamples: plan.stopping.afterSamples,
+      holdout: [...plan.holdout],
+    },
+    statistics,
+  }
+}
+
+/** Run the Phase 1 gate and immediately classify its result with the Phase 2 value gate. */
+export function valueGate(plan: ExperimentPlan, evidence: ReplayEvidence | undefined, evalSet: EvalSetManifest | undefined,
+  observationIds: Set<string>, observationEnvironments: string[] = []): ValueGateResult {
+  return valueGateOf(plan, gate(plan, evidence, evalSet, observationIds, observationEnvironments))
+}
+
+/** The conclusion from all proposals and value gates; no gate may recommend adoption without both criteria. */
+function conclusionOf(proposals: EvolutionProposal[], gates: GateResult[], valueGates: ValueGateResult[], sampleCount: number,
+  intentCount: number, withheld: { id: string; reason: string }[]): EvolutionReport['conclusion'] {
   if (sampleCount === 0) return { kind: 'insufficient-evidence', summary: 'No observation samples were available; nothing was proposed.', reasons: ['noSamples'] }
   const ready = proposals.filter(proposal => proposal.status === 'ready-for-human-approval')
   if (ready.length > 0) {
     return { kind: 'propose', summary: `${ready.length} proposal(s) passed the pre-registered holdout gate and await human approval.`, reasons: ['gatePass'] }
   }
-  if (gates.some(result => result.outcome === 'reject')) {
-    return { kind: 'reject', summary: 'At least one pre-registered gate rejected adoption; record the reason and keep the current configuration.', reasons: ['gateReject'] }
+  if (valueGates.some(result => result.outcome === 'guardrail-regression')) {
+    return { kind: 'reject', summary: 'At least one pre-registered guardrail regressed; keep the current configuration.', reasons: ['guardrailRegression'] }
   }
-  if (gates.some(result => result.outcome === 'no-difference')) {
-    return { kind: 'no-measurable-difference', summary: 'The holdout showed no effect at or above the pre-registered MDE; keep the current configuration.', reasons: ['belowMde'] }
+  const noDifference = valueGates.filter(result => result.outcome === 'no-difference')
+  if (noDifference.length > 0) {
+    const reasons = [...new Set(noDifference.flatMap(result => result.reasons))].slice(0, 4)
+    const primaryRegression = noDifference.some(result => result.reasons.includes('primaryRegression'))
+    return { kind: 'no-measurable-difference', summary: primaryRegression
+      ? 'The holdout showed a primary-metric regression against the baseline; keep the current configuration.'
+      : 'The holdout showed no effect at or above the pre-registered MDE; keep the current configuration.',
+      reasons: reasons.length > 0 ? reasons : ['belowMde'] }
   }
   if (intentCount === 0) {
     return { kind: 'insufficient-evidence', summary: 'No candidate experience with an explicit diff and pre-registered experiment was supplied; the observation is recorded only.', reasons: ['noCandidateExperience'] }
   }
-  const reasons = [...new Set([...gates.flatMap(result => result.reasons), ...withheld.map(item => item.reason)])]
-    .filter(reason => reason !== 'belowMde').slice(0, 4)
+  const reasons = [...new Set([...valueGates.flatMap(result => result.reasons), ...gates.flatMap(result => result.reasons),
+    ...withheld.map(item => item.reason)])]
+    .filter(reason => reason !== 'belowMde' && reason !== 'noDifference').slice(0, 4)
   return { kind: 'insufficient-evidence', summary: 'Evidence is insufficient for adoption; extend the observation or run the missing holdout replay.',
     reasons: reasons.length > 0 ? reasons : ['insufficientEvidence'] }
 }
@@ -1331,6 +1573,7 @@ export function runEvolution(input: EvolutionInput): EvolutionReport {
   }
   const proposals: EvolutionProposal[] = []
   const gates: GateResult[] = []
+  const valueGates: ValueGateResult[] = []
   const withheld: { id: string; reason: string }[] = diagnosesResult.filter(diagnosis => diagnosis.withheld).map(diagnosis => ({ id: diagnosis.id, reason: diagnosis.withheld! }))
 
   for (const intent of intents) {
@@ -1382,11 +1625,12 @@ export function runEvolution(input: EvolutionInput): EvolutionReport {
     }
     const replay = evidence.find(experiment => experiment.id === intent.id)
     const result = gate(plan, replay, evalSet, observationIds, [...new Set([...candidate.environments, ...baseline.environments])])
+    const value = valueGateOf(plan, result)
     gates.push(result)
-    const status: EvolutionProposal['status'] = result.outcome === 'pass' ? 'ready-for-human-approval'
-      : result.outcome === 'insufficient' ? 'pending-evidence' : 'not-adopted'
-    const recommendation: EvolutionProposal['recommendation'] = result.outcome === 'pass' ? 'adopt'
-      : result.outcome === 'insufficient' ? 'observe-more' : 'do-not-adopt'
+    valueGates.push(value)
+    const status: EvolutionProposal['status'] = value.outcome === 'improvement' ? 'ready-for-human-approval'
+      : value.outcome === 'insufficient-evidence' ? 'pending-evidence' : 'not-adopted'
+    const recommendation: EvolutionProposal['recommendation'] = value.recommendation
     proposals.push({
       schema: 'evolution.proposal.v1',
       id: proposalIdOf(intent),
@@ -1408,6 +1652,7 @@ export function runEvolution(input: EvolutionInput): EvolutionReport {
       diff: intent.diff,
       experiment: plan,
       gate: result,
+      valueGate: value,
       approval: { required: true, status: status === 'ready-for-human-approval' ? 'pending' : status === 'pending-evidence' ? 'blocked' : 'not-requested',
         decidedBy: null, decidedAt: null },
       applied: false,
@@ -1433,8 +1678,9 @@ export function runEvolution(input: EvolutionInput): EvolutionReport {
     observation: { totals, groups, diagnoses: diagnosesResult, withheld },
     proposals,
     gates,
+    valueGates,
     approvalQueue: queueOf(proposals, generatedAt),
-    conclusion: conclusionOf(proposals, gates, samples.records.length, intents.length, withheld),
+    conclusion: conclusionOf(proposals, gates, valueGates, samples.records.length, intents.length, withheld),
     guarantees: { liveConfiguration: 'unchanged', autoApply: false, authorizationFields: 'refused', samplePrivateText: 'refused', proposalText: 'author-supplied', externalCredentials: false },
   }
 }

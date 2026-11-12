@@ -1,8 +1,8 @@
 # 020 进化闭环：离线观察与只提案
 
-> 状态：T5-05 的**离线实现**已落地；只读现有遥测，不接生产写入，不自动选择 profile，不自动应用提案。
+> 状态：T5-05 的**离线实现**已落地（Phase 1 观察/提案 + Phase 2 价值门）；只读现有遥测，不接生产写入，不自动选择 profile，不自动应用提案。
 > 关联：[011 设计原则](011-design-principles.zh.md) §4 C.1/C.2/C.6、[016 AgentProfile](016-agent-profile.zh.md) §4 与 §4.5、[任务计划](plan/TASK-PLAN.zh.md) T5-05、[TRACKING](plan/TRACKING.zh.md)。
-> 代码：`scripts/evolution/core.ts`、`scripts/evolution/export.mjs`、`scripts/evolution/run.mjs`；测试：`tests/evolution.spec.ts`。
+> 代码：`scripts/evolution/core.ts`（`gate()` 为 Phase 1 回归门，`valueGate()`/`valueGateOf()` 为 Phase 2 价值门）、`scripts/evolution/export.mjs`、`scripts/evolution/run.mjs`；测试：`tests/evolution.spec.ts`。
 
 ## 1. 结论先行
 
@@ -12,6 +12,7 @@ T5-05 要的是一条**独立于执行 worker** 的「观察 → 总结 → 进�
 - **总结**：生成带样本引用、置信度、适用范围和缺口的诊断；低置信、无基线、无样本只记录，不提案。
 - **进化**：把候选经验写成版本化提案文档，包含 `baseRevision`、`proposedRevision`、字段 diff、证据、风险、回退条件与人审队列。
 - **验证**：提案必须带预登记的评测集/holdout、主指标、MDE、α、power、样本量、分配方式、护栏和停止规则；没有回放证据只能停在「证据不足」。
+- **价值门（Phase 2）**：在 Phase 1 回归门之上把结论归为四结局——`improvement`、`no-difference`、`guardrail-regression`、`insufficient-evidence`；只有同时满足「显著改善」与「无护栏回退」才标为建议采纳（`recommendation=adopt`），其余一律 `do-not-adopt` 并给原因。指标覆盖成功率、返工、review 发现、延迟和成本；宿主未提供的数据保持 `unknown`，不按 0 计。
 - **只提案**：`core.ts` 不 import `node:fs`、Store、Profiles 或任何写入 API；CLI 只把报告和队列写到操作者指定的目录。人工批准后用现有 profile 面板/registry 创建 revision 并激活，回退指针指回 `baseRevision`。
 
 ## 2. 运行规格
@@ -70,7 +71,7 @@ T5-05 要的是一条**独立于执行 worker** 的「观察 → 总结 → 进�
 - `experiment`：评测集/holdout、分配、α/power、护栏、停止规则；
 - `risks`：漂移、选择偏差、评测污染、权限误读；
 - `rollback`：回到 `baseRevision` 的条件与操作；运行中工单保持绑定快照，不受 active 指针回退影响；
-- `gate`、`approval`、`applied=false`、`liveConfigChange=false`、`decidedBy=null`。
+- `gate`、`valueGate`、`approval`、`applied=false`、`liveConfigChange=false`、`decidedBy=null`。
 
 ### 2.5 验证门
 
@@ -86,6 +87,39 @@ T5-05 要的是一条**独立于执行 worker** 的「观察 → 总结 → 进�
    - `insufficient`：样本不足、区间跨 MDE、holdout 污染、环境不一致或没有证据。
 
 没有 `pass` 的提案只能是 `pending-evidence` 或 `not-adopted`；审批队列只收 `ready-for-human-approval`，且只是文档。
+
+### 2.6 价值门（Phase 2）
+
+Phase 1 的 `gate()` 继续负责预登记、样本量、停止点、α/MDE、holdout 与统计/护栏判定。Phase 2 新增的 `valueGateOf(plan, gateResult)` 只**分类**这个结果，不重算、不放宽 Phase 1 规则；`valueGate(plan, evidence, evalSet, observationIds, environments)` 是「跑 Phase 1 门再分类」的便捷入口。每个提案带 `valueGate`，报告带同序的 `valueGates`。
+
+**四结局**（`outcome`，互斥）：
+
+| 结局 | 条件 | `recommendation` |
+| --- | --- | --- |
+| `improvement` | 未舍入的主指标差值 ≥ 预登记 MDE、1−α 区间下界 >0、双侧 p < 预登记 α，且所有可用护栏未回退 | `adopt`（建议采纳） |
+| `no-difference` | 达到预登记样本与停止点，但区间上界 < MDE；或主指标区间整体为负（`primaryRegression`） | `do-not-adopt` |
+| `guardrail-regression` | 任一可用护栏超过预登记阈值（返工、阻塞/失败、p90、review 拒绝、token 增长） | `do-not-adopt` |
+| `insufficient-evidence` | 缺证据、样本/停止点不足、holdout 污染或不匹配、环境/配置不一致、p90 护栏未知、区间跨 MDE | `do-not-adopt`（先补证据） |
+
+`no-difference` 表示「没有达到 MDE 的改善」；主指标显著变差时用 `reasons=[primaryRegression, noDifference]` 单独标出，不伪装成「没有差异」。`insufficient-evidence` 的 `reasons` 沿用 Phase 1 的稳定原因码（`sampleSize`、`stoppingNotReached`、`guardrailUnknown`、`holdoutOverlap` 等），不以 0 或「无差异」代替。
+
+**指标覆盖**（`valueGate.metrics`，每项带 `state=available|unknown` 与 `verdict`）：
+
+| 指标 | 来源 | 缺失时 |
+| --- | --- | --- |
+| 成功率 | 主指标：根工单成功率差值、区间、p 值 | 无样本则 `unknown`，不能当 0 |
+| 返工 | 护栏 `reworkRate` | `unknown`，不通过也不失败 |
+| review 发现 | 护栏 `reviewRejectionRate`；PR 评论仍不可得 | `unknown`，不把「未接受」当「被拒绝」 |
+| 延迟 | 护栏 p90 dispatch→ready | `unknown` 时 Phase 1 门直接 `insufficient` |
+| 成本 | token/run 护栏（相对增长阈值）；货币成本无定价表 | token 缺失时 `cost.state=unknown`、数值为 `null`；`monetaryCost` 恒为 `unknown`，**不作为门**，不写「成本更低」 |
+
+**不制造假改善**：
+
+- 比较使用精确存储值，不在比较前四舍五入；显示层可以把 9.95pp 写成 10.0pp，但 `9.95pp < 10pp` 仍不能通过 MDE。`criteria.unroundedComparison` 明确记录这一点。
+- 小样本的「100% vs 0%」不会因为 p 值小就采纳：必须先达到按基线率/MDE/α/power 算出的每组样本量与预登记停止点。`insufficient-evidence` 是正确结论，不是「无差异」。
+- 只读一个预登记主指标；不做 early look，不用事后分层或改阈值制造显著性。
+- 若 p90 未知、但已达到样本量且其他护栏已经回退，Phase 1 保留可用统计量，价值门仍判 `guardrail-regression` 并点名回退的指标，而不是把已知回退埋进「证据不足」。
+- 结论仍只是文档：`applied=false`、`liveConfigChange=false`、`decidedBy=null`；`valueGate` 不写 profile、不改生效配置或权限字段。
 
 ## 3. 人工批准、生成新版本与回退
 
@@ -124,13 +158,13 @@ node scripts/evolution/run.mjs --samples /tmp/evolution/samples.json \
 | [016 §4.2](016-agent-profile.zh.md) 观察口径 | 根/子/lightweight 分开；censor、closed、fallback、moving 单列；`n<5` 仅展示抑制 |
 | [016 §4.3](016-agent-profile.zh.md) 总结与提案字段 | 假设、证据、置信度、范围、预期、风险、回退；低置信不提案 |
 | [016 §4.4](016-agent-profile.zh.md) 评测集与回归门 | holdout、环境指纹、MDE/α/power/样本量、分配、护栏、停止规则；允许「不采纳」 |
-| [016 §4.5](016-agent-profile.zh.md) Phase 1/Phase 2 两门 | 试点只证明可观测性；价值门需要回放证据，且没有对照就停在 Phase 1 |
+| [016 §4.5](016-agent-profile.zh.md) Phase 1/Phase 2 两门 | Phase 1 证明可观测性；Phase 2 价值门要求回放证据；`valueGate` 以四结局区分证据不足、无差异、改善与护栏回退，没有对照就停在 Phase 1 |
 
 ## 6. 边界与后续
 
 - **回放证据由外部 harness 提供**：本任务不调用模型、不起 Session、不 push/send/merge；`eval-results.json` 是离线结果。真实价值实验仍需按 016 §4.4 运行 holdout。
-- **PR 评论、货币成本不可得**：保留 `unknown`，不用单价估算，也不把成本写成门。
-- **没有 UI、没有 selector、没有生产写入**：T5-05 只交付离线流程；后续接运行时必须另走设计/评审，不能把脚本扩成自动应用。
+- **PR 评论、货币成本不可得**：保留 `unknown`，不用单价估算，也不把成本写成门。价值门的 `cost` 指标在 token 不可得时是 `unknown`，货币成本恒为 `unknown`。
+- **没有 UI、没有 selector、没有生产写入**：T5-05 只交付离线流程；`valueGate` 只分类证据，不写 profile、不改生效配置或权限字段。后续接运行时必须另走设计/评审，不能把脚本扩成自动应用。
 - **试点数据不提交**：导出文件可能含内部引用，默认只留在本机；仓库测试使用合成 fixture，CLI 可对任意脱敏导出重放。
 - **review 的「未接受」不是「被拒绝」**：观察里只有 `Report.accepted` 的事实；拒绝率只在回放 harness 明确给出 `reviewRejected` 时才作为护栏。
 - **仍缺的观察口径**：新 Assignment 尝试、`reviewRevision` 变化与每结果通知数尚未从 Store 可靠提取，相关字段保持 `unknown`，不写成 0；holdout 污染检查依赖 manifest 的 `observationRef`，没有该引用时只能检查条目 `id`；任务族当前取 `Source/form`，不是独立的任务分类字段。
@@ -147,3 +181,5 @@ review 应逐项挑战：
 5. **隐私**：样本/评测集是否拒绝未知字段和自由文本；证据是否只有不透明引用与聚合；提案文本是否被清楚标注为分析者提供；token/成本是否保持 `unknown`。
 6. **提案身份**：新 revision 是保存还是激活；registry 计算出的 `effective.hash` 是否与证据一致；moving diff 是否被拒绝。
 7. **回退**：提案是否带 `baseRevision`、回退条件与 `preservesBoundTickets=true`；已绑定工单是否不受 active 指针变化影响。
+8. **改善是否被四舍五入或小样本偶然驱动**：MDE 比较是否用未舍入值；`9.95pp` 是否会被显示成 `10.0pp` 后误判为通过；小样本的 100% vs 0% 是否仍被 `sampleSize`/`stoppingNotReached` 拦下；是否只读一次预登记主指标、没有 early look。
+9. **四结局与建议是否互斥可复核**：`improvement`/`no-difference`/`guardrail-regression`/`insufficient-evidence` 是否只取一个；`recommendation=adopt` 是否只出现在 `improvement`；`no-difference` 与 `insufficient-evidence` 是否没有被混成「没有收益」；cost 缺失是否保持 `unknown` 而不是 0。
