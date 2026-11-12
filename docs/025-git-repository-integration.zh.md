@@ -18,9 +18,9 @@
 | 4 | **C 只作为完整方案时不够**。「临时检出」是 A 去掉本地基线缓存；「API 直写」没有工作目录，无法跑构建/测试，也无法维持 `Execution.directory` 与 `space_lease` 的语义。 | C1 可作降级；C2 只适合纯文本/非可执行产出，不适合源码。 |
 | 5 | **D（与宿主 workspace 绑定的子仓/嵌套）在 DSH `0.2.1-rc.5` 上不具备落地条件**。宿主没有把仓库作为 workspace 的 provider/attach，没有可切换的 Session cwd，也不能把 workspace 列表按任务投影；嵌套仓还会重演 [013 §1.3](013-workspace-model.zh.md) 的父目录清理风险。 | D 留到 [012 §6.6](012-platform-evolution.zh.md) 的 workspace handle 与宿主座位出现之后。 |
 | 6 | **现状的四个缺口是产品级缺口，不是文档缺口**：谁有提交权、并发写同一分支/同一仓、结束后回收、git 动作的审计链。现有 `space_lease` 只解决「同一目录同一时刻一个写者」，不解决另外三个。 | 需要仓库绑定、分支/PR 不变量、回收策略和审计记录，不能只靠 prepare 脚本。 |
-| 7 | **P1 可先在插件内做「观察与护栏」**：从 Source 配置派生并校验仓库绑定、校验分支占用与凭据卫生、记录分支到 PR 的证据、提供 GC dry-run 和 E2 只读视图；不自动删任何东西。 | 不新增 schema 也能先回答「这个工单在哪个仓、哪条分支、哪个 PR」。 |
+| 7 | **P1 可先在插件内做「观察与护栏」**：从 Source 配置派生并校验仓库绑定、校验分支占用与凭据卫生、在日志/报告里留下分支到 PR 的观测（不持久化）、提供 GC dry-run 和 E2 只读视图；不自动删任何东西。 | 不新增 schema 也能先回答「这个工单在哪个仓、哪条分支、哪个 PR」。 |
 | 8 | **P2 才需要持久化与操作**：仓库绑定审计、GC 操作、配额与保留策略需要 schema/API；这些仍在本仓库（kernel + runtime + panel）内。 | 不能把 P2 说成「宿主缺口」；它是产品自己的生命周期工作。 |
-| 9 | **P3 才需要宿主/部署支持**：OS 级隔离与可轮换的凭据主体、宿主 workspace 的 attach/provider、Session cwd 切换、workspace 列表投影、宿主级配额/密钥托管。 | 与 [022 §2.3](022-harness-extension-requests.zh.md) 的「列表投影需要宿主」和 [006](006-deployment.md) 的「专用 OS 账户」一致。 |
+| 9 | **P3 才需要宿主/部署支持**：OS 级隔离与可轮换的凭据主体（部署）、宿主 workspace 的 attach/cwd、workspace 列表投影、宿主级配额/密钥托管。 | 与 [022 §2.3](022-harness-extension-requests.zh.md) 的「列表投影需要宿主」和 [006](006-deployment.md) 的「专用 OS 账户」一致。 |
 | 10 | **本文没有跑 PoC**。第 6 节给的是可执行步骤、指标和失败判据；在这些判据通过前，只能称「条件可行」，不能称「已验证可落地」。 | 独立 review 的结论见 PR review 评论，不把提案当实现。 |
 
 **明确不做**（本文边界）：
@@ -80,6 +80,15 @@ PR 归属不是显式记录，而是约定：
 - **提交/推送权**：agent 账号对源仓库有写权限；所有 root worker 共享这一凭据；`space_lease` 不是权限；`blockedCommands` 只按命令名拦截，不分析 `gh` 子命令或 git 子命令；`gh pr merge` 没有被运行时结构性禁止。真正阻止自合并的是提示词、评审文化和 GitHub 分支保护/权限。
 - **凭据卫生检查**：`verifyDirectory` 只检查 Ticket 目录里 local/worktree scope 的 `credential.*` 与 `http.*extraheader`，不检查别的仓库、操作者 home、`gh` 配置或进程环境。worker 以操作者 OS 用户运行，`danger-full-access`，能读操作者 home（[006 §Permissions and isolation](006-deployment.md)）。专用 OS 账户是部署级缓解，不是插件能力。
 
+| 主体 | 实际能做什么 | 边界/证据 |
+| --- | --- | --- |
+| 人评审者 | 评审、合并/关闭 PR，决定是否返工 | GitHub 权限与分支保护；agent 不应代合并。 |
+| agent GitHub 账号 | 对源仓库 push 分支、开 PR；技术上也可调用 merge API | ①06 给账号写权限；运行时未禁止 `gh pr merge`，靠提示词/分支保护。 |
+| root worker 进程 | 在 Ticket 目录读写、`git commit/push`、`gh pr create`；也可 `cd` 到别处 | `danger-full-access` + 共享凭据；`space_lease` 不是权限。 |
+| 子 Ticket worker | 本地编辑/commit，向父 owner 报告 | `childShellReason` 禁止 `git push/remote/fetch/clone` 与 `gh pr` 等；工具级 guard。 |
+| 操作者 OS 用户 | 读 home、gh 配置、别的仓库 | 006 的专用 OS 账户是部署级边界；插件无法隔离。 |
+| 产品运行时 | 记录 Ticket→PR 绑定、目录/租约、报告 | 不拦截每条 git 命令；git 动作不在 action ledger。 |
+
 ### 1.4 产出物、Deliverable 与 git 的关系
 
 - [001](001-domain.md) 的 Deliverable 是「一个 artifact + 一个 revision + 评审用的 preview + 可判定的验收标准」；开发 profile 的交付物就是 diff/PR，验收是 `PR merged`（[012 §7](012-platform-evolution.zh.md)）。
@@ -111,7 +120,7 @@ PR 归属不是显式记录，而是约定：
 | I2 | 每个 Source 只对接它配置的远端仓；跨仓任务拆子 Ticket，不自动改绑。 | 013 §0 结论 7、§3.2；避免「一个空间两个仓」。 |
 | I3 | `Execution.directory` 是唯一空间 locator；仓库绑定是它的属性/派生，不是第二个 locator。 | 013 §0 结论 2。 |
 | I4 | 同一目录同一时刻一个写者；同一 Ticket 可重入；不同 Ticket 默认不同目录。 | 013 §4.3、§5.1。 |
-| I5 | 一条 Ticket 分支、一个 open PR；PR base 显式记录（默认是默认分支，栈式 PR 不在 v1）；merge 由人完成。 | 现状 PR 绑定；不自动合并。 |
+| I5 | （目标不变量）一条 Ticket 分支、一个 open PR；PR base 显式记录（默认是默认分支，栈式 PR 不在 v1）；merge 由人完成。 | 现状只做自动绑定去重；显式报告仍可绑定第二个 PR，故作为目标而非现状。 |
 | I6 | 凭据只在部署提供的 shim/git 配置里；不写入仓库、remote URL、日志、指标或提示词。 | 006 的凭据卫生；013 不把租约当授权。 |
 | I7 | 失败不丢工作：prepare/verify/push 失败保留可恢复证据；脏工作树不自动删除。 | 013 §4.4 的脏空间规则。 |
 | I8 | 离线只承诺「本地可读/可提交」；推送、PR、评审、合并需要网络，不承诺离线交付。 | 现状与 006 的部署模型。 |
@@ -138,7 +147,7 @@ PR 归属不是显式记录，而是约定：
 
 | 维度 | 结论 | 说明 |
 | --- | --- | --- |
-| 并发隔离 | **强（目录级）** | 每工单一棵树、一条分支，`space_lease` 保证同目录一个写者；共享 clone 的对象库与 worktree 元数据是唯一共享点。不同 clone 的同名分支、远端 push 竞态不在租约内。 |
+| 并发隔离 | **强（目录级，非安全隔离）** | 每工单一棵树、一条分支，`space_lease` 保证同目录一个写者；共享 clone 的对象库与 worktree 元数据是唯一共享点。不同 clone 的同名分支、远端 push 竞态不在租约内。 |
 | 冲突与 rebase 归属 | **工单 worker** | 同一分支内的冲突由该 Ticket 的 worker 解决；跨工单冲突在 PR 合并时由后合并者 rebase/解决；子 Ticket 由父 owner 收口；人不自动代做 rebase。 |
 | 凭据存放轮换 | **现有 shim** | agent 账号 + `worker-gitconfig` + `gh` shim；轮换 = 重新 `gh auth login`/换账号；没有 per-ticket token；范围是账号对所有可写仓的权限。 |
 | 离线可用性 | **中** | clone 在本地时可读、可 commit、可 rebase；fetch/push/PR/评审需要网络；没有离线队列。 |
@@ -148,7 +157,7 @@ PR 归属不是显式记录，而是约定：
 | 失败回滚 | **可做但要显式** | prepare 失败释放租约；push 拒绝不 force，fetch/rebase；PR 失败保留分支；回滚分支/目录用 `git worktree remove` + `git branch -d`；脏树先导出 patch。 |
 | 插件边界影响 | **小** | 完全在部署 + 插件内：prepare 命令、shim、PR 绑定、面板都是现有能力；不需要宿主改 git 或新增 slot。 |
 
-**判断**：这是唯一「今天就能跑、且不新增 SCM」的形态；缺的是产品化（绑定、回收、审计），不是机制。它是推荐方案的执行层。
+**判断**：这是今天就能跑、且不新增 SCM 的形态；缺的是产品化（绑定、回收、审计），不是机制。它是推荐方案的执行层。
 
 ### 3.2 方案 B：产品内置 bare repo
 
@@ -193,6 +202,8 @@ PR 归属不是显式记录，而是约定：
 
 **机制**：不自己管理 worktree，而是把仓库做成 DSH 宿主 workspace 的子目录/嵌套仓库（或让 workspace 本身是 git 仓，Ticket 在 `subdir` 工作）；由宿主的工作区创建/归档/删除生命周期承载目录；产品只记录「Ticket → 宿主 workspace」。
 
+需要区分：宿主 `IWorkspaces` 已有 `create/rename/delete`（[022 §2.3](022-harness-extension-requests.zh.md)），所以「创建一个 workspace」不是缺口；缺的是把既有 Session 的 cwd 稳定绑定/迁移到该 workspace、以及按任务投影/过滤列表。D 因此不是「完全不可做」，而是不能作为 A 的无条件替代。
+
 | 维度 | 结论 | 说明 |
 | --- | --- | --- |
 | 并发隔离 | **弱** | 宿主 workspace 列表没有写租约；`IWorkspaces` 能 create/rename/delete/排序，但没有「同一目录一个写者」的协调。产品仍要自己做租约，且要处理宿主移动/改名。 |
@@ -205,13 +216,13 @@ PR 归属不是显式记录，而是约定：
 | 失败回滚 | **不可控** | 宿主删除/归档 workspace 可能连带删除嵌套仓；产品无法保证「先导出 patch 再删」；回滚要跨宿主与产品。 |
 | 插件边界影响 | **需宿主** | 需要宿主的 workspace attach/cwd 归属与 workspace 列表投影/过滤（[022 §2.3](022-harness-extension-requests.zh.md)）；013 的 `WorkspaceProvider` 是产品 Phase 4 的抽象，不是宿主现状。DSH `0.2.1-rc.5` 没有这些组合。 |
 
-**判断**：D 不是「更省事的 A」，而是把仓库生命周期交给一个不懂 git 的宿主；在宿主没有 provider/attach/cwd/列表座位之前，不可落地。留到 Phase 4 重评。
+**判断**：D 不是「更省事的 A」，而是把仓库生命周期交给一个不懂 git 的宿主；在宿主没有 attach/cwd 与列表座位之前，不可落地。留到 Phase 4 重评。
 
 ### 3.5 横向对比
 
 | 维度 | A worktree+PR | B 内置 bare | C1 临时检出 | C2 API 直写 | D 宿主嵌套 |
 | --- | --- | --- | --- | --- | --- |
-| 并发隔离 | 强（目录） | 强（集中锁） | 强（每票独立） | 中（ref 乐观） | 弱（宿主无租约） |
+| 并发隔离 | 强（协调，非沙箱） | 强（集中锁） | 强（每票独立） | 中（ref 乐观） | 弱（宿主无租约） |
 | 冲突/rebase 归属 | worker | 产品+worker | worker | 无法本地 | 不清 |
 | 凭据 | 现有 shim | 产品托管 | 现有 shim | gh token | 继承/更复杂 |
 | 离线 | 中 | 强 | 差 | 无 | 取决于宿主 |
@@ -246,6 +257,19 @@ Source 配置（owner/name、默认分支、agent 账号）
 
 这不是「新架构」，而是把现有部署约定提升为产品契约：**A 负责执行，C 负责事实与授权边界**。
 
+#### 4.1.1 落地前置（不满足就不能按「可落地」宣称）
+
+这些是运维/产品前置，不是 P1 代码能自动补的；任一项不满足，A+C 只能算「有条件可行」，不能算「可落地」。
+
+| 前置 | 为什么是前置 | 不满足时的处理 |
+| --- | --- | --- |
+| 一个 Source 一个仓、一个明确默认分支 | A+C 的前提；跨仓不在 v1 | 跨仓拆子 Ticket；不自动改绑。 |
+| GitHub 分支保护 + 人合并规则 | agent 账号有写/合并能力；提示词不是门 | 先由运维配置分支保护；否则不宣称「agent 不会自合并」。 |
+| agent 账号最小权限 / 专用 OS 账户 | 所有 root worker 共享凭据；`danger-full-access` | 接受残余风险或先做账户隔离；R1/R2 不能靠插件消除。 |
+| 本地基线 clone、`git worktree`、`gh`、网络 | A 的执行与 PR 交付 | 缺任一即无法 prepare 或交付；离线只能本地 commit。 |
+| LFS/submodule 的 prepare 支持（若仓库使用） | 否则检出/构建不完整 | 预检并拒绝，或明确不支持。 |
+| `maxWorkers` 与磁盘容量足以覆盖并发生效数 | 8 并发不等于 8 槽 | PoC 先配置 `maxWorkers ≥ 8`；否则只测排队，不测并发。 |
+
 ### 4.2 为什么是 A + C
 
 1. **与现有代码连续**：`Execution.directory`、`space_lease`、prepare、分支名/PR 绑定都已在；不需要迁移空间模型，不需要第二套 locator。
@@ -258,11 +282,11 @@ Source 配置（owner/name、默认分支、agent 账号）
 
 | # | 能力 | P1（插件内，观察/护栏） | P2（持久化/操作） | 不做的部分 |
 | --- | --- | --- | --- | --- |
-| 1 | **仓库绑定** | 从 Source 配置派生 `owner/name`、默认分支、clone 路径；与 `Execution.directory` 的 `git rev-parse --show-toplevel`、`remote.origin.url` 对账；不匹配就失败/告警。 | 持久化 `ticket → repo/base/branch` 绑定与 base SHA；仍从 `Execution.directory` 派生空间，不建第二 locator。 | 不做 `WorkspaceRef`/`space` 注册表。 |
+| 1 | **仓库绑定** | 从 Source 配置派生 `owner/name`、默认分支、clone 路径；与 `Execution.directory` 的 `git rev-parse --show-toplevel`、`remote.origin.url` 对账；不匹配即 fail closed，不静默继续。 | 持久化 `ticket → repo/base/branch` 绑定与 base SHA；仍从 `Execution.directory` 派生空间，不建第二 locator。 | 不做 `WorkspaceRef`/`space` 注册表。 |
 | 2 | **分支/PR 不变量** | 校验分支名 = `agent/<ticket name>`；校验同 clone 内分支未被其他 worktree 占用；校验 PR base 是声明的 base（默认分支）、head 是 Ticket 分支；一个 Ticket 只认一个 open PR。 | 记录 base SHA、head SHA、PR number、merge commit；push 拒绝/force-push 告警；PR 关闭/合并对账。 | 不自动 merge、不自动 rebase、不自动强推。 |
 | 3 | **凭据与身份** | 继续用 `worker-gitconfig` + `gh` shim；校验 Ticket 目录无 `credential.*`/`http.*extraheader`；校验 commit 作者是 agent 或显式声明；日志/指标不出现 token。 | 可选：`gh` shim 拒绝 `auth token`/`pr merge` 等高风险子命令（仍非安全边界）；轮换 runbook。 | 插件不做 OS 级隔离/密钥托管；那是部署/宿主。 |
-| 4 | **回收/保留** | GC dry-run：列出可回收的 worktree/分支/本地 ref，标出「脏/有 open PR/租约未释放/有 live Session」；不删除。 | 按保留策略执行：`git worktree remove`、`git worktree prune`、`git branch -d`（先安全删除，再按策略 `-D`）、`git gc`、LFS prune；记录审计。 | 不自动删脏树；不删有 open PR 的分支；不删审计骨架。 |
-| 5 | **审计链** | 在现有报告/执行日志的 facts 中记录 prepare 起止、分支、base、HEAD、push 结果、PR number（不新增 span kind）；E2 先做只读派生展示。 | 新增 append-only 的 git 审计事件（表或事件流）；记录 force-push/关闭/GC；按 Ticket/PR 可重建。 | 不记录每条 shell 命令；不做第二套 commit 历史。 |
+| 4 | **回收/保留** | GC dry-run：列出可回收的 worktree/分支/本地 ref，标出「脏/有 open PR/租约未释放/有 live Session」；不删除。 | 按保留策略执行：`git worktree remove`、`git worktree prune`、`git branch -d`（先安全删除，再按策略 `-D`）、`git gc`、LFS prune；删除前加仓库级锁与 worktree 占用检查，失败保留并告警；记录审计。 | 不自动删脏树；不删有 open PR 的分支；不删审计骨架。 |
+| 5 | **审计链** | 在现有报告/执行日志的 facts 中记录 prepare 起止、分支、base、HEAD、push 结果、PR number（不新增 span kind，不承诺持久查询）；E2 先做只读派生展示。 | 新增 append-only 的 git 审计事件（表或事件流）；记录 force-push/关闭/GC；按 Ticket/PR 可重建。 | 不记录每条 shell 命令；不做第二套 commit 历史。 |
 | 6 | **配额/可观测** | 采集每 Ticket 的 worktree 大小、对象库大小、worktree 数、分支数；E2 显示；超阈值告警。 | 租户/仓库配额、保留策略配置、超限拒绝或只告警；LFS/submodule 的 prepare 预检。 | 不把配额做成授权；不影响 Ticket 的 Action/Approval。 |
 
 ### 4.4 插件内可做 vs 需宿主/部署支持
@@ -281,7 +305,7 @@ Source 配置（owner/name、默认分支、agent 账号）
 | 阶段 | 内容 | 验收 | 回退 |
 | --- | --- | --- | --- |
 | P0（本文） | 结论、对比、风险、PoC 判据；更新索引与 TRACKING。 | `tests/docs.spec.ts`、`check:tracking`；独立 review。 | 纯文档，删除即回退。 |
-| P1 | 仓库绑定只读校验；分支/PR 不变量；凭据卫生；GC dry-run；E2 只读；审计到 trace。 | 不新增 schema；现有测试 + 新增只读检查；PoC-1/2/5 通过。 | flag 关闭回到现状；不删任何数据。 |
+| P1 | 仓库绑定只读校验；分支/PR 不变量；凭据卫生；GC dry-run；E2 只读；审计到报告/日志（不持久化，P2 前不承诺历史重建）。 | 不新增 schema；现有测试 + 新增只读检查；PoC-1/2/5 通过。 | flag 关闭回到现状；不删任何数据。 |
 | P2 | `repo` 绑定与 git 审计持久化；GC 操作；配额/保留配置；LFS/submodule 预检。 | schema 迁移可回滚；GC 在脏/PR/租约检查下 100% 安全；PoC-3/4 通过。 | 关 GC 操作；保留审计行；schema 回滚按 006 备份规则。 |
 | P3 | 宿主 workspace attach/cwd、列表投影（若产品要 D 或 E2 深集成）；产品实现 provider（013 Phase 4）。 | 宿主 API 可用；D 的 PoC 重评。 | 不依赖宿主的能力继续用 A。 |
 | P4 | 多仓库/跨仓子 Ticket、离线队列、云 workspace。 | 真实需求与配额数据。 | 保持一 Source 一仓。 |
@@ -321,7 +345,7 @@ Source 配置（owner/name、默认分支、agent 账号）
 | --- | --- | --- | --- |
 | Q1 | 提交权是否只给 agent 账号，还是按 Ticket/租户发短期 token？ | 产品 + 运维/安全 | P2 前；影响 R1/R2。 |
 | Q2 | 是否所有源码产出一律走 PR？docs-only、单文件修复能否直接推？ | 产品 | P1；建议一律 PR，保持单一门。 |
-| Q3 | 一条 Ticket 一条分支一个 PR，还是允许 follow-up PR？ | 产品/内核 | P1；现状一个 open PR，返工复用分支。 |
+| Q3 | 一条 Ticket 一条分支一个 PR，还是允许 follow-up PR？ | 产品/内核 | P1；现状自动绑定按单 open PR，返工复用分支。 |
 | Q4 | 谁负责 rebase：worker、父 owner、人，还是产品自动？ | 产品 | P1；建议 worker 负责，产品只校验 up-to-date。 |
 | Q5 | 是否允许 force-push？只允许 `--force-with-lease`？ | 产品 + 运维 | P1；建议默认禁止，分支保护兜底。 |
 | Q6 | GC 保留期默认 7 天/1 天是否合适？谁批准删除？ | 产品 + 运维 | P2；先 dry-run 收集数据。 |
@@ -329,7 +353,7 @@ Source 配置（owner/name、默认分支、agent 账号）
 | Q8 | 审计粒度：只记 push/PR，还是每条 git 命令？ | 产品/安全 | P2；建议只记交付链，shell 命令不做全局审计。 |
 | Q9 | 多仓库任务是否只允许子 Ticket？ | 产品 | P2；现状是一 Source 一仓。 |
 | Q10 | 离线提交是否需要产品级队列？ | 产品 | P3/P4；先支持「本地 commit、稍后 push」。 |
-| Q11 | D 的宿主 provider 何时可用？是否值得等？ | 宿主/产品 | P3；没有 provider 不启动 D。 |
+| Q11 | D 的宿主 attach/cwd 与列表座位何时可用？是否值得等？ | 宿主/产品 | P3；没有这些接口不启动 D。 |
 | Q12 | 专用 OS 账户是否作为部署硬要求？ | 运维/安全 | P1；如果不做，R1/R2 的残留不可接受。 |
 | Q13 | LFS/submodule 是否在 v1 支持？ | 产品 | P1/P2；至少 prepare 预检与文档限制。 |
 | Q14 | 产品是否需要只读 mirror 来支持离线/性能？ | 产品/运维 | P3；优先部署侧 mirror，不进入产品权威。 |
@@ -340,7 +364,7 @@ Source 配置（owner/name、默认分支、agent 账号）
 
 ### 6.1 假设与失败判据
 
-- **H1**：每工单 worktree + 唯一分支在 8 个并发 Ticket 下不产生分支冲突，租约不放行第二个写者。
+- **H1**：每工单 worktree + 唯一分支在 8 个并发 Ticket（`executor.maxWorkers ≥ 8`）下不产生分支冲突，租约不放行第二个写者；槽位不足时只验证排队，不验证并发。
 - **H2**：冲突/rebase 的归属可解释：同一分支由该 Ticket worker 解决，跨分支由后合并者解决，产品不自动改写历史。
 - **H3**：prepare/commit/GC 的耗时与磁盘在可接受范围，GC 不删脏/open PR/未到期的工作。
 - **H4**：结束时可从产品记录 + GitHub 重建「Ticket → 分支 → commit → PR → merge」；force-push/关闭 PR 有告警。
@@ -370,9 +394,11 @@ Source 配置（owner/name、默认分支、agent 账号）
 | P6 离线 | 断开网络，读/改/commit；重连后 fetch/rebase/push/PR；记录失败与重试。 | 本地 commit 保留率、重连成功率、耗时。 |
 | P7 凭据 | 在 Ticket 目录写 `credential.helper`/`http.extraheader`，确认 verify 失败；在日志/命令/remote URL 注入假 token，确认 secret scan 命中/不泄漏。 | 负向测试结果。 |
 
-**环境**：本地 bare repo 即可覆盖 A 的 worktree/分支/GC/租约；PR 相关用一次性 GitHub 测试仓或 fake `gh`；不碰生产 stateDir、不碰真实业务仓。所有 token 用测试账号/短期凭据，日志脱敏。
+**环境**：本地 bare repo 即可覆盖 A 的 worktree/分支/GC/租约；PR 相关用一次性 GitHub 测试仓或 fake `gh`；不碰生产 stateDir、不碰真实业务仓。所有 token 用测试账号/短期凭据，日志脱敏。并发 PoC 显式配置 `executor.maxWorkers ≥ 8`，并记录实际 worker 槽数；否则 8 个 Ticket 只证明排队，不证明并发。
 
 ### 6.3 指标
+
+下表是**初始阈值**，PoC 固定环境与仓库样本后按实测校准；校准前不把它们当产品 SLA。
 
 | 指标 | 定义 | 目标/判据 |
 | --- | --- | --- |
@@ -380,7 +406,7 @@ Source 配置（owner/name、默认分支、agent 账号）
 | commit p50/p95 | `git commit` + `git push`（本地/远端分开） | 本地 commit 秒级；push 受网络影响，报告 p95 与失败率。 |
 | PR 创建 p50/p95 | `gh pr create` 到 PR 可见 | 报告值；失败可重试且不重复开 PR。 |
 | GC p50/p95 | 单 Ticket GC 与 100 个 Ticket 批量 GC | 单 Ticket ≤ 2s、批量 ≤ 60s（目标，按实测校准）；回收字节单独报告。 |
-| 并发工单数 | 同一仓同时 prepare/commit 的 Ticket 数 | 8 个并发无分支冲突、无租约违规；至少 4 个正常 ready。 |
+| 并发工单数 | 同一仓同时 prepare/commit 的 Ticket 数（记录 `maxWorkers`） | 8 个并发、`maxWorkers ≥ 8` 时无分支冲突、无租约违规；至少 4 个正常 ready；槽位不足时单独报告。 |
 | 回滚成功率 | P3 场景中恢复租约/目录/分支/审计的比例 | 5/5 场景 100%；无残留。 |
 | 审计完整率 | 有 base/head/PR/merge 记录的 Ticket 比例 | 100%；force-push/关闭 PR 有告警。 |
 | 磁盘 | 每 Ticket worktree、对象库增量、LFS 缓存 | 有上限/告警；GC 后增长可解释。 |
