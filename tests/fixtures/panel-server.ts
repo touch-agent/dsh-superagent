@@ -131,6 +131,8 @@ export interface PanelServer {
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
   /** Source cards a test adds as if their plugin had loaded, such as the manifest-only fixture. */
   extraSources: SourceView[]
+  /** The read-only profile registry rows; empty by default so no title or description is invented. */
+  profiles: ApiResponse<'GET profiles'>['profiles']
 }
 export let server: PanelServer
 
@@ -375,6 +377,7 @@ function initial(): PanelServer {
   return {
     health: {}, down: false, pending: 0, opened: [], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
     extraSources: [],
+    profiles: [],
     approvals: [] as ApprovalRow[],
     setup: { machine: MACHINE, problem: null, feishuProblem: null,
       accounts: { repository: 'acme/widgets', agent: 'agent-bot', feishu: { appId: 'cli_bot', brand: 'feishu', botId: 'ou_bot',
@@ -438,7 +441,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   } },
   'GET spaces': { answer: () => server.spaces },
   'GET contexts/groups': { answer: () => ({ generatedAt: '2026-09-23T12:00:00Z', groups: [], totals: { groups: 0, tickets: 0 } }) },
-  'GET profiles': { answer: () => ({ generatedAt: '2026-01-01T00:00:00.000Z', profiles: [] }) },
+  'GET profiles': { answer: () => ({ generatedAt: '2026-01-01T00:00:00.000Z', profiles: server.profiles }) },
   'GET profiles/:id': { answer: () => refuse(404, 'Profile not found') },
   'GET profiles/:id/metrics': { answer: () => refuse(404, 'Profile not found') },
   'GET tasks/:id': { query: ['depth'], answer: ({ params }) => {
@@ -615,6 +618,8 @@ class Reply extends Response {
 export function usePanelServer(cleanup: () => void) {
   beforeEach(() => {
     sessionStorage.clear()
+    // The batch-1 specs pin the pre-batch-2 surfaces; the batch-2 spec clears these keys to exercise the defaults.
+    for (const flag of ['ux.opsInSettings.v1', 'ux.taskDetail.v2', 'ux.firstUse.v1']) localStorage.setItem(flag, 'off')
     server = initial()
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit): Promise<Response> => {
       if (server.down) return new Response(null, { status: 404 })

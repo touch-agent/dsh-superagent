@@ -181,7 +181,7 @@ graph LR
 | M3 交付 | review 真可审；小活不付 Session 冷启动 | T3-01…08 | 36 人日 | M1、M2 | 小活 p50 < 10s；review 页必有 preview | §6.4–6.6 |
 | M3.5 任务视图 | 右栏任务视图；子 Ticket 树与父 owner 审查链（任务视图 Phase 1/2） | T3-09…11 | 16 人日 | M3 | tracked 任务在右栏可读；父 owner 可拆/审/停子 Ticket；子 Ticket 不是授权主体 | 任务视图 §9 |
 | M3.6 工作空间 | 空间可观测；同一空间写者唯一；子 Ticket 独立空间 | T3-12…13 | 9 人日 | M3.5 | 空间投影/E2 视图可用；两个 Ticket 不并发写同一空间；旧 worktree 可继续使用 | 013 §8 |
-| M5 原则落地 | 目标层、E0–E3、群组/六层上下文、profile 绑定与遥测、进化闭环、替换演练 | T5-01…07 | 35 人日 | M3.6 | E0 只给目标/状态/决定/结果；装配快照可审查；profile 可追溯且不授权；进化只提案；替换演练等价 | 原则 §8 |
+| M5 原则落地 | 目标层、E0–E3、群组/六层上下文、profile 绑定与遥测、进化闭环、替换演练、默认面两批 | T5-01…09 | 41 人日 | M3.6 | E0 只给目标/状态/决定/结果；装配快照可审查；profile 可追溯且不授权；进化只提案；替换演练等价 | 原则 §8 |
 | M4 多租户 | 能卖团队版/私有化 | T4-01…06 | 22 人日 | M5 | 单租户故障不影响他人；删除演练可验证 | §6.7 |
 
 > 重排后约 212 人日（新增 62 人日；M1 剩余两个源与 M4 计入但后置）≈ 10.5 周（4 人）。这是「机制可用」的估算，不含 30 个源、产品化打磨与合规认证；方案 §8 的「5–6 个月」含这些。
@@ -495,7 +495,7 @@ graph LR
 - **估时**：5 人日。**依赖**：T3-12、[docs/013](../013-workspace-model.zh.md) 的 Phase 2。**回退**：两个独立 flag——`workspace.lease` 关闭回到路径模式，`workspace.childSibling` 关闭保留旧嵌套布局；`space_lease` 表保留，但旧二进制拒绝 schema 16，二进制回滚需升级前备份或停服删表降 schema。
 - **泳道**：Kernel + Runtime。**实现**：PR [#43](https://github.com/touch-agent/dsh-superagent/pull/43)；schema 16 `space_lease`、两个 `workspace` flag、结束释放与 stale 恢复；`tests/spaces.spec.ts` 覆盖并发预留、prepare 失败释放、结束释放、重启 stale。**收尾**：E2 的 `GET spaces` 按目录去重并发预热并缓存 15 秒，`tests/spaces.spec.ts` 以 600 行覆盖冷读/热读与 p95 门槛；E1 票据负载移除 `directory`，绝对路径只在 E2；见 PR [#46](https://github.com/touch-agent/dsh-superagent/pull/46)。**合并与验收补测（2026-11-10）**：#43 `fe9e62a`、#46 `54a6b28` 已合入 `main`；`tests/spaces.spec.ts` 增加「委派只新建兄弟空间、不回写根目录」与「父接受子报告后释放子租约」，`tests/runtime-concurrency.spec.ts` 的父先子后恢复/孤儿用例断言孤儿租约释放。跨仓拆单仍是 owner/worker 流程规则，结构上由无改绑入口保证；运行时不能推断 worker 的 `cd`，见 docs/013 §3.2「强制边界」。
 
-## 6.2 M5 原则落地（T5-01…07）
+## 6.2 M5 原则落地（T5-01…09）
 
 > 执行顺序：M3.5 之后、M4 之前。依据原则 §8 的 A→B→D→C 顺序；C 放在后面不是不重要，而是没有 A/B/D 的观测与边界，进化会变成拍脑袋。
 
@@ -566,6 +566,14 @@ graph LR
 - **交付**：`TaskView` 增加只读 `owner.profile`、`parentOwner.profile`、`blocker`、`childSummary`；任务列表可打开一层详情，显示目标、负责人/Profile、直接子任务、每层产出物、阻断、向上汇报与执行会话入口，深层按需加载；`notifications.ts` 把 Approval、待回答/待审阅/待交付、最近结果、来源/任务/其他问题投影成客户端通知，不新增服务端实体；`notification-center.tsx` 提供铃铛、未读、3 张浮层、8 秒自动收起/悬停暂停、分组抽屉与原地批准/拒绝/重试/停用来源/查看；`overview.tsx` 在 `ux.errorAggregate.v1` 下把来源异常、失败/被卡住任务与其他问题折成一条，展示重试次数、最近时间、重试与停用来源入口，恢复后自然消失；`pollFailure` 增加可选 `at`；默认任务/概览/通知/搜索文案按 021 §5 改写，内部字段只留 E2 折叠区；四个 `ux.*` flag 与两个浏览器偏好写入设置 → 显示；`docs/023-ux-first-batch.zh.md`、changeset、README/docs 索引同步。
 - **验收**：任务层级一次只拉一层、负责人/Profile/产出物/阻断/汇报/会话入口可见，父 owner 接受不等同人工验收；通知是 overview 的客户端投影，浮层上限 3、8 秒自动收起、可暂停，抽屉保留全量并能原地操作；错误聚合计数、重试次数、最近时间正确，上游恢复后行与浮层一起消失，关闭 flag 后退回逐条问题；四个 flag 独立关闭，通知浮层关闭不影响抽屉、抽屉关闭不影响浮层，关闭任一 flag 不迁移/不删除记录；默认面无 `worker-`/`ticket_`/Assignment/Disposition 说明词；`pnpm check` 全绿；同场景 Before/After 截图与 10 秒自查记录在 PR/023。
 - **估时**：3 人日。**依赖**：T5-02（E0–E3 与默认面）、T3-09（任务视图）、T5-07（owner Profile）；021 Phase 2 的其余项（主 Agent 入口、四菜单、上下文装配）不在本单。**回退**：四个 feature flag 逐项关闭；只改默认可见性与客户端投影，不删 E2/E3 记录，不改审批/Mandate/Dispatch/Store schema。
+- **泳道**：Platform。
+
+### T5-09 UI 第二批：系统页收编、任务详情加详与首次说明 · Platform · 3 人日
+
+- **目标**：在 023 已落地的任务层级、通知层与错误聚合之上，继续按 021 收窄默认面：把来源/触发/评估/执行收成设置里的独立页，让任务详情按人的问题回答「决定什么/做了什么/下一步与预计/谁在做」，并给首次使用与空任务一个能直接开始的入口；全部只用插件扩展点，逐项可回退。
+- **交付**：`features.ts` 增加 `ux.opsInSettings.v1`、`ux.taskDetail.v2`、`ux.firstUse.v1`；`route.ts` 增加运维标签集合与设置分组（含触发），设置导航按「来源与任务 / 界面与偏好 / 系统」分组；`settings.tsx` 在设置页嵌入 `SourceStatus`、`TriggerStatus`、`EvalStatus`、`ExecutionStatus` 并保留其配置区，补分组图标与每页一句说明；`app.tsx` 默认只保留概览/任务/设置三个一级入口，运维列表路由打开设置、带 id 的详情路由仍显示详情且不选中标签；`task-detail.tsx` 在 `ux.taskDetail.v2` 下增加决定、结果摘要与产出物链接、预计、Profile 人话负责人与逐条子任务汇报折叠，内部 id 仍只在 E2；`first-use.tsx`/`tasks.tsx` 增加三行首次说明、浏览器已读键、空态主会话/来源入口与设置 › 显示里的「再显示一次」；`docs/024-ux-second-batch.zh.md`、changeset、README/docs 索引与本表同步。
+- **验收**：默认面只有三个一级入口，四个系统页可从设置分组/图标进入，告警与通知的直接链接仍落到同一记录，`execution/:id`、`trigger/:id` 不被列表页替代且不选中标签；关闭 `ux.opsInSettings.v1` 恢复七个入口与六项设置导航；任务详情先给决定（无决定显示「不需要你做什么」）与结果/产出物链接，再给下一步、诚实的预计与不含内部 id 的人话负责人，子任务汇报逐条可展开；关闭 `ux.taskDetail.v2` 回到 023 详情且不请求 Profile 列表；首次说明只出现一次、空态示例可点击、设置可恢复说明，关闭 `ux.firstUse.v1` 后回到纯文字空态；`pnpm check` 全绿；1440×900（详情与设置长图为同对比内同视口）Before/After 截图与 10 秒自查记录在 PR/024。
+- **估时**：3 人日。**依赖**：T5-02（E0–E3 与默认面）、T5-08（任务层级、通知层、错误聚合）；021 Phase 2 的主 Agent 入口、宿主设置弹窗与上下文装配仍不在本单。**回退**：三个 feature flag 逐项关闭；只改默认可见性与客户端投影，不删 E2/E3 记录，不改审批/Mandate/Dispatch/Store schema。
 - **泳道**：Platform。
 
 ---

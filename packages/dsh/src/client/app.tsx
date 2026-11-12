@@ -1,18 +1,20 @@
 /** Root panel shell: header with global search and glossary, top-level navigation tabs, and active route view. */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { SearchView } from './api.ts'
+import type { ThreadFilter } from '../app/api.ts'
 import { Button, Dot, Icon, Input, Modal, SegmentedTabs } from './controls.tsx'
 import type { DeploymentForm } from './deployment.tsx'
 import { EvalStatus } from './eval.tsx'
 import { ExecutionStatus } from './execution.tsx'
+import { opsInSettings } from './features.ts'
 import { ticketMark } from './marks.ts'
 import { GLOSSARY, GLOSSARY_VALUES, en, zh, type DshSuperagentKey } from './locales.ts'
 import { NotificationHost, useNoticeCenter } from './notification-center.tsx'
 import { OverviewPage } from './overview.tsx'
 import { PanelProvider, usePanel, usePanelData } from './provider.tsx'
 import { PANEL_NAVIGATE } from './panel.ts'
-import { HOME, TABS, initialLocation, lastSettingsGroup, parseRoute, remember, routeLabel, settingsRoute, type Location,
-  type Route, type Tab } from './route.ts'
+import { HOME, TABS, initialLocation, isOpsTab, lastSettingsGroup, parseRoute, remember, routeLabel, settingsRoute, type Location,
+  type Route, type SettingsGroup, type Tab } from './route.ts'
 import { SettingsPage } from './settings.tsx'
 import { SourceStatus } from './source.tsx'
 import { TasksPage } from './tasks.tsx'
@@ -156,32 +158,45 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
   deploymentForm: DeploymentForm; pageId: string; tabPrefix: string; tasks?: TasksViewClient }) {
   const { t } = usePanel()
   const { state, error, reload } = usePanelData()
+  const consolidated = opsInSettings()
+  const tabs: readonly Tab[] = consolidated ? TABS.filter(tab => !isOpsTab(tab)) : TABS
+  // A record detail reached by a direct link (a task, a message) keeps no tab selected; an operations list opens Settings.
+  const selected: Tab = consolidated && isOpsTab(route.page) ? (route.id === undefined ? 'settings' : route.page) : route.page
   // Keep the active tab scrolled into view on narrow screens when routes change via links.
-  useEffect(() => { document.getElementById(`${tabPrefix}-${route.page}`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }) },
-    [route.page, tabPrefix])
+  useEffect(() => { document.getElementById(`${tabPrefix}-${selected}`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }) },
+    [selected, tabPrefix])
   const waiting = error ? <p className="dt-error" role="alert">{error.message}</p> : <p className="dt-hint">{t('loading')}</p>
+  const settings = (group: SettingsGroup, ops: { filter?: string; window?: '24h'; from?: 'conversation' } = {},
+    triggerFilter?: ThreadFilter) => <SettingsPage key={state?.masterId} group={group} query={{}}
+    {...state ? { state } : {}} deploymentForm={deploymentForm} ops={ops} {...triggerFilter ? { triggerFilter } : {}} />
   const page = (() => {
     switch (route.page) {
       case 'overview': return <OverviewPage />
       case 'tasks': return <TasksPage tasks={tasks} />
-      case 'source': return <SourceStatus />
+      case 'source': return consolidated ? settings('source') : <SourceStatus />
       case 'trigger': return route.id !== undefined ? <ThreadPage key={route.id} id={route.id} target={route.query?.trigger} />
-        : <TriggerStatus filter={route.query?.filter ?? 'subscribed'} />
-      case 'eval': return <EvalStatus filter={route.query?.filter ?? 'work'} window={route.query?.window}
-        paused={!!state?.paused} />
+        : consolidated ? settings('trigger', {}, route.query?.filter ?? 'subscribed')
+          : <TriggerStatus filter={route.query?.filter ?? 'subscribed'} />
+      case 'eval': return consolidated ? settings('eval', { ...route.query?.filter ? { filter: route.query.filter } : {},
+        ...route.query?.window ? { window: route.query.window } : {} }) : <EvalStatus filter={route.query?.filter ?? 'work'}
+        window={route.query?.window} paused={!!state?.paused} />
       case 'execution': return route.id !== undefined ? <TicketPage key={route.id} id={route.id} />
-        : state ? <ExecutionStatus filter={route.query?.filter ?? 'open'} from={route.query?.from} state={state} reload={reload} /> : waiting
-      case 'settings': return state ? <SettingsPage key={state.masterId} group={route.query.group} query={route.query} state={state}
-        deploymentForm={deploymentForm} /> : waiting
+        : consolidated ? settings('execution', { ...route.query?.filter ? { filter: route.query.filter } : {},
+          ...route.query?.from ? { from: route.query.from } : {} })
+          : state ? <ExecutionStatus filter={route.query?.filter ?? 'open'} from={route.query?.from} state={state} reload={reload} /> : waiting
+      case 'settings': return !consolidated && !state ? waiting
+        : <SettingsPage key={state?.masterId} group={route.query.group} query={route.query}
+          {...state ? { state } : {}} deploymentForm={deploymentForm} />
     }
   })()
   return <div className="dt-page">
     <div className="dt-column">
       <Header masterId={state?.masterId} />
       {error && state && <p className="dt-error" role="status">{error.message}</p>}
-      <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={route.page} onChange={openTab}
-        items={TABS.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId }))} />
-      <main id={pageId} role="tabpanel" aria-labelledby={`${tabPrefix}-${route.page}`} className="dt-main">{page}</main>
+      <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={selected} onChange={openTab}
+        items={tabs.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId }))} />
+      <main id={pageId} role="tabpanel" className="dt-main"
+        {...tabs.includes(selected) ? { 'aria-labelledby': `${tabPrefix}-${selected}` } : { 'aria-label': t(`tab.${selected}`) }}>{page}</main>
     </div>
   </div>
 }

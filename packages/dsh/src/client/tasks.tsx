@@ -7,8 +7,9 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import type { ActivityStatus } from '../app/activity.ts'
 import type { TaskBoardView, TaskGraphBranch, TaskMilestone, TaskNode, TaskView } from '../app/tasks.ts'
 import { Button, Dot, Icon, Pill, SegmentedTabs, Tag, type DotState, type TagTone } from './controls.tsx'
-import { taskHierarchy, taskViewV1 } from './features.ts'
-import { usePanel } from './provider.tsx'
+import { firstUse, taskHierarchy, taskViewV1 } from './features.ts'
+import { EmptyExamples, FirstUseNotes } from './first-use.tsx'
+import { usePanel, usePanelData } from './provider.tsx'
 import type { Route } from './route.ts'
 import { duration, fullTime, localized, valueLabel, when, type T } from './text.ts'
 import { TaskDetail } from './task-detail.tsx'
@@ -438,7 +439,8 @@ export function TasksTitle({ t }: { t: T }) {
 }
 
 export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNode {
-  const { t, call, navigate } = usePanel()
+  const { t, call, navigate, openSession } = usePanel()
+  const { state } = usePanelData()
   const store = useMemo(() => tasks ?? new TasksViewClient(call), [tasks, call])
   // A page-specific client belongs to this page; the shared one is disposed by the plugin effect.
   useEffect(() => () => { if (!tasks) store.dispose() }, [store, tasks])
@@ -466,6 +468,7 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
   if (!data) return <LoadState error={snapshot.error} loading={!snapshot.ready || snapshot.loading} />
   return <>
     {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
+    <FirstUseNotes />
     <p className="dt-hint dt-task-intro">{view === 'list' ? t('tasksListIntro')
       : view === 'tickets' ? t('tasksTicketsIntro') : t('tasksIntro')}</p>
     {view !== 'list' && view !== 'tickets' && <Hint>{t('tasksPlanFallback')}</Hint>}
@@ -478,7 +481,8 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
       onOpenTicket={ticket => navigate({ page: 'execution', id: ticket })} /> : <>
     {view === 'list' && <TaskFilters t={t} value={filter} onChange={setFilter} tasks={data.tasks} />}
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${view}`}>
-      {data.totals.tickets === 0 ? <p className="dt-hint">{t('tasksEmpty')}</p>
+      {data.totals.tickets === 0 ? (firstUse() ? <EmptyExamples masterId={state?.masterId} onAsk={openSession} />
+        : <p className="dt-hint">{t('tasksEmpty')}</p>)
         : view === 'list' ? <TaskList tasks={data.tasks} t={t} filter={filter} selected={selected} expanded={rootId}
           childrenOf={ticket => store.detailOf(ticket)?.children ?? []} onSelect={selectRoot} onSelectChild={selectChild}
           onOpenTask={ticket => navigate({ page: 'execution', id: ticket })} onOpenDetail={hierarchy ? openDetail : undefined}
