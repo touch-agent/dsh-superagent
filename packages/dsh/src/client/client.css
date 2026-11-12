@@ -523,6 +523,9 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 /* A review aggregate can hold several deliveries; each stays a readable block in the detail page. */
 .dt-review-deliverable { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 0; }
 .dt-review-deliverable + .dt-review-deliverable { border-top: 0.5px solid var(--dsw-alias-border-l3); }
+.dt-review-criteria { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dt-review-criteria .dt-hint { margin: 0; }
+.dt-review-binding { margin-top: 2px; }
 /* A task selected in either surface narrows Events; the chip says which one and can be cleared. */
 .dt-events-selection { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 6px 8px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); }
 .dt-events-selection-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 18px; }

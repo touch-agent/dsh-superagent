@@ -83,6 +83,11 @@ function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChange
   const sourceLabel = (source: { ticketId: string }) => source.ticketId === ticket.id ? t('reviewSourceRoot') : t('reviewSourceChild')
   const confirmationText = (criterion: NonNullable<TicketPageView['review']>['confirmations'][number]['criterion']) => criterion.reason
     ? reasonLabel(t, criterion.reason) : t('reviewHumanConfirm')
+  // The end state follows the data the page already has: a pending close wins, then an open follow, else the approval ends it.
+  const approvalEffect = ticket.pendingEnd
+    ? t('reviewEffectPendingEnd', { outcome: valueLabel(t, 'outcome', ticket.pendingEnd.outcome) })
+    : ticket.threads.some(thread => thread.anchor?.own && !thread.anchor.closed) ? t('reviewEffectFollows')
+      : t('reviewEffectEnd')
   if (!review.deliverables.length) return <Section title={t('reviewSection')} icon="review">
     <Hint>{t('reviewUnavailable')}</Hint>
   </Section>
@@ -91,12 +96,10 @@ function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChange
     {review.deliverables.map(deliverable => {
       const confirmations = review.confirmations.filter(item => deliverable.sources.some(source =>
         source.ticketId === item.source.ticketId && source.assignmentId === item.source.assignmentId))
-      const criteria = [
-        ...deliverable.criteria.map(criterion => criterion.window
-          ? t('reviewWindowedRule', { rule: valueLabel(t, 'acceptanceRule', criterion.rule), hours: criterion.window })
-          : valueLabel(t, 'acceptanceRule', criterion.rule)),
-        ...confirmations.map(item => confirmationText(item.criterion)),
-      ]
+      const rules = deliverable.criteria.map(criterion => criterion.window
+        ? t('reviewWindowedRule', { rule: valueLabel(t, 'acceptanceRule', criterion.rule), hours: criterion.window })
+        : valueLabel(t, 'acceptanceRule', criterion.rule))
+      const humans = confirmations.map(item => confirmationText(item.criterion))
       return <div className="dt-review-deliverable" key={deliverable.key}>
         <KeyValues rows={[
           [t('reviewArtifact'), `${valueLabel(t, 'artifact', deliverable.artifact.kind)} · ${deliverable.artifact.ref}`],
@@ -104,8 +107,18 @@ function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChange
           [t('reviewPreviewKind'), valueLabel(t, 'previewKind', deliverable.previewRef.kind)],
           [t('reviewPreviewRef'), reference(deliverable.previewRef.ref)],
           [t('reviewSources'), deliverable.sources.map(source => sourceLabel(source)).join(t('listSeparator'))],
-          ...criteria.length > 0 ? [[t('reviewCriteria'), <ul className="dt-plain-list">{criteria.map((criterion, at) =>
-            <li key={at}>{criterion}</li>)}</ul>] as [string, ReactNode]] : [],
+          // Rules and person confirmations answer different questions; grouping keeps the latter from reading as an instruction.
+          ...rules.length > 0 || humans.length > 0 ? [[t('reviewCriteria'), <div className="dt-review-criteria">
+            {rules.length > 0 && <div>
+              <p className="dt-hint">{t('reviewRuleGroup')}</p>
+              <ul className="dt-plain-list">{rules.map((rule, at) => <li key={`rule-${at}`}>{rule}</li>)}</ul>
+            </div>}
+            {humans.length > 0 && <div>
+              <p className="dt-hint">{t('reviewHumanGroup')}</p>
+              <ul className="dt-plain-list">{humans.map((human, at) => <li key={`human-${at}`}>{human}</li>)}</ul>
+              <p className="dt-hint">{t('reviewHumanCovers')}</p>
+            </div>}
+          </div>] as [string, ReactNode]] : [],
         ]} />
         {deliverable.summary && <div className="dt-row-quote"><MarkdownLite text={deliverable.summary} /></div>}
         {deliverable.parentAccepted && <Hint>{t('reviewParentAccepted', { by: actorName(t, deliverable.parentAccepted.by) })}</Hint>}
@@ -118,9 +131,12 @@ function ReviewSection({ ticket, onChanged }: { ticket: TicketPageView; onChange
     {review.accepted ? <Hint>{t('reviewAccepted', { by: actorName(t, review.accepted.by),
       time: when(review.accepted.at, t('lang')) })}</Hint>
       : ticket.parentTicketId ? <Hint>{t('reviewChildNoApprove')}</Hint>
-        : review.canReview ? <div className="dt-row-buttons"><Button variant="primary" size="sm" disabled={approve.busy}
-          onClick={() => void approve.run()}>{t('approve')}</Button>
-          <span className="dt-hint dt-mono">{review.reviewRevision.slice(0, 8)}</span></div>
+        : review.canReview ? <>
+          <Hint>{t('reviewEffect', { effect: approvalEffect })}</Hint>
+          <div className="dt-row-buttons"><Button variant="primary" size="sm" disabled={approve.busy}
+            onClick={() => void approve.run()}>{t('approve')}</Button></div>
+          <p className="dt-hint dt-review-binding">{t('reviewBindingHint')}</p>
+        </>
           : <Hint>{t('reviewUnavailable')}</Hint>}
   </Section>
 }

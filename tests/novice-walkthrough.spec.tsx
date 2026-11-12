@@ -22,18 +22,21 @@ it('lets a first-time person approve the current delivery from the overview with
       criterion: { kind: 'human', reason: { code: 'said', values: { text: 'Check the tone' } } } }], summary: 'Ready for review' } }
 
   await mount()
-  // The overview names the person's next action and the delivery; the title is the way in.
+  // The overview names the person's next action and the delivery; the title stays clickable and a visible action names it.
   expect(text()).toContain(zh.entryNeeds)
   expect(text()).toContain(zh['stage.review'])
+  expect(text()).toContain(zh.ticketOpenReview)
   const card = all('.dt-open').find(element => element.textContent === '修复回归')
   expect(card).toBeDefined()
-  await click(card!)
+  await click(zh.ticketOpenReview)
 
   // The ticket page shows the aggregate and its one bound approval; no task tree was opened.
   expect(text()).toContain(zh.reviewSection)
   expect(text()).toContain('https://example.test/preview/rev-1')
   expect(text()).toContain(zh['acceptanceRule.pr.merged'])
   expect(text()).toContain('Check the tone')
+  expect(text()).not.toContain('artifact + revision')
+  expect(text()).not.toContain('review-r')
   await click(zh.approve)
 
   expect(server.requests).toContainEqual({ path: 'tickets/t1/approve', method: 'POST', body: { reviewRevision: 'review-rev-1' } })

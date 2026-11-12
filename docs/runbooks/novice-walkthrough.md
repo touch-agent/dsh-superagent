@@ -2,11 +2,11 @@
 
 > 对应 [011 设计原则](../011-design-principles.zh.md) C4.5「新人能在不看组织视图的情况下完成一次任务」。
 > 本记录只采信可复现的界面状态：固定的提交、固定的 fixture、固定的面板文案，不引用生产数据的截图。
-> 走查日期 2026-11-11；面板组件与中文 locale 固定在 `main@f7846fc`，本记录与测试随本 PR 提供，不修改面板代码。
+> 走查日期 2026-11-11；首次走查基于 `main@f7846fc`。G1–G6 的文案与入口修复在 `agent/walkthrough-gaps-dc173a1ad619`，仍待独立新人复跑；下文保留首次走查的界面原文，修复对照见「G1–G6 修复记录」。
 
 ## 结论
 
-**Partially met（部分满足）**。新人可以在不打开「工单树 / 计划树」的情况下，从概览的「待我处理」进入工单、读到交付并完成批准，路径是两次点击；但首屏的入口可发现性、术语一致性和批准后果说明不足，第一步的 10 秒判断只能算低置信度通过。C4.5 还不能记为通过；按本记录末尾的后续单修文案后，需要再用独立新人复跑。
+**Partially met（部分满足）**。新人可以在不打开「工单树 / 计划树」的情况下，从概览的「待我处理」进入工单、读到交付并完成批准，路径是两次点击；首屏的入口可发现性、术语一致性和批准后果说明不足。G1–G6 的文案/入口已在本分支修复并有面板测试守住，但还没有找没看过本记录的人复跑，因此 C4.5 仍不能记为通过。
 
 本次走查由 agent 按首次使用者视角执行，不是独立人类受试者；它证明了路径可走，不代替真人可用性测试。
 
@@ -15,14 +15,14 @@
 - **任务**：「面板里有一条等你确认的交付。找到它、读完交付，然后确认（批准）。不要打开工单树或计划树。」
 - **起点**：面板首屏「概览」，语言中文，默认 E0 面（不预先打开右栏、不打开任务详情）。
 - **可复现状态**：`tests/novice-walkthrough.spec.tsx` 的 fixture——根工单 `t1` 处于 `person / review`，有一个文档交付 `docs/review.md@rev-1`、预览链接、规则验收标准 `pr.merged` 和一条人工确认「Check the tone」；概览的「待我处理」把它列为「待验收」。
-- **界面版本**：面板组件与 locale 固定在 `main@f7846fc`（T5-02 的 E0–E3 默认面与 T3-11 的审查聚合已落地）。测试 fixture 和本记录随本 PR 提供，不改面板代码；因此复现要检出本 PR 的 head，而不是停在 `f7846fc`。如果后续改动面板文案/布局，这个走查要重新记录，不能拿旧结论冒充。
+- **界面版本**：首次走查固定在 `main@f7846fc`（T5-02 的 E0–E3 默认面与 T3-11 的审查聚合已落地）；G1–G6 的修复在 `agent/walkthrough-gaps-dc173a1ad619`。复现修复后的界面要检出该分支；如果后续再改面板文案/布局，这个走查要重新记录，不能拿旧结论冒充。
 
 ## 复现
 
 ```sh
-git switch agent/docs-c4-98f7fc9c3bd4   # this PR's head; use main once merged
+git switch agent/walkthrough-gaps-dc173a1ad619   # this PR's head; use main once merged
 pnpm install --frozen-lockfile
-pnpm vitest run tests/novice-walkthrough.spec.tsx
+pnpm vitest run tests/novice-walkthrough.spec.tsx tests/panel-walkthrough-gaps.spec.tsx
 ```
 
 测试渲染的是生产面板的同一套 React 组件与 zh locale，状态来自 `tests/fixtures/panel-server.ts`；它断言的就是下面这条路径与关键文案。要在真实部署上复跑，按 [README](../../README.md) 安装、在 Settings 配好 Sources/Policy/Execution 后，让一条任务走到 review 阶段，再用同样三步操作；真人复跑时请记录同样的「10 秒内能否说出下一步」。
@@ -43,7 +43,7 @@ pnpm vitest run tests/novice-walkthrough.spec.tsx
 
 ## 缺口与后续单
 
-按严重度排序；本单只记录，不改 UI（符合任务范围）。每条都应单独开一个文案/入口单，并在修完后复跑本走查。
+以下保留首次走查的原始缺口记录；本 PR 的逐条修复见下一节。首次走查之后本单曾按「只记录、不改 UI」处理，现在由 A2 修复文案与入口。
 
 | # | 严重度 | 缺口 | 需要的文案 / 入口 | 建议后续单 |
 | --- | --- | --- | --- | --- |
@@ -54,9 +54,31 @@ pnpm vitest run tests/novice-walkthrough.spec.tsx
 | G5 | 中 | 「按 artifact + revision 去重」是内部术语，不是新人能读懂的验收说明。 | 改成「根工单与已接受的子工单交付按文件与修订去重」。 | 审查提示文案 |
 | G6 | 中 | 「验收标准」下把规则（`PR 已合并`）和人工确认（`Check the tone`）混在一起，没有区分；新人可能把后者当成给自己的指令。 | 分组标注「规则」/「需要你确认」，并说明人工确认会随批准一起覆盖。 | 验收标准分组 |
 
+## G1–G6 修复记录（本 PR）
+
+只改文案与入口可达性，不改交互模型、不新增数据或权限；术语按 [023 §3](../023-ux-first-batch.zh.md#3-术语) 的改写表（源自 021 §5）统一为「待你确认 / 需要你处理 / 任务」，内部标识仍只在 E2/E3。动作按钮按 021 §5.3 的「查看并批准 / 退回」保留「批准」。
+
+| # | 位置 | 改前 | 改后 | 用户卡点 | 覆盖 |
+| --- | --- | --- | --- | --- | --- |
+| G1 | 概览 · 待我处理卡片 | 卡片标题「修复回归」是唯一看起来可点的文字，没有动作提示 | 标题仍是点击目标；动作区新增「查看并确认」，打开同一工单页 | 新人只能猜标题可点 | `tests/panel-walkthrough-gaps.spec.tsx` 第 1 条、`tests/novice-walkthrough.spec.tsx` |
+| G2 | 概览状态、任务列表状态/筛选、审查提示 | 「待验收」「待审」「需我处理」「审查修订」 | 「待你确认」「需要你处理」；去掉「审查修订」，提示改为「批准只对当前修订有效」 | 同一件事有多种叫法 | `tests/panel-walkthrough-gaps.spec.tsx` 第 1 条、`tests/marks.spec.ts` |
+| G3 | 审查区「批准」按钮下方 | 裸 `review-r`（`reviewRevision` 前 8 位，无标签） | 删掉裸 id；按钮下方写「批准只对上方「修订」有效。」，键值行保留「修订 rev-1」 | 不知道它绑定哪次批准 | 第 2 条断言不出现 `review-r`、保留键值行 |
+| G4 | 审查区批准按钮上方 | 没有批准后说明 | 「批准后：…」按 `pendingEnd`、仍跟随来源、其他三种情况各给一句结果 | 不知道批准会结束任务还是继续等 PR | 第 2–4 条覆盖三种结果 |
+| G5 | 审查区提示 | 「本工单与已接受子工单的交付按 artifact + revision 去重；批准绑定当前审查修订。」 | 「本任务与已接受的子任务交付按文件与修订去重；批准只对当前修订有效。」 | 内部术语读不懂 | 第 2 条断言新文案存在、旧术语不存在 |
+| G6 | 验收标准 | 规则与人工确认混在一列，如「PR 已合并」「Check the tone」并列 | 分成「规则（自动检查）」与「需要你确认」，并说明批准时一并确认、不需另回复 | 把人工确认当成给自己的指令 | 第 2 条断言两组标签和覆盖说明 |
+
+### 视觉证据
+
+同场景、1440×900、light、zh-CN、同一合成 fixture；Before 取本分支的起点 `main@0d24be7`（首次走查之后的面板），After 取本分支构建。截图只截 Superagent 面板，任务标题、负责人、来源与账号均为脱敏 fixture，不使用私有飞书内容。
+
+| 场景 | Before | After |
+| --- | --- | --- |
+| 概览 · 待我处理：同一张待确认卡片 | [before-overview.png](../images/walkthrough-gaps/before-overview.png) | [after-overview.png](../images/walkthrough-gaps/after-overview.png) |
+| 工单页 · 验收预览：修订、批准后果、规则/人工确认分组 | [before-review.png](../images/walkthrough-gaps/before-review.png) | [after-review.png](../images/walkthrough-gaps/after-review.png) |
+
 ## 复跑与判定
 
-修完 G1–G6 后，用**没看过本记录的人**按上面三步复跑，记录同样的 10 秒判断与卡点；只有三步都通过且没有新的中/高严重度缺口，才可以把 C4.5 记为通过，并把证据补到 [replacement.drill.md](replacement.drill.md) 的 C4.1–C4.5 表与 `docs/plan/TRACKING.zh.md` 的 T5-06 行。任何一步失败都按产品缺口记录，不因为「路径能走通」而改判通过。
+修完 G1–G6 后，用**没看过本记录的人**按上面三步复跑，记录同样的 10 秒判断与卡点；只有三步都通过且没有新的中/高严重度缺口，才可以把 C4.5 记为通过，并把证据补到 [replacement.drill.md](replacement.drill.md) 的 C4.1–C4.5 表与 `docs/plan/TRACKING.zh.md` 的 T5-06 行。任何一步失败都按产品缺口记录，不因为「路径能走通」而改判通过。本次只完成文案/入口修复与 agent 的 10 秒复核；独立新人复跑仍未进行，T5-06 的 C4.5 保持「部分满足」。
 
 ## 本次不覆盖
 
