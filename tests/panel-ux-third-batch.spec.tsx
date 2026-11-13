@@ -29,6 +29,18 @@ it('opens on the task view with the main-Agent card and exactly four first-level
   expect(document.querySelector('#dt-tab-tasks')?.getAttribute('aria-selected')).toBe('true')
 })
 
+it('offers one main-Session action on the task page, and the header action elsewhere', async () => {
+  newDefaults()
+  await mount()
+  const labels = () => all('button').map(item => item.textContent?.trim())
+  // The card's entrance replaces the header shortcut while the card is on screen; two buttons would be one action twice.
+  expect(labels().filter(label => label === zh.masterOpen)).toHaveLength(1)
+  expect(labels().filter(label => label === zh.openMaster)).toHaveLength(0)
+  await click(zh['tab.notifications'])
+  expect(card()).toBeNull()
+  expect(labels().filter(label => label === zh.openMaster)).toHaveLength(1)
+})
+
 it('renames the main Agent and keeps the name across a remount', async () => {
   newDefaults()
   await mount()

@@ -6,7 +6,7 @@ import { Button, Dot, Icon, Input, Modal, SegmentedTabs } from './controls.tsx'
 import type { DeploymentForm } from './deployment.tsx'
 import { EvalStatus } from './eval.tsx'
 import { ExecutionStatus } from './execution.tsx'
-import { noticeButton, opsInSettings } from './features.ts'
+import { masterCard, noticeButton, opsInSettings } from './features.ts'
 import { ticketMark } from './marks.ts'
 import { GLOSSARY, GLOSSARY_VALUES, en, zh, type DshSuperagentKey } from './locales.ts'
 import { NotificationHost, useNoticeCenter } from './notification-center.tsx'
@@ -112,7 +112,7 @@ function SearchResults({ result, query, onClose }: { result: SearchView; query: 
   </div>
 }
 
-function Header({ masterId }: { masterId: string | undefined }) {
+function Header({ masterId, hideMaster = false }: { masterId: string | undefined; hideMaster?: boolean }) {
   const { t, call, openSession, notify } = usePanel()
   const notices = useNoticeCenter()
   const [glossary, setGlossary] = useState(false)
@@ -151,8 +151,8 @@ function Header({ masterId }: { masterId: string | undefined }) {
       </Button>}
       <Button variant="ghost" size="sm" icon={<Icon name="question" />} aria-label={t('glossary')} title={t('glossary')} aria-haspopup="dialog"
         onClick={() => setGlossary(true)} />
-      <Button variant="outline" size="sm" icon={<Icon name="session" size={14} />} disabled={!masterId}
-        onClick={() => { if (masterId) openSession(masterId).catch(failure => notify(errorText(failure))) }}>{t('openMaster')}</Button>
+      {!hideMaster && <Button variant="outline" size="sm" icon={<Icon name="session" size={14} />} disabled={!masterId}
+        onClick={() => { if (masterId) openSession(masterId).catch(failure => notify(errorText(failure))) }}>{t('openMaster')}</Button>}
     </div>
     <Glossary open={glossary} onClose={() => setGlossary(false)} />
   </header>
@@ -196,9 +196,12 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
           {...state ? { state } : {}} deploymentForm={deploymentForm} />
     }
   })()
+  // The main-Agent card already carries the entrance on its own page; keeping the header shortcut there too would
+  // render the same action twice. Every other page keeps the header action as the single entry.
+  const cardHere = masterCard() && route.page === 'tasks'
   return <div className="dt-page">
     <div className="dt-column">
-      <Header masterId={state?.masterId} />
+      <Header masterId={state?.masterId} hideMaster={cardHere} />
       {error && state && <p className="dt-error" role="status">{error.message}</p>}
       <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={selected} onChange={openTab}
         items={tabs.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId }))} />
