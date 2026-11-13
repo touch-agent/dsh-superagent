@@ -20,7 +20,8 @@ import { App } from './app.tsx'
 import { caller } from './api.ts'
 import { AttentionStore, useAttention } from './attention.ts'
 import { PluginConfig, usePageForm } from './deployment.tsx'
-import { entryThreeZones, taskViewV1 } from './features.ts'
+import { entryThreeZones, navFour, noticeButton, taskViewV1 } from './features.ts'
+import { GlobalNoticeButton } from './global-notice.tsx'
 import { en, zh, type DshSuperagentKey } from './locales.ts'
 import { MasterStore } from './master.ts'
 import { openPanelRoute, PANEL_ID } from './panel.ts'
@@ -54,10 +55,11 @@ function HammerIcon({ size, attention, badge }: SidebarPanelIconOwnerProps & { a
 }
 
 /** Panel wrapper: reads the deployment form and renders the management page, in the panel or embedded in the Conversation. */
-function Mounted({ ctx, t, openSession, embedded, tasks }: { ctx: ClientContext; t: T; openSession: (id: string) => Promise<void>
-  embedded?: boolean; tasks: TasksViewClient }) {
+function Mounted({ ctx, t, openSession, embedded, tasks, shellNotice }: { ctx: ClientContext; t: T; openSession: (id: string) => Promise<void>
+  embedded?: boolean; tasks: TasksViewClient; shellNotice?: boolean }) {
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
-  return <App t={t} openSession={openSession} deploymentForm={form} embedded={embedded} tasks={tasks} />
+  return <App t={t} openSession={openSession} deploymentForm={form} embedded={embedded} tasks={tasks}
+    shellNotice={shellNotice ?? noticeButton()} />
 }
 
 export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
@@ -83,10 +85,15 @@ export function apply(ctx: ClientContext): void {
     }
   }
   const openPanel = (route: Route) => openPanelRoute(ctx, route)
+  // With the four-entry navigation the notices and the task list are first-level pages, so the right tabs would be
+  // duplicate entries; the old tabs stay registered only on the fallback navigation.
+  const four = navFour()
   const openEvents = () => {
+    if (four) { openPanel({ page: 'notifications' }); return }
     try { ctx.get('sidebarRight')?.openTab(EVENTS_KIND) } catch { /* a host without the right sidebar has no Events tab */ }
   }
   const openTasks = () => {
+    if (four) { openPanel({ page: 'tasks' }); return }
     try { ctx.get('sidebarRight')?.openTab(TASKS_KIND) } catch { /* a host without the right sidebar has no Task tab */ }
   }
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({}) },
@@ -112,20 +119,27 @@ export function apply(ctx: ClientContext): void {
     } catch { /* a host without the right sidebar keeps the rest of the plugin */ }
   }
   const taskView = taskViewV1()
-  registerTab(EVENTS_ID, EVENTS_KIND, 'eventsTab', 'eventsGuide', 300)
-  if (taskView) registerTab(TASKS_ID, TASKS_KIND, 'tasksTab', 'tasksGuide', 310)
-  ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: EVENTS_ID, locale: NS },
-    (props: { t: T }) => <EventsTab t={props.t} activity={activity} master={master} tasks={taskView ? tasks : undefined}
-      onOpen={openPanel} onOpenTasks={taskView ? openTasks : undefined} />))
-  ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: EVENTS_ID, locale: NS },
-    (props: { t: T }) => <EventsTitle t={props.t} activity={activity} />))
-  if (taskView) {
-    ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TASKS_ID, locale: NS },
-      (props: { t: T }) => <TasksTab t={props.t} tasks={tasks} onOpenStatus={() => openPanel({ page: 'tasks' })}
-        onOpenTask={id => openPanel({ page: 'execution', id })} onOpenEvents={id => { tasks.select({ kind: 'ticket', id }); openEvents() }} />))
-    ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: TASKS_ID, locale: NS },
-      (props: { t: T }) => <TasksTitle t={props.t} />))
+  if (!four) {
+    registerTab(EVENTS_ID, EVENTS_KIND, 'eventsTab', 'eventsGuide', 300)
+    if (taskView) registerTab(TASKS_ID, TASKS_KIND, 'tasksTab', 'tasksGuide', 310)
+    ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: EVENTS_ID, locale: NS },
+      (props: { t: T }) => <EventsTab t={props.t} activity={activity} master={master} tasks={taskView ? tasks : undefined}
+        onOpen={openPanel} onOpenTasks={taskView ? openTasks : undefined} />))
+    ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: EVENTS_ID, locale: NS },
+      (props: { t: T }) => <EventsTitle t={props.t} activity={activity} />))
+    if (taskView) {
+      ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TASKS_ID, locale: NS },
+        (props: { t: T }) => <TasksTab t={props.t} tasks={tasks} onOpenStatus={() => openPanel({ page: 'tasks' })}
+          onOpenTask={id => openPanel({ page: 'execution', id })} onOpenEvents={id => { tasks.select({ kind: 'ticket', id }); openEvents() }} />))
+      ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: TASKS_ID, locale: NS },
+        (props: { t: T }) => <TasksTitle t={props.t} />))
+    }
   }
+  // The floating notice entry is the plugin's substitute for a host-level nav item: frame-wide, quiet when nothing
+  // needs a person, and opening the panel drawer (or the Notifications page when no panel is mounted).
+  if (noticeButton()) ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'dsh-superagent-notice', order: 40,
+    locale: NS }, (props: { t: T }) => <GlobalNoticeButton t={props.t} call={call}
+      onOpenPanel={() => openPanel({ page: 'notifications' })} />))
   // An invisible Session companion: it keeps the stream alive and opens Events on the first unread notice.
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
     id: 'system-events-bridge', order: 900, locale: NS }, () => <EventsBridge activity={activity} master={master} autoOpen={autoOpen}

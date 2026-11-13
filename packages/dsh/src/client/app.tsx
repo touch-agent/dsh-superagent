@@ -6,14 +6,16 @@ import { Button, Dot, Icon, Input, Modal, SegmentedTabs } from './controls.tsx'
 import type { DeploymentForm } from './deployment.tsx'
 import { EvalStatus } from './eval.tsx'
 import { ExecutionStatus } from './execution.tsx'
-import { opsInSettings } from './features.ts'
+import { masterCard, noticeButton, opsInSettings } from './features.ts'
 import { ticketMark } from './marks.ts'
 import { GLOSSARY, GLOSSARY_VALUES, en, zh, type DshSuperagentKey } from './locales.ts'
 import { NotificationHost, useNoticeCenter } from './notification-center.tsx'
+import { FilesPage } from './files-page.tsx'
+import { NotificationsPage } from './notifications-page.tsx'
 import { OverviewPage } from './overview.tsx'
 import { PanelProvider, usePanel, usePanelData } from './provider.tsx'
 import { PANEL_NAVIGATE } from './panel.ts'
-import { HOME, TABS, initialLocation, isOpsTab, lastSettingsGroup, parseRoute, remember, routeLabel, settingsRoute, type Location,
+import { homeRoute, initialLocation, isOpsTab, lastSettingsGroup, parseRoute, remember, routeLabel, settingsRoute, visibleTabs, type Location,
   type Route, type SettingsGroup, type Tab } from './route.ts'
 import { SettingsPage } from './settings.tsx'
 import { SourceStatus } from './source.tsx'
@@ -32,6 +34,8 @@ export interface AppProps {
   embedded?: boolean
   /** The plugin's shared task list; a standalone mount (tests, embedded host) may create its own. */
   tasks?: TasksViewClient
+  /** The host already mounts the frame-wide floating notice entry; an embedded/standalone mount draws its own copy. */
+  shellNotice?: boolean
 }
 
 function Glossary({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -108,7 +112,7 @@ function SearchResults({ result, query, onClose }: { result: SearchView; query: 
   </div>
 }
 
-function Header({ masterId }: { masterId: string | undefined }) {
+function Header({ masterId, hideMaster = false }: { masterId: string | undefined; hideMaster?: boolean }) {
   const { t, call, openSession, notify } = usePanel()
   const notices = useNoticeCenter()
   const [glossary, setGlossary] = useState(false)
@@ -140,15 +144,15 @@ function Header({ masterId }: { masterId: string | undefined }) {
           onChange={event => { setQuery(event.target.value); if (!event.target.value) show() }} />
         {result && <SearchResults result={result.value} query={result.query} onClose={() => { show() }} />}
       </form>
-      {notices && <Button className="dt-bell" variant="ghost" size="sm" icon={<Icon name="bell" />}
+      {notices && !noticeButton() && <Button className="dt-bell" variant="ghost" size="sm" icon={<Icon name="bell" />}
         aria-label={t('noticeUnread', { count: notices.unread })} title={t('notifications')} aria-haspopup="dialog"
         aria-expanded={notices.open} onClick={notices.openDrawer}>
         {notices.unread > 0 && <span className="dt-bell-badge" aria-hidden="true">{notices.unread > 99 ? '99+' : notices.unread}</span>}
       </Button>}
       <Button variant="ghost" size="sm" icon={<Icon name="question" />} aria-label={t('glossary')} title={t('glossary')} aria-haspopup="dialog"
         onClick={() => setGlossary(true)} />
-      <Button variant="outline" size="sm" icon={<Icon name="session" size={14} />} disabled={!masterId}
-        onClick={() => { if (masterId) openSession(masterId).catch(failure => notify(errorText(failure))) }}>{t('openMaster')}</Button>
+      {!hideMaster && <Button variant="outline" size="sm" icon={<Icon name="session" size={14} />} disabled={!masterId}
+        onClick={() => { if (masterId) openSession(masterId).catch(failure => notify(errorText(failure))) }}>{t('openMaster')}</Button>}
     </div>
     <Glossary open={glossary} onClose={() => setGlossary(false)} />
   </header>
@@ -159,7 +163,7 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
   const { t } = usePanel()
   const { state, error, reload } = usePanelData()
   const consolidated = opsInSettings()
-  const tabs: readonly Tab[] = consolidated ? TABS.filter(tab => !isOpsTab(tab)) : TABS
+  const tabs = visibleTabs()
   // A record detail reached by a direct link (a task, a message) keeps no tab selected; an operations list opens Settings.
   const selected: Tab = consolidated && isOpsTab(route.page) ? (route.id === undefined ? 'settings' : route.page) : route.page
   // Keep the active tab scrolled into view on narrow screens when routes change via links.
@@ -173,6 +177,8 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
     switch (route.page) {
       case 'overview': return <OverviewPage />
       case 'tasks': return <TasksPage tasks={tasks} />
+      case 'notifications': return <NotificationsPage tasks={tasks} />
+      case 'files': return <FilesPage tasks={tasks} />
       case 'source': return consolidated ? settings('source') : <SourceStatus />
       case 'trigger': return route.id !== undefined ? <ThreadPage key={route.id} id={route.id} target={route.query?.trigger} />
         : consolidated ? settings('trigger', {}, route.query?.filter ?? 'subscribed')
@@ -190,9 +196,12 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
           {...state ? { state } : {}} deploymentForm={deploymentForm} />
     }
   })()
+  // The main-Agent card already carries the entrance on its own page; keeping the header shortcut there too would
+  // render the same action twice. Every other page keeps the header action as the single entry.
+  const cardHere = masterCard() && route.page === 'tasks'
   return <div className="dt-page">
     <div className="dt-column">
-      <Header masterId={state?.masterId} />
+      <Header masterId={state?.masterId} hideMaster={cardHere} />
       {error && state && <p className="dt-error" role="status">{error.message}</p>}
       <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={selected} onChange={openTab}
         items={tabs.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId }))} />
@@ -203,9 +212,9 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
 }
 
 /** Root panel component managing route history and shared panel state. */
-export function App({ t, openSession, deploymentForm, embedded = false, tasks }: AppProps) {
+export function App({ t, openSession, deploymentForm, embedded = false, tasks, shellNotice = false }: AppProps) {
   // The embedded Status page keeps its own route and does not overwrite the panel's remembered route.
-  const [location, setLocation] = useState<Location>(() => embedded ? { route: HOME, stack: [] } : initialLocation())
+  const [location, setLocation] = useState<Location>(() => embedded ? { route: homeRoute(), stack: [] } : initialLocation())
   useEffect(() => { if (!embedded) remember(location) }, [location, embedded])
   // Preserve the last opened settings group across navigation so the Settings tab reopens at it.
   const move = useCallback((next: (current: Location) => Pick<Location, 'route' | 'stack'>) =>
@@ -213,7 +222,7 @@ export function App({ t, openSession, deploymentForm, embedded = false, tasks }:
   /** Navigates to `route`; `replace` swaps the current entry (filters, paging) instead of pushing a back step. */
   const navigate = useCallback((route: Route, replace = false) => move(current => ({ route,
     stack: replace ? current.stack : [...current.stack, current.route].slice(-20) })), [move])
-  const back = useCallback(() => move(current => ({ route: current.stack.at(-1) ?? HOME, stack: current.stack.slice(0, -1) })), [move])
+  const back = useCallback(() => move(current => ({ route: current.stack.at(-1) ?? homeRoute(), stack: current.stack.slice(0, -1) })), [move])
   const openTab = useCallback((tab: Tab) => move(current => ({ stack: [], route: tab === 'settings'
     ? settingsRoute(lastSettingsGroup(current)) : { page: tab, id: undefined } })), [move])
   // A Conversation view or the Events tab asks for one management page; the panel may already be mounted or may mount later.
@@ -228,8 +237,8 @@ export function App({ t, openSession, deploymentForm, embedded = false, tasks }:
   }, [navigate, embedded])
   const pageId = embedded ? 'dt-page-status' : 'dt-page'
   const tabPrefix = embedded ? 'dt-page-status-tab' : 'dt-tab'
-  return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? HOME)}>
-    <NotificationHost>
+  return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? homeRoute())}>
+    <NotificationHost shellNotice={shellNotice}>
       <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} pageId={pageId} tabPrefix={tabPrefix} tasks={tasks} />
     </NotificationHost>
   </PanelProvider>

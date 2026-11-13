@@ -26,6 +26,14 @@ export const OPS_IN_SETTINGS = 'ux.opsInSettings.v1'
 export const TASK_DETAIL_V2 = 'ux.taskDetail.v2'
 /** UX batch 2's first-use explanation and clickable empty-state examples; off leaves the plain task list and empty hint. */
 export const FIRST_USE = 'ux.firstUse.v1'
+/** UX batch 3's four-entry navigation: Tasks, Notices, Files and Settings; off restores Overview, Tasks and Settings. */
+export const NAV_FOUR = 'ux.navFour.v1'
+/** UX batch 3's main-Agent card at the top of the task view; off leaves the task view unchanged and removes the card only. */
+export const MASTER_CARD = 'ux.masterCard.v1'
+/** UX batch 3's floating notice button; off restores the header bell as the only notice entry. */
+export const NOTICE_BUTTON = 'ux.noticeButton.v1'
+/** UX batch 3's Files page; off removes the nav entry and keeps the richer task detail unchanged. */
+export const FILES_PAGE = 'ux.filesPage.v1'
 /** The person's per-browser preference, like the unread cursor: absent means the stable-phase default, off. */
 const AUTO_OPEN_PREF = 'dsh-superagent/events-auto-open'
 /** Whether a floating card closes itself after the hold window; a browser preference, not policy. */
@@ -79,6 +87,11 @@ export const errorAggregate = (): boolean => featureEnabled(ERROR_AGGREGATE)
 export const opsInSettings = (): boolean => featureEnabled(OPS_IN_SETTINGS)
 export const taskDetailV2 = (): boolean => featureEnabled(TASK_DETAIL_V2)
 export const firstUse = (): boolean => featureEnabled(FIRST_USE)
+/** UX batch 3: each surface falls back on its own; none decrypts, migrates or deletes an E2/E3 record. */
+export const navFour = (): boolean => featureEnabled(NAV_FOUR)
+export const masterCard = (): boolean => featureEnabled(MASTER_CARD)
+export const noticeButton = (): boolean => featureEnabled(NOTICE_BUTTON)
+export const filesPage = (): boolean => featureEnabled(FILES_PAGE)
 
 /** Whether a floating card auto-closes; on by default, and off keeps it until a person closes it. */
 export const notifyAutoDismiss = (): boolean => {

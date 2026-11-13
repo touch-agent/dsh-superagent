@@ -648,8 +648,9 @@ class Reply extends Response {
 export function usePanelServer(cleanup: () => void) {
   beforeEach(() => {
     sessionStorage.clear()
-    // The batch-1 specs pin the pre-batch-2 surfaces; the batch-2 spec clears these keys to exercise the defaults.
-    for (const flag of ['ux.opsInSettings.v1', 'ux.taskDetail.v2', 'ux.firstUse.v1']) localStorage.setItem(flag, 'off')
+    // The earlier specs pin the surfaces they were written for; each later spec clears its own keys to exercise defaults.
+    for (const flag of ['ux.opsInSettings.v1', 'ux.taskDetail.v2', 'ux.firstUse.v1', 'ux.navFour.v1', 'ux.masterCard.v1',
+      'ux.noticeButton.v1', 'ux.filesPage.v1']) localStorage.setItem(flag, 'off')
     server = initial()
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit): Promise<Response> => {
       if (server.down) return new Response(null, { status: 404 })
