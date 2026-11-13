@@ -235,7 +235,7 @@ it('builds a proposal with evidence, scope, rollback and a pre-registered experi
   const report = runEvolution(input())
   const proposal = report.proposals[0]!
   expect(proposal.status).toBe('pending-evidence')
-  expect(proposal.recommendation).toBe('observe-more')
+  expect(proposal.recommendation).toBe('do-not-adopt')
   expect(proposal.diff).toEqual({ tools: { mode: 'list', names: ['read', 'grep', 'bash'] } })
   expect(proposal.expected.requiredPerGroup).toBeGreaterThanOrEqual(356)
   expect(proposal.experiment).toMatchObject({ primaryMetric: 'root-success', mde: 0.1, alpha: 0.05, power: 0.8, allocation: 'paired-replay' })
@@ -304,6 +304,8 @@ it('rejects a token guardrail regression when usage is available on both sides',
   expect(report.gates[0]?.outcome).toBe('reject')
   expect(report.gates[0]?.reasons).toContain('guardrailRegression')
   expect(report.gates[0]?.statistics?.guardrails.tokensPerRun?.status).toBe('fail')
+  expect(report.valueGates[0]?.outcome).toBe('guardrail-regression')
+  expect(report.valueGates[0]?.metrics.cost.verdict).toBe('regressed')
 })
 
 it('allows the no-measurable-difference conclusion after the pre-registered sample', () => {
@@ -315,6 +317,142 @@ it('allows the no-measurable-difference conclusion after the pre-registered samp
   expect(report.gates[0]?.outcome).toBe('no-difference')
   expect(report.proposals[0]?.status).toBe('not-adopted')
   expect(report.conclusion.kind).toBe('no-measurable-difference')
+})
+
+it('classifies a passing replay as improvement and recommends adoption', () => {
+  const report = runEvolution(input(undefined, { evidence: evidence(passEvidence()) }))
+  const value = report.valueGates[0]!
+  expect(value.outcome).toBe('improvement')
+  expect(value.recommendation).toBe('adopt')
+  expect(value.criteria).toMatchObject({ evidenceSufficient: true, significantImprovement: true,
+    noGuardrailRegression: true, unroundedComparison: true })
+  expect(value.metrics.success.verdict).toBe('improved')
+  expect(value.metrics.rework.verdict).toBe('within-threshold')
+  expect(value.metrics.reviewFindings.verdict).toBe('within-threshold')
+  expect(value.metrics.latency.verdict).toBe('within-threshold')
+  expect(report.proposals[0]?.recommendation).toBe('adopt')
+})
+
+it('classifies a null effect as no-difference and does not recommend adoption', () => {
+  const replay: ReplayEvidence = {
+    ...passEvidence(),
+    pairs: Array.from({ length: 360 }, (_, index) => ({ entryId: `eval-${index}`, baseline: outcome(index < 216), candidate: outcome(index < 216) })),
+  }
+  const report = runEvolution(input(undefined, { evidence: evidence(replay) }))
+  const value = report.valueGates[0]!
+  expect(value.outcome).toBe('no-difference')
+  expect(value.recommendation).toBe('do-not-adopt')
+  expect(value.reasons).toEqual(expect.arrayContaining(['belowMde', 'noDifference']))
+  expect(value.metrics.success.verdict).toBe('no-difference')
+})
+
+it('labels a significant primary regression as no-difference with a regression reason, never improvement', () => {
+  const replay: ReplayEvidence = {
+    ...passEvidence(),
+    pairs: Array.from({ length: 360 }, (_, index) => ({ entryId: `eval-${index}`, baseline: outcome(index < 216), candidate: outcome(index < 100) })),
+  }
+  const report = runEvolution(input(undefined, { evidence: evidence(replay) }))
+  const value = report.valueGates[0]!
+  expect(report.gates[0]?.outcome).toBe('reject')
+  expect(value.outcome).toBe('no-difference')
+  expect(value.recommendation).toBe('do-not-adopt')
+  expect(value.reasons).toEqual(expect.arrayContaining(['primaryRegression', 'noDifference']))
+  expect(value.metrics.success.verdict).toBe('regressed')
+})
+
+it('classifies a guardrail regression as guardrail-regression and does not recommend adoption', () => {
+  const replay = passEvidence()
+  for (const pair of replay.pairs!.slice(0, 100)) pair.candidate.reworked = true
+  const report = runEvolution(input(undefined, { evidence: evidence(replay) }))
+  const value = report.valueGates[0]!
+  expect(value.outcome).toBe('guardrail-regression')
+  expect(value.recommendation).toBe('do-not-adopt')
+  expect(value.reasons).toEqual(expect.arrayContaining(['guardrailRegression', 'guardrail:rework']))
+  expect(value.criteria.noGuardrailRegression).toBe(false)
+  expect(value.metrics.rework.verdict).toBe('regressed')
+})
+
+it('classifies missing or undersized evidence as insufficient-evidence and does not recommend adoption', () => {
+  const missing = runEvolution(input(undefined, { evidence: { schema: 'evolution.eval-results.v1' as EvalResults['schema'],
+    generatedAt: AT, experiments: [] } }))
+  expect(missing.valueGates[0]?.outcome).toBe('insufficient-evidence')
+  expect(missing.valueGates[0]?.recommendation).toBe('do-not-adopt')
+  expect(missing.valueGates[0]?.reasons).toContain('noEvidence')
+  expect(missing.proposals[0]?.status).toBe('pending-evidence')
+
+  const smallSet = evalSet({ entries: evalSet().entries.slice(0, 20) })
+  const undersized: ReplayEvidence = {
+    ...passEvidence(),
+    pairs: Array.from({ length: 20 }, (_, index) => ({ entryId: `eval-${index}`, baseline: outcome(false), candidate: outcome(true) })),
+  }
+  const small = runEvolution(input(undefined, { evalSet: smallSet, evidence: evidence(undersized) }))
+  expect(small.valueGates[0]?.outcome).toBe('insufficient-evidence')
+  expect(small.valueGates[0]?.recommendation).toBe('do-not-adopt')
+  expect(small.valueGates[0]?.reasons).toContain('sampleSize')
+})
+
+it('keeps cost unknown instead of zero and does not let an unknown cost block adoption', () => {
+  const report = runEvolution(input(undefined, { evidence: evidence(passEvidence()) }))
+  const value = report.valueGates[0]!
+  expect(value.outcome).toBe('improvement')
+  expect(value.metrics.cost).toMatchObject({ state: 'unknown', baseline: null, candidate: null, change: null,
+    threshold: null, verdict: 'unknown' })
+  expect(value.metrics.monetaryCost.state).toBe('unknown')
+  expect(JSON.stringify(value.metrics.cost)).not.toContain('"baseline":0')
+})
+
+it('does not let a rounded point estimate reach the pre-registered MDE', () => {
+  const entries = Array.from({ length: 2000 }, (_, index) => ({
+    id: `eval-${index}`, taskFamily: 'docs/tracked', form: 'tracked' as const, holdout: true,
+    replay: 'dry' as const, rubric: 'rule' as const, timeoutSeconds: 60,
+  }))
+  const replay: ReplayEvidence = {
+    ...passEvidence(),
+    pairs: Array.from({ length: 2000 }, (_, index) => ({ entryId: `eval-${index}`,
+      baseline: outcome(false), candidate: outcome(index < 199) })),
+  }
+  const experiment = intent().experiment
+  const report = runEvolution(input(undefined, {
+    evalSet: evalSet({ entries }),
+    intents: [intent({ experiment: { ...experiment, stopping: { afterSamples: 2000, rule: 'Read once at 2000.' } } })],
+    evidence: evidence(replay),
+  }))
+  const value = report.valueGates[0]!
+  const difference = report.gates[0]?.statistics?.difference ?? 0
+  expect(difference).toBeLessThan(0.1)
+  expect(Number((difference * 100).toFixed(1))).toBe(10)
+  expect(value.metrics.success.verdict).toBe('below-mde')
+  expect(value.outcome).toBe('insufficient-evidence')
+  expect(value.recommendation).toBe('do-not-adopt')
+})
+
+it('does not let a small significant sample bypass the pre-registered sample size', () => {
+  const smallSet = evalSet({ entries: evalSet().entries.slice(0, 20) })
+  const replay: ReplayEvidence = {
+    ...passEvidence(),
+    pairs: Array.from({ length: 20 }, (_, index) => ({ entryId: `eval-${index}`, baseline: outcome(false), candidate: outcome(true) })),
+  }
+  const report = runEvolution(input(undefined, { evalSet: smallSet, evidence: evidence(replay) }))
+  expect(report.valueGates[0]?.outcome).toBe('insufficient-evidence')
+  expect(report.valueGates[0]?.criteria.evidenceSufficient).toBe(false)
+  expect(report.proposals[0]?.recommendation).toBe('do-not-adopt')
+})
+
+it('carries the Phase 1 sample-size, stopping, alpha, MDE and holdout rules into the value gate', () => {
+  const report = runEvolution(input(undefined, { evidence: evidence(passEvidence()) }))
+  const proposal = report.proposals[0]!
+  const value = report.valueGates[0]!
+  expect(value.phase1).toEqual({
+    gateOutcome: 'pass',
+    requiredPerGroup: proposal.experiment.requiredPerGroup,
+    mde: proposal.experiment.mde,
+    alpha: proposal.experiment.alpha,
+    power: proposal.experiment.power,
+    stoppingAfterSamples: proposal.experiment.stopping.afterSamples,
+    holdout: proposal.experiment.holdout,
+  })
+  expect(value.phase1.requiredPerGroup).toBeGreaterThanOrEqual(356)
+  expect(value.phase1.holdout).toHaveLength(360)
 })
 
 it('refuses replay evidence whose candidate digest is not the proposed configuration', () => {
@@ -334,6 +472,8 @@ it('refuses a holdout that overlaps the observation window', () => {
   const report = runEvolution(input(undefined, { evalSet: contaminated, evidence: evidence(replay) }))
   expect(report.gates[0]?.outcome).toBe('insufficient')
   expect(report.gates[0]?.reasons).toContain('holdoutOverlap')
+  expect(report.valueGates[0]?.outcome).toBe('insufficient-evidence')
+  expect(report.valueGates[0]?.criteria.preRegistrationComplete).toBe(false)
 })
 
 it('refuses a holdout that does not cover every entry exactly once', () => {
@@ -412,6 +552,19 @@ it('treats an unavailable p90 guardrail as insufficient, while allowing unknown 
   const report = runEvolution(input(undefined, { evidence: evidence(replay) }))
   expect(report.gates[0]?.outcome).toBe('insufficient')
   expect(report.gates[0]?.reasons).toContain('guardrailUnknown')
+  expect(report.valueGates[0]?.outcome).toBe('insufficient-evidence')
+})
+
+it('reports a known guardrail regression even when another guardrail is unknown', () => {
+  const replay = passEvidence()
+  for (const pair of replay.pairs!) pair.candidate.dispatchToReadySeconds = null
+  for (const pair of replay.pairs!) pair.baseline.dispatchToReadySeconds = null
+  for (const pair of replay.pairs!.slice(0, 100)) pair.candidate.reworked = true
+  const report = runEvolution(input(undefined, { evidence: evidence(replay) }))
+  expect(report.gates[0]?.outcome).toBe('insufficient')
+  expect(report.valueGates[0]?.outcome).toBe('guardrail-regression')
+  expect(report.valueGates[0]?.metrics.rework.verdict).toBe('regressed')
+  expect(report.valueGates[0]?.criteria.evidenceSufficient).toBe(false)
 })
 
 it('refuses a diff that leaves the prompt, model or tools moving', () => {

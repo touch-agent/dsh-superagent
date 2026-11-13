@@ -431,6 +431,8 @@ flowchart LR
 
 如果做不到对照实验，正确结论是「profile 层只是给现有角色配置改名」，应停止在 Phase 1，而不是继续堆功能。
 
+**落地（2026-11-12，T5-05 Phase 2）**：`scripts/evolution/core.ts` 的 `gate()` 保留本节预登记与回归门；新增 `valueGateOf()`/`valueGate()` 只做四结局分类（`improvement`、`no-difference`、`guardrail-regression`、`insufficient-evidence`），只有「未舍入的主指标 ≥ MDE 且区间下界 >0、p<α」并且所有可用护栏不恶化时才给 `recommendation=adopt`。指标覆盖成功率、返工、review 发现、p90 延迟与 token 成本；缺失值保持 `unknown`，货币成本始终 `unknown` 且不进价值门。它没有写路径，不改变本节任何样本量、停止点、α/MDE 或 holdout 规则。详见 `020 §2.6`。
+
 ---
 
 ## 5. 风险与反模式

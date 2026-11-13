@@ -65,6 +65,9 @@ try {
   writeFileSync(join(args.out, 'approval-queue.json'), `${JSON.stringify(report.approvalQueue, null, 2)}\n`)
   console.log(`evolution: ${report.conclusion.kind} — ${report.conclusion.summary}`)
   console.log(`observed ${report.observation.totals.samples} samples in ${report.observation.totals.groups} group(s); ${report.proposals.length} proposal(s), ${report.approvalQueue.items.length} awaiting human approval`)
+  const outcomes = ['improvement', 'no-difference', 'guardrail-regression', 'insufficient-evidence']
+    .map(outcome => `${outcome}=${report.valueGates.filter(result => result.outcome === outcome).length}`)
+  console.log(`value gate: ${outcomes.join(', ')}; unknown cost is reported as unknown and never as zero`)
   console.log(`wrote ${join(args.out, 'report.json')} and ${join(args.out, 'approval-queue.json')}; no live configuration was changed`)
 } catch (error) {
   if (error instanceof EvolutionInputError) {
