@@ -77,7 +77,7 @@
 | X-03 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/44 | PR #44 合并 `1b91fd8`；`tests/e2e/golden-path.e2e.ts`；`pnpm test:e2e`；CI `e2e` workflow | 2026-11-11 |
 | X-04 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/72 | 42 条路由已从 `api-contract.ts` 派生；`pnpm check:api`、lint、typecheck、构建与 1889 个测试通过；待合并 | 2026-11-12 |
 | X-05 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/62 | PR #62 合并 `ab0fd0a`；`tests/docs.spec.ts` 新增 `SourceManifest` 字段与 `PUBLIC_ROUTES`/Management API 表的一致性检查，缺失项会指名字段或路由与应改文件；`pnpm typecheck`、`tests/docs.spec.ts`、全量 `pnpm test`（本机 `GIT_CONFIG_GLOBAL` 环境下的 2 个既有失败去除该变量后通过）、`pnpm build`、`pnpm check:size` 通过；独立 review 见 PR #62 review 评论 | 2026-11-11 |
-| X-06 | 未开始 | — | — | 2026-11-08 |
+| X-06 | 进行中 | https://github.com/touch-agent/dsh-superagent/pull/77 | `scripts/check-domain-budget.mjs`、`pnpm check:domain` 接入 `pnpm check`；15 文件 / 313 用例；三次样本 555/470/504ms、中位数 504ms，CI 五次中位数 593–962ms（2s 上限，最慢约 2.1 倍余量）；单个用例 500ms 早期上限，临时 +1.2s 探针被按文件与用例名拦截；口径与偏差见 `docs/007-architecture.md` | 2026-11-13 |
 | X-07 | 已完成 | — | `packages/dsh` 与根 meta 切包；`PLUGIN-PACKAGING.zh.md` §3 | 2026-11-08 |
 | X-08 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/20 | `pnpm test:install-e2e`；临时 `DSH_HOME` 安装/卸载 | 2026-11-08 |
 | X-09 | 已完成 | https://github.com/touch-agent/dsh-superagent/pull/52 | PR #52 合并 `7bfebfd`；三区入口、侧边栏注意点与 `entry.threeZones.v1` 回退 | 2026-11-11 |

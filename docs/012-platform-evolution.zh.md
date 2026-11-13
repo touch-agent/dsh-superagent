@@ -728,7 +728,7 @@ gantt
 
 ### 10.1 三道契约测试
 
-1. **kernel 契约**：memory store 跑全套领域测试（< 2s），保证领域逻辑与存储解耦。
+1. **kernel 契约**：memory store 跑全套领域测试（< 2s），保证领域逻辑与存储解耦。可执行的守卫是 `pnpm check:domain`（`scripts/check-domain-budget.mjs`）：固定 15 个领域测试文件，取五次完整运行的中位数与 2s 比较，并对单个用例设 500ms 的早期上限（当前最慢 22–65ms），超限时点名文件与用例；本地与 CI 都经 `pnpm check` 跑同一命令，没有 CI 专属开关。测量口径、成员资格与已知偏差见 `docs/007-architecture.md` 的「Domain test budget」。
 2. **adapter conformance**：每个 Source 必须通过同一套测试（proof 校验、游标回退、health claim、幂等 key 生成、`probe` 语义）。这是「支持 30 个源」的唯一可行办法。
 3. **api 契约快照**：`api.ts` 生成 JSON Schema，客户端与 HTTP 层共用；路由由 schema 驱动，不再手写 match。
 
