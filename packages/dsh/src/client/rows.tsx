@@ -40,7 +40,8 @@ export function TicketLine({ ticket, question, onChanged, context, surface = 'e0
         {ticket.actions.retry && <ConfirmButton variant="outline" icon="refresh" label={t('retry')} title={t('retryTitle')}
           message={t('retryConfirm', { title: ticket.title })}
           onConfirm={() => after(call('POST tickets/:id/retry', { id: ticket.id }))} />}
-        {surface === 'e2' && ticket.actions.retry && ticket.sessionId && <SessionButton variant="outline" sessionId={ticket.sessionId} />}
+        {surface === 'e2' && ticket.actions.retry && ticket.sessionId && <SessionButton variant="outline" sessionId={ticket.sessionId}
+          label={t('openExecutorSession')} />}
         {ticket.actions.stop && <ConfirmButton variant="outline" icon="stop" label={t('stop')} title={t('stopConfirmTitle')}
           message={t('stopConfirm', { title: ticket.title })}
           onConfirm={() => after(call('POST tickets/:id/stop', { id: ticket.id }))} />}

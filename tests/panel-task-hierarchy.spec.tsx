@@ -53,17 +53,17 @@ it('opens one task level from the list and shows goal, owner, children, delivera
   expect(detail.textContent).toContain('docs/migration.md · r1')
   expect(detail.textContent).toContain(zh.taskHierarchyBlockers)
   expect(detail.textContent).toContain('1 个子任务')
-  expect(detail.textContent).toContain(zh.taskHierarchyOpenSession)
+  expect(detail.textContent).toContain(zh.openExecutorSession)
   // The default hierarchy shows no internal Session or Ticket identifiers; the E2 fold is closed until asked.
   expect(detail.textContent).not.toMatch(/session_|ticket_|worker-t1/)
   expect(detail.querySelector<HTMLDetailsElement>('.dt-e0-technical')?.open).toBe(false)
   await click(detail.querySelector<HTMLElement>('.dt-e0-technical summary')!)
   expect(detail.querySelector('.dt-e0-technical')?.textContent).toContain('t1')
-  await click(zh.taskHierarchyOpenSession)
+  await click(zh.openExecutorSession)
   expect(server.opened).toEqual(['worker-t1'])
   // The child level has no working-session entry of its own; only the root level does.
   await click(detail.querySelector<HTMLElement>('.dt-task-levels button')!)
-  expect(document.querySelector('.dt-task-detail')!.textContent).not.toContain(zh.taskHierarchyOpenSession)
+  expect(document.querySelector('.dt-task-detail')!.textContent).not.toContain(zh.openExecutorSession)
 })
 
 it('keeps the compact selected-row goal when ux.taskHierarchy.v1 is off', async () => {

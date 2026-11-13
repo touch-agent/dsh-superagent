@@ -80,8 +80,6 @@ export function ticketDetail(host: ViewHost, id: string) {
   if (!mandate) return undefined
   // Pass `human = false` for bot-originated mandates so the Source kind still labels the actor as a bot if removed from the policy list.
   const human = mandate.basis.via !== 'bot'
-  // A conversation task can be read in the main Session it came from; its Trigger records that Session.
-  const origin = store.triggers.get(ticket.origin.triggerId)
   const report = latestReport(ticket)
   // The detail and its children share one projection, so the aggregate review, pending close and parent/child rows cannot
   // disagree with the task list. A child's row carries no Mandate of its own; the root's authorization is shown below.
@@ -95,8 +93,7 @@ export function ticketDetail(host: ViewHost, id: string) {
     ...aggregate ?? { reviewRevision: '', deliverables: [], criteria: [], confirmations: [] },
     ...markdown(report?.summary ?? '') ? { summary: markdown(report?.summary ?? '') } : {},
   } } : {}
-  return { ...ticketLine(view, ticket), ...reviewView, ...origin?.source === 'conversation' && typeof origin.meta.sessionId === 'string'
-    ? { conversationSession: origin.meta.sessionId } : {},
+  return { ...ticketLine(view, ticket), ...reviewView,
     mandate: { ...mandate, actor: view.actor(mandate.actor, human) }, basis: basisFacts(mandate.basis, view.rule),
     ...ticket.parentTicketId ? { parentTicketId: ticket.parentTicketId, rootTicketId: ticket.rootTicketId ?? ticket.parentTicketId,
       ...task?.delegation ? { delegation: task.delegation } : {} } : {},

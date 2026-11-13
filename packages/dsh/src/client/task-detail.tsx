@@ -320,8 +320,8 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
     <div className="dt-task-detail-section">
       <h4>{t('taskHierarchySession')}</h4>
       {sessionId ? <Button variant="outline" size="sm" icon={<Icon name="session" size={14} />}
-        onClick={() => { openSession(sessionId).catch(failure => notify(errorText(failure))) }}>{t('taskHierarchyOpenSession')}</Button>
-        : <p className="dt-hint">{t('taskHierarchyNoSession')}</p>}
+        onClick={() => { openSession(sessionId).catch(failure => notify(errorText(failure))) }}>{t('openExecutorSession')}</Button>
+        : <p className="dt-hint">{t('noExecutorSession')}</p>}
     </div>
     <details className="dt-details dt-e0-technical">
       <summary>{t('taskHierarchyAdvanced')}</summary>
