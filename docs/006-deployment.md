@@ -276,7 +276,7 @@ From an allowed GitHub account, open an Issue or post a comment containing `@<ag
 2. Back up `<stateDir>/orchestrator.sqlite`.
 3. Run `git pull && pnpm install && pnpm build`.
 4. Run `scripts/dsh-superagent restart` and inspect its status.
-5. Open the URL and hard-reload the tab (`Ctrl/⌘+Shift+R`); the open panel keeps its previous document across a restart. Check **Settings › Display › Interface build**: the page and service build ids should match and the build time should be the one just produced; [027](027-post-upgrade-verification.zh.md) lists the full per-screen checklist.
+5. Open the URL and hard-reload the tab (`Ctrl/⌘+Shift+R`); the open panel keeps its previous document across a restart. Check **Settings › Display › Interface build**: the page and service build ids should match and the build time should be the one just produced; docs/027 lists the full per-screen checklist.
 
 A restart ends running Assignments and starts replacements with recovery notes. Team text and overridden prompt parts are retained; parts without overrides follow the new defaults. Review parts marked **Default updated** after upgrading.
 
@@ -311,6 +311,6 @@ Setup problems appear on the overview with a link to the fix, in the panel's lan
 | The panel says dsh-superagent is not answering | It is restarting, or did not start because of its configuration; the DeepSeek Harness log names the cause |
 | `dsh-superagent configuration has keys it does not use` (log) | Remove the named keys; the message says where each value lives now |
 | The log says the plugin is incompatible with the running dsh | Install a DeepSeek Harness version within the `engines.dsh` range |
-| The panel still looks like the previous build after `git pull` and a restart | The open tab keeps its old document and bundle; the sidebar's host rows stay unchanged. Hard-reload (`Ctrl/⌘+Shift+R`), then compare the page and service build ids in **Settings › Display**; [027](027-post-upgrade-verification.zh.md) separates a stale page from a stale build |
+| The panel still looks like the previous build after `git pull` and a restart | The open tab keeps its old document and bundle; the sidebar's host rows stay unchanged. Hard-reload (`Ctrl/⌘+Shift+R`), then compare the page and service build ids in **Settings › Display**; docs/027 separates a stale page from a stale build |
 | The panel shows "Failed to load plugins" after a DeepSeek Harness upgrade | Restart the running instance |
 | Nothing happens after a mention | Check that the author is on the Source's allowed list, the Source is on, and processing is not paused. On GitHub, a mention added by editing an Issue's body is not received; mention the agent in a comment |

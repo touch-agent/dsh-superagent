@@ -15,7 +15,7 @@
   `sourceMappingURL` 注释，因此 788,382 字节）；其中含 `ux.navFour.v1`、`ux.masterCard.v1`、
   `ux.noticeButton.v1`、`ux.filesPage.v1` 等全部新开关。
 - 用一个全新的浏览器配置（空 localStorage）打开同一地址，点侧栏 `Superagent`，看到的是新面板：
-  `任务 / 通知 / 文件 / 设置` 四个入口、`小助` 主 Agent 卡片和浮动的 `8 条待处理`。
+  `任务 / 通知 / 文件 / 设置` 四个入口、`小助` 主 Agent 卡片和浮动的通知按钮。
 - Chrome 的 `Profile 1` 缓存里同时留着两份页面文档：10:52:16 的旧文档引用 `rev=30a716717295`，对应
   737,378 字节的旧 bundle（没有 `navFour`/`masterCard`）；17:13:47 的新 bundle 和 20:17:15 的新文档引用
   `rev=64dc09ecf89e`。**一个从 10:52 起就没有刷新的标签页，会继续执行旧文档里的旧 bundle；重启服务不会
@@ -45,9 +45,11 @@
 | 启动 HTML | `plugins/??dsh-superagent/client.js&rev=64dc09ecf89e` |
 | 服务返回的 bundle | 788,382 字节，`sha256 0c6b75fb3444657dd2e32db0d0a9a4af1a687afcbdd0a3a8da315de012ea7009`；末尾是 `//# sourceMappingURL=??dsh-superagent/client.js.map&rev=64dc09ecf89e` |
 | 新开关是否存在 | `ux.navFour.v1`、`ux.masterCard.v1`、`ux.noticeButton.v1`、`ux.filesPage.v1`、`ux.taskHierarchy.v1` 等均出现在该 bundle 中 |
-| 新界面是否真的能渲染 | 全新浏览器配置、空 localStorage、1440×900、浅色、中文；点 `Superagent` 后为四个入口、`小助` 卡片和 `8 条待处理` |
+| 新界面是否真的能渲染 | 全新浏览器配置、空 localStorage、1440×900、浅色、中文；点 `Superagent` 后为四个入口、`小助` 卡片和浮动通知按钮 |
 
-构建时间 17:13:47 晚于 #78 合并的 17:02:36，`git pull --ff-only` 在 17:13:45 把链接仓库推进到 `f2aef7f`，
+![宿主外壳的左侧栏顶部：插件、Superagent、自动化任务、更多，下面是工作区](images/post-upgrade-verification/host-shell.png)
+
+构建时间 17:13:47 晚于 #78 合并的 17:02:36；17:13:45 的 `git pull --ff-only` 更新了链接仓库，HEAD 为 `2f457a5`，
 所以这份构建包含第三批 UX 的插件内部分。`lib/client.js` 比服务返回的字节少 71，正好是服务附加的
 `sourceMappingURL` 行；两份内容除这一行外相同。
 
@@ -58,12 +60,14 @@ Chrome 的 HTTP 缓存（`~/Library/Caches/Google/Chrome/Profile 1/Cache/Cache_D
 | 缓存对象 | 修改时间 | 大小 | 引用/内容 |
 | --- | --- | --- | --- |
 | `d2e7c19cca4b9a4c_0` | 10:52:16 | 737,378 | 旧 HTML，`rev=30a716717295`；旧 bundle，含 `taskHierarchy`，不含 `navFour`/`masterCard` |
-| `aca53138312b89fa_0` | 17:13:47 | 788,825 | 新 bundle，`rev=64dc09ecf89e`；含 `navFour`、`masterCard`、`taskHierarchy` |
-| `5edd0ff1a6d4a117_0` | 20:17:15 | 38,653 | 新 HTML，引用 `rev=64dc09ecf89e` |
+| `aca53138312b89fa_0` | 17:13:47 | 788,825 | 新 bundle，`rev=64dc09ecf89e`；含 `navFour`、`masterCard`、`taskHierarchy`（缓存条目含响应头，字节数不等于响应体） |
+| `5edd0ff1a6d4a117_0` | 20:17:15 | 38,653 | 新 HTML，引用 `rev=64dc09ecf89e`；同一条目还留有 `8cb6b9b1676c` |
 
 一个从 10:52 打开后未刷新的标签页，其文档仍然是第一份；服务端在 20:16:59 重启、磁盘上的 bundle 在 17:13:47
 已经更新，都不会改变这个已经加载的文档。相反，20:17 的新文档和 17:13 的新 bundle 证明新构建本身可以正常送达。
 全新浏览器配置下的截图进一步排除了“新构建渲染不出来”的可能。
+
+![插件面板的任务页：任务/通知/文件/设置四个入口、小助主 Agent 卡片和浮动通知按钮](images/post-upgrade-verification/panel-tasks.png)
 
 因此这里没有“产物没替换”或“客户端入口没更新”的证据；能复现的是**旧页面留着旧 bundle**。第 5 节的构建标识
 就是为了让下一次能在一屏内区分“页面没刷新”和“构建没更新”。
@@ -105,6 +109,15 @@ Chrome 的 HTTP 缓存（`~/Library/Caches/Google/Chrome/Profile 1/Cache/Cache_D
 “重新载入界面”先用 `fetch(..., { cache: 'reload' })` 重新取当前地址的 HTML，再 `location.reload()`；这样浏览器
 不会继续用缓存里的旧 `rev`。它不能替代强制刷新，但能覆盖最常见的“HTML 还在缓存”的情况。
 
+同一临时实例、同一状态目录、同一 1440×900 视口、浅色中文，只把 `dsh-superagent` 链接从旧构建 `2f457a5`
+（17:13:47）换成新构建 `7ba44b2`（21:30:56），再滚动到 `设置 › 显示` 的底部：
+
+![改动前：设置 › 显示底部到首次使用说明结束，没有构建块](images/post-upgrade-verification/panel-display-before.png)
+
+![改动后：同一位置出现界面构建块，页面构建与服务构建均为 38b54c9315eb，并提供重新载入界面](images/post-upgrade-verification/panel-display-after.png)
+
+左侧导航在两张图中相同，说明变化只在页面底部新增的块，不影响已有的显示开关和宿主外壳。
+
 **限制：** 旧客户端本身没有这段代码，所以它不会显示不匹配提示；只有至少加载过一次新客户端之后，提示才会在
 下一次服务端更新时出现。判断旧页面仍要依靠 `设置 › 显示` 的构建时间/ID，或直接强制刷新。宿主外壳、侧栏行和
 工作区列表仍由 DSH 渲染，插件不能替换，详见 [026](026-ux-third-batch.zh.md) 的 L1–L8。
@@ -121,7 +134,7 @@ Chrome 的 HTTP 缓存（`~/Library/Caches/Google/Chrome/Profile 1/Cache/Cache_D
 | 4 | `任务` | 顶部 `小助` 主 Agent 卡片（名称可改、头像可选）；下方任务列表；右下角浮动通知按钮 | 没有卡片：检查 `ux.masterCard.v1`；没有浮动按钮：检查 `ux.noticeButton.v1` |
 | 5 | `通知` / `文件` | 通知收件箱；按任务分组的只读产出物列表 | `文件` 不存在：检查 `ux.filesPage.v1`；通知为空是正常状态 |
 | 6 | `设置` | 左侧分组：`来源 / 触发 / 评估 / 执行 / Agent 配置 / 显示 / 提示词 / 部署` | 缺少 `触发` 或运营页回到第一级：检查 `ux.opsInSettings.v1` |
-| 7 | `设置 › 显示` | 底部“界面构建”：版本 `0.1.0`、提交、构建时间、页面构建 ID、服务构建 ID；两个 ID 相同；四个回退开关均为开 | 两个 ID 不同：点“重新载入界面”；仍不同则强制刷新并检查服务进程加载的链接目录与构建时间 |
+| 7 | `设置 › 显示` | 底部“界面构建”：版本 `0.1.0`、提交、构建时间、页面构建 ID、服务构建 ID；两个 ID 相同；第三批的四个回退开关均为开（其它批次的开关也默认开） | 两个 ID 不同：点“重新载入界面”；仍不同则强制刷新并检查服务进程加载的链接目录与构建时间 |
 
 第 7 步是这次新增的判据。只要“页面构建”和“服务构建”一致，且构建时间晚于最后一次 `git pull`/`pnpm build`，
 旧界面就不可能来自旧 bundle；剩下的差异只可能来自宿主外壳或某个被关掉的开关。
