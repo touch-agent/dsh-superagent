@@ -10,18 +10,20 @@ import { createPortal } from 'react-dom'
 import type { OverviewView } from './api.ts'
 import { Button, Icon, Pill } from './controls.tsx'
 import type { IconName } from './controls.tsx'
+import { NoticeFab } from './global-notice.tsx'
 import { ConfirmButton } from './widgets.tsx'
 import { usePanel } from './provider.tsx'
 import { noticeItems, unreadOf, type Notice, type NoticeAction } from './notifications.ts'
 import { errorText, when, type T } from './text.ts'
-import { hasReadCursor, notifyAutoDismiss, notifyDrawer, notifyOverlay, readNotices, rememberRead } from './features.ts'
+import { hasReadCursor, navFour, noticeButton, notifyAutoDismiss, notifyDrawer, notifyOverlay, readNotices, rememberRead } from './features.ts'
+import { announceNoticeDrawer, announceNoticesRead, registerNoticeOpener } from './notice-open.ts'
 
 const CARD_SECONDS = 8
 const CARD_LIMIT = 3
 const GROUPS = ['attention', 'progress', 'system'] as const
 type Group = typeof GROUPS[number]
 
-interface NoticeCenter {
+export interface NoticeCenter {
   items: readonly Notice[]
   read: ReadonlySet<string>
   unread: number
@@ -159,25 +161,63 @@ function Drawer({ center }: { center: NoticeCenter }) {
   </div>, document.body)
 }
 
-export function NotificationHost({ children }: { children: ReactNode }) {
+/**
+ * The Notifications page: the drawer's full list without the overlay, so the four-entry navigation has a real notice
+ * destination and the drawer stays an interruption surface rather than the only way to read a notice.
+ */
+export function NoticeInbox({ center }: { center: NoticeCenter }) {
+  const { t } = usePanel()
+  const [group, setGroup] = useState<'all' | Group>('all')
+  const items = group === 'all' ? center.items : center.items.filter(item => item.kind === group)
+  const unreadIn = (kind?: Group) => center.items.filter(item => (!kind || item.kind === kind) && !center.read.has(item.id)).length
+  return <div className="dt-notice-inbox">
+    <div className="dt-notice-inbox-tools">
+      <div className="dt-pills" role="group" aria-label={t('notifications')}>
+        <Pill active={group === 'all'} onClick={() => setGroup('all')}>{t('noticeGroup.all')}{center.unread ? ` · ${center.unread}` : ''}</Pill>
+        {GROUPS.map(kind => <Pill key={kind} active={group === kind} onClick={() => setGroup(kind)}>
+          {kindLabel(t, kind)}{unreadIn(kind) ? ` · ${unreadIn(kind)}` : ''}</Pill>)}
+      </div>
+      <Button variant="outline" size="sm" disabled={!center.unread} onClick={center.markAllRead}>{t('noticeMarkAllRead')}</Button>
+    </div>
+    <div className="dt-notice-inbox-list">
+      {items.length ? items.map(notice => <article key={notice.id} className="dt-notice-item" data-kind={notice.kind}>
+        <NoticeBody notice={notice} unread={!center.read.has(notice.id)} />
+        <NoticeActions notice={notice} onAction={center.onAction} busy={center.busy} />
+      </article>) : <p className="dt-hint">{t('noticeEmpty')}</p>}
+    </div>
+  </div>
+}
+
+export function NotificationHost({ children, shellNotice = false }: { children: ReactNode; shellNotice?: boolean }) {
   const { t, call, navigate, notify } = usePanel()
   const [data, setData] = useState<OverviewView>()
   const [read, setRead] = useState<ReadonlySet<string>>(() => readNotices())
   const [open, setOpen] = useState(false)
+  // Remember the opener before the drawer's auto-focused Close button takes focus, so closing returns a keyboard user
+  // to the entry they used rather than dropping them at the top of the document.
+  const opener = useRef<HTMLElement | undefined>(undefined)
+  const openWithFocus = useCallback(() => {
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    setOpen(true)
+  }, [])
+  useEffect(() => { announceNoticeDrawer(open); if (!open) opener.current?.focus() }, [open])
   const [busy, setBusy] = useState(false)
   const [cards, setCards] = useState<Notice[]>([])
   const queue = useRef<Notice[]>([])
   const seen = useRef<Set<string>>(new Set())
   const seeded = useRef(false)
   const overlay = useRef(notifyOverlay())
-  const drawerOn = notifyDrawer()
-  // With both switches off this component adds no poll and no surface at all.
+  // The four-entry navigation and the floating button both need the drawer/center even when the old bell switch is off.
+  const drawerOn = notifyDrawer() || navFour() || noticeButton()
+  // With every switch off this component adds no poll and no surface at all.
   const active = drawerOn || overlay.current
   const readRef = useRef(read)
   readRef.current = read
   const load = useCallback(async () => {
     try { setData(await call('GET overview')) } catch { /* a transient poll failure keeps the last notices */ }
   }, [call])
+  // The shell button either opens this drawer or, without a mounted panel, the Notifications page.
+  useEffect(() => registerNoticeOpener(openWithFocus), [openWithFocus])
   useEffect(() => { if (active) void load() }, [active, load])
   // A five-second cadence matches the rest of the panel; a hidden tab waits longer. Opening the drawer does not poll
   // separately, and a mutation reloads right away so an approved row does not linger.
@@ -196,6 +236,8 @@ export function NotificationHost({ children }: { children: ReactNode }) {
   }, [active, load])
   const items = useMemo(() => data ? noticeItems(data, t) : [], [data, t])
   const unread = unreadOf(items, read)
+  const latest = useMemo(() => [...items].filter(item => !read.has(item.id))
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))[0], [items, read])
   const pump = useCallback(() => {
     setCards(current => {
       if (current.length >= CARD_LIMIT) return current
@@ -238,6 +280,7 @@ export function NotificationHost({ children }: { children: ReactNode }) {
     const all = new Set([...readRef.current, ...items.map(item => item.id)])
     setRead(all)
     rememberRead(all)
+    announceNoticesRead()
   }, [items])
   const action = useCallback(async (notice: Notice, item: NoticeAction) => {
     if (busy) return
@@ -264,6 +307,7 @@ export function NotificationHost({ children }: { children: ReactNode }) {
         const next = new Set([...readRef.current, notice.id])
         setRead(next)
         rememberRead(next)
+        announceNoticesRead()
       }
       await load()
     } catch (failure) { notify(errorText(failure)) } finally { setBusy(false) }
@@ -271,10 +315,11 @@ export function NotificationHost({ children }: { children: ReactNode }) {
   // The drawer and the floating cards are separate switches: turning the drawer off must keep the cards that the
   // overlay switch still allows, and turning both off returns the page untouched.
   if (!active) return <>{children}</>
-  const center: NoticeCenter = { items, read, unread, open, openDrawer: () => setOpen(true), closeDrawer: () => setOpen(false),
+  const center: NoticeCenter = { items, read, unread, open, openDrawer: openWithFocus, closeDrawer: () => setOpen(false),
     markAllRead, onAction: action, busy }
   const body = <>
     {children}
+    {noticeButton() && !shellNotice && <NoticeFab t={t} unread={unread} latest={latest} onOpen={openWithFocus} covered={open} />}
     {overlay.current && createPortal(<div className="dt-notice-stack" role="status" aria-live="polite"
       aria-label={t('notifications')}>
       {cards.map(notice => <ToastCard key={notice.id} notice={notice} busy={busy} onAction={action}

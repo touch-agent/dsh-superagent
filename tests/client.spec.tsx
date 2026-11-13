@@ -17,6 +17,8 @@ type Entry = { options: { name: string; id?: string; key?: string; order?: numbe
 const t = ((key: keyof typeof zh, values: Record<string, string | number> = {}) => (zh[key] ?? key)
   .replace(/\{(\w+)\}/g, (_match, name: string) => String(values[name] ?? ''))) as never
 function fixture(listed: string[]) {
+  // Keep the surface registrations these specs assert; the batch-3 panel spec exercises the four-entry defaults.
+  for (const flag of ['ux.navFour.v1', 'ux.masterCard.v1', 'ux.noticeButton.v1', 'ux.filesPage.v1']) localStorage.setItem(flag, 'off')
   const entries: Entry[] = []
   const dictionaries: Record<string, unknown> = {}
   const opened: string[] = []

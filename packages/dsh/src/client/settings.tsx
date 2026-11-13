@@ -3,9 +3,9 @@ import { useState } from 'react'
 import type { DecisionFilter, StateView } from './api.ts'
 import type { TicketFilter } from '../app/api.ts'
 import { Button, Icon, InfoTip, Switch, type IconName } from './controls.tsx'
-import { ERROR_AGGREGATE, EVENTS_AUTO_OPEN, FIRST_USE, NOTIFY_DRAWER, NOTIFY_OVERLAY, OPS_IN_SETTINGS, TASK_DETAIL_V2,
-  TASK_HIERARCHY, autoOpenPreference, featureEnabled, notifyAutoDismiss, opsInSettings, restoreFirstUse, setAutoOpenPreference,
-  setFeature, setNotifyAutoDismiss } from './features.ts'
+import { ERROR_AGGREGATE, EVENTS_AUTO_OPEN, FILES_PAGE, FIRST_USE, MASTER_CARD, NAV_FOUR, NOTICE_BUTTON, NOTIFY_DRAWER,
+  NOTIFY_OVERLAY, OPS_IN_SETTINGS, TASK_DETAIL_V2, TASK_HIERARCHY, autoOpenPreference, featureEnabled, notifyAutoDismiss,
+  opsInSettings, restoreFirstUse, setAutoOpenPreference, setFeature, setNotifyAutoDismiss } from './features.ts'
 import { Hint } from './widgets.tsx'
 import { DeploymentPage, type DeploymentForm } from './deployment.tsx'
 import { EvalSettings, EvalStatus } from './eval.tsx'
@@ -48,6 +48,10 @@ function DisplaySettings() {
   const [consolidated, setConsolidated] = useState(() => featureEnabled(OPS_IN_SETTINGS))
   const [detail, setDetail] = useState(() => featureEnabled(TASK_DETAIL_V2))
   const [onboarding, setOnboarding] = useState(() => featureEnabled(FIRST_USE))
+  const [fourNav, setFourNav] = useState(() => featureEnabled(NAV_FOUR))
+  const [card, setCard] = useState(() => featureEnabled(MASTER_CARD))
+  const [button, setButton] = useState(() => featureEnabled(NOTICE_BUTTON))
+  const [files, setFiles] = useState(() => featureEnabled(FILES_PAGE))
   const available = featureEnabled(EVENTS_AUTO_OPEN)
   return <div className="dt-form">
     <div className="dt-form dt-block">
@@ -117,6 +121,38 @@ function DisplaySettings() {
           setFeature(TASK_DETAIL_V2, next) }} />
       </div>
       <Hint>{detail ? t('taskDetailV2Hint') : t('taskDetailV2Disabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('navFourSection')}<InfoTip text={t('navFourHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('navFourSetting')}<InfoTip text={t('navFourHint')} /></div>
+        <Switch checked={fourNav} label={t('navFourSetting')} onChange={next => { setFourNav(next); setFeature(NAV_FOUR, next) }} />
+      </div>
+      <Hint>{fourNav ? t('navFourHint') : t('navFourDisabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('masterCardSection')}<InfoTip text={t('masterCardHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('masterCardSetting')}<InfoTip text={t('masterCardHint')} /></div>
+        <Switch checked={card} label={t('masterCardSetting')} onChange={next => { setCard(next); setFeature(MASTER_CARD, next) }} />
+      </div>
+      <Hint>{card ? t('masterCardHint') : t('masterCardDisabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('noticeButtonSection')}<InfoTip text={t('noticeButtonHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('noticeButtonSetting')}<InfoTip text={t('noticeButtonHint')} /></div>
+        <Switch checked={button} label={t('noticeButtonSetting')} onChange={next => { setButton(next); setFeature(NOTICE_BUTTON, next) }} />
+      </div>
+      <Hint>{button ? t('noticeButtonHint') : t('noticeButtonDisabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('filesSection')}<InfoTip text={t('filesHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('filesSetting')}<InfoTip text={t('filesHint')} /></div>
+        <Switch checked={files} label={t('filesSetting')} onChange={next => { setFiles(next); setFeature(FILES_PAGE, next) }} />
+      </div>
+      <Hint>{files ? t('filesHint') : t('filesDisabled')}</Hint>
     </div>
     <div className="dt-form dt-block">
       <h2 className="dt-block-title">{t('firstUseSection')}<InfoTip text={t('firstUseHint')} /></h2>

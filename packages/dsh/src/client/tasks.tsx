@@ -7,13 +7,14 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import type { ActivityStatus } from '../app/activity.ts'
 import type { TaskBoardView, TaskGraphBranch, TaskMilestone, TaskNode, TaskView } from '../app/tasks.ts'
 import { Button, Dot, Icon, Pill, SegmentedTabs, Tag, type DotState, type TagTone } from './controls.tsx'
-import { firstUse, taskHierarchy, taskViewV1 } from './features.ts'
+import { firstUse, masterCard, taskHierarchy, taskViewV1 } from './features.ts'
 import { EmptyExamples, FirstUseNotes } from './first-use.tsx'
 import { usePanel, usePanelData } from './provider.tsx'
 import type { Route } from './route.ts'
 import { duration, fullTime, localized, valueLabel, when, type T } from './text.ts'
 import { TaskDetail } from './task-detail.tsx'
 import { TasksViewClient, useTasksView, type TaskSelection } from './tasks-view.ts'
+import { MasterCard } from './master-card.tsx'
 import { Hint, LoadState, Section } from './widgets.tsx'
 
 const STATUS_TONE: Record<ActivityStatus, TagTone> = { queued: 'neutral', working: 'info', idle: 'neutral', review: 'warning',
@@ -468,6 +469,8 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
   if (!data) return <LoadState error={snapshot.error} loading={!snapshot.ready || snapshot.loading} />
   return <>
     {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
+    {masterCard() && <MasterCard masterId={state?.masterId} paused={!!state?.paused} running={state?.load.running ?? 0}
+      attention={data.tasks.filter(task => task.attention).length} onOpen={openSession} />}
     <FirstUseNotes />
     <p className="dt-hint dt-task-intro">{view === 'list' ? t('tasksListIntro')
       : view === 'tickets' ? t('tasksTicketsIntro') : t('tasksIntro')}</p>

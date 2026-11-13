@@ -2,11 +2,22 @@
 import { THREAD_FILTERS, TICKET_FILTERS, type ThreadFilter, type TicketFilter, type TicketOrigin } from '../app/api.ts'
 import type { SetupPlace } from '../setup.ts'
 import { DECISION_FILTERS, type DecisionFilter } from './api.ts'
-import { opsInSettings } from './features.ts'
+import { filesPage, navFour, opsInSettings } from './features.ts'
 import type { T } from './text.ts'
 
-export const TABS = ['overview', 'tasks', 'source', 'trigger', 'eval', 'execution', 'settings'] as const
+export const TABS = ['overview', 'tasks', 'notifications', 'files', 'source', 'trigger', 'eval', 'execution', 'settings'] as const
 export type Tab = typeof TABS[number]
+/** UX batch 3's four first-level entries; Files is removed on its own when its switch is off. */
+export const FOUR_TABS = ['tasks', 'notifications', 'files', 'settings'] as const satisfies readonly Tab[]
+export const LEGACY_TABS: readonly Tab[] = ['overview', 'tasks', 'settings']
+/** The tabs the shell renders now; each batch keeps its own fallback list rather than deleting a route. */
+export function visibleTabs(): readonly Tab[] {
+  if (navFour()) return FOUR_TABS.filter(tab => tab !== 'files' || filesPage())
+  return opsInSettings() ? LEGACY_TABS : ['overview', 'tasks', 'source', 'trigger', 'eval', 'execution', 'settings']
+}
+/** The default page follows the navigation: the task view first, or the pre-batch Overview on fallback. */
+export const homeRoute = (): Route => navFour() ? { page: 'tasks' } : HOME
+export const isFourTab = (tab: Tab): boolean => (FOUR_TABS as readonly string[]).includes(tab)
 /** The operational surfaces UX batch 2 folds into Settings; off, they return as first-level tabs. */
 export const OPS_TABS = ['source', 'trigger', 'eval', 'execution'] as const
 export type OpsTab = typeof OPS_TABS[number]
@@ -15,7 +26,7 @@ export const SETTINGS_GROUPS = ['source', 'trigger', 'eval', 'execution', 'profi
 export type SettingsGroup = typeof SETTINGS_GROUPS[number]
 /** Trigger joins Settings in batch 2; with `ux.opsInSettings.v1` off it stays a tab and not a Settings page. */
 export const DEFAULT_SETTINGS_GROUPS: readonly SettingsGroup[] = SETTINGS_GROUPS.filter(group => group !== 'trigger')
-export type Route = { page: 'overview' | 'tasks' | 'source'; id?: undefined; query?: undefined }
+export type Route = { page: 'overview' | 'tasks' | 'notifications' | 'files' | 'source'; id?: undefined; query?: undefined }
   | { page: 'trigger'; id?: undefined; query?: { filter?: ThreadFilter } }
   | { page: 'trigger'; id: string; query?: { trigger?: string } }
   | { page: 'eval'; id?: undefined; query?: { filter?: DecisionFilter; window?: '24h' } }
@@ -41,7 +52,7 @@ export function parseRoute(value: unknown): Route | undefined {
   const text = (name: string) => typeof query?.[name] === 'string' ? query[name] as string : undefined
   const record = typeof id === 'string' && id ? id : undefined
   switch (page) {
-    case 'overview': case 'tasks': case 'source': return { page }
+    case 'overview': case 'tasks': case 'notifications': case 'files': case 'source': return { page }
     case 'trigger': return record ? { page, id: record, query: compact({ trigger: text('trigger') }) }
       : { page, query: compact({ filter: pick(THREAD_FILTERS, query?.filter) }) }
     case 'eval': return { page, query: compact({ filter: pick(DECISION_FILTERS, query?.filter),
@@ -63,12 +74,14 @@ export function initialLocation(): Location {
     const stored = JSON.parse(sessionStorage.getItem(ROUTE_KEY) ?? 'null') as { route?: unknown; stack?: unknown; group?: unknown } | null
     const route = parseRoute(stored?.route)
     const stack = Array.isArray(stored?.stack) ? stored.stack as unknown[] : []
-    if (route) return { route, stack: stack.flatMap(item => parseRoute(item) ?? []), group: pick(SETTINGS_GROUPS, stored?.group) }
+    // The four-entry navigation makes tasks the default; a remembered Overview from the previous navigation moves once.
+    if (route) return { route: navFour() && route.page === 'overview' ? { page: 'tasks' } : route,
+      stack: stack.flatMap(item => parseRoute(item) ?? []), group: pick(SETTINGS_GROUPS, stored?.group) }
   } catch (error) {
-    // Route memory is a convenience; an unreadable value falls back to HOME.
+    // Route memory is a convenience; an unreadable value falls back to the current default.
     void error
   }
-  return { route: HOME, stack: [] }
+  return { route: homeRoute(), stack: [] }
 }
 export function remember(location: Location): void {
   try { sessionStorage.setItem(ROUTE_KEY, JSON.stringify(location)) } catch (failure) { void failure /* Route memory is a convenience. */ }

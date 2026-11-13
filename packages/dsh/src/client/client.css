@@ -629,3 +629,81 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-check { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
 .dt-details > summary { cursor: pointer; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
 .dt-list > .dt-row[data-selected] { background: var(--dsw-alias-bg-module-platform); border-radius: 10px; }
+
+/* UX batch 3: the main-Agent card, the four-entry pages, the floating notice entry and Files. */
+.dt-master-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 0 0 18px;
+  padding: 16px 18px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 14px;
+  background: linear-gradient(135deg, var(--dsw-alias-bg-layer-1), var(--dsw-alias-bg-layer-2)); }
+.dt-master-card-main { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.dt-master-avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden;
+  color: var(--dsw-alias-label-inverse); object-fit: cover; }
+.dt-avatar-aurora { background: linear-gradient(135deg, #6d5efc, #18a8c8); }
+.dt-avatar-sunset { background: linear-gradient(135deg, #f97316, #db2777); }
+.dt-avatar-forest { background: linear-gradient(135deg, #16a34a, #0f766e); }
+.dt-avatar-slate { background: linear-gradient(135deg, #475569, #0f172a); }
+.dt-master-card-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dt-master-card-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.dt-master-card-title h2 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; }
+.dt-master-link { border: 0; padding: 0; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit;
+  font-size: 12px; line-height: 18px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.dt-master-link:hover { color: var(--dsw-alias-label-primary); }
+.dt-master-link:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 4px; }
+.dt-master-card-status { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; line-height: 20px;
+  color: var(--dsw-alias-label-secondary); }
+.dt-master-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dsw-alias-bg-info, #2f6fed); }
+.dt-master-card-status[data-paused='true'] .dt-master-status-dot { background: var(--dsw-alias-bg-warning, #d97706); }
+.dt-master-card-hint { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); overflow-wrap: anywhere; }
+.dt-master-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dt-master-rename { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dt-master-rename .dt-input { min-width: 160px; }
+.dt-avatar-picker { display: flex; flex-direction: column; gap: 14px; }
+.dt-avatar-presets { display: flex; flex-wrap: wrap; gap: 10px; }
+.dt-avatar-choice { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; border: 0.5px solid transparent;
+  border-radius: 10px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 11px; cursor: pointer; }
+.dt-avatar-choice:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dt-avatar-choice[aria-pressed='true'] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-label-primary); }
+.dt-avatar-choice:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dt-avatar-upload { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.dt-page-lead { margin: 0 0 14px; max-width: 760px; }
+.dt-notice-inbox { display: flex; flex-direction: column; gap: 12px; }
+.dt-notice-inbox-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.dt-notice-inbox-list { display: flex; flex-direction: column; gap: 10px; }
+.dt-notice-inbox-list .dt-notice-item { background: var(--dsw-alias-bg-layer-1); }
+.dt-events-fold { margin-top: 24px; padding-top: 16px; border-top: 0.5px solid var(--dsw-alias-border-l3); }
+.dt-events-fold > summary { cursor: pointer; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--dsw-alias-label-secondary); }
+.dt-events-fold > summary:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+
+.dt-files-page { display: flex; flex-direction: column; gap: 10px; }
+.dt-files-summary { margin: 0; font-size: 12px; color: var(--dsw-alias-label-caption); }
+.dt-files-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.dt-file-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px;
+  border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 10px; background: var(--dsw-alias-bg-layer-1); }
+.dt-file-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dt-file-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; font-size: 13px; line-height: 20px; }
+.dt-file-title > span:first-of-type { overflow-wrap: anywhere; }
+
+/* The floating notice entry: frame-fixed, clickable through the click-through shell overlay, quiet with no unread. */
+.dt-notice-fab { position: fixed; z-index: 880; right: 18px; bottom: max(18px, var(--dsh-frame-bottom-clearance, 18px));
+  display: flex; align-items: center; gap: 8px; max-width: min(360px, calc(100vw - 36px)); padding: 9px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 999px; background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-elevation-prominent); color: var(--dsw-alias-label-secondary); font: inherit; cursor: pointer; pointer-events: auto; }
+.dt-notice-fab[data-unread='true'] { color: var(--dsw-alias-label-primary); }
+.dt-notice-fab:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dt-notice-fab:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.dt-notice-fab-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; color: var(--dsw-alias-label-primary); }
+.dt-notice-fab-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; text-align: left; }
+.dt-notice-fab-title { font-size: 12px; line-height: 16px; font-weight: 600; }
+.dt-notice-fab-summary { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px;
+  line-height: 15px; color: var(--dsw-alias-label-caption); }
+.dt-notice-fab-badge { flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--dsw-alias-bg-danger, #dc2626); color: var(--dsw-alias-label-inverse); font-size: 10px; line-height: 18px;
+  font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .dt-master-card { align-items: flex-start; }
+  .dt-master-card-actions { width: 100%; justify-content: flex-end; }
+  .dt-notice-fab { right: 12px; bottom: 12px; max-width: calc(100vw - 24px); }
+  .dt-notice-fab-summary { max-width: 160px; }
+}
+/* Hide the floating entry while the drawer it opened covers the same corner; it returns on close with focus. */
+.dt-notice-fab[data-covered='true'] { opacity: 0; pointer-events: none; }
