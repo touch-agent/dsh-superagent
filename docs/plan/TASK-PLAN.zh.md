@@ -620,6 +620,8 @@ graph LR
 
 **优先级（2026-11-08 重评估）**：X-13 立即；X-14 在 021 Phase 2 评审前；X-03 在 M3.5 前；X-09 在 T5-02 前；X-10 在 M4 前；X-12 已完成（PR #31）；X-01/X-02/X-04 作为并行维护项，不占关键路径；X-06 继续守领域测试 <2s。
 
+**X-06 落地（2026-11-13，PR [#77](https://github.com/touch-agent/dsh-superagent/pull/77)）**：`scripts/check-domain-budget.mjs` 固定 15 个领域测试文件（kernel `Engine` + `MemoryRepositories`，以及只测 kernel 模块的用例），连续跑五次完整 Vitest、按每个文件的 `endTime - startTime` 求和，取中位数与 `docs/012` §10.1 的 2s 红线比较；另设单个用例 500ms 的早期上限（当前最慢 22–65ms），让单个失控用例在整套触线前就被点名。成员资格由脚本自检：新增 `MemoryRepositories` 或只依赖 kernel 的测试必须显式分类，`tests/store.spec.ts` 是唯一有理由的排除项；规则是文本匹配，经 fixture 间接建 Engine 的测试仍需 review 补入。`pnpm check:domain` 接入 `pnpm check`，本地与 CI 同一命令，无 CI 专属开关、无重试变绿、无环境变量放行。实测 313 用例 / 15 文件：首次三次样本 555/470/504ms（中位数 504ms），首次 CI 三次 1121/668/602ms（中位数 668ms），CI 五次 653/590/593/600/576ms（中位数 593ms，约 3.4 倍余量）、962/948/979/1031/950ms（中位数 962ms，约 2.1 倍余量）与 692/636/631/693/614ms（中位数 636ms，约 3.1 倍余量），高系统负载下本机五次 799/1078/1105/765/935ms（中位数 935ms，约 2.1 倍余量）；临时给 `tests/stage.spec.ts` 单个用例加 1.2s 忙等后整套为 1674ms（仍低于 2s），单用例上限按文件与用例名报错。测量口径、成员资格与已知偏差（不含启动/顶层 import/转译、外部负载会推高墙钟、并行跨度求和、2s 以下分散回退不拦截）见 `docs/007-architecture.md` 的「Domain test budget」。
+
 ### X-01 lint + CI · Platform · 2 人日
 
 - **目标**：给全仓库加一道能挡住真实缺陷的 lint，接进 `pnpm check` 与 CI 的 `check` job；不引入风格重排，也不借机改业务逻辑。
