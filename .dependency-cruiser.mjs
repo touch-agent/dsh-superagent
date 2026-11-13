@@ -89,6 +89,7 @@ export default {
           '^packages/dsh/src/navigation\\.ts$',
           '^packages/dsh/src/sources/host\\.ts$',
           '^packages/dsh/src/app/api\\.ts$',
+          '^packages/dsh/src/app/work-tools\\.ts$',
         ],
         dependencyTypesNot: ['type-only'],
       },

@@ -20,7 +20,8 @@ type ImportStatement = { statement: string; specifier: string }
 const HOST_PREFIXES = ['../app/', '../sources/', '../infra/'] as const
 
 /** The plain-value modules the panel may import as values, per the Dependency rules. */
-const VALUE_MODULES = new Set(['../admission.ts', '../limits.ts', '../setup.ts', '../navigation.ts', '../sources/host.ts'])
+const VALUE_MODULES = new Set(['../admission.ts', '../limits.ts', '../setup.ts', '../navigation.ts', '../sources/host.ts',
+  '../app/work-tools.ts'])
 
 /** `packages/dsh/src/app/api.ts` is a whitelist for its filter constants, which are its whole value surface. */
 const FILTER_CONSTANTS: Record<string, readonly string[]> = { '../app/api.ts': ['TICKET_FILTERS', 'THREAD_FILTERS'] }

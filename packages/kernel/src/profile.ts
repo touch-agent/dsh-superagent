@@ -44,6 +44,12 @@ export interface ProfileHead {
   retiredRevisions: number[]
   lastBoundAt?: string
   updatedBy: string
+  /** Operators can stop binding this profile without editing its immutable revisions. */
+  disabled?: boolean
+  /** The revision active before the latest activation, so one step can roll back to it. */
+  previousActiveRevision?: number
+  /** The operator's reason for the latest head change, when the write route supplied one. */
+  updatedReason?: string
 }
 
 /** How a ticket picked its snapshot; `by` is code or a person, never a model. */

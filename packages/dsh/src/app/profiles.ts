@@ -63,7 +63,9 @@ const ProvenanceSchema = z.object({ by: z.string().trim().min(1), at: z.string()
 export const AgentProfileSchema = ProfileDraftSchema.extend({ revision: z.number().int().positive(), provenance: ProvenanceSchema,
   contentHash: z.string().regex(/^sha256:[0-9a-f]{64}$/) }).strict()
 export const ProfilesConfigSchema = z.object({ enabled: z.boolean().default(false), resolve: z.enum(['snapshot', 'legacy']).default('snapshot'),
-  telemetry: z.boolean().default(true), defaultProfile: z.string().regex(PROFILE_ID).optional() }).strict()
+  telemetry: z.boolean().default(true), defaultProfile: z.string().regex(PROFILE_ID).optional(),
+  updatedBy: z.string().trim().min(1).optional(), updatedAt: z.string().min(1).optional(),
+  updatedReason: z.string().trim().min(1).optional() }).strict()
 
 /** Canonical JSON: keys sorted recursively, so equal content always hashes equally. */
 export function canonicalJson(value: unknown): string {
@@ -92,8 +94,8 @@ export function effectiveHashInput(profile: Pick<ProfileDraft, 'model' | 'tools'
   policyVersion: string; skillsHash: string }): Record<string, unknown> {
   return { profile: { model: profile.model, tools: profile.tools, prompt: profile.prompt }, ...fields }
 }
-/** `GET profiles` returns these identity rows, never prompt text or ticket content. */
-export interface ProfileListView { generatedAt: string; profiles: ReturnType<Profiles['list']> }
+/** `GET profiles` returns these identity rows and the independent flags, never prompt text or ticket content. */
+export interface ProfileListView { generatedAt: string; config: ProfilesConfig; profiles: ReturnType<Profiles['list']> }
 /** `GET profiles/:id` returns one identity, its head and every immutable revision. */
 export interface ProfileDetailView { profile: AgentProfile; head: ProfileHead; revisions: AgentProfile[] }
 /** A launch the profile cannot start: a missing work tool or a pinned prompt revision that no longer resolves. */
@@ -150,16 +152,37 @@ export class Profiles {
     return parsed.success ? parsed.data : { ...DEFAULT_CONFIG }
   }
   /** Save the flags. This is an operator action; no worker tool calls it. */
-  saveConfig(patch: Partial<ProfilesConfig>): ProfilesConfig {
-    const next = ProfilesConfigSchema.parse({ ...this.config(), ...patch })
+  saveConfig(patch: Partial<ProfilesConfig>, by = 'operator', reason?: string): ProfilesConfig {
+    const next = ProfilesConfigSchema.parse({ ...this.config(), ...patch, updatedBy: by,
+      updatedAt: this.host.now?.() ?? new Date().toISOString(), updatedReason: reason })
     this.host.store.set(KV.profiles.config, next)
     return next
+  }
+  /**
+   * Save the flags after checking the default profile can actually serve new Tickets. Fallback is a deliberate operator
+   * choice: `enabled=false` or `resolve=legacy` still save, but selecting a profile that is missing, disabled or invalid
+   * does not. This is a configuration check, not authorization; it never reads a Mandate or an Approval.
+   */
+  saveOperatorConfig(patch: Partial<ProfilesConfig>, by: string, reason?: string): ProfilesConfig {
+    const candidate = ProfilesConfigSchema.parse({ ...this.config(), ...patch })
+    if (candidate.defaultProfile) {
+      const head = this.head(candidate.defaultProfile), definition = head ? this.revision(candidate.defaultProfile, head.activeRevision) : undefined
+      if (!head || !definition || head.disabled || definition.role !== 'worker' || runtimeProblem(definition, this.host.prompts)) {
+        throw new UserError('profileDefaultUnavailable')
+      }
+      this.assertModelApproved(definition)
+    } else if (candidate.enabled) {
+      const head = this.head('worker-default'), definition = head ? this.revision('worker-default', head.activeRevision) : undefined
+      if (!head || !definition || head.disabled || runtimeProblem(definition, this.host.prompts)) throw new UserError('profileDefaultUnavailable')
+    }
+    return this.saveConfig(candidate, by, reason)
   }
   /** A startup/activation health problem; `undefined` means the built-in compatible profile resolves. */
   problem(): string | undefined {
     const check = (id: string, label: string): string | undefined => {
       const head = this.head(id), definition = head ? this.revision(id, head.activeRevision) : undefined
       if (!head || !definition) return `${label} profile ${id} is missing`
+      if (head.disabled) return `${label} profile ${id} is disabled`
       const issue = runtimeProblem(definition, this.host.prompts)
       return issue ? `${label} profile ${id}@${head.activeRevision} is unusable: ${issue}` : undefined
     }
@@ -195,8 +218,9 @@ export class Profiles {
       const head = this.head(id), definition = this.active(id)
       if (!head || !definition) return []
       return [{ id, title: definition.title, description: definition.description, role: definition.role,
-        activeRevision: definition.revision, retiredRevisions: [...head.retiredRevisions], lastBoundAt: head.lastBoundAt,
-        updatedBy: head.updatedBy, contentHash: definition.contentHash, moving: movingPolicy(definition) }]
+        activeRevision: definition.revision, previousActiveRevision: head.previousActiveRevision, disabled: head.disabled === true,
+        retiredRevisions: [...head.retiredRevisions], lastBoundAt: head.lastBoundAt, updatedBy: head.updatedBy,
+        contentHash: definition.contentHash, moving: movingPolicy(definition) }]
     })
   }
   /** One profile with its head and every immutable revision, for `GET profiles/:id`. */
@@ -241,7 +265,8 @@ export class Profiles {
     const revision = Math.max(active, ...current?.retiredRevisions ?? [], 0) + 1
     const definition = this.seal(parsed, revision, { ...provenance, at: provenance.at ?? this.host.now?.() ?? new Date().toISOString() })
     const head: ProfileHead = { activeRevision: revision, retiredRevisions: current?.retiredRevisions ?? [], lastBoundAt: current?.lastBoundAt,
-      updatedBy: provenance.by }
+      updatedBy: provenance.by, updatedReason: provenance.reason, disabled: current?.disabled === true,
+      ...active ? { previousActiveRevision: active } : {} }
     this.host.store.set(KV.profiles.revision(parsed.id, revision), definition)
     this.host.store.set(KV.profiles.head(parsed.id), head)
     const index = this.host.store.get(KV.profiles.index) ?? []
@@ -253,26 +278,59 @@ export class Profiles {
    * Point `id`'s active head at an existing revision and record the previously active one as retired. This is the
    * one-step rollback: already-bound Tickets keep their snapshot, and only new tickets see the new active pointer.
    */
-  activate(id: string, revision: number, by: string): ProfileHead {
+  activate(id: string, revision: number, by: string, allowRetired = false, reason?: string): ProfileHead {
     const head = this.head(id)
-    if (!head) throw new ProfileConflict(`No profile ${id}`)
-    if (!this.revision(id, revision)) throw new ProfileConflict(`Profile ${id} has no revision ${revision}`)
+    if (!head) throw new UserError('profileNotFound')
+    const definition = this.revision(id, revision)
+    if (!definition) throw new UserError('profileRevisionNotFound', { revision: String(revision) })
+    if (!allowRetired && head.retiredRevisions.includes(revision)) {
+      throw new UserError('profileRevisionRetired', { revision: String(revision) })
+    }
+    this.assertModelApproved(definition)
+    const issue = runtimeProblem(definition, this.host.prompts)
+    if (issue) throw new UserError('profileActivationUnusable', { revision: String(revision), issue })
     const retired = new Set(head.retiredRevisions)
     if (revision !== head.activeRevision) retired.add(head.activeRevision)
     retired.delete(revision)
-    const next: ProfileHead = { ...head, activeRevision: revision, retiredRevisions: [...retired].sort((a, b) => a - b), updatedBy: by }
+    const next: ProfileHead = { ...head, activeRevision: revision, retiredRevisions: [...retired].sort((a, b) => a - b),
+      updatedBy: by, updatedReason: reason, disabled: false,
+      previousActiveRevision: revision === head.activeRevision ? head.previousActiveRevision : head.activeRevision }
     this.host.store.set(KV.profiles.head(id), next)
     return next
   }
   /** Retire a revision without letting a later bind select it; the active revision cannot be retired this way. */
-  retire(id: string, revision: number, by: string): ProfileHead {
+  retire(id: string, revision: number, by: string, reason?: string): ProfileHead {
     const head = this.head(id)
-    if (!head) throw new ProfileConflict(`No profile ${id}`)
+    if (!head) throw new UserError('profileNotFound')
     if (revision === head.activeRevision) throw new ProfileConflict('Activate another revision before retiring the active one')
-    if (!this.revision(id, revision)) throw new ProfileConflict(`Profile ${id} has no revision ${revision}`)
-    const next: ProfileHead = { ...head, retiredRevisions: [...new Set([...head.retiredRevisions, revision])].sort((a, b) => a - b), updatedBy: by }
+    if (!this.revision(id, revision)) throw new UserError('profileRevisionNotFound', { revision: String(revision) })
+    const next: ProfileHead = { ...head, retiredRevisions: [...new Set([...head.retiredRevisions, revision])].sort((a, b) => a - b),
+      updatedBy: by, updatedReason: reason,
+      ...head.previousActiveRevision === revision ? { previousActiveRevision: undefined } : {} }
     this.host.store.set(KV.profiles.head(id), next)
     return next
+  }
+  /** Activate the revision that was active before the latest activation; bound Tickets keep their snapshots. */
+  rollback(id: string, by: string, reason?: string): ProfileHead {
+    const head = this.head(id)
+    if (!head) throw new UserError('profileNotFound')
+    const target = head.previousActiveRevision
+    if (target === undefined || target === head.activeRevision || !this.revision(id, target)) throw new UserError('profileNoRollbackTarget')
+    // The revision replaced by the latest activation is marked retired by `activate`; rolling back to it is the one
+    // deliberate exception, and it clears that automatic retirement marker so the next save still gets a fresh number.
+    return this.activate(id, target, by, true, reason)
+  }
+  /** Stop or resume binding a profile to new Tickets. Its immutable revisions and the active pointer stay unchanged. */
+  setEnabled(id: string, enabled: boolean, by: string, reason?: string): ProfileHead {
+    if (!enabled && id === 'worker-default') throw new UserError('profileBuiltinImmutable')
+    const head = this.head(id)
+    if (!head) throw new UserError('profileNotFound')
+    if (!enabled) {
+      const next: ProfileHead = { ...head, updatedBy: by, updatedReason: reason, disabled: true }
+      this.host.store.set(KV.profiles.head(id), next)
+      return next
+    }
+    return this.activate(id, head.activeRevision, by, false, reason)
   }
 
   /**
@@ -287,6 +345,7 @@ export class Profiles {
       const selected = this.config().defaultProfile ?? 'worker-default'
       const head = this.head(selected), definition = head ? this.revision(selected, head.activeRevision) : undefined
       if (!head || !definition) return this.legacySnapshot(`profileUnavailable:${selected}`, ticket.id)
+      if (head.disabled) return this.legacySnapshot(`profileDisabled:${selected}`, ticket.id)
       const snapshot = this.snapshot(definition, ticket.id, { by: this.config().defaultProfile ? 'human' : 'code',
         source: this.config().defaultProfile ? 'manual' : 'builtin', reason: `profile:${definition.id}@${definition.revision}` })
       if (snapshot.selection.valid) this.host.store.set(KV.profiles.head(definition.id),
@@ -350,11 +409,12 @@ export class Profiles {
   /** Validate a draft, including the built-in-only inherit rule and the role work-tool ceiling. */
   validateDraft(value: unknown): ProfileDraft {
     const draft = ProfileDraftSchema.parse(value)
+    if (draft.id === 'worker-default') throw new UserError('profileBuiltinImmutable')
     if (draft.role !== 'worker') throw new UserError('profileRoleUnsupported', { role: draft.role })
-    const builtin = draft.id === 'worker-default'
-    if (!builtin && draft.model.mode !== 'pinned') throw new UserError('profileModelMustPin')
-    if (!builtin && draft.prompt.mode !== 'pinned') throw new UserError('profilePromptMustPin')
-    if (!builtin && draft.tools.mode !== 'list') throw new UserError('profileToolsMustList')
+    if (draft.model.mode !== 'pinned') throw new UserError('profileModelMustPin')
+    if (draft.prompt.mode !== 'pinned') throw new UserError('profilePromptMustPin')
+    if (draft.tools.mode !== 'list') throw new UserError('profileToolsMustList')
+    this.assertModelApproved(draft)
     if (draft.prompt.mode === 'pinned') {
       try { this.host.prompts.version(draft.prompt.revision) } catch { throw new UserError('unknownPromptRevision', { revision: String(draft.prompt.revision) }) }
     }
@@ -366,6 +426,20 @@ export class Profiles {
       if (outside.length) throw new UserError('profileToolOutsideRole', { tools: outside.join(', ') })
     }
     return draft
+  }
+  /**
+   * A profile may pin only the worker model the deployment already configured in Executor settings. A write route
+   * cannot use a profile to switch to another (stronger) model: changing the approved model is a separate operator
+   * action on the existing Executor settings, and then a profile can freeze that model.
+   */
+  private assertModelApproved(definition: Pick<ProfileDraft, 'model'> & { id?: string }): void {
+    if (definition.model.mode !== 'pinned') return
+    const approved = this.host.store.settings().executor.model
+    if (!approved) throw new UserError('profileModelNotConfigured')
+    const same = definition.model.provider === approved.provider && definition.model.model === approved.model
+      && (definition.model.reasoningEffort ?? undefined) === (approved.reasoningEffort ?? undefined)
+    if (!same) throw new UserError('profileModelUnapproved', { provider: approved.provider, model: approved.model,
+      requested: `${definition.model.provider}/${definition.model.model}` })
   }
   /** Attach revision, provenance and content hash to a validated draft. */
   private seal(draft: ProfileDraft, revision: number, provenance: AgentProfile['provenance']): AgentProfile {

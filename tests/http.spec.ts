@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { registerHttp } from '@superagent/dsh/app/http.ts'
 import { PromptConflict } from '@superagent/dsh/app/prompts.ts'
 import { SettingsConflict } from '@superagent/dsh/app/settings.ts'
+import { ProfileConflict } from '@superagent/dsh/app/profiles.ts'
 import type { HttpHost } from '@superagent/dsh/app/http.ts'
 import { SettingsSchema } from '@superagent/dsh/policy.ts'
 import { SetupError } from '@superagent/dsh/setup.ts'
@@ -276,4 +277,45 @@ it('records an approval decision from the panel, at the requested or a lower lev
   // A decided Approval is no longer changed by a later request.
   expect(await call('POST', path(lower, 'deny'))).toMatchObject({ status: 400, body: { code: 'approvalDecided' } })
   expect(rows.get(lower.id)).toMatchObject({ state: 'approved', grantedLevel: 'draft' })
+})
+
+it('serves profile management writes and maps a revision conflict to 409', async () => {
+  const writes: { method: string; args: unknown[] }[] = []
+  const head = { activeRevision: 2, previousActiveRevision: 1, retiredRevisions: [], updatedBy: 'panel:local', disabled: false }
+  const definition = { id: 'worker-docs', revision: 2, title: 'Docs', role: 'worker', model: { mode: 'inherit' }, tools: { mode: 'inherit' },
+    prompt: { mode: 'live' } }
+  const profiles = {
+    config: () => ({ enabled: true, resolve: 'snapshot', telemetry: true }),
+    list: () => [{ id: 'worker-docs', title: 'Docs', activeRevision: 2 }],
+    detail: (id: string) => id === 'worker-docs' ? { profile: definition, head, revisions: [definition] } : undefined,
+    validateDraft: (value: unknown) => value,
+    save: (...args: unknown[]) => { writes.push({ method: 'save', args }); return definition },
+    activate: (...args: unknown[]) => { writes.push({ method: 'activate', args }); return head },
+    setEnabled: (...args: unknown[]) => { writes.push({ method: 'setEnabled', args }); return head },
+    retire: (...args: unknown[]) => { writes.push({ method: 'retire', args }); return head },
+    rollback: (...args: unknown[]) => { writes.push({ method: 'rollback', args }); return head },
+    saveOperatorConfig: (patch: Record<string, unknown>, by: string, reason?: string) => ({ ...patch, updatedBy: by,
+      ...reason ? { updatedReason: reason } : {} }),
+  }
+  const call = serve({ profiles })
+  expect(await call('GET', 'profiles')).toMatchObject({ status: 200, body: { config: { enabled: true }, profiles: [{ id: 'worker-docs' }] } })
+  expect(await call('GET', 'profiles/missing')).toMatchObject({ status: 404, body: { code: 'profileNotFound' } })
+  expect(await call('POST', 'profiles', { profile: { id: 'worker-docs' }, reason: 'create' })).toMatchObject({ status: 200,
+    body: { profile: { id: 'worker-docs' } } })
+  expect(writes[0]).toMatchObject({ method: 'save', args: [{ id: 'worker-docs' }, 0, { by: 'panel:local', source: 'panel', reason: 'create' }] })
+  expect(await call('POST', 'profiles/worker-docs/revisions', { profile: { id: 'worker-docs' }, baseRevision: 1, reason: 'rev' }))
+    .toMatchObject({ status: 200 })
+  expect(await call('POST', 'profiles/worker-docs/revisions', { profile: { id: 'other' }, baseRevision: 1, reason: 'rev' }))
+    .toMatchObject({ status: 400 })
+  expect(await call('POST', 'profiles/worker-docs/activate', { revision: 1, reason: 'activate' })).toMatchObject({ status: 200 })
+  expect(writes.find(item => item.method === 'activate')?.args).toMatchObject(['worker-docs', 1, 'panel:local', false, 'activate'])
+  expect(await call('POST', 'profiles/worker-docs/enabled', { enabled: false, reason: 'off' })).toMatchObject({ status: 200 })
+  expect(await call('POST', 'profiles/worker-docs/retire', { revision: 1, reason: 'retire' })).toMatchObject({ status: 200 })
+  expect(await call('POST', 'profiles/worker-docs/rollback', { reason: 'back' })).toMatchObject({ status: 200 })
+  expect(await call('PUT', 'profiles/config', { enabled: false, resolve: 'legacy', telemetry: false, reason: 'switch' }))
+    .toMatchObject({ status: 200, body: { config: { enabled: false, resolve: 'legacy', telemetry: false, updatedBy: 'panel:local',
+      updatedReason: 'switch' } } })
+  profiles.save = () => { throw new ProfileConflict('stale') }
+  expect(await call('POST', 'profiles', { profile: { id: 'worker-docs' }, reason: 'create' }))
+    .toMatchObject({ status: 409, body: { error: 'stale' } })
 })

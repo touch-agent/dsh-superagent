@@ -14,12 +14,17 @@ const NOW = '2026-11-10T12:00:00.000Z'
 const draft = (extra: Partial<ProfileDraft> = {}): ProfileDraft => ({ id: 'worker-docs', title: 'Docs worker',
   description: 'Tests and documentation only.', model: { mode: 'pinned', provider: 'deepseek', model: 'deepseek-v4.1' },
   tools: { mode: 'list', names: ['read', 'grep', 'bash'] }, prompt: { mode: 'pinned', revision: 0 }, ...extra } as ProfileDraft)
-function withProfiles(body: (store: Store, profiles: Profiles, prompts: Prompts) => void): void {
+function withProfiles(body: (store: Store, profiles: Profiles, prompts: Prompts) => void, options: { model?: boolean } = {}): void {
   const dir = mkdtempSync(join(tmpdir(), 'profiles-'))
   const store = new Store(join(dir, 'db'))
   try {
     const prompts = new Prompts(store, () => 100_000, () => undefined, () => false)
     const profiles = new Profiles({ store, prompts, now: () => NOW })
+    // Custom profiles may pin only the worker model the deployment already approved in Executor settings.
+    if (options.model !== false) {
+      const settings = store.settings()
+      store.saveSettings({ ...settings, executor: { ...settings.executor, model: { provider: 'deepseek', model: 'deepseek-v4.1' } } })
+    }
     body(store, profiles, prompts)
   } finally { store.close(); rmSync(dir, { recursive: true, force: true }) }
 }
@@ -217,5 +222,86 @@ it('counts child, lightweight, fallback and closed tickets separately from root 
     const view = profileMetrics(store, 'worker-default', new Date(NOW))
     expect(view.totals).toMatchObject({ roots: 1, children: 1, lightweight: 1, closed: 1,
       success: { n: 1, successes: 0 }, childSuccess: { n: 1, successes: 1 }, lightweightSuccess: { n: 1, successes: 1 } })
+  })
+})
+it('keeps the built-in profile read-only and fails closed without an approved worker model', () => {
+  withProfiles((_store, profiles) => {
+    expect(() => profiles.save(draft({ id: 'worker-default' }), 0, { by: 'local-user', source: 'panel', reason: 'edit' }))
+      .toThrow('read-only')
+    expect(() => profiles.setEnabled('worker-default', false, 'local-user')).toThrow('read-only')
+  })
+  withProfiles((_store, profiles) => {
+    expect(() => profiles.save(draft(), 0, { by: 'local-user', source: 'panel', reason: 'no model' }))
+      .toThrow('Set the worker model')
+  }, { model: false })
+})
+
+it('refuses a profile model that is not the approved worker model', () => {
+  withProfiles((_store, profiles) => {
+    expect(() => profiles.save(draft({ model: { mode: 'pinned', provider: 'deepseek', model: 'deepseek-v4.1-pro' } }), 0,
+      { by: 'local-user', source: 'panel', reason: 'escalate' })).toThrow('is not approved')
+    expect(() => profiles.save(draft({ model: { mode: 'pinned', provider: 'openai', model: 'gpt-5' } }), 0,
+      { by: 'local-user', source: 'panel', reason: 'escalate' })).toThrow('is not approved')
+    // The approved model itself is accepted, and a later settings change does not rewrite that frozen revision.
+    const saved = profiles.save(draft(), 0, { by: 'local-user', source: 'panel', reason: 'approved' })
+    expect(saved.model).toMatchObject({ mode: 'pinned', provider: 'deepseek', model: 'deepseek-v4.1' })
+  })
+})
+
+it('rolls back one step and leaves every bound ticket snapshot untouched', () => {
+  withProfiles((_store, profiles) => {
+    profiles.saveConfig({ enabled: true, defaultProfile: 'worker-docs' })
+    const first = profiles.save(draft(), 0, { by: 'local-user', source: 'panel', reason: 'v1' })
+    const boundAtOne = profiles.bindRoot(ticket('t1'))!
+    const second = profiles.save(draft({ description: 'v2' }), 1, { by: 'local-user', source: 'panel', reason: 'v2' })
+    const boundAtTwo = profiles.bindRoot(ticket('t2'))!
+    expect(second.revision).toBe(2)
+    expect(profiles.detail('worker-docs')?.head.updatedReason).toBe('v2')
+    const rolled = profiles.rollback('worker-docs', 'local-user', 'operator rollback')
+    expect(rolled).toMatchObject({ activeRevision: 1, previousActiveRevision: 2, updatedReason: 'operator rollback' })
+    expect(profiles.bindRoot(ticket('t3'))?.revision).toBe(first.revision)
+    expect(boundAtOne.revision).toBe(1)
+    expect(boundAtTwo.revision).toBe(2)
+    expect(profiles.detail('worker-docs')?.head.activeRevision).toBe(1)
+    // A second rollback returns to the revision that was active before the first rollback.
+    expect(profiles.rollback('worker-docs', 'local-user')).toMatchObject({ activeRevision: 2, previousActiveRevision: 1 })
+    expect(() => profiles.rollback('worker-docs', 'local-user')).not.toThrow()
+  })
+})
+
+it('has no rollback target before a second activation and cannot activate a retired revision', () => {
+  withProfiles((_store, profiles) => {
+    profiles.save(draft(), 0, { by: 'local-user', source: 'panel', reason: 'v1' })
+    expect(() => profiles.rollback('worker-docs', 'local-user')).toThrow('no previous active revision')
+    profiles.save(draft({ description: 'v2' }), 1, { by: 'local-user', source: 'panel', reason: 'v2' })
+    profiles.activate('worker-docs', 1, 'local-user')
+    expect(() => profiles.activate('worker-docs', 2, 'local-user')).toThrow('retired')
+  })
+})
+
+it('disables a custom profile without changing its revisions and resolves new tickets to legacy', () => {
+  withProfiles((_store, profiles) => {
+    profiles.saveConfig({ enabled: true, defaultProfile: 'worker-docs' })
+    const first = profiles.save(draft(), 0, { by: 'local-user', source: 'panel', reason: 'v1' })
+    expect(profiles.bindRoot(ticket('t1'))?.revision).toBe(first.revision)
+    expect(profiles.setEnabled('worker-docs', false, 'local-user', 'pause experiments'))
+      .toMatchObject({ activeRevision: 1, disabled: true, updatedReason: 'pause experiments' })
+    expect(profiles.bindRoot(ticket('t2'))).toMatchObject({ id: 'legacy', selection: { fallback: true, reason: 'profileDisabled:worker-docs' } })
+    expect(profiles.detail('worker-docs')?.profile.revision).toBe(1)
+    expect(profiles.setEnabled('worker-docs', true, 'local-user')).toMatchObject({ activeRevision: 1, disabled: false })
+    expect(profiles.bindRoot(ticket('t3'))?.revision).toBe(1)
+  })
+})
+
+it('validates the selected default profile before saving operator switches', () => {
+  withProfiles((_store, profiles) => {
+    profiles.seed()
+    expect(() => profiles.saveOperatorConfig({ enabled: true, defaultProfile: 'missing' }, 'panel:local')).toThrow('not an enabled')
+    profiles.save(draft(), 0, { by: 'local-user', source: 'panel', reason: 'v1' })
+    profiles.setEnabled('worker-docs', false, 'local-user')
+    expect(() => profiles.saveOperatorConfig({ enabled: true, defaultProfile: 'worker-docs' }, 'panel:local')).toThrow('not an enabled')
+    const config = profiles.saveOperatorConfig({ enabled: true, defaultProfile: 'worker-default' }, 'panel:local', 'enable for pilot')
+    expect(config).toMatchObject({ enabled: true, defaultProfile: 'worker-default', updatedBy: 'panel:local', updatedAt: NOW,
+      updatedReason: 'enable for pilot' })
   })
 })
