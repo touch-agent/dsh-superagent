@@ -14,7 +14,7 @@
 - 服务端返回的启动 HTML 引用 `rev=64dc09ecf89e`，返回的客户端 bundle 就是这份构建（多出 71 字节的
   `sourceMappingURL` 注释，因此 788,382 字节）；其中含 `ux.navFour.v1`、`ux.masterCard.v1`、
   `ux.noticeButton.v1`、`ux.filesPage.v1` 等全部新开关。
-- 用一个全新的浏览器配置（空 localStorage）打开同一地址，点侧栏 `Superagent`，看到的是新面板：
+- 用一个全新的浏览器配置（空 localStorage）打开 3082，点侧栏 `Superagent`，看到的是新面板：
   `任务 / 通知 / 文件 / 设置` 四个入口、`小助` 主 Agent 卡片和浮动的通知按钮。
 - Chrome 的 `Profile 1` 缓存里同时留着两份页面文档：10:52:16 的旧文档引用 `rev=30a716717295`，对应
   737,378 字节的旧 bundle（没有 `navFour`/`masterCard`）；17:13:47 的新 bundle 和 20:17:15 的新文档引用
@@ -124,6 +124,14 @@ Chrome 的 HTTP 缓存（`~/Library/Caches/Google/Chrome/Profile 1/Cache/Cache_D
 
 ## 6. 重启后看哪一屏
 
+先分清两个区域；旧界面的报告经常把宿主外壳当成了插件页面：
+
+| 区域 | 归属 | 能否由插件改变 |
+| --- | --- | --- |
+| 左侧栏的 `新会话 / 插件 / Superagent / 自动化任务 / 更多`、下方工作区与会话列表 | DSH 宿主外壳 | 不能；[026](026-ux-third-batch.zh.md) L1–L8 明确保留 |
+| 点侧栏 `Superagent` 之后的 `任务 / 通知 / 文件 / 设置`、页头、任务卡、右栏和浮层 | 插件面板 | 能；受第 4 节开关控制 |
+| `设置` 内的来源、触发、评估、执行、Agent 配置、显示、提示词、部署 | 插件页面 | 能；`ux.opsInSettings.v1` 决定它们是否在设置里 |
+
 按顺序核对，任何一步不符合就先停在那一步：
 
 | 步骤 | 屏幕 | 应该看到 | 不符合时 |
@@ -145,10 +153,10 @@ Chrome 的 HTTP 缓存（`~/Library/Caches/Google/Chrome/Profile 1/Cache/Cache_D
   `stat` 与 `shasum -a 256 lib/client.js` 见第 2 节。
 - **服务实际返回**：带 token 和 cookie 请求 `/`，从 HTML 中取出 `plugins/??dsh-superagent/client.js&rev=…`，
   再请求该 URL；比较字节数与 `sourceMappingURL`。
-- **新构建**：在工单工作区 `pnpm build`，`lib/client.js` 795,088 字节（这次新增构建块后的本地构建），
+- **新构建**：在工单工作区 `pnpm build`，`lib/client.js` 约 795 KB（这次新增构建块后的本地构建），
   `grep` 可见 `version: "0.1.0"`、`commit: "…"`、`buildId: "…"`。
-- **全新浏览器**：临时 profile、空 localStorage、1440×900、浅色、中文，打开 3082，点 `Superagent`；截图见
-  `images/post-upgrade-verification/panel-tasks.png`。
+- **全新浏览器配置 + 临时实例**：临时 profile（3099，空状态）、空 localStorage、1440×900、浅色、中文，
+  打开同一构建，点 `Superagent`；截图见 `images/post-upgrade-verification/panel-tasks.png`。
 - **宿主外壳**：同一个临时 profile 的主页面；截图见 `images/post-upgrade-verification/host-shell.png`。
 - **改动前后**：同一临时 profile、同一状态目录、同一视口/主题，只把链接目标从旧构建换成新构建，再截
   `设置 › 显示`：`panel-display-before.png`（没有构建块）与 `panel-display-after.png`（有构建块，两个 ID 相同）。
