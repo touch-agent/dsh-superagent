@@ -6,7 +6,7 @@ evolution set, then the plan set when you are picking up work.
 | Layer | Where | What it answers |
 | --- | --- | --- |
 | Numbered mechanism and operations | `docs/000`–`docs/010` | How the system works, how it is authorized, operated and extended. |
-| Design and evolution | `docs/011`–`docs/026` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, the reusable profile layer over the worker role, the task-first interface proposal, and the first, second and third implemented UX slices. |
+| Design and evolution | `docs/011`–`docs/027` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, the reusable profile layer over the worker role, the task-first interface proposal, the first, second and third implemented UX slices, and the post-upgrade verification checklist. |
 | Plans | [`plan/`](plan/README.md) | What to build, in what order, and the current status of every task. |
 | Runbooks and evidence | [`runbooks/`](runbooks/why-not-sent.md), [`images/`](images/), [`prototypes/`](prototypes/ux-redesign.html) | What to do when something is stuck; the before/after captures and the clickable prototype the documents cite. |
 
@@ -30,7 +30,7 @@ Read 000–010 in order; each builds only on the ones before it.
 
 ## Design and evolution
 
-These twelve are written in Chinese. 011 and 012 are a cross-referencing pair:
+These seventeen are written in Chinese. 011 and 012 are a cross-referencing pair:
 read 011 for the principles and their cross-check against the existing
 documents, then 012 for the evolution story. 013 applies them to the workspace
 model (space as an execution reference, orthogonal to the task tree). 014
@@ -74,12 +74,13 @@ replacement.
 | 024 | [UX second batch](024-ux-second-batch.zh.md) | The second implemented UX slice: operations pages consolidated into grouped Settings pages with icons, descriptions and deep links; a task detail centred on the person's decision, result, next step with honest timing, human owner and per-child report folds; first-use notes and empty-state entries; three rollback flags and same-viewport before/after evidence. |
 | 025 | [Management API schema](025-api-schema.zh.md) | The management API's JSON Schema single source: route table, compile-time request types, runtime validation, panel binding, committed artifact and CI staleness check, with existing request and error semantics preserved. |
 | 026 | [UX third batch](026-ux-third-batch.zh.md) | The third implemented UX slice within plugin-only extension points: a main-Agent card at the top of the task view with browser-local name and avatar, four first-level entries (Tasks, Notices, Files, Settings), a frame-wide floating notice entry with quiet state and focus return, a read-only task-deliverable Files page, four rollback flags, and an explicit list of remaining host limits mapped to the upstream requests in 022. |
+| 027 | [Post-upgrade verification](027-post-upgrade-verification.zh.md) | The 2026-11-13 diagnosis of "still the old panel": the artifact, revision and build time the running process actually served, the cached old document and bundle that explain a tab left open across a restart, the four flag defaults and their Settings › Display locations, the host shell versus plugin panel boundary, the new build identity and reload prompt, and a per-screen checklist for the next restart. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
 is the golden-path E2E; 015 is the E0 read model that follows from 011's
 attention principle; 017 provides the group dimension; 018 is the display-level
-checklist T5-02 lands; 019 assembles the six dimensions per Assignment; 020 is the offline evolution loop that consumes their telemetry and never applies its own proposals; 021 applies 018's levels to the default surface and the revised task-first interface (proposal); 022 audits 021's host-dependent gaps and sorts them into existing capability, additive seat and whole-region replacement; 023 implements the proposal's first task-hierarchy, notification and error-aggregation slice with rollback flags; 024 consolidates the operations pages into Settings and deepens the task detail, first-use and empty-state surfaces; 025 makes the management API's request contract one JSON Schema source; 026 implements the plugin-possible part of the main-Agent entry, four-entry navigation, floating notices and Files page while documenting the host limits it cannot remove. 011 §6
+checklist T5-02 lands; 019 assembles the six dimensions per Assignment; 020 is the offline evolution loop that consumes their telemetry and never applies its own proposals; 021 applies 018's levels to the default surface and the revised task-first interface (proposal); 022 audits 021's host-dependent gaps and sorts them into existing capability, additive seat and whole-region replacement; 023 implements the proposal's first task-hierarchy, notification and error-aggregation slice with rollback flags; 024 consolidates the operations pages into Settings and deepens the task detail, first-use and empty-state surfaces; 025 makes the management API's request contract one JSON Schema source; 026 implements the plugin-possible part of the main-Agent entry, four-entry navigation, floating notices and Files page while documenting the host limits it cannot remove; 027 records the post-upgrade evidence and adds the build identity that distinguishes a stale page from a stale build. 011 §6
 cross-checks the existing documents; conflicts are resolved in 011 §7.
 
 ## Plans

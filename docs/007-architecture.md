@@ -415,6 +415,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/app/tools/main.ts` | The main Session's tools, including `orchestrator_dispatch` for work the person assigned in the conversation |
 | `packages/dsh/src/app/tools/executor.ts` | An Executor Session's tools |
 | `packages/dsh/src/app/http.ts` | The `/orchestrator/api` routes, keyed by the contract's `ROUTES`, including approval and denial, the same-origin check, request limits and one status per kind of failure |
+| `packages/dsh/src/build-info.ts` | The built artifact's identity — version, commit, source hash, build time and dirty flag — baked into both bundles by `tsdown.config.ts`, and `buildMismatch`, which compares the page and service ids without treating a test/development build as a mismatch |
 | `packages/dsh/src/app/api-contract.ts` | The management API request contract: `ROUTES`, one JSON Schema per route, `PUBLIC_ROUTES`, and the compile-time `QueryInput`/`QueryOutput`/`BodyInput`/`RouteParams` types the panel's `Api` derives from |
 | `packages/dsh/src/app/api-filters.ts` | The Ticket and Thread filter constants and types shared by the contract, `api.ts` and the panel; kept separate so the browser half imports no server module |
 | `packages/dsh/src/app/api-parser.ts` | Compiles contract schemas with `z.fromJSONSchema` and parses query, path parameters and bodies with the existing lenient query and strict issue semantics |
@@ -473,7 +474,8 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/client/system.tsx` | The main-Session surfaces: the New Session entry, the row badge, the Status gate around the reused management page, the Events tab with its task groups, filters, shared selected-task scope, locate action and title, and the first-notice auto-open bridge |
 | `packages/dsh/src/client/panel.ts` | Selects the management panel at a route requested by a Conversation surface, remembering it for a panel that mounts later |
 | `packages/dsh/src/client/styles.ts` | Installs the plugin stylesheet in the document head so surfaces outside the management panel share its tokens and classes |
-| `packages/dsh/src/client/app.tsx` | The panel: header, search, glossary, the navigation the active batch exposes, and the page of the current route, including Notifications and Files |
+| `packages/dsh/src/client/app.tsx` | The panel: header, search, glossary, the navigation the active batch exposes, the page of the current route, including Notifications and Files, and the build-mismatch banner that offers the cache-revalidating reload |
+| `packages/dsh/src/client/build.ts` | The browser half of the build identity: re-exports `BUILD` and `buildMismatch`, and `reloadClient`, which re-fetches the current page with `cache: 'reload'` before reloading so the boot HTML names the new bundle revision |
 | `packages/dsh/src/client/provider.tsx` | What every page reads from its host: copy, calls, navigation, notices, the state poll, and `restart`, which reads the state quickly while dsh-superagent restarts |
 | `packages/dsh/src/client/api.ts` | Calls and polls of the management API, typed by `packages/dsh/src/app/api.ts`, and the Decision filters of the Eval status |
 | `packages/dsh/src/client/route.ts` | The tabs, the four-entry and fallback lists, the typed routes that `parseRoute` reads, the batch-aware home route, and the route memory that migrates a remembered Overview once |
@@ -490,7 +492,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `packages/dsh/src/client/files-page.tsx` | The read-only Files page: existing task deliverables grouped by task, direct open for `http(s)` references and a return to the task for other references |
 | `packages/dsh/src/client/source.tsx`, `trigger.tsx`, `eval.tsx`, `execution.tsx` | One file per stage: its status, and its settings where it has some |
 | `packages/dsh/src/client/thread.tsx`, `ticket.tsx` | The record pages: a Thread with its timeline, and a Ticket with its authorization, Inputs and Assignments |
-| `packages/dsh/src/client/settings.tsx` | The Settings tab: grouped navigation with icons and one-line descriptions, the group on screen, the four operations status views embedded under `ux.opsInSettings.v1`, and the display switches |
+| `packages/dsh/src/client/settings.tsx` | The Settings tab: grouped navigation with icons and one-line descriptions, the group on screen, the four operations status views embedded under `ux.opsInSettings.v1`, the display switches, and the interface build block with its reload action |
 | `packages/dsh/src/client/first-use.tsx` | The first-use notes and zero-task entries: three labelled lines read once per browser, a dismiss mark, and the main-Session/Source starting points, all gated by `ux.firstUse.v1` |
 | `packages/dsh/src/client/settings-kit.tsx` | The building blocks of settings blocks: the settings the stage groups share, `useBlockDraft`, the fields, among them a Source kind's, and the history of saves |
 | `packages/dsh/src/client/prompts.tsx` | The Prompts settings: the page owns the view it read and its editor the draft, and the Edit, Full prompt and History tabs render from them; a built-in part's editor shows a changed default and keeps or drops the override |
@@ -607,6 +609,7 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/panel-settings.spec.tsx`, `panel-prompts.spec.tsx`, `panel-deployment.spec.tsx`, `panel-panel.spec.tsx` | The settings groups, drafts and history, the prompts, the Deployment page, and the panel's search, glossary and route memory |
 | `tests/panel-profiles.spec.tsx` | The Agent profiles page: the list without internal ids, create/revise with the approved model and no authorization fields, version history and on-demand metrics, disable/enable/rollback, and the independent switches |
 | `tests/draft.spec.ts`, `tests/prompt-config.spec.ts`, `tests/markdown.spec.ts`, `tests/marks.spec.ts` | Draft states, merges and the save bar's line; the prompt configuration by section and the line diff; the Markdown subset and its links; the mark of every state the views classify |
+| `tests/build-info.spec.ts` | The build identity's development fallback, unknown builds never comparing as a mismatch, and two real ids comparing equal or different |
 | `tests/locales.spec.ts`, `tests/styles.spec.ts` | The copy in both languages, the stylesheet |
 | `tests/class-docs.spec.ts` | Every class in `src` has a JSDoc block before it |
 | `tests/docs.spec.ts` | Numbered documents link only to earlier ones, every local link resolves, no document has merge conflict markers, the README lists every numbered document once and in order, this document's tables list every module and every test, every `SourceManifest` field has a row in the source guide, and every `PUBLIC_ROUTES` route has a row in the deployment guide's Management API table |

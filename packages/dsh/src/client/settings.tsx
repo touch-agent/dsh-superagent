@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { DecisionFilter, StateView } from './api.ts'
 import type { TicketFilter } from '../app/api.ts'
 import { Button, Icon, InfoTip, Switch, type IconName } from './controls.tsx'
+import { BUILD, buildMismatch, reloadClient } from './build.ts'
 import { ERROR_AGGREGATE, EVENTS_AUTO_OPEN, FILES_PAGE, FIRST_USE, MASTER_CARD, NAV_FOUR, NOTICE_BUTTON, NOTIFY_DRAWER,
   NOTIFY_OVERLAY, OPS_IN_SETTINGS, TASK_DETAIL_V2, TASK_HIERARCHY, autoOpenPreference, featureEnabled, notifyAutoDismiss,
   opsInSettings, restoreFirstUse, setAutoOpenPreference, setFeature, setNotifyAutoDismiss } from './features.ts'
@@ -15,6 +16,7 @@ import { PromptsPage } from './prompts.tsx'
 import { usePanel, usePanelData } from './provider.tsx'
 import { DEFAULT_SETTINGS_GROUPS, SETTINGS_GROUPS, settingsRoute, type SettingsGroup } from './route.ts'
 import { SettingsProvider } from './settings-kit.tsx'
+import { fullTime } from './text.ts'
 import { SourceSettings, SourceStatus } from './source.tsx'
 import { TriggerStatus } from './trigger.tsx'
 
@@ -39,6 +41,9 @@ export function settingsGroups(consolidated = opsInSettings()): readonly Setting
  */
 function DisplaySettings() {
   const { t, notify } = usePanel()
+  const { state } = usePanelData()
+  const server = state?.build
+  const mismatch = buildMismatch(BUILD, server)
   const [autoOpen, setAutoOpen] = useState(autoOpenPreference)
   const [overlay, setOverlay] = useState(() => featureEnabled(NOTIFY_OVERLAY))
   const [autoDismiss, setAutoDismiss] = useState(notifyAutoDismiss)
@@ -166,6 +171,22 @@ function DisplaySettings() {
         <Button variant="outline" size="sm" icon={<Icon name="refresh" size={14} />}
           onClick={() => { restoreFirstUse(); notify(t('firstUseRestored')) }}>{t('firstUseRestore')}</Button>
       </div>}
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('displayBuild')}<InfoTip text={t('displayBuildHint')} /></h2>
+      <dl className="dt-kv">
+        <dt>{t('buildVersion')}</dt><dd>v{BUILD.version}</dd>
+        <dt>{t('buildCommit')}</dt><dd><code className="dt-code">{BUILD.commit}</code>{BUILD.dirty && ` + ${t('buildDirty')}`}</dd>
+        <dt>{t('buildBuiltAt')}</dt><dd>{BUILD.builtAt ? fullTime(BUILD.builtAt, t('lang')) : t('buildUnknown')}</dd>
+        <dt>{t('buildClientId')}</dt><dd><code className="dt-code">{BUILD.buildId}</code></dd>
+        <dt>{t('buildServerId')}</dt><dd><code className="dt-code">{server?.buildId ?? t('buildUnknown')}</code></dd>
+      </dl>
+      <div className="dt-row-actions">
+        {mismatch && <span className="dt-error">{t('buildMismatchShort')}</span>}
+        <Button variant="outline" size="sm" icon={<Icon name="refresh" size={14} />}
+          onClick={() => { void reloadClient() }}>{t('buildReload')}</Button>
+      </div>
+      <Hint>{mismatch ? t('buildMismatchHint') : t('buildHint')}</Hint>
     </div>
   </div>
 }

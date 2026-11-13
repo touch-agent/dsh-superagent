@@ -7,6 +7,7 @@ import type { DeploymentForm } from './deployment.tsx'
 import { EvalStatus } from './eval.tsx'
 import { ExecutionStatus } from './execution.tsx'
 import { masterCard, noticeButton, opsInSettings } from './features.ts'
+import { BUILD, buildMismatch, reloadClient } from './build.ts'
 import { ticketMark } from './marks.ts'
 import { GLOSSARY, GLOSSARY_VALUES, en, zh, type DshSuperagentKey } from './locales.ts'
 import { NotificationHost, useNoticeCenter } from './notification-center.tsx'
@@ -202,6 +203,13 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
   return <div className="dt-page">
     <div className="dt-column">
       <Header masterId={state?.masterId} hideMaster={cardHere} />
+      {buildMismatch(BUILD, state?.build) && <div className="dt-banner dt-build-mismatch" role="status">
+        <span className="dt-banner-label">{t('buildMismatchTitle')}</span>{' '}
+        {t('buildMismatchDetail', { client: BUILD.buildId, server: state!.build.buildId })}
+        <div className="dt-banner-actions">
+          <Button variant="outline" size="sm" onClick={() => { void reloadClient() }}>{t('buildReload')}</Button>
+        </div>
+      </div>}
       {error && state && <p className="dt-error" role="status">{error.message}</p>}
       <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={selected} onChange={openTab}
         items={tabs.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId }))} />

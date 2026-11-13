@@ -205,7 +205,7 @@ Agents may rely on these routes and fields. The other routes in `packages/dsh/sr
 
 | Request | Answer |
 | --- | --- |
-| `GET state` | What every page reads: `setup`, with `problem` and `feishuProblem`, each `null` or a setup problem with `place`, `code`, `values` and `detail`, and `accounts` once setup resolved them; `health`, an entry per part, below, with `state` (`starting`, `ready`, `paused` or `error`), `detail` and `at`; `load`, the Executor Sessions `running`, the Tickets `queued` and `maxWorkers`; `paused`; and `masterId` |
+| `GET state` | What every page reads: `setup`, with `problem` and `feishuProblem`, each `null` or a setup problem with `place`, `code`, `values` and `detail`, and `accounts` once setup resolved them; `health`, an entry per part, below, with `state` (`starting`, `ready`, `paused` or `error`), `detail` and `at`; `load`, the Executor Sessions `running`, the Tickets `queued` and `maxWorkers`; `paused`; `masterId`; and `build`, the running artifact's `version`, `commit`, `buildId`, `builtAt` and `dirty`, which Settings › Display shows next to the page's own build |
 | `GET settings` | `blocks`: `policy`, `eval`, `dispatch` and `executor`, each with its `value` and its `revision`; `sources`: the Source instances, each with `id`, `kind`, `installed`, its block's `value`, `{"enabled": …, "config": {…}}`, and `revision`, its kind's form, and its setup `problem` when it has one; `policyVersion`; and `environment`, the execution environment's `root` and `variables` |
 | `GET sources` | Each Source's status: `state` (`missing`, `off`, `error`, `setup`, `starting`, `paused` or `ready`), the `health` of its parts, its setup `problem`, the last day's `stats`, the Triggers it `filtered` in that day, and the messages it `dropped` in that day, newest drop first, each with its `channel`, `preview`, `ticket` (`id` and `title`) when it was for one, its `thread` when the store has it, and `dropped.at` and `dropped.reason`: `channelGone`, `channelIgnored`, a Mandate refusal (`actionLevelExceeded`, `mandateExpired`, `revoked`), or an Approval outcome (`approvalDenied`, `approvalExpired`, `approvalRevoked`, `approvalMissing`, `approvalLevelInsufficient`, `approvalTargetMismatch`), or `ticketMissing` when the message named a Ticket the store no longer has |
 | `PUT settings/<block>` with `{"value": …, "revision": n}` | Saves one block: `saved`, the block's new `revision`, `policy_changed` and `restarting`. `value` is the whole block, as `GET settings` holds it; a missing key takes its default |
@@ -276,6 +276,7 @@ From an allowed GitHub account, open an Issue or post a comment containing `@<ag
 2. Back up `<stateDir>/orchestrator.sqlite`.
 3. Run `git pull && pnpm install && pnpm build`.
 4. Run `scripts/dsh-superagent restart` and inspect its status.
+5. Open the URL and hard-reload the tab (`Ctrl/⌘+Shift+R`); the open panel keeps its previous document across a restart. Check **Settings › Display › Interface build**: the page and service build ids should match and the build time should be the one just produced; [027](027-post-upgrade-verification.zh.md) lists the full per-screen checklist.
 
 A restart ends running Assignments and starts replacements with recovery notes. Team text and overridden prompt parts are retained; parts without overrides follow the new defaults. Review parts marked **Default updated** after upgrading.
 
@@ -310,5 +311,6 @@ Setup problems appear on the overview with a link to the fix, in the panel's lan
 | The panel says dsh-superagent is not answering | It is restarting, or did not start because of its configuration; the DeepSeek Harness log names the cause |
 | `dsh-superagent configuration has keys it does not use` (log) | Remove the named keys; the message says where each value lives now |
 | The log says the plugin is incompatible with the running dsh | Install a DeepSeek Harness version within the `engines.dsh` range |
+| The panel still looks like the previous build after `git pull` and a restart | The open tab keeps its old document and bundle; the sidebar's host rows stay unchanged. Hard-reload (`Ctrl/⌘+Shift+R`), then compare the page and service build ids in **Settings › Display**; [027](027-post-upgrade-verification.zh.md) separates a stale page from a stale build |
 | The panel shows "Failed to load plugins" after a DeepSeek Harness upgrade | Restart the running instance |
 | Nothing happens after a mention | Check that the author is on the Source's allowed list, the Source is on, and processing is not paused. On GitHub, a mention added by editing an Issue's body is not received; mention the agent in a comment |
