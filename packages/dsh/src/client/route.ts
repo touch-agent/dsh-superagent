@@ -17,7 +17,6 @@ export function visibleTabs(): readonly Tab[] {
 }
 /** The default page follows the navigation: the task view first, or the pre-batch Overview on fallback. */
 export const homeRoute = (): Route => navFour() ? { page: 'tasks' } : HOME
-export const isFourTab = (tab: Tab): boolean => (FOUR_TABS as readonly string[]).includes(tab)
 /** The operational surfaces UX batch 2 folds into Settings; off, they return as first-level tabs. */
 export const OPS_TABS = ['source', 'trigger', 'eval', 'execution'] as const
 export type OpsTab = typeof OPS_TABS[number]

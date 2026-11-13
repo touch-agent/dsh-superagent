@@ -201,6 +201,8 @@ export function NotificationHost({ children, shellNotice = false }: { children: 
     setOpen(true)
   }, [])
   useEffect(() => { announceNoticeDrawer(open); if (!open) opener.current?.focus() }, [open])
+  // A panel that unmounts with the drawer open must not leave the shell entry hidden forever.
+  useEffect(() => () => announceNoticeDrawer(false), [])
   const [busy, setBusy] = useState(false)
   const [cards, setCards] = useState<Notice[]>([])
   const queue = useRef<Notice[]>([])
