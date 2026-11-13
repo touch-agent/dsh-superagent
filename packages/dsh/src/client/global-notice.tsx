@@ -17,7 +17,7 @@ export function NoticeFab({ t, unread, latest, onOpen, covered = false }: { t: T
   const label = unread ? t('noticeFabOpen', { count: unread }) : t('noticeFabQuiet')
   return <button type="button" className="dt-notice-fab" data-unread={unread > 0 ? 'true' : undefined} data-covered={covered || undefined}
     aria-hidden={covered || undefined} aria-label={label} title={latest?.title ?? t('noticeFabQuietHint')} aria-haspopup="dialog"
-    onClick={onOpen}>
+    tabIndex={covered ? -1 : undefined} onClick={onOpen}>
     <span className="dt-notice-fab-icon" aria-hidden="true"><Bell /></span>
     <span className="dt-notice-fab-copy">
       <span className="dt-notice-fab-title">{unread ? t('noticeFabPending', { count: unread }) : t('noticeFabQuiet')}</span>

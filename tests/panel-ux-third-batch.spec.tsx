@@ -79,12 +79,15 @@ it('shows the floating notice count and latest summary, opens the drawer and clo
   expect(document.activeElement).toBe(trigger)
   await click(trigger)
   expect(drawer()).not.toBeNull()
+  // The hidden floating entry leaves the tab order while the drawer owns the corner.
+  expect(fab()!.getAttribute('tabindex')).toBe('-1')
   const close = drawer()!.querySelector<HTMLElement>('.dt-drawer-head button')!
   expect(close.getAttribute('aria-label')).toBe(zh.close)
   await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
   expect(document.querySelector('.dt-drawer')).toBeNull()
   // Closing returns focus to the control that opened the drawer, not to the page body.
   expect(document.activeElement).toBe(trigger)
+  expect(fab()!.getAttribute('tabindex')).toBeNull()
 })
 
 it('keeps the floating entry quiet after everything is read and falls back to the header bell when switched off', async () => {

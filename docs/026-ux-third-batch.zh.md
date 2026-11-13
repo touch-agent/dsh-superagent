@@ -12,7 +12,7 @@
 | ② | 导航收敛到四项 | 插件面板内只保留「任务 / 通知 / 文件 / 设置」；概览收进任务与设置，系统页进入设置；右栏重复的「系统事件」「任务」标签在四项模式下不再注册；宿主自己的「新建会话 / 插件」行与工作区区域不在插件控制范围，保留并在 §5 标注 |
 | ③ | 全局通知入口 | 插件在 `shell.overlay` 注册一个常驻浮层按钮，代替宿主级通知 nav 项：有待处理时显示计数与最近一条摘要，点开现有通知抽屉；无待处理时显示静默态；按钮可键盘聚焦，抽屉可用 Esc 或关闭按钮收起，关闭后焦点回到打开它的按钮 |
 | ④ | 文件页 | 新的一级页把现有 `GET tasks` 的 `deliverables` 按任务列出；`http(s)` 产出物直接打开，其余跳到所属任务；只读，不新增文件记录，不是宿主的文件浏览器 |
-| ⑤ | Feature Flags 与限制清单 | 四项各有独立开关与回退，不删除 023/024 的记录和页面；宿主仍做不到的五件事逐项列在 §5，并对应到 docs/022 的请求编号 |
+| ⑤ | Feature Flags 与限制清单 | 四项各有独立开关与回退，不删除 023/024 的记录和页面；宿主仍做不到的事（L1–L7）逐项列在 §5，并对应到 docs/022 的请求编号 |
 
 ## 2. 主 Agent 卡
 
@@ -80,7 +80,7 @@
 
 - `pnpm typecheck`
 - `pnpm vitest run tests/panel-ux-third-batch.spec.tsx tests/panel-ux-second-batch.spec.tsx tests/panel-overview.spec.tsx tests/panel-tasks.spec.tsx tests/panel-notifications.spec.tsx tests/panel-settings.spec.tsx tests/client.spec.tsx`
-- `pnpm check`（tracking、arch、lint、全量测试、build、bundle size）
+- `pnpm check`（tracking、arch、lint、全量测试、build、bundle size）；新增客户端界面使 `lib/client.js` 从 740 KB 预算增到 800 KB、总预算增到 1.84 MB，仍由 `pnpm check:size` 守门
 
 新增/更新的面板测试覆盖：四项默认入口与默认任务页；主 Agent 卡默认名、角色、状态；改名与头像预设跨 remount 持久化；进入现有主会话且不新建；四项关闭后的三入口回退；浮层通知的计数、最近摘要、键盘聚焦、打开抽屉、Esc 关闭与焦点恢复；全部已读后的静默态；浮层关闭后的页头铃铛；文件页的产出物分组、链接与关闭开关后的导航回退。
 
