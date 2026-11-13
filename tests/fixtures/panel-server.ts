@@ -21,6 +21,7 @@ import { githubChannel } from '@superagent/dsh/sources/github-trigger.ts'
 import { feishuKind, feishuManifest } from '@superagent/dsh/sources/feishu.ts'
 import { githubKind, githubManifest } from '@superagent/dsh/sources/github.ts'
 import type { ProfileDetailView } from '@superagent/dsh/app/profiles.ts'
+import { BUILD } from '@superagent/dsh/build-info.ts'
 import type { ProfileMetricsView } from '@superagent/dsh/app/profile-metrics.ts'
 import type { Health } from '@superagent/dsh/sources/host.ts'
 import type { SourceKind } from '@superagent/dsh/sources/kind.ts'
@@ -194,7 +195,7 @@ const stateView = (): StateView => ({
   setup: server.setup, load: { running: server.setup.problem ? 0 : 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers },
   masterId: 'master', paused: server.settings.paused,
   // The panel does not read health; the service script does.
-  health: {},
+  health: {}, build: BUILD,
 })
 const settingsView = (): ApiResponse<'GET settings'> => ({
   policyVersion: 'abcdef1234567890',

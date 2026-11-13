@@ -87,6 +87,7 @@ export default {
           '^packages/dsh/src/limits\\.ts$',
           '^packages/dsh/src/setup\\.ts$',
           '^packages/dsh/src/navigation\\.ts$',
+          '^packages/dsh/src/build-info\\.ts$',
           '^packages/dsh/src/sources/host\\.ts$',
           '^packages/dsh/src/app/api\\.ts$',
           '^packages/dsh/src/app/work-tools\\.ts$',

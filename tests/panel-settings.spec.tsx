@@ -162,3 +162,16 @@ it('keeps the Events auto-open preference off by default and stores an explicit 
   expect(toggle.getAttribute('aria-checked')).toBe('false')
   expect(localStorage.getItem('dsh-superagent/events-auto-open')).toBe('off')
 })
+
+it('shows the running page and service build identity on the Display settings', async () => {
+  await mount()
+  await click(tab(zh['tab.settings']))
+  await click(find(zh['settingsGroup.display'], '.dt-settings-link'))
+  const body = text()
+  expect(body).toContain(zh.displayBuild)
+  expect(body).toContain(zh.buildClientId)
+  expect(body).toContain(zh.buildServerId)
+  expect(body).toContain(zh.buildReload)
+  // Tests run from source, where the bundle constants are absent: both halves show the development fallback.
+  expect(all('.dt-kv code').map(code => code.textContent)).toEqual(['unknown', 'dev', 'dev'])
+})
