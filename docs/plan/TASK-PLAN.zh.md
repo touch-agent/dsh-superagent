@@ -56,7 +56,7 @@ M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上�
 2. **T1-10（`kind.ts` 退役）**：清理项，没有用户可见价值；跟随最后一个源一起做，不单独占关键路径。
 3. **T4-01…06（多租户）**：原表把 M4 写成「可前置」，与原则 A/B/D 的顺序冲突。多租户会把尚未定型的默认面、任务视图与上下文装配复制到多份；改为 M5 之后的最后一项。只有真实租户合同才提前做 T4-01/T4-03 的接口层。
 4. **T3-06（warm session）**：内部执行优化。M3 的「小活 p50 < 10s」已由 T3-05 的 inline 路径承担；T3-06 后移到 M3.5 之后，除非指标证明冷启动仍是瓶颈。
-5. **X-01 / X-02 / X-04（lint、依赖规则、JSON Schema）**：工程卫生，价值真实但不改变「人能否托付」；作为并行维护项，不占 M3/M3.5/M5 的关键路径。
+5. **X-01 / X-02 / X-04（lint、依赖规则、JSON Schema）**：工程卫生，价值真实但不改变「人能否托付」；作为并行维护项，不占 M3/M3.5/M5 的关键路径。**2026-11-13 状态**：三者已分别随 PR #69/#64/#72 合并，本项关闭；X-06 继续守领域测试 <2s。
 6. **与原则 B 冲突的现有默认面**：事件栏首次自动打开、管理面板七个 tab、把计划树当任务主视图，都会把 E2 组织细节推到默认面。不删记录，新增 T5-02 统一 E0–E3 并把默认面收紧；计划树降为 E2 回退。
 7. **与原则 A 冲突的缺口**：计划没有「目标层」，E0 只能从 Ticket 标题猜目标。新增 T5-01，Goal 是只读投影，不新增授权聚合。
 8. **M1 退出标准失真**：原文要求「三个新源 + `kind.ts` 退役」；真实进度是「一个新增源 + 机制已被两个已有源与设置页证明」。本重评估改口径，不把剩余两个源算作 M1 未完成的机制债。
@@ -84,9 +84,9 @@ M0 已收官。下表是 2026-11-07 的完成快照，验收命令都在 CI 上�
 1. **M3 收尾**：T3-05（Phase 0）→ T3-04（mail previewer）→ T3-08（时间线）；T3-06 后移。T3-04 必须先于任何「review 必有 preview」的对外声称，否则邮件类交付没有预览。
 2. **M3.5 任务视图**：T3-09 → T3-10 → T3-11。任务视图 Phase 1 是纯读、可先落地；Phase 2a 是本轮评论要求的核心（子 Ticket + 每个 tracked 节点 owner/worker + 父 owner 审查链）；Phase 2b 把父审阅与交付聚合接到界面。类别归纳（Phase 3）不在本轮，等目标层与使用数据。
 3. **M3.6 工作空间**：T3-12 → T3-13。先把 `execution.directory` 投影成只读空间视图，再做写租约与子 Ticket 独立空间；设计见 [docs/013](../013-workspace-model.zh.md)。
-4. **M5 原则落地**：T5-01 → T5-02 → T5-03 → T5-04 → T5-07 → T5-05 → T5-06。先有目标层，才能定义 E0 默认面；先有 E0–E3，群组/上下文装配才知道什么能进 prompt；先有 profile 身份与按版本遥测，进化闭环才知道「哪个配置」在变好；最后做替换演练，验证 D。T5-05 的 profile 切片依赖 T5-07 的证据，不另开任务。
+4. **M5 原则落地**：T5-01 → T5-02 → T5-03 → T5-04 → T5-07 → T5-05 → T5-06。先有目标层，才能定义 E0 默认面；先有 E0–E3，群组/上下文装配才知道什么能进 prompt；先有 profile 身份与按版本遥测，进化闭环才知道「哪个配置」在变好；最后做替换演练，验证 D。T5-05 的 profile 切片依赖 T5-07 的证据，不另开任务。**2026-11-13 状态**：T5-01…04、T5-07、T5-08、T5-09 已合并，T5-05 的 profile 依赖（T5-07）已满足；剩 T5-05 的 Phase 3 生效路径与 T5-06 的 C4.2/C4.3/C4.5、D5 客户度量缺口。
 5. **M4 多租户**：M5 之后，最后启动；不改变单租户语义。
-6. **X 优先级**：X-13（跟踪自动化）立即；X-03（E2E golden path）在 M3.5 前，给任务视图与父审阅一条端到端证据；X-09（入口三区）在 T5-02 前；X-10（宿主矩阵）在 M4 前；X-01/02/04 并行维护；X-06 继续守领域测试 <2s。
+6. **X 优先级**：X-13（跟踪自动化）立即；X-03（E2E golden path）在 M3.5 前，给任务视图与父审阅一条端到端证据；X-09（入口三区）在 T5-02 前；X-10（宿主矩阵）在 M4 前；X-01/02/04 已完成（#69/#64/#72）；X-06 继续守领域测试 <2s。
 7. **T1 剩余项**：T1-07/T1-09/T1-10 在 M3.5/M5 之后，或按真实接入需求插队；插队不改变「M2 先于第 4 个源」的信任顺序。
 
 **为什么不是先做 M2 收尾**：M2 已经收尾，剩下的是证据归档与状态表修正，不是新机制。**为什么任务视图先于 M5**：E1 审查面需要一个稳定的任务读模型；没有它，目标层与 E0 只能对着一堆 Ticket 标题做。**为什么 M5 先于 M4**：原则 D 的替换演练与原则 B 的默认面必须先定型，否则多租户会把旧默认面复制 N 份。**为什么 C 最后**：原则 §8 的顺序是 A→B→D→C；没有 A/B/D 的观测与边界，进化闭环没有基线。
@@ -411,7 +411,7 @@ graph LR
 
 - **交付**：`preview/mail.ts`：收件人/主题/正文/附件四段 diff + 「将发给谁」的显式清单。
 - **验收**：抄送/密送差异必须显式显示（这是最容易出事故的地方）。
-- **状态**：实现完成（2026-11-09，PR #35 待审查合并）。`packages/dsh/src/app/preview/mail.ts` 对两个结构化草稿做收件人/主题/正文/附件四段 diff：收件人按地址归并，To/Cc/Bcc 之间的移动记一条 `changed`（含最危险的移入 Bcc），`recipients.audience` 逐条列出 after 修订将送达的地址（含 Bcc）并标记角色，`bccHidden`/`movedToBcc`/`duplicateRecipient`/`noRecipients` 警告标出事故高发情形；把多个带名地址拼成一项的输入直接拒绝，主题含换行也按调用方错误拒绝。正文按可读文本做行 diff，先裁掉公共前后缀，只有超大中段才按位置配对并用 `alignment: 'position'` 明示；附件按名称比较内容指纹（SHA-256）、大小、类型与内联标记，只有一侧有指纹时保守记为 `content`，无法比较内容的附件列入 `unverified`。`tests/preview-mail.spec.ts` 覆盖固定 fixture 的四段结果、双向 Cc/Bcc 移动、仅 Bcc 的新增与删除、地址解析、重复与空收件人、正文 CRLF/行配对/大正文退化，以及附件内容哈希与调用方错误；fixture 见 `tests/fixtures/mail-preview/`。预览器注册表与 review 表面接线仍属于后续任务。
+- **状态**：实现完成（2026-11-09，PR #35 合并 `94c55be`）。`packages/dsh/src/app/preview/mail.ts` 对两个结构化草稿做收件人/主题/正文/附件四段 diff：收件人按地址归并，To/Cc/Bcc 之间的移动记一条 `changed`（含最危险的移入 Bcc），`recipients.audience` 逐条列出 after 修订将送达的地址（含 Bcc）并标记角色，`bccHidden`/`movedToBcc`/`duplicateRecipient`/`noRecipients` 警告标出事故高发情形；把多个带名地址拼成一项的输入直接拒绝，主题含换行也按调用方错误拒绝。正文按可读文本做行 diff，先裁掉公共前后缀，只有超大中段才按位置配对并用 `alignment: 'position'` 明示；附件按名称比较内容指纹（SHA-256）、大小、类型与内联标记，只有一侧有指纹时保守记为 `content`，无法比较内容的附件列入 `unverified`。`tests/preview-mail.spec.ts` 覆盖固定 fixture 的四段结果、双向 Cc/Bcc 移动、仅 Bcc 的新增与删除、地址解析、重复与空收件人、正文 CRLF/行配对/大正文退化，以及附件内容哈希与调用方错误；fixture 见 `tests/fixtures/mail-preview/`。预览器注册表与 review 表面接线仍属于后续任务。
 
 ### T3-05 inline 执行层（无 Assignment 的轻量工单）· Runtime · 6 人日
 
@@ -540,8 +540,9 @@ graph LR
 - **交付**：`scripts/evolution/` 离线流程：样本集（脱敏、只读）、提案格式（证据/置信度/范围/版本/回滚）、人工批准队列（先 KV/文档，不接生产写入）、前后指标（验收率、返工率、阻塞、审阅时长、每结果通知数）；首轮用最近 10 个可复核的历史 Ticket 跑通（不足则全部；这 10 个只用于跑通流程，不作为价值证据）。profile 切片另含：eval set manifest/holdout、同工单配对回放或并发随机分配、预登记主指标/MDE/样本量/统计方法、回归门与停止规则；不能只做描述性报表。
 - **验收**：产出 ≥1 条带证据与范围的提案，或一份「证据不足/无差异」的结论；提案不含私密全文；没有自动应用路径；`tests/evolution.spec.ts` 或等价脚本测试；C3.1/C3.2/C3.5/C3.6。profile 切片还须证明「有对照、样本量按 MDE 算过、legacy 与 worker-default 基线分开、成本不伪造成本门」；允许结论是「没有可测差异」。
 - **设计约束**：profile 维度见 [AgentProfile 设计](../016-agent-profile.zh.md) §4；T5-05 的 profile 切片依赖 T5-07 的 `effective.hash` 遥测；不另开任务，但本任务估时从 5 调到 8，避免用「并入」掩盖范围。评测集必须与观察集分离，回归门预登记，人工批准，允许「不采纳」。
-- **估时**：8 人日（含 profile 对照实验 3 人日）。**依赖**：T5-02、M0 指标（已完成）；profile 维度另需 T5-07。**回退**：纯离线脚本，删除即回退。
+- **估时**：8 人日（含 profile 对照实验 3 人日）。**依赖**：T5-02、M0 指标（已完成）；profile 维度另需 T5-07（已完成）。**回退**：纯离线脚本，删除即回退。
 - **泳道**：Platform。
+- **实现状态（2026-11-13）**：Phase 1 观察/提案（PR #55 合并 `0af96a0`）与 Phase 2 价值门（PR #73 合并 `1a36f96`）已落地；`gate()`/`valueGate()` 与 `tests/evolution.spec.ts` 覆盖四结局、未知成本、护栏回退、证据不足、未舍入 MDE 与小样本拒绝，`pnpm check` 通过；首轮 10 条样本仍只是「跑通样本」，不是收益证据。**卡点：Phase 3 生效路径**——从 `approval-queue.json` 到保存/激活 profile revision 并核对 `effective.hash`，目前仍只有 020 §3 的人工步骤（读报告、在 profile 面板保存/激活、核对 hash），没有脚本化衔接与针对该路径的测试；接运行时须另走设计评审（020 §6），因此 TRACKING 保留 `进行中`。
 
 ### T5-06 组织观测与替换演练 · Platform · 3 人日
 
@@ -550,7 +551,7 @@ graph LR
 - **验收**：指标可从 trace/activity/metrics 独立读取，不依赖被替换 UI；C4.2/C4.3/C4.4；C4.5 走查记录可复现（版本、fixture/步骤、结果、缺口清单），且不把「路径能走通」当成新人可用性通过；演练报告含任务、前后结果、通知数、验收；删除类别/子 Ticket 后 Ticket 仍可解释。
 - **估时**：3 人日。**依赖**：T3-10（子 Ticket 数据）、T5-02。**回退**：只读指标与演练，不改代码。
 - **泳道**：Platform。
-- **实现状态（2026-11-11）**：替换演练与组织/注意力指标已由 PR #56 落地，C4.2 部分满足。C4.5 首次走查见 `../runbooks/novice-walkthrough.md`，结论 **partial**：概览 → 工单 → 批准可在不看组织视图的情况下完成，但 G1–G6（卡片可发现性、术语不一致、修订号无标签、批准后果、内部术语、规则/人工确认混排）是首次走查发现的产品缺口；A2 已在 PR #74 修复 G1–G6 的文案与入口，修复对照、Before/After 截图和面板回归测试见 `../runbooks/novice-walkthrough.md`；C4.5 仍待独立新人复跑，不记为通过。
+- **实现状态（2026-11-13）**：替换演练与组织/注意力指标已由 PR #56/#59 落地，A2 PR #74（合并 `7cac21d`）修复 C4.5 的 G1–G6 文案/入口并补 `tests/panel-walkthrough-gaps.spec.tsx` 与 Before/After 截图；C4.2 部分满足（D2 扁平后审计完整但非逐字节一致），C4.3 部分满足（本检出没有类别覆盖层，删层无法实测），C4.5 部分满足（D7 仍为 agent 走查，待独立新人复跑），C4.4 的 D5 客户度量（自动打开关闭率与默认面点击深度）仍未采集且 `GET metrics` 报 `not-collected`；补齐前保留 `进行中`。
 
 ### T5-07 AgentProfile Phase 1：注册表、绑定快照与遥测 · Kernel + Runtime · 7 人日
 
@@ -559,6 +560,7 @@ graph LR
 - **验收**：注册表版本不可变、head 回滚、禁止字段拒绝、并发冲突可解释；新工单有快照、旧工单 legacy、子 Ticket 继承、subagent 不越权、fallback 单列；active 变更不影响运行中工单；有效工作工具 ⊆ 角色上限、子/子代理 ⊆ 根；`tools: []` 仍有协议工具，不宣称只读；accept 不因 profile 失败；旧二进制读带快照 Ticket 仍按 legacy 运行；缺工具/缺 prompt 在 launch `blocked`；`Decision`/`Mandate`/`Action`/`Approval` 测试不变；指标按 `effective.hash` 聚合、n<5 只抑制展示、token 两态、成本 `unknown`、closed/child/lightweight/重试口径可复核；`pnpm check`；用 `worker-default@1` 产出基线，但**不声称收益**。
 - **估时**：7 人日。**依赖**：T3-10（子 Ticket，已完成）、[AgentProfile 设计](../016-agent-profile.zh.md)；面板 E2 另需 T5-02。**回退**：`profiles.config.enabled=false` 停新绑定；`resolve=legacy` 只影响新 Session/新请求，运行中工具/模型不变；Phase 1 无数据库 schema 迁移、无 settings 块。
 - **泳道**：Kernel + Runtime。
+- **实现状态（2026-11-13）**：Phase 1 注册表、工单绑定快照与按 profile 遥测（PR #51 合并 `567ac43`）以及 Phase 1.5 管理面（PR #75 合并 `afdf423`）已落地；`tests/profiles.spec.ts`、`tests/http.spec.ts`、`tests/panel-profiles.spec.tsx` 覆盖写路由、禁止字段、模型升级拒绝、内置只读、回退/停用与存量快照不变；`profiles.config` 默认关闭，激活只影响新工单。
 
 ### T5-08 UI 第一批：任务层级页与通知层 · Platform · 3 人日
 
@@ -575,6 +577,7 @@ graph LR
 - **验收**：默认面只有三个一级入口，四个系统页可从设置分组/图标进入，告警与通知的直接链接仍落到同一记录，`execution/:id`、`trigger/:id` 不被列表页替代且不选中标签；关闭 `ux.opsInSettings.v1` 恢复七个入口与六项设置导航；任务详情先给决定（无决定显示「不需要你做什么」）与结果/产出物链接，再给下一步、诚实的预计与不含内部 id 的人话负责人，子任务汇报逐条可展开；关闭 `ux.taskDetail.v2` 回到 023 详情且不请求 Profile 列表；首次说明只出现一次、空态示例可点击、设置可恢复说明，关闭 `ux.firstUse.v1` 后回到纯文字空态；`pnpm check` 全绿；1440×900（详情与设置长图为同对比内同视口）Before/After 截图与 10 秒自查记录在 PR/024。
 - **估时**：3 人日。**依赖**：T5-02（E0–E3 与默认面）、T5-08（任务层级、通知层、错误聚合）；021 Phase 2 的主 Agent 入口、宿主设置弹窗与上下文装配仍不在本单。**回退**：三个 feature flag 逐项关闭；只改默认可见性与客户端投影，不删 E2/E3 记录，不改审批/Mandate/Dispatch/Store schema。
 - **泳道**：Platform。
+- **实现状态（2026-11-13）**：PR #70 合并 `e7bc281`；默认三入口、设置四系统页、任务详情 v2 与首次说明/空态已落地，`tests/panel-ux-second-batch.spec.tsx` 覆盖默认面与三项独立回退，同场景 Before/After 见 `../images/ux-second-batch/`。
 
 ---
 
@@ -618,7 +621,7 @@ graph LR
 
 **X-07 与 X-11 曾是 M1 的前置**（5 人日，均已完成）：M1 要写 `SourceManifest` 与新源，这些代码落在哪个包取决于切分结果；切晚了等于搬两次。X-08 是 M1 的退出证据——没有它，M1 交付的「三个源」只在本机跑过。
 
-**优先级（2026-11-08 重评估）**：X-13 立即；X-14 在 021 Phase 2 评审前；X-03 在 M3.5 前；X-09 在 T5-02 前；X-10 在 M4 前；X-12 已完成（PR #31）；X-01/X-02/X-04 作为并行维护项，不占关键路径；X-06 继续守领域测试 <2s。
+**优先级（2026-11-08 重评估）**：X-13 立即；X-14 在 021 Phase 2 评审前；X-03 在 M3.5 前；X-09 在 T5-02 前；X-10 在 M4 前；X-12 已完成（PR #31）；X-01/X-02/X-04 已完成（PR #69/#64/#72，2026-11-13 回填），不再占并行维护位；X-06 继续守领域测试 <2s。
 
 **X-06 落地（2026-11-13，PR [#77](https://github.com/touch-agent/dsh-superagent/pull/77)）**：`scripts/check-domain-budget.mjs` 固定 15 个领域测试文件（kernel `Engine` + `MemoryRepositories`，以及只测 kernel 模块的用例），连续跑五次完整 Vitest、按每个文件的 `endTime - startTime` 求和，取中位数与 `docs/012` §10.1 的 2s 红线比较；另设单个用例 500ms 的早期上限（当前最慢 22–65ms），让单个失控用例在整套触线前就被点名。成员资格由脚本自检：新增 `MemoryRepositories` 或只依赖 kernel 的测试必须显式分类，`tests/store.spec.ts` 是唯一有理由的排除项；规则是文本匹配，经 fixture 间接建 Engine 的测试仍需 review 补入。`pnpm check:domain` 接入 `pnpm check`，本地与 CI 同一命令，无 CI 专属开关、无重试变绿、无环境变量放行。实测 313 用例 / 15 文件：首次三次样本 555/470/504ms（中位数 504ms），首次 CI 三次 1121/668/602ms（中位数 668ms），CI 五次 653/590/593/600/576ms（中位数 593ms，约 3.4 倍余量）、962/948/979/1031/950ms（中位数 962ms，约 2.1 倍余量）与 692/636/631/693/614ms（中位数 636ms，约 3.1 倍余量），高系统负载下本机五次 799/1078/1105/765/935ms（中位数 935ms，约 2.1 倍余量）；临时给 `tests/stage.spec.ts` 单个用例加 1.2s 忙等后整套为 1674ms（仍低于 2s），单用例上限按文件与用例名报错。测量口径、成员资格与已知偏差（不含启动/顶层 import/转译、外部负载会推高墙钟、并行跨度求和、2s 以下分散回退不拦截）见 `docs/007-architecture.md` 的「Domain test budget」。
 
@@ -629,7 +632,7 @@ graph LR
 - **验收**：干净仓库 `pnpm lint` 0 error / 0 warning；临时 probe 让未使用导入、floating promise、显式 `any`、对非 Promise 的 `await`、async 函数进 `() => void` 属性五类同时报错；`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm check:size` 与 `pnpm check` 绿；独立 review 核对「规则真能拦住缺陷」「豁免是否过度」「是否有格式化掩盖逻辑变更」，结论写进 PR review 评论。
 - **估时**：2 人日。**依赖**：无。**回退**：删除 `eslint.config.mjs`、`pnpm lint` 与 `check` 中的一步及三个 devDependency 即回退；规则不改运行时代码。
 - **泳道**：Platform。
-- **实现（2026-11-12，PR [#69](https://github.com/touch-agent/dsh-superagent/pull/69) 进行中）**：`eslint.config.mjs` 的规则集、豁免与「选择 ESLint 而非 oxlint」的理由见 `docs/007-architecture.md` 的「Lint」；清扫包含 38 处未使用声明、22 处 promise 误用、18 处对非 Promise 的 `await`、4 处 rethrow 补 `cause`、3 处多余转义、2 处正则空格、1 处死赋值、1 处不安全可选链断言与 1 处 `this` 别名，并移除一条未启用插件的旧 directive；没有格式化或导入重排，因此 diff 不会掩盖逻辑变更。`pnpm lint` 本机约 9 秒，全量测试 1872 通过。
+- **实现（2026-11-12，PR [#69](https://github.com/touch-agent/dsh-superagent/pull/69) 合并 `08a33ad`）**：`eslint.config.mjs` 的规则集、豁免与「选择 ESLint 而非 oxlint」的理由见 `docs/007-architecture.md` 的「Lint」；清扫包含 38 处未使用声明、22 处 promise 误用、18 处对非 Promise 的 `await`、4 处 rethrow 补 `cause`、3 处多余转义、2 处正则空格、1 处死赋值、1 处不安全可选链断言与 1 处 `this` 别名，并移除一条未启用插件的旧 directive；没有格式化或导入重排，因此 diff 不会掩盖逻辑变更。`pnpm lint` 本机约 9 秒，全量测试 1872 通过。
 
 ### X-02 dependency-cruiser 架构规则 · Platform · 2 人日
 
@@ -640,7 +643,7 @@ graph LR
 - **泳道**：Platform。
 - **实现（2026-11-11，PR [#64](https://github.com/touch-agent/dsh-superagent/pull/64)）**：`.dependency-cruiser.mjs` 把上层规则写成 13 条 error 规则；`pnpm check:arch` 接入 `pnpm check` 与 `check` CI job；`tests/dependency-rules.spec.ts` 的 clean fixture 守白名单、violations fixture 逐条覆盖全部规则，并保留 kernel manifest 与 `app/api.ts` 过滤常量的两条断言；`tests/layers.spec.ts`、`tests/kernel-boundary.spec.ts` 标为过渡，配置首次发布后的下一个版本删除。`docs/007-architecture.md` 的「Architecture checks」记录规则、反向测试与退役条件。
 
-**X-04 落地（2026-11-12，PR [#72](https://github.com/touch-agent/dsh-superagent/pull/72) 进行中）**：`packages/dsh/src/app/api-contract.ts` 的 `ROUTES` 成为请求侧唯一作者源，`json-schema-to-ts` 从同一份 schema 推导查询/路径/body 类型，`api-parser.ts` 用 `z.fromJSONSchema` 编译运行期校验器，`http.ts` 的 handler 表由 `RouteKey` 约束，面板 `Api` 的 response 取 handler 返回类型（不写第二份 response schema）；`api-filters.ts` 让浏览器半不引入服务端模块。query 的默认值/回退/`x-dsh-clamp`、body 与 params 的 400 `issues` 均保持原语义。`packages/dsh/src/app/api.schema.json` 由 `scripts/api-schema.ts` 生成，`pnpm check:api` 接入 `pnpm check` 与 CI 检查过期；`tests/api-contract.spec.ts` 覆盖契约↔handler 一一对应、非法请求拒绝、面板类型推导与生成物一致性。实际路由 42 条（原表「25 条」为过期计数）。设计见 [`../025-api-schema.zh.md`](../025-api-schema.zh.md)。
+**X-04 落地（2026-11-12，PR [#72](https://github.com/touch-agent/dsh-superagent/pull/72) 合并 `0d24be7`）**：`packages/dsh/src/app/api-contract.ts` 的 `ROUTES` 成为请求侧唯一作者源，`json-schema-to-ts` 从同一份 schema 推导查询/路径/body 类型，`api-parser.ts` 用 `z.fromJSONSchema` 编译运行期校验器，`http.ts` 的 handler 表由 `RouteKey` 约束，面板 `Api` 的 response 取 handler 返回类型（不写第二份 response schema）；`api-filters.ts` 让浏览器半不引入服务端模块。query 的默认值/回退/`x-dsh-clamp`、body 与 params 的 400 `issues` 均保持原语义。`packages/dsh/src/app/api.schema.json` 由 `scripts/api-schema.ts` 生成，`pnpm check:api` 接入 `pnpm check` 与 CI 检查过期；`tests/api-contract.spec.ts` 覆盖契约↔handler 一一对应、非法请求拒绝、面板类型推导与生成物一致性。实际路由 42 条（原表「25 条」为过期计数）。设计见 [`../025-api-schema.zh.md`](../025-api-schema.zh.md)。
 
 ### X-13 TRACKING 自动化 · Platform · 2 人日
 
@@ -649,7 +652,7 @@ graph LR
 - **验收**：故意制造缺行、`进行中` 无 PR、`已完成` 指向 open PR、坏日期四类错误时 CI 红；无网络环境本地测试仍可跑；`tests/docs.spec.ts` 与新增检查同时绿。
 - **估时**：2 人日。**依赖**：X-12（已完成）。**回退**：脚本独立，移除即回退；不自动改状态表。
 - **泳道**：Platform。
-- **实现（2026-11-09，PR #34 进行中）**：`scripts/check-tracking.mjs` 做离线语义检查（任务集、五字段、状态、证据、日期、PR 链接格式），`--check-prs` 用 GitHub token 查询存在性与 merge 状态；`tests/tracking.spec.ts` 覆盖缺行、`进行中` 无 PR、`已完成` 指向 open PR、坏日期与豁免路径。`pnpm check` 接入离线检查，CI `tracking` job 接入联网检查；豁免清单 `docs/plan/TRACKING-EXEMPTIONS.json` 当前为空，格式与规则见 [`README.md`](README.md) 的「显式豁免」。
+- **实现（2026-11-09，PR #34 合并 `0c43312`）**：`scripts/check-tracking.mjs` 做离线语义检查（任务集、五字段、状态、证据、日期、PR 链接格式），`--check-prs` 用 GitHub token 查询存在性与 merge 状态；`tests/tracking.spec.ts` 覆盖缺行、`进行中` 无 PR、`已完成` 指向 open PR、坏日期与豁免路径。`pnpm check` 接入离线检查，CI `tracking` job 接入联网检查；豁免清单 `docs/plan/TRACKING-EXEMPTIONS.json` 当前为空，格式与规则见 [`README.md`](README.md) 的「显式豁免」。
 
 ### X-14 上游扩展点提案 · Platform · 2 人日
 
@@ -658,7 +661,7 @@ graph LR
 - **验收**：`pnpm exec vitest run tests/docs.spec.ts` 与 `pnpm check:tracking` 绿；独立 review 逐项核对「真的做不到 / 只能整体替换 / 已可做」，结论写进 PR review；不把整体替换可做的事写成「完全做不到」。
 - **估时**：2 人日。**依赖**：T5-02 的 018/021 设计输入。**回退**：纯文档，删除即回退；不改运行时、不新增 schema。
 - **泳道**：Platform。
-- **实现（2026-11-11，PR [#61](https://github.com/touch-agent/dsh-superagent/pull/61) 进行中）**：`docs/022-harness-extension-requests.zh.md`；`tests/docs.spec.ts` 文档索引与 `check:tracking` 通过；评审结论见 PR review 评论。
+- **实现（2026-11-11，PR [#61](https://github.com/touch-agent/dsh-superagent/pull/61) 合并 `39b8a08`）**：`docs/022-harness-extension-requests.zh.md`；`tests/docs.spec.ts` 文档索引与 `check:tracking` 通过；评审结论见 PR review 评论。
 
 ---
 
