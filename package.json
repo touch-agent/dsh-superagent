@@ -58,8 +58,9 @@
     "check:tracking": "node scripts/check-tracking.mjs",
     "check:arch": "depcruise packages meta tests --config .dependency-cruiser.mjs",
     "check:api": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/check-api-schema.mjs",
+    "check:domain": "node scripts/check-domain-budget.mjs",
     "lint": "eslint . --max-warnings=0",
-    "check": "pnpm check:tracking && pnpm check:arch && pnpm check:api && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check:size",
+    "check": "pnpm check:tracking && pnpm check:arch && pnpm check:api && pnpm lint && pnpm typecheck && pnpm check:domain && pnpm test && pnpm build && pnpm check:size",
     "evolution": "node scripts/evolution/run.mjs",
     "evolution:export": "node scripts/evolution/export.mjs",
     "changeset": "changeset"

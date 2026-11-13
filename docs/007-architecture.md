@@ -614,6 +614,61 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 
 `tests/fixtures/` holds what several tests share: `host.ts`, a simulated DeepSeek Harness host; `panel-server.ts` and `panel.tsx`, the fake management API and the panel around a page; `deployment.ts`, a resolved deployment; `git.ts`, the environment of every git the tests start, which names no repository; and `async.ts`.
 
+### Domain test budget (X-06)
+
+The first kernel contract in `docs/012-platform-evolution.zh.md` §10.1 and the M0 exit criterion is
+"the memory store runs the whole domain test suite in under 2 s". `pnpm check:domain`
+(`scripts/check-domain-budget.mjs`) makes that a gate; `pnpm check` runs it locally and CI runs the
+same `pnpm check`, so there is no CI-only switch and no retry-until-green path.
+
+The suite is the fixed list in the script: fifteen files that either drive the kernel `Engine` on
+`MemoryRepositories` or have a kernel module as their only subject (`action`, `stage`, `deliverable`).
+Tests whose subject is the runtime — the SQLite Store, HTTP, the panel, Sources, Sessions and the
+bundle — stay outside. Membership is checked as far as the imports show: a new test file that
+mentions `MemoryRepositories`, or imports `@superagent/kernel` and never `@superagent/dsh`, must be
+added to the list or to the reasoned exclusion list, or the check fails. The rule is textual, so a
+test that reaches the Engine through a fixture helper, or imports both packages without naming
+`MemoryRepositories`, can still be missed; the list in the script is the source of truth and a
+reviewer extends it deliberately. The only exclusion is `tests/store.spec.ts`, whose subject is the
+SQLite Store and which uses `MemoryRepositories` only to compare the two implementations. Three
+included Engine tests read a SQLite trace or store back in one or two cases; they stay because they
+still assert a domain rule.
+
+Measurement: five complete Vitest runs, reported through Vitest's JSON reporter. A run's total is
+the sum of each test file's `endTime - startTime`: the test bodies and their hooks, without
+Node/Vitest startup, TypeScript transform or module import. Two ceilings apply to the median run: the
+suite total stays under the 2,000 ms contract, and no single test takes more than 500 ms (a quarter
+of that budget). The single-test ceiling is an early guard, not a second contract: the slowest
+current domain test takes tens of milliseconds (22–65 ms depending on load), so one test that starts
+doing far too much work is named long before the suite would cross 2 s, with enough headroom for a
+slower CI runner. The budget is read after all five runs; a test failure or crash fails immediately,
+and no run is retried. A budget failure prints the median, every file's execution time, the tests
+over 500 ms and the ten slowest tests (file and name), so the growth can be found directly; it does
+not raise either ceiling.
+
+On 2026-11-13 the list held 313 tests. On an idle development machine a three-run sample was
+555/470/504 ms (504 ms median, about 4× headroom). The five-run protocol on the same development
+machine, under heavy unrelated system load (load average around 17), produced
+799/1,078/1,105/765/935 ms — a 935 ms median and 2.1× headroom. CI is tighter within a run but varies between
+runners: the first three-run sample was 1,121/668/602 ms; five-run checks measured
+653/590/593/600/576 ms (593 ms median, 3.4×), 962/948/979/1,031/950 ms (962 ms median, 2.1×) and
+692/636/631/693/614 ms (636 ms median, 3.1×), with samples inside a run within 13%. The fixed 2 s leaves about 2× margin at
+the slowest observed CI runner; a slower runner would fail the check and name the files rather than
+be retried. The metric is wall-clock test
+execution, so external CPU load inflates it; five runs with a median tolerate up to two noisy
+samples, but sustained contention can bring the suite near the ceiling. That is a signal to look at
+the named files, not a reason to retry or raise the ceiling; CI is a dedicated runner and is the
+shared authority. A distributed slowdown that keeps the suite under 2 s still passes — the suite
+ceiling is the contract's red line, not a profiler. A single runaway test is different: a probe that
+added 1.2 s to one `tests/stage.spec.ts` test kept the suite at 1,674 ms but failed the single-test
+ceiling and was reported by file and name, so the assertion has teeth before the suite reaches 2 s.
+
+Known deviations: the number is test execution, not the wall-clock time of `pnpm test` (startup,
+top-level import and transform are excluded, and the file spans add up across parallel workers);
+external CPU load inflates the total without a code regression; a slowdown spread thinly across many
+tests is only caught by the 2 s suite ceiling; the membership rule is textual. Neither ceiling is
+configurable by an environment variable on purpose.
+
 ## Persistence
 
 One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.

@@ -22,6 +22,8 @@ jobs:
       # X-01 runs `pnpm lint` there too: ESLint with type information reports unused declarations, unhandled or misused promises,
       # `await` on a non-promise and explicit `any`; see docs/007-architecture.md. The transitional scanners in tests/ still run
       # through `pnpm test` for one release.
+      # X-06 runs `check:domain` inside the same `pnpm check`: the domain suite's median of five runs against the 2 s
+      # contract, with the offending files and tests named on failure and no CI-only switch or retry-to-green.
       - run: pnpm install --frozen-lockfile
       # X-11 composes an installed profile through the host's own `dsh --dump-config`. The CLI is the host, not a workspace
       # dependency, so install the version `engines.dsh` admits; a host without it must make this step fail rather than skip the test.
