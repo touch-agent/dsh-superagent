@@ -466,7 +466,7 @@ const TEXT = {
   masterSubtitle: ['所有事情都找它；名字和头像只改这里的显示。', 'The one place to start; the name and avatar change only this display.'],
   masterStatusIdle: ['在线 · 待命', 'Online · ready'],
   masterStatusWorking: ['正在处理 {count} 项', 'Working on {count}'],
-  masterStatusWaiting: ['有 {count} 件事等你决定', '{count} thing(s) need you'],
+  masterStatusWaiting: ['有 {count} 个任务等你处理', '{count} task(s) need you'],
   masterStatusPaused: ['已暂停 · 新的处理恢复后才开始', 'Paused · new work waits for processing to resume'],
   masterStatusConnecting: ['正在连接主 Agent…', 'Connecting to the main Agent…'],
   masterOpen: ['进入主会话', 'Open main Session'],
