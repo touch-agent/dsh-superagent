@@ -93,6 +93,14 @@ it('says a review-stage Ticket without a preview cannot be reviewed and offers n
   expect(all('button').some(button => button.textContent === zh.approve)).toBe(false)
 })
 
+it('opens the conversation that started the Ticket from its page header', async () => {
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, conversationSession: 'master' }
+  await mount()
+  await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
+  await click(zh.openConversation)
+  expect(server.opened).toEqual(['master'])
+})
+
 it('shows a Ticket with its stage, its Mandate details with the Trigger and Decision behind it, its Threads, and the rest behind disclosures', async () => {
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)

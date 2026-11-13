@@ -27,11 +27,12 @@ import { MasterStore } from './master.ts'
 import { openPanelRoute, PANEL_ID } from './panel.ts'
 import { messages } from './provider.tsx'
 import { mountStyles } from './styles.ts'
-import { EventsBridge, EventsTab, EventsTitle, MasterBadge, MasterEntry, SystemView } from './system.tsx'
+import { EventsBridge, EventsTab, EventsTitle, MasterBadge, MasterEntry, SystemView, SystemViewSeat } from './system.tsx'
 import { TasksTab, TasksTitle } from './tasks.tsx'
 import { TasksViewClient } from './tasks-view.ts'
 import type { T } from './text.ts'
 import type { Route } from './route.ts'
+import { revealConversation } from './view-actions.ts'
 
 type ClientContext = Context & { sessions: ISessions }
 const NS = 'dshSuperagent'
@@ -78,7 +79,12 @@ export function apply(ctx: ClientContext): void {
     'dsh-superagent: session surfaces')
   const openSession = async (id: string) => {
     try {
-      await openKnownSession(ctx.sessions, id as SessionId, target => { ctx.uiWorkspace.openSession(target) }, new AbortController().signal)
+      await openKnownSession(ctx.sessions, id as SessionId, target => {
+        ctx.uiWorkspace.openSession(target)
+        // Selecting the Session that is already current does nothing on its own; when its Status View is in front, return
+        // to Chat so the action has a visible result. A missing target still surfaces the localized reason below.
+        revealConversation(target)
+      }, new AbortController().signal)
     } catch (error) {
       if (error instanceof SessionNavigationError) throw new Error(t(error.code === 'not-ready' ? 'sessionListNotReady' : 'sessionNotListed'), { cause: error })
       throw error
@@ -109,8 +115,9 @@ export function apply(ctx: ClientContext): void {
     locale: NS }, (props: { sessionId: string; t: T }) => <MasterBadge t={props.t} master={master} sessionId={props.sessionId} />))
   // The in-Session Status view reuses the management page; non-main Sessions render its explanation instead.
   ctx.slots.inject('conversation.view', () => ctx.slots.register({ name: 'conversation.view', id: 'system', order: 20, locale: NS,
-    label: () => t('systemTab') }, (props: { sessionId: string; t: T }) => <SystemView t={props.t} sessionId={props.sessionId}
-    master={master}><Mounted ctx={ctx} t={props.t} openSession={openSession} embedded tasks={tasks} /></SystemView>))
+    label: () => t('systemTab') }, (props: { sessionId: string; t: T; openView: (view: string, focus: string) => void }) =>
+    <SystemViewSeat sessionId={props.sessionId} openView={props.openView}><SystemView t={props.t} sessionId={props.sessionId}
+      master={master}><Mounted ctx={ctx} t={props.t} openSession={openSession} embedded tasks={tasks} /></SystemView></SystemViewSeat>))
   // The right Events tab type: the host owns closing, expanding, floating and docking.
   const registerTab = (id: string, kind: string, title: DshSuperagentKey, guide: DshSuperagentKey, order: number) => {
     try {
