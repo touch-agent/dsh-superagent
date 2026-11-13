@@ -137,6 +137,19 @@ it('opens a listed Session through the workspace from the main panel', async () 
   view.dispose()
 })
 
+it('returns the Status Session to Chat when the main-Session action selects the Session already in front', async () => {
+  serve()
+  const { ctx, entries, main } = fixture(['master'])
+  // The Status View seat lends the host's Session-bound View selector while it is mounted.
+  const openView = vi.fn()
+  const status = await render(entries.find(entry => entry.options.name === 'conversation.view')!, { sessionId: 'master', t, openView })
+  const view = await render(main, { t })
+  await openMaster(view.container)
+  expect(ctx.uiWorkspace.openSession).toHaveBeenCalledExactlyOnceWith('master')
+  expect(openView).toHaveBeenCalledExactlyOnceWith('chat', '')
+  status.dispose(); view.dispose()
+})
+
 it('reports a Session missing from the catalog in the interface language', async () => {
   serve()
   const { ctx, main } = fixture([])

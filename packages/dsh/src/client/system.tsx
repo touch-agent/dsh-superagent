@@ -14,6 +14,7 @@ import type { MasterStore } from './master.ts'
 import { useMaster } from './master.ts'
 import { settingsRoute, type Route } from './route.ts'
 import { duration, fullTime, localized, reasonLabel, valueLabel, when, type T } from './text.ts'
+import { registerConversationView } from './view-actions.ts'
 
 const LEVEL_TONE = { quiet: 'outline', feed: 'info', notice: 'warning' } as const
 const STATUS_TONE: Record<ActivityStatus, TagTone> = { queued: 'neutral', working: 'info', idle: 'neutral', review: 'warning',
@@ -317,4 +318,11 @@ export function SystemView({ t, sessionId, master, children }: { t: T; sessionId
   if (identity.masterId === undefined) return <div className="dt-system-view"><p className="dt-hint">{identity.error ?? t('loading')}</p></div>
   if (identity.masterId !== sessionId) return <div className="dt-system-view"><p className="dt-hint">{t('systemOnlyMaster')}</p></div>
   return <div className="dt-status-page">{children}</div>
+}
+
+/** Lend this Session's View selector to panel actions while its Status View is mounted. */
+export function SystemViewSeat({ sessionId, openView, children }: { sessionId: string
+  openView?: (view: string, focus: string) => void; children: ReactNode }) {
+  useEffect(() => openView ? registerConversationView(sessionId, openView) : undefined, [sessionId, openView])
+  return <>{children}</>
 }
