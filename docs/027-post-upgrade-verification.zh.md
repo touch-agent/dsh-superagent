@@ -9,17 +9,17 @@
 这次不是构建产物没有替换，也不是服务加载了错误的包：
 
 - 运行中的进程加载的是 `~/.dsh/profiles/superagent`，它的 `dsh-superagent` 链接指向
-  `/Users/steven/projects/open-git/dsh-superagent`；该目录在 `2f457a5`（包含 #63、#70、#78），
-  `lib/client.js` 构建于 17:13:47，大小 788,311 字节。
+  `/Users/steven/projects/open-git/dsh-superagent`；该目录现在在 `2f457a5`（包含 #63、#70、#78 和只改文档的 #79），
+  `lib/client.js` 构建于 17:13:47，大小 788,311 字节。那次构建发生在 17:13:45 的 `git pull` 之后，当时 HEAD 是
+  `f2aef7f`（#78 合并后）；18:25 的 #79 只改 `docs/runbooks/workspace-inventory.zh.md`，客户端源码没有变。
 - 服务端返回的启动 HTML 引用 `rev=64dc09ecf89e`，返回的客户端 bundle 就是这份构建（多出 71 字节的
   `sourceMappingURL` 注释，因此 788,382 字节）；其中含 `ux.navFour.v1`、`ux.masterCard.v1`、
   `ux.noticeButton.v1`、`ux.filesPage.v1` 等全部新开关。
 - 用一个全新的浏览器配置（空 localStorage）打开 3082，点侧栏 `Superagent`，看到的是新面板：
   `任务 / 通知 / 文件 / 设置` 四个入口、`小助` 主 Agent 卡片和浮动的通知按钮。
-- Chrome 的 `Profile 1` 缓存里同时留着两份页面文档：10:52:16 的旧文档引用 `rev=30a716717295`，对应
-  737,378 字节的旧 bundle（没有 `navFour`/`masterCard`）；17:13:47 的新 bundle 和 20:17:15 的新文档引用
-  `rev=64dc09ecf89e`。**一个从 10:52 起就没有刷新的标签页，会继续执行旧文档里的旧 bundle；重启服务不会
-  替换已经打开的页面。**
+- Chrome 的 `Profile 1` 缓存里有：10:52:16 的旧 **client bundle**（737,378 字节，URL 带 `rev=30a716717295`，
+  没有 `navFour`/`masterCard`）；17:13:47 的新 bundle 和 20:17:15 的新文档（后两者带 `rev=64dc09ecf89e`）。
+  **一个从 10:52 起就没有刷新的标签页，会继续执行它已经加载的旧 bundle；重启服务不会替换已经打开的页面。**
 - 左侧栏的 `插件 / Superagent / 自动化任务 / 更多` 和工作区列表是 DSH 宿主外壳，不由插件渲染；按
   [026](026-ux-third-batch.zh.md) 的 L1–L8，插件只能改面板内部。外壳不变是预期行为，不是这次升级失败。
 
@@ -49,8 +49,10 @@
 
 ![宿主外壳的左侧栏顶部：插件、Superagent、自动化任务、更多，下面是工作区](images/post-upgrade-verification/host-shell.png)
 
-构建时间 17:13:47 晚于 #78 合并的 17:02:36；17:13:45 的 `git pull --ff-only` 更新了链接仓库，HEAD 为 `2f457a5`，
-所以这份构建包含第三批 UX 的插件内部分。`lib/client.js` 比服务返回的字节少 71，正好是服务附加的
+构建时间 17:13:47 晚于 #78 合并的 17:02:36；17:13:45 的 `git pull --ff-only` 把链接仓库更新到 `f2aef7f`，这份构建
+就是那次构建的产物，包含第三批 UX 的插件内部分。`2f457a5` 是 18:25:23 合并 #79 后的 HEAD；#79 只改
+`docs/runbooks/workspace-inventory.zh.md`，客户端源码未变，所以现在链接仓库的源码与这份构建等价。
+`lib/client.js` 比服务返回的字节少 71，正好是服务附加的
 `sourceMappingURL` 行；两份内容除这一行外相同。
 
 ## 3. 浏览器到底加载了哪一份客户端
@@ -59,12 +61,14 @@ Chrome 的 HTTP 缓存（`~/Library/Caches/Google/Chrome/Profile 1/Cache/Cache_D
 
 | 缓存对象 | 修改时间 | 大小 | 引用/内容 |
 | --- | --- | --- | --- |
-| `d2e7c19cca4b9a4c_0` | 10:52:16 | 737,378 | 旧 HTML，`rev=30a716717295`；旧 bundle，含 `taskHierarchy`，不含 `navFour`/`masterCard` |
+| `d2e7c19cca4b9a4c_0` | 10:52:16 | 737,378 | 旧 **client bundle**，URL 带 `rev=30a716717295`；含 `taskHierarchy`，不含 `navFour`/`masterCard` |
 | `aca53138312b89fa_0` | 17:13:47 | 788,825 | 新 bundle，`rev=64dc09ecf89e`；含 `navFour`、`masterCard`、`taskHierarchy`（缓存条目含响应头，字节数不等于响应体） |
 | `5edd0ff1a6d4a117_0` | 20:17:15 | 38,653 | 新 HTML，引用 `rev=64dc09ecf89e`；同一条目还留有 `8cb6b9b1676c` |
 
-一个从 10:52 打开后未刷新的标签页，其文档仍然是第一份；服务端在 20:16:59 重启、磁盘上的 bundle 在 17:13:47
-已经更新，都不会改变这个已经加载的文档。相反，20:17 的新文档和 17:13 的新 bundle 证明新构建本身可以正常送达。
+缓存里只有 20:17:15 的条目是 HTML；10:52 的条目是旧 bundle，它证明那个页面加载过旧 bundle，但不保存页面文档
+本身。一个从 10:52 打开后未刷新的标签页，仍然执行它当时加载的旧 bundle；服务端在 20:16:59 重启、磁盘上的
+bundle 在 17:13:47 已经更新，都不会改变这个已经加载的页面。相反，20:17 的新文档和 17:13 的新 bundle 证明新构建
+本身可以正常送达。
 全新浏览器配置下的截图进一步排除了“新构建渲染不出来”的可能。
 
 ![插件面板的任务页：任务/通知/文件/设置四个入口、小助主 Agent 卡片和浮动通知按钮](images/post-upgrade-verification/panel-tasks.png)
@@ -109,12 +113,14 @@ Chrome 的 HTTP 缓存（`~/Library/Caches/Google/Chrome/Profile 1/Cache/Cache_D
 “重新载入界面”先用 `fetch(..., { cache: 'reload' })` 重新取当前地址的 HTML，再 `location.reload()`；这样浏览器
 不会继续用缓存里的旧 `rev`。它不能替代强制刷新，但能覆盖最常见的“HTML 还在缓存”的情况。
 
-同一临时实例、同一状态目录、同一 1440×900 视口、浅色中文，只把 `dsh-superagent` 链接从旧构建 `2f457a5`
-（17:13:47）换成新构建 `7ba44b2`（21:30:56），再滚动到 `设置 › 显示` 的底部：
+同一临时 profile、同一状态目录、浏览器窗口 1440×900、浅色中文，只把 `dsh-superagent` 链接从旧构建（`lib/client.js`
+17:13:47，构建时 HEAD `f2aef7f`；链接仓库现在 `2f457a5`）换成新构建 `7ba44b2`（21:30:56），再滚动到
+`设置 › 显示` 的底部。两张图都裁掉左侧 270px 宿主外壳，保留 1170×900 面板区域；都按页面底部对齐，新增块使
+after 的内容起点略高：
 
 ![改动前：设置 › 显示底部到首次使用说明结束，没有构建块](images/post-upgrade-verification/panel-display-before.png)
 
-![改动后：同一位置出现界面构建块，页面构建与服务构建均为 38b54c9315eb，并提供重新载入界面](images/post-upgrade-verification/panel-display-after.png)
+![改动后：页面底部出现界面构建块，页面构建与服务构建均为 38b54c9315eb，并提供重新载入界面](images/post-upgrade-verification/panel-display-after.png)
 
 左侧导航在两张图中相同，说明变化只在页面底部新增的块，不影响已有的显示开关和宿主外壳。
 
@@ -168,7 +174,8 @@ Chrome 的 HTTP 缓存（`~/Library/Caches/Google/Chrome/Profile 1/Cache/Cache_D
 - 没有重启承载本会话的 3082 实例；它继续运行 17:13 的构建。上面的“新界面”证据来自独立的临时实例和全新
   浏览器配置，不依赖改动这个进程。
 - 没有读取或修改用户浏览器 `Profile 1` 的 localStorage；`Local Storage/leveldb` 在当前 macOS 权限下不可读，
-  AppleScript 的 JavaScript 执行也被关闭。因此“用户当时的四个开关值”没有被直接取证；本文用缓存中的旧文档
-  和新文档、以及全新配置下的渲染结果来区分“旧页面”与“旧构建”。第 5 节的构建块让下一次可以直接在界面上读到
-  页面自己的构建身份，不需要再读浏览器存储。
+  AppleScript 的 JavaScript 执行也被关闭。因此“用户当时的四个开关值”没有被直接取证；本文用缓存中的旧 bundle
+  和新文档、以及全新配置下的渲染结果来区分“旧页面”与“旧构建”。缓存只能证明 10:52 有页面取过旧 bundle，不能
+  证明报告者当时看的就是那个标签页；20:17 的新文档也说明确实有过一次刷新。旧页面或开关被关掉，两种情况都
+  可能，构建块的作用是让下一次能直接排除“旧构建”。
 - 没有修改宿主侧栏、工作区列表或宿主设置；这些不在插件的扩展点内。
