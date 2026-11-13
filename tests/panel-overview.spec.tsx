@@ -11,7 +11,7 @@ it('opens with the three zones and keeps health as a folded E2 path', async () =
   await mount()
   expect(tab(zh['tab.overview']).getAttribute('aria-selected')).toBe('true')
   expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['概览', '任务', '来源', '触发', '评估', '执行', '设置'])
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待我处理4', '正在跑1任务详情 ›', '最近历史1详情 ›',
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['需要你处理4', '正在跑1任务详情 ›', '最近历史1详情 ›',
     '过去 24 小时详情 ›', '运行健康'])
   // Waiting for a person first, then the running Ticket and the recently ended one; each carries its own stage.
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '执行中', '人工停止'])

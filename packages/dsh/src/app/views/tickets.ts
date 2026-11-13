@@ -116,7 +116,7 @@ export function ticketDetail(host: ViewHost, id: string) {
     threads: view.threadsOf(id).map(thread => {
       const follow = ticket.follows?.find(item => item.thread === thread.key)
       const channel = ticket.channels.find(item => threadKey(channelThread(item)) === thread.key)
-      return { ...threadSummary(view, thread), ...follow ? { anchor: { own: follow.own,
+      return { ...threadSummary(view, thread), ...follow ? { anchor: { own: follow.own, follow: true,
         ...follow.closed ? { closed: follow.closed } : {} } } : channel ? { anchor: { own: false } } : {},
         ...thread.context?.includes(id) ? { context: true as const } : {} }
     }) }

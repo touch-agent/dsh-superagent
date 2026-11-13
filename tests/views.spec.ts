@@ -129,8 +129,12 @@ it('shows a bound Channel and a followed Thread as anchors on the Ticket page', 
       id: 'local-user' }, scope: 'Fix it' }, origin: { triggerId: 'm1', triggerIds: ['m1'] }, assignments: [],
     follows: [{ thread: 'github:7', own: true, closed }], inputs: [{ id: 'b1', kind: 'binding', channel, at }] })
   const page = ticketDetail(host, 't1')!
-  expect(page.threads.find(thread => thread.key === 'conversation:m1')?.anchor).toEqual({ own: false })
-  expect(page.threads.find(thread => thread.key === 'github:7')?.anchor).toEqual({ own: true, closed })
+  const anchorOf = (key: string) => {
+    const thread = page.threads.find(thread => thread.key === key)
+    return thread && 'anchor' in thread ? thread.anchor : undefined
+  }
+  expect(anchorOf('conversation:m1')).toEqual({ own: false })
+  expect(anchorOf('github:7')).toEqual({ own: true, follow: true, closed })
   expect(page.inputs[0]).toMatchObject({ kind: 'binding', channel })
 })
 
