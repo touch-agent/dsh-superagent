@@ -135,7 +135,8 @@ export function apply(ctx: ClientContext): void {
       const id = auxTabId(tab.kind)
       try {
         ctx.effect(() => ctx.get('sidebarRightTabs')?.register({ id, kind: tab.kind, title: () => t(tab.title),
-          priority: 'extension' }) ?? (() => {}), `dsh-superagent: ${tab.kind} side tab`)
+          priority: 'extension', guide: [{ id, order: 320 + AUX_TABS.indexOf(tab) * 10, title: () => t(tab.title),
+            description: () => t(tab.hint) }] }) ?? (() => {}), `dsh-superagent: ${tab.kind} side tab`)
       } catch { /* a host without the right sidebar keeps the panel fallback */ }
       ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: id, locale: NS },
         (props: { t: T }) => <SideMounted ctx={ctx} t={props.t} openSession={openSession} tasks={tasks} kind={tab.kind} />))

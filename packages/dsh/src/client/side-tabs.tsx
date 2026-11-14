@@ -13,11 +13,11 @@ import type { T } from './text.ts'
 const ENTRY = 'dsh-superagent'
 
 /** The stable tab kinds and their labels, in the order the header presents them. */
-export const AUX_TABS: readonly { kind: AuxKind; title: DshSuperagentKey }[] = [
-  { kind: 'tasks', title: 'tab.tasks' },
-  { kind: 'notifications', title: 'tab.notifications' },
-  { kind: 'files', title: 'tab.files' },
-  { kind: 'settings', title: 'tab.settings' }
+export const AUX_TABS: readonly { kind: AuxKind; title: DshSuperagentKey; hint: DshSuperagentKey }[] = [
+  { kind: 'tasks', title: 'tab.tasks', hint: 'headerTasksHint' },
+  { kind: 'notifications', title: 'tab.notifications', hint: 'headerNoticesHint' },
+  { kind: 'files', title: 'tab.files', hint: 'headerFilesHint' },
+  { kind: 'settings', title: 'tab.settings', hint: 'headerSettingsHint' }
 ]
 
 type ClientContext = Context
