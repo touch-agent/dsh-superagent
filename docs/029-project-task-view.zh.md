@@ -715,7 +715,7 @@ interface TaskView {
 ### D.2 与设计稿的偏差 / 尚未实现
 
 1. **视图字段名按附录 B 对齐**：`ProjectView.name`、`TaskView.ticketKind: 'task' | 'subtask'`；项目本身不进 `TaskView`，项目详情与看板都排除 review 行。`ProjectView.owner` 复用现有 `TaskActorView`（`role: 'owner'` + `profile.id/revision`），不含设计稿的显示标题；`ProfileSnapshot` 不保存显示名，面板可另行解析。额外提供 `coordinator.sessionId`、`counts.working/review` 与 `attention`，均为只读派生字段。
-2. **没有「把已有任务归入/移出项目」的写入口**。本单只实现受理时写入 `projectTicketId` 及子任务继承；存量任务保持 `unassigned`。设计附录 B 的「任务归入/移出」写路径留给后续 UI/管理动作，避免在本数据层单里引入未定义的权限与审计。
+2. **没有「把已有任务归入/移出项目」的写入口**。本单只在受理时写入 `projectTicketId`（项目协调自动受理或人工/主会话 accept）及子任务继承；存量任务保持 `unassigned`。设计附录 B 的「任务归入/移出」写路径留给后续 UI/管理动作，避免在本数据层单里引入未定义的权限与审计。
 3. **没有独立 `POST tasks` 建任务路由**。协调 Session 通过 `orchestrator_create_task` 工具走 kernel 受理 seam；人工仍走既有 accept，并可在项目上下文里带 `projectTicketId` 归入项目。面板 UI 未接入，因此没有新增项目页、弹窗、项目卡或归档交互。
 4. **项目不建工作目录/worktree**，协调 Session 目录为 `projects/<id>`；这是与任务执行隔离的部署选择，不改任务 worker 的目录规则。
 5. **`TaskView` 新增可选字段，旧客户端可忽略**；`ProjectView`/`unassigned`/`totals.projects` 在无项目或 `projects=off` 时省略，保持旧响应形状。未做数据库 schema 迁移：Ticket 以 JSON 持久化，新字段为可选。
