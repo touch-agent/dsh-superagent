@@ -1,0 +1,1848 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>任务视图 · 项目 — 设计原型</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --rail: #fbfbfa;
+  --soft: #f6f6f4;
+  --hover: #f1f1ef;
+  --line: #e8e8e5;
+  --line-strong: #d9d9d4;
+  --ink: #1f1f1f;
+  --ink-2: #4a4a4a;
+  --ink-3: #7a7a7a;
+  --ink-4: #9a9a9a;
+  --warn: #a85a08;
+  --warn-bg: #fff8ee;
+  --warn-line: #f0dfc8;
+  --warn-strong: #b45309;
+  --blue: #1d4ed8;
+  --blue-bg: #eef4ff;
+  --green: #15803d;
+  --green-bg: #f0fdf4;
+  --red: #b91c1c;
+  --red-bg: #fef2f2;
+  --radius: 12px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button, input, textarea, select { font: inherit; }
+button { color: inherit; }
+a { color: inherit; }
+.app { display: flex; height: 100vh; min-height: 0; }
+.rail {
+  width: 268px; flex: none; background: var(--rail); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; min-height: 0; padding: 0 12px;
+}
+.rail-scroll { flex: 1; min-height: 0; overflow: auto; padding-bottom: 8px; }
+.brand { height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 4px; flex: none; }
+.brand-mark { width: 22px; height: 22px; border-radius: 6px; background: #1f1f1f; display: flex; align-items: center; justify-content: center; flex: none; }
+.brand-name { font-size: 17px; font-weight: 650; letter-spacing: -0.3px; }
+.brand-pill { font-size: 8.5px; font-weight: 700; letter-spacing: .16em; background: #1f1f1f; color: #fff; padding: 2px 5px; border-radius: 3px; margin-left: 1px; }
+.new-chat { width: 100%; height: 36px; border: 1px solid var(--line-strong); background: #fff; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; cursor: pointer; margin: 2px 0 14px; }
+.new-chat:hover { background: #fdfdfc; border-color: #c9c9c4; }
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav-item { width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: 7px; background: none; display: flex; align-items: center; gap: 9px; font-size: 13px; color: #3d3d3d; text-align: left; cursor: pointer; }
+.nav-item:hover { background: #f0f0ee; }
+.nav-item[aria-current="true"] { background: #efefed; font-weight: 550; color: #1f1f1f; }
+.nav-item .ico { width: 16px; height: 16px; color: #6b6b6b; flex: none; }
+.section-label { display: flex; align-items: center; gap: 8px; padding: 18px 8px 5px; font-size: 11px; color: var(--ink-4); }
+.section-label .tools { margin-left: auto; display: flex; gap: 2px; }
+.section-label .tools button { width: 20px; height: 20px; border: 0; border-radius: 5px; background: none; color: #8a8a8a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.section-label .tools button:hover { background: #eeeeec; }
+.ws-list { display: flex; flex-direction: column; gap: 1px; }
+.ws-item { height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: none; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #3d3d3d; text-align: left; cursor: default; }
+.ws-item .ico { width: 15px; height: 15px; color: #777; flex: none; }
+.ws-item:hover { background: #f0f0ee; }
+.ws-item.active { color: #1f1f1f; font-weight: 550; }
+.sess { height: 29px; padding: 0 8px 0 29px; border: 0; border-radius: 6px; background: none; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #4a4a4a; text-align: left; cursor: default; white-space: nowrap; overflow: hidden; }
+.sess:hover { background: #f0f0ee; }
+.sess .ico { width: 14px; height: 14px; color: #8a8a8a; flex: none; }
+.sess .txt { overflow: hidden; text-overflow: ellipsis; }
+.sess .pin { margin-left: auto; color: #a0a0a0; font-size: 10px; }
+.rail-foot { flex: none; padding: 10px 8px 12px; border-top: 1px solid var(--line); font-size: 13px; color: #5c5c5c; display: flex; align-items: center; gap: 7px; }
+
+.chat { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: #fff; }
+.chat-head { height: 56px; flex: none; display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.chat-title { font-size: 14px; font-weight: 600; }
+.chat-sub { font-size: 10.5px; color: #8a8a8a; border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px; }
+.chat-head .tools { margin-left: auto; display: flex; gap: 2px; }
+.chat-head .tools button { width: 26px; height: 26px; border: 0; background: none; border-radius: 6px; color: #6b6b6b; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.chat-body { flex: 1; min-height: 0; overflow: auto; padding: 26px 22px 12px; display: flex; flex-direction: column; gap: 18px; }
+.msg-user { align-self: flex-end; max-width: 84%; background: #f1f2f4; border-radius: 14px 14px 3px 14px; padding: 9px 12px; font-size: 13px; line-height: 20px; }
+.msg-assistant { max-width: 100%; font-size: 13px; line-height: 21px; color: #2a2a2a; }
+.msg-name { font-size: 11px; color: #9a9a9a; margin-bottom: 5px; display: flex; align-items: center; gap: 6px; }
+.msg-name .spark { width: 13px; height: 13px; color: #6b6b6b; }
+.msg-assistant p { margin: 0 0 8px; }
+.msg-assistant b { font-weight: 600; }
+.msg-quiet { color: #8a8a8a; font-size: 12px; }
+.msg-actions { display: flex; gap: 6px; margin-top: 2px; flex-wrap: wrap; }
+.chat-input { margin: 0 16px 12px; border: 1px solid var(--line-strong); border-radius: 16px; padding: 10px 12px 9px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.035); flex: none; }
+.chat-input .row { display: flex; align-items: center; gap: 8px; }
+.chat-input .placeholder { color: #9a9a9a; font-size: 12.5px; flex: 1; }
+.chat-input .plus { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: #6b6b6b; display: flex; align-items: center; justify-content: center; }
+.chat-input .send { width: 28px; height: 28px; border-radius: 50%; border: 0; background: #1f1f1f; color: #fff; display: flex; align-items: center; justify-content: center; }
+.chat-foot { flex: none; padding: 0 18px 10px; font-size: 10.5px; color: #a5a5a5; display: flex; gap: 12px; }
+
+.panel { width: 624px; flex: none; background: #fff; display: flex; flex-direction: column; min-height: 0; position: relative; }
+.panel-head { height: 44px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--line); background: #fff; }
+.panel-tab { display: flex; align-items: center; gap: 5px; height: 28px; padding: 0 7px 0 10px; border-radius: 6px; background: #f1f1ef; font-size: 12.5px; font-weight: 550; }
+.panel-tab .x { width: 17px; height: 17px; border: 0; border-radius: 4px; background: none; color: #7a7a7a; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+.panel-tab .x:hover { background: #e7e7e4; }
+.icon-btn { width: 28px; height: 28px; border: 0; border-radius: 6px; background: none; color: #6b6b6b; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.icon-btn:hover { background: #f2f2f0; }
+.panel-head .icon-btn { width: 27px; height: 27px; border: 0; border-radius: 6px; background: none; color: #6b6b6b; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.panel-head .icon-btn:hover { background: #f2f2f0; }
+.panel-head .spacer { flex: 1; }
+.panel-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 14px 30px; scrollbar-gutter: stable; }
+body.layout-wide .chat { display: none; }
+body.layout-wide .panel { width: auto; flex: 1; border-left: 0; }
+body.layout-wide .panel-head { display: none; }
+body.layout-wide .panel-body { width: 100%; max-width: 1020px; margin: 0 auto; padding: 28px 40px 56px; }
+body.layout-narrow .rail, body.layout-narrow .chat { display: none; }
+body.layout-narrow .panel { width: 100%; flex: 1; }
+body.layout-narrow .panel-body { padding: 12px 12px 28px; }
+
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.page-title { margin: 0; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.25px; }
+.page-sub { margin: 3px 0 0; font-size: 12px; line-height: 17px; color: var(--ink-3); }
+.wide-only { display: none; }
+body.layout-wide .wide-only, body.layout-narrow .wide-only { display: inline-flex; }
+body.layout-side .wide-only { display: none; }
+.page-actions { display: flex; align-items: center; gap: 5px; flex: none; padding-top: 2px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 30px; padding: 0 11px; border-radius: 999px; border: 1px solid transparent; background: transparent; font-size: 12px; line-height: 18px; cursor: pointer; white-space: nowrap; text-decoration: none; }
+.btn:focus-visible, .icon-btn:focus-visible, .link:focus-visible, .tree-main:focus-visible, .flat-row:focus-visible, .project-card:focus-visible, .card-name:focus-visible, .ua-title:focus-visible { outline: 2px solid #1f1f1f; outline-offset: 2px; }
+.btn-primary { background: #1f1f1f; color: #fff; }
+.btn-primary:hover { background: #000; }
+.btn-outline { border-color: var(--line-strong); background: #fff; color: var(--ink); }
+.btn-outline:hover { background: #f7f7f5; }
+.btn-ghost { color: #5c5c5c; }
+.btn-ghost:hover { background: #f3f3f1; }
+.btn-danger { background: #fff; border-color: #efcaca; color: var(--red); }
+.btn-danger:hover { background: #fff6f6; }
+.btn-sm { height: 26px; font-size: 11px; padding: 0 9px; }
+.btn-xs { height: 23px; font-size: 10.5px; padding: 0 8px; }
+.link { padding: 0; border: 0; background: none; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; font: inherit; text-align: left; }
+.link:hover { color: #000; }
+.muted { color: var(--ink-3); }
+.dotsep { color: #c4c4c0; }
+
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 999px; font-size: 10.5px; line-height: 19px; font-weight: 550; white-space: nowrap; flex: none; }
+.chip .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+.chip.working { background: var(--blue-bg); color: var(--blue); }
+.chip.review, .chip.answer, .chip.blocked { background: #fff3e3; color: #9a4b00; }
+.chip.failed { background: var(--red-bg); color: var(--red); }
+.chip.queued { background: #f4f4f2; color: #6b6b6b; }
+.chip.done { background: var(--green-bg); color: var(--green); }
+.chip.stopped { background: #f4f4f2; color: #7a7a7a; }
+.chip.waiting { background: #f8f8f6; color: #6b6b6b; border: 1px solid #e5e5e1; }
+.chip.archived { background: #f4f4f2; color: #7a7a7a; }
+.chip.mini { height: 17px; line-height: 17px; font-size: 10px; padding: 0 6px; }
+
+.focus { border: 1px solid var(--warn-line); background: var(--warn-bg); border-radius: var(--radius); padding: 9px 11px 4px; margin-bottom: 12px; }
+.focus.empty { padding-bottom: 12px; }
+.focus-head { display: flex; align-items: center; gap: 7px; padding-bottom: 5px; }
+.focus-title { font-size: 11.5px; font-weight: 650; color: #7a4a13; letter-spacing: .02em; }
+.focus-count { min-width: 16px; height: 16px; padding: 0 5px; border-radius: 999px; background: var(--warn-strong); color: #fff; font-size: 10px; line-height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+.focus-all { margin-left: auto; border: 0; background: none; color: #8a6a45; font-size: 10.5px; cursor: pointer; padding: 2px; }
+.focus-all:hover { color: #6b4a24; text-decoration: underline; }
+.focus-row { display: flex; align-items: center; gap: 7px; min-height: 29px; border-top: 1px solid #f3e8d6; font-size: 11.5px; line-height: 17px; }
+.focus-row .focus-task { font-weight: 550; color: #2a2a2a; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-row .focus-project { color: #9a7a56; font-size: 10.5px; white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.focus-row .time { margin-left: auto; color: #a08d76; font-size: 10px; white-space: nowrap; }
+.focus-row .go { border: 0; background: none; color: #8a4b00; font-size: 10.5px; font-weight: 600; cursor: pointer; padding: 2px 0 2px 4px; white-space: nowrap; }
+.focus-row .go:hover { text-decoration: underline; }
+.focus-empty { font-size: 11.5px; color: #8a7a66; line-height: 17px; padding: 0 0 2px; }
+
+.projects { display: flex; flex-direction: column; gap: 9px; }
+body.layout-wide .projects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.project-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 13px 0; background: #fff; cursor: pointer; min-width: 0; }
+.project-card:hover { border-color: #cfcfca; background: #fdfdfc; }
+.project-card[data-attention="true"] { border-color: #ecdbca; }
+.card-top { display: flex; align-items: flex-start; gap: 7px; }
+.card-name { flex: 1; min-width: 0; border: 0; background: none; padding: 0; margin: 0; font: inherit; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: -0.1px; color: var(--ink); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-goal { margin: 4px 0 0; font-size: 12px; line-height: 17.5px; color: #6b6b6b; min-height: 17.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-meta { display: flex; align-items: center; gap: 6px; margin-top: 8px; min-width: 0; font-size: 11px; color: #7a7a7a; }
+.avatar { width: 20px; height: 20px; border-radius: 50%; background: #eceff3; color: #45505e; display: inline-flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 600; flex: none; }
+.card-meta .owner { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-progress { margin-left: auto; color: #5c5c5c; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar { height: 3px; background: #efefec; border-radius: 999px; margin-top: 6px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: #1f1f1f; border-radius: 999px; }
+.card-pending { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 5px; margin-top: 7px; font-size: 11px; line-height: 17px; }
+.card-pending .label { color: #9a4b00; font-weight: 650; }
+.card-pending .link { font-size: 11px; text-decoration: underline; text-underline-offset: 2px; }
+.card-pending .sep { color: #c4b6a4; }
+.card-note { margin-top: 7px; font-size: 11px; line-height: 17px; color: #8a8a8a; }
+.card-blocked { margin-top: 5px; font-size: 11px; line-height: 17px; color: #9a5b00; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px; padding: 6px 0 7px; border-top: 1px solid #f3f3f1; font-size: 10.5px; color: #9a9a9a; min-width: 0; }
+.card-foot .last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-foot .src { margin-left: auto; display: flex; gap: 3px; flex: none; }
+.src-chip { border: 1px solid #e9e9e6; border-radius: 999px; padding: 0 5px; line-height: 14px; font-size: 9.5px; color: #7a7a7a; }
+
+.section-head { display: flex; align-items: baseline; gap: 7px; margin: 16px 0 8px; }
+.section-head h3 { margin: 0; font-size: 12.5px; line-height: 18px; font-weight: 600; }
+.section-head .count { font-size: 10.5px; color: #9a9a9a; }
+.section-head .action { margin-left: auto; border: 0; background: none; padding: 0; font-size: 10.5px; color: #6b6b6b; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.section-head .action:hover { color: #1f1f1f; }
+.unassigned { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.ua-row { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-top: 1px solid #f2f2ef; min-width: 0; font-size: 11.5px; }
+.ua-row:first-child { border-top: 0; }
+.ua-title { flex: 1; min-width: 0; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ua-meta { font-size: 10.5px; color: #8a8a8a; white-space: nowrap; }
+.ua-action { flex: none; height: 23px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 999px; background: #fff; font-size: 10.5px; cursor: pointer; }
+.ua-action:hover { background: #f7f7f5; }
+
+.ua-compact { display: flex; align-items: center; gap: 7px; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; font-size: 11px; }
+.ua-label { font-weight: 600; font-size: 11px; flex: none; }
+.ua-compact .count { color: #9a9a9a; font-size: 10.5px; flex: none; }
+.ua-names { flex: 1; min-width: 0; color: #7a7a7a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.criteria-label { margin-top: 9px; font-size: 10px; color: #9a9a9a; letter-spacing: .04em; }
+
+.archived-line { margin-top: 14px; text-align: center; font-size: 11px; color: #9a9a9a; }
+.archived-line .link { color: #7a7a7a; font-size: 11px; }
+
+.detail-back { display: inline-flex; align-items: center; gap: 3px; margin: 0 0 7px; padding: 0; border: 0; background: none; color: #7a7a7a; font-size: 11.5px; cursor: pointer; }
+.detail-back:hover { color: #1f1f1f; }
+.detail-title-row { display: flex; align-items: flex-start; gap: 8px; }
+.detail-title { flex: 1; min-width: 0; margin: 0; font-size: 20px; line-height: 27px; font-weight: 600; letter-spacing: -0.25px; overflow-wrap: anywhere; }
+.detail-goal { margin: 7px 0 0; font-size: 12.5px; line-height: 19px; color: #4a4a4a; overflow-wrap: anywhere; }
+.detail-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); font-size: 11px; color: #7a7a7a; }
+.detail-meta .avatar { width: 21px; height: 21px; }
+.detail-meta .more { margin-left: auto; }
+.detail-focus { margin-top: 12px; margin-bottom: 10px; }
+.detail-focus .focus-row:first-of-type { border-top: 0; }
+.tree { border-top: 1px solid var(--line); }
+.tree-row { display: flex; align-items: center; gap: 7px; min-height: 43px; padding: 5px 4px 5px 3px; border-bottom: 1px solid #f2f2ef; position: relative; min-width: 0; }
+.tree-row.child { min-height: 35px; padding-left: 21px; background: #fcfcfb; }
+.tree-row.child::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 1px; background: #e8e8e5; }
+.tree-row.pending { background: #fffcf7; box-shadow: inset 2px 0 0 #d97706; }
+.tree-row.done { opacity: .62; }
+.tree-toggle { width: 18px; height: 18px; flex: none; border: 0; background: none; color: #8a8a8a; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+.tree-toggle:disabled { cursor: default; opacity: 0; }
+.tree-toggle:hover { color: #1f1f1f; }
+.tree-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; }
+.tree-title { font-size: 12.5px; line-height: 17px; font-weight: 550; color: #1f1f1f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 10.5px; line-height: 15px; color: #8a8a8a; min-width: 0; }
+.tree-meta .owner { color: #6b6b6b; }
+.tree-meta .waiting { color: #8a6a45; }
+.tree-time { flex: none; font-size: 10px; color: #a0a0a0; white-space: nowrap; }
+.done-label { display: flex; align-items: center; gap: 8px; margin: 11px 0 0; font-size: 10.5px; color: #9a9a9a; }
+.done-label::after { content: ''; flex: 1; height: 1px; background: #efefec; }
+.project-columns { min-width: 0; }
+body.layout-wide .project-columns { display: grid; grid-template-columns: minmax(0, 1fr) 292px; gap: 30px; align-items: start; }
+.activity-list { list-style: none; margin: 0; padding: 0; }
+.activity-list li { display: flex; gap: 8px; padding: 7px 0; border-top: 1px solid #f3f3f1; font-size: 11.5px; line-height: 17px; }
+.activity-list li:first-child { border-top: 0; }
+.activity-time { flex: none; width: 62px; color: #9a9a9a; font-size: 10px; padding-top: 1px; }
+.activity-main { min-width: 0; color: #4a4a4a; }
+.activity-main b { font-weight: 600; color: #1f1f1f; }
+.empty-project { border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 24px 16px; text-align: center; margin-top: 14px; }
+.empty-project p { margin: 0 0 5px; font-size: 12px; line-height: 18px; color: #7a7a7a; }
+.empty-project p:first-child { font-size: 13px; color: #1f1f1f; font-weight: 600; }
+.empty-project .btn { margin-top: 8px; }
+
+.filters { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 10px 0 12px; }
+.filter { height: 26px; padding: 0 9px; border: 1px solid transparent; border-radius: 999px; background: none; color: #6b6b6b; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.filter:hover { background: #f3f3f1; }
+.filter[aria-pressed="true"] { background: #f1f1ef; border-color: #e3e3df; color: #1f1f1f; font-weight: 550; }
+.filter .n { color: #9a9a9a; margin-left: 3px; font-variant-numeric: tabular-nums; }
+.project-filter { display: flex; align-items: center; gap: 4px; margin: 2px 0 10px; }
+.project-filter .filter { border-color: var(--line); background: #fff; }
+.project-filter .filter[aria-pressed="true"] { background: #f1f1ef; }
+.search-wrap { flex: 1 1 160px; min-width: 120px; }
+.search { width: 100%; height: 28px; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 0 9px; font-size: 11.5px; color: #1f1f1f; outline: none; }
+.search:focus { border-color: #b9b9b3; }
+.flat-list { border-top: 1px solid var(--line); }
+.flat-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 4px; border: 0; border-bottom: 1px solid #f2f2ef; background: none; text-align: left; cursor: pointer; min-width: 0; }
+.flat-row:hover { background: #fcfcfb; }
+.flat-row.pending { background: #fffcf7; box-shadow: inset 2px 0 0 #d97706; }
+.flat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.flat-title { font-size: 12.5px; line-height: 17px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flat-meta { font-size: 10.5px; line-height: 15px; color: #8a8a8a; display: flex; gap: 5px; flex-wrap: wrap; }
+.flat-time { flex: none; font-size: 10px; color: #a0a0a0; }
+.empty-list { padding: 24px 8px; text-align: center; color: #8a8a8a; font-size: 12px; }
+
+.decision { border: 1px solid var(--warn-line); background: #fffbf4; border-radius: var(--radius); padding: 11px 12px; margin: 10px 0; }
+.decision-kicker { font-size: 10px; line-height: 16px; font-weight: 650; letter-spacing: .06em; color: #9a4b00; }
+.decision-title { margin: 2px 0 3px; font-size: 13.5px; line-height: 19px; font-weight: 600; }
+.decision-text { margin: 0 0 9px; font-size: 12px; line-height: 18px; color: #5c4a34; overflow-wrap: anywhere; }
+.decision-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.note { border: 1px solid var(--line); background: #fafaf8; border-radius: 10px; padding: 9px 11px; margin: 13px 0; font-size: 12px; line-height: 18px; color: #5c5c5c; }
+.note.green { background: #f7fcf8; border-color: #d9efdf; color: #2f6b43; }
+.section { padding: 9px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.section:last-of-type { border-bottom: 0; }
+.section-head2 { display: flex; align-items: baseline; gap: 7px; margin-bottom: 6px; }
+.section-head2 h3 { margin: 0; font-size: 12.5px; line-height: 18px; font-weight: 600; }
+.section-head2 .count { font-size: 10.5px; color: #9a9a9a; }
+.section-head2 .action { margin-left: auto; border: 0; background: none; padding: 0; font-size: 10.5px; color: #6b6b6b; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.body-text { margin: 0; font-size: 12.5px; line-height: 19px; color: #3f3f3f; overflow-wrap: anywhere; }
+.deliverable { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-top: 1px solid #f3f3f1; min-width: 0; }
+.deliverable:first-of-type { border-top: 0; }
+.file-icon { width: 27px; height: 27px; border-radius: 7px; background: #f4f4f2; color: #6b6b6b; display: flex; align-items: center; justify-content: center; flex: none; }
+.deliverable-main { flex: 1; min-width: 0; }
+.deliverable-name { font-size: 12px; line-height: 17px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deliverable-meta { font-size: 10.5px; line-height: 15px; color: #8a8a8a; }
+.deliverable-action { flex: none; height: 23px; padding: 0 8px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-size: 10.5px; cursor: pointer; }
+.deliverable-action:hover { background: #f7f7f5; }
+.criteria { list-style: none; margin: 7px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.criteria li { display: flex; align-items: flex-start; gap: 7px; font-size: 11.5px; line-height: 17px; color: #4a4a4a; }
+.criteria .kind { flex: none; border: 1px solid #e6e6e2; border-radius: 3px; padding: 0 4px; height: 15px; line-height: 14px; font-size: 9.5px; color: #8a8a8a; margin-top: 1px; }
+.criteria .check { flex: none; color: var(--green); margin-top: 1px; }
+.owner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+.owner-cell { min-width: 0; }
+.owner-cell .k { font-size: 10px; color: #9a9a9a; margin-bottom: 2px; }
+.owner-cell .v { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: #3f3f3f; min-width: 0; }
+.owner-cell .v span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtask-row { display: flex; align-items: center; gap: 7px; width: 100%; padding: 6px 0; border: 0; border-top: 1px solid #f3f3f1; background: none; text-align: left; cursor: pointer; min-width: 0; }
+.subtask-row:first-of-type { border-top: 0; }
+.subtask-title { flex: 1; min-width: 0; font-size: 11.5px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtask-owner { font-size: 10.5px; color: #8a8a8a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+.subtask-note { font-size: 11px; color: #8a8a8a; line-height: 17px; margin: 4px 0 0; }
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { position: relative; padding: 0 0 12px 17px; margin-left: 3px; border-left: 1px solid #e8e8e5; }
+.timeline li:last-child { padding-bottom: 0; border-left-color: transparent; }
+.timeline li::before { content: ''; position: absolute; left: -3.5px; top: 4px; width: 6px; height: 6px; border-radius: 50%; background: #d0d0cb; }
+.timeline .who { font-size: 10px; line-height: 15px; color: #8a8a8a; margin-bottom: 1px; }
+.timeline .what { font-size: 11.5px; line-height: 17px; color: #3f3f3f; overflow-wrap: anywhere; }
+.source-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.source-chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; font-size: 10px; color: #6b6b6b; }
+.source-note { font-size: 10.5px; color: #9a9a9a; margin-top: 6px; }
+details.exec { border-top: 1px solid #f3f3f1; padding-top: 9px; margin-top: 3px; }
+details.exec summary { list-style: none; cursor: pointer; font-size: 11.5px; color: #6b6b6b; }
+details.exec summary::-webkit-details-marker { display: none; }
+details.exec summary::before { content: '›'; display: inline-block; margin-right: 5px; color: #9a9a9a; transform: rotate(0deg); }
+details.exec[open] summary::before { transform: rotate(90deg); }
+.exec-body { padding: 7px 0 0 14px; font-size: 10.5px; color: #8a8a8a; }
+.exec-body .btn { margin-top: 5px; }
+
+.overlay { position: fixed; inset: 0; background: rgba(20,20,20,.20); z-index: 80; opacity: 0; pointer-events: none; transition: opacity .16s ease; }
+.overlay.open { opacity: 1; pointer-events: auto; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(430px, 94vw); background: #fff; border-left: 1px solid var(--line); z-index: 90; display: flex; flex-direction: column; transform: translateX(100%); transition: transform .2s ease; box-shadow: -8px 0 30px rgba(0,0,0,.05); }
+.drawer.open { transform: none; }
+.drawer:focus { outline: none; }
+.drawer-head { height: 56px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+.drawer-title { font-size: 14px; font-weight: 600; }
+.drawer-count { min-width: 17px; height: 17px; border-radius: 999px; padding: 0 5px; background: #fff1e8; color: #a85a08; font-size: 10px; line-height: 17px; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; }
+.drawer-head .icon-btn { margin-left: auto; }
+.drawer-sub { flex: none; padding: 9px 16px 8px; font-size: 11px; line-height: 17px; color: #8a8a8a; border-bottom: 1px solid #f3f3f1; }
+.drawer-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 14px 24px; }
+.group-head { display: flex; align-items: center; gap: 6px; padding: 12px 2px 6px; font-size: 11.5px; font-weight: 600; color: #3f3f3f; }
+.group-head .count { font-size: 10px; color: #9a9a9a; font-weight: 400; }
+.group-head .proj { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-head .barline { width: 18px; height: 2px; border-radius: 2px; background: #d97706; flex: none; }
+.notice { border: 1px solid var(--line); border-left: 3px solid #d97706; border-radius: 10px; padding: 9px 11px; margin-bottom: 8px; background: #fff; }
+.notice[data-kind="retry"] { border-left-color: var(--red); }
+.notice-title { font-size: 12.5px; line-height: 18px; font-weight: 600; }
+.notice-what { margin-top: 3px; font-size: 11.5px; line-height: 17px; color: #4a4a4a; }
+.notice-next { margin-top: 3px; font-size: 11.5px; line-height: 17px; color: #4a4a4a; }
+.notice-consequence { margin-top: 3px; font-size: 10.5px; line-height: 16px; color: #9a6a3a; }
+.notice-actions { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+.notice-actions .link { font-size: 10.5px; color: #7a7a7a; text-decoration: none; }
+.notice-actions .link:hover { text-decoration: underline; }
+.drawer-empty { padding: 28px 8px; text-align: center; color: #8a8a8a; font-size: 12px; line-height: 18px; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(20,20,20,.28); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 18px; }
+.modal { position: relative; width: min(450px, 100%); max-height: 86vh; overflow: auto; background: #fff; border-radius: 14px; box-shadow: 0 18px 48px rgba(0,0,0,.16); padding: 16px; }
+.modal h2 { margin: 0 0 4px; font-size: 15px; line-height: 21px; font-weight: 600; }
+.modal .sub { margin: 0 0 12px; font-size: 11.5px; line-height: 17px; color: #7a7a7a; }
+.modal .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 9px; font-size: 11px; color: #6b6b6b; }
+.modal input, .modal textarea, .modal select { width: 100%; border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 8px; background: #fff; color: #1f1f1f; font-size: 12px; line-height: 18px; outline: none; }
+.modal input:focus, .modal textarea:focus, .modal select:focus { border-color: #a9a9a3; }
+.modal textarea { min-height: 72px; resize: vertical; }
+.modal .quote { border-left: 2px solid #e8d4b8; background: #fffbf4; padding: 7px 9px; border-radius: 0 6px 6px 0; font-size: 12px; line-height: 18px; color: #5c4a34; margin: 7px 0; }
+.modal .small { font-size: 10.5px; line-height: 16px; color: #8a8a8a; margin: 6px 0 0; }
+.modal .criteria { margin-bottom: 10px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; flex-wrap: wrap; }
+.modal .danger-note { background: #fff6f6; border: 1px solid #f0dada; color: #8a3a3a; border-radius: 8px; padding: 7px 9px; font-size: 11px; line-height: 17px; margin-top: 8px; }
+
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 8px); z-index: 120; max-width: 80vw; padding: 8px 12px; border-radius: 9px; background: #1f1f1f; color: #fff; font-size: 11.5px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity .15s ease, transform .15s ease; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.notice-fab[hidden], .count[hidden] { display: none; }
+.notice-fab { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 999px; background: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.07); font-size: 11.5px; cursor: pointer; }
+.notice-fab:hover { border-color: #bdbdb7; }
+.notice-fab .count { min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: #c2410c; color: #fff; font-size: 10px; line-height: 17px; display: inline-flex; align-items: center; justify-content: center; }
+.proto-guide { position: fixed; left: 16px; bottom: 52px; z-index: 70; height: 26px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 999px; background: rgba(255,255,255,.92); color: #6b6b6b; font-size: 10.5px; cursor: pointer; }
+.proto-guide:hover { color: #1f1f1f; border-color: #bdbdb7; }
+body.clean .proto-guide { display: none; }
+.guide-list { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 0; }
+.guide-list button { text-align: left; border: 0; background: none; padding: 6px 7px; border-radius: 6px; font-size: 12px; color: #3f3f3f; cursor: pointer; }
+.guide-list button:hover { background: #f3f3f1; }
+.guide-list .tiny { font-size: 10px; color: #9a9a9a; padding: 4px 7px; }
+
+@media (max-width: 1180px) {
+  .panel { width: 560px; }
+}
+@media (max-width: 1000px) {
+  .rail { width: 236px; }
+  .chat { display: none; }
+  .panel { width: auto; flex: 1; }
+}
+@media (max-width: 760px) {
+  .rail, .chat { display: none; }
+  .panel { width: 100%; flex: 1; }
+  body .panel-body { padding: 12px 12px 28px; }
+  .notice-fab { right: 12px; bottom: 12px; }
+  .proto-guide { left: 12px; bottom: 12px; }
+  body.layout-side .proto-guide { bottom: 52px; }
+  .detail-title, .page-title { font-size: 19px; }
+}
+@media (max-width: 520px) {
+  .focus-row .focus-project, .focus-row .time { display: none; }
+  .card-foot .src { display: none; }
+}
+@media (max-width: 460px) {
+  .page-actions .btn-ghost { display: none; }
+  .owner-grid { grid-template-columns: 1fr; }
+  .subtask-owner { max-width: 90px; }
+}
+</style>
+</head>
+<body class="layout-side">
+<div class="app">
+  <aside class="rail" aria-label="主导航">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M4 15c4-1 6-4 8-9 1 5 3 8 8 9-4 1-6 2-8 6-1-4-4-5-8-6Z"/></svg></span>
+      <span class="brand-name">deepseek</span><span class="brand-pill">HARNESS</span>
+    </div>
+    <button class="new-chat" type="button" data-toast="原型：新会话入口保持现状。">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      新会话
+    </button>
+    <div class="rail-scroll">
+      <nav class="nav" aria-label="功能">
+        <button class="nav-item" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 3v4M15 3v4M7 7h10v4a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3V7Z"/><path d="M12 14v3a2 2 0 0 0 2 2h0"/></svg></span>插件</button>
+        <button class="nav-item" type="button" aria-current="true"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/><path d="m18.5 15 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></svg></span>Superagent</button>
+        <button class="nav-item" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg></span>自动化任务</button>
+        <button class="nav-item" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></span>更多</button>
+      </nav>
+      <div class="section-label"><span>工作区</span><span class="tools">
+        <button type="button" aria-label="搜索"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.2-4.2"/></svg></button>
+        <button type="button" aria-label="筛选"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M7 12h10M10 17h4"/></svg></button>
+        <button type="button" aria-label="新建"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></button>
+      </span></div>
+      <div class="ws-list">
+        <button class="ws-item active" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h6l2 2h10v10H3z"/></svg></span>superagent</button>
+        <button class="ws-item" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h6l2 2h10v10H3z"/></svg></span>dsh-superagent</button>
+        <button class="ws-item" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h6l2 2h10v10H3z"/></svg></span>研究</button>
+        <button class="ws-item" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h6l2 2h10v10H3z"/></svg></span>旅行</button>
+        <button class="sess" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg></span><span class="txt">项目进展</span><span class="pin">置顶</span></button>
+        <button class="sess" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg></span><span class="txt">支付接入 · 验收</span></button>
+        <button class="sess" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg></span><span class="txt">激光雷达到货</span></button>
+      </div>
+    </div>
+    <div class="rail-foot">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+      更多
+    </div>
+  </aside>
+
+  <main class="chat" aria-label="主对话">
+    <header class="chat-head">
+      <span class="chat-title">项目进展</span><span class="chat-sub">主对话</span>
+      <div class="tools">
+        <button type="button" aria-label="更多"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+        <button type="button" aria-label="打开右侧任务"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
+      </div>
+    </header>
+    <div class="chat-body">
+      <div class="msg-user">A 系统开发现在到哪了？支付接入是不是该我看一下？</div>
+      <div class="msg-assistant">
+        <div class="msg-name"><svg class="spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/></svg>小助</div>
+        <p><b>A 系统开发</b>有 2 件在等你：<b>支付接入</b>等你验收，<b>数据迁移</b>等你确认历史订单保留年限。其余任务在正常推进。</p>
+        <p class="msg-quiet">项目负责 worker 是开发负责人；支付接入的任务负责人是支付负责人；交付物和 2 条验收条件已经就绪。</p>
+        <div class="msg-actions">
+          <button class="btn btn-outline btn-sm" type="button" data-open-task="a2">查看支付接入</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-go="notices">打开待办</button>
+        </div>
+      </div>
+      <div class="msg-user">先看项目，不要先给我一长串任务。</div>
+      <div class="msg-assistant">
+        <div class="msg-name"><svg class="spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/></svg>小助</div>
+        <p>可以。右侧「任务」默认就是项目列表；每个项目先显示目标、负责 worker 和“有没有在等我”。点进去才是任务树。</p>
+        <p class="msg-quiet">项目不是一次任务；A 系统开发会一直在，直到你归档它。</p>
+      </div>
+    </div>
+    <div class="chat-input">
+      <div class="row"><span class="plus" aria-hidden="true">+</span><span class="placeholder">发消息或创建任务，/ 调用指令，@ 文件或对话</span><button class="send" type="button" aria-label="发送" data-toast="原型：这里不连接真实输入框。"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+    </div>
+    <div class="chat-foot"><span>1 轮 1 步</span><span>14.3K tok</span><span>缓存命中 0%</span></div>
+  </main>
+
+  <section class="panel" id="panel" aria-label="任务面板">
+    <header class="panel-head" id="panel-head">
+      <div class="panel-tab">任务<button class="x" type="button" aria-label="关闭任务面板" data-toast="原型：关闭后回到主对话。"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+      <button class="icon-btn" type="button" aria-label="新建项目" data-modal="create-project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+      <span class="spacer"></span>
+      <button class="icon-btn" type="button" aria-label="面板布局"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+      <button class="icon-btn" type="button" aria-label="全屏"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></svg></button>
+    </header>
+    <div class="panel-body" id="panel-body"></div>
+  </section>
+</div>
+
+<button class="notice-fab" id="notice-fab" type="button" data-go="notices" aria-label="打开待处理通知">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>
+  <span id="fab-label">正在加载</span><span class="count" id="fab-count" hidden>0</span>
+</button>
+<button class="proto-guide" id="proto-guide" type="button" data-modal="guide">原型导览</button>
+
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="等你处理" aria-hidden="true" tabindex="-1">
+  <header class="drawer-head">
+    <span class="drawer-title">等你处理</span><span class="drawer-count" id="drawer-count">0</span>
+    <button class="icon-btn" type="button" aria-label="关闭" data-close="drawer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+  </header>
+  <div class="drawer-sub">只显示真正等你决定、验收或补信息的任务；其余进展留在任务和项目里。</div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
+<div id="modal-root"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+
+/* ---------------------------------------------------------------------------
+   Synthetic fixture. Every project, task, owner, file and message here is
+   invented for the design prototype; no real Feishu content, session title,
+   account or ticket is used.
+--------------------------------------------------------------------------- */
+const projects = [
+  {
+    id: 'a', name: 'A 系统开发', goal: '把内部工单系统迁到新架构，12 月中旬前完成切换。',
+    owner: '开发负责人', ownerRev: 2, state: 'active',
+    taskIds: ['a1', 'a2', 'a3', 'a4'], lastActivity: '12 分钟前 · 支付接入已就绪', updatedAt: '2026-11-14T15:48:00+08:00', sources: ['对话', 'GitHub'],
+  },
+  {
+    id: 'b', name: 'B 桌面机器人研究', goal: '做一台能在家里自主移动、避障和取物的桌面机器人原型。',
+    owner: '硬件负责人', ownerRev: 1, state: 'active',
+    taskIds: ['b1', 'b2', 'b3', 'b4'], lastActivity: '今天 10:40 · 避障感知标记了阻塞', updatedAt: '2026-11-14T10:40:00+08:00', sources: ['对话'],
+  },
+  {
+    id: 'c', name: 'C 旅行计划', goal: '十一月初去京都 5 天，先把机票、住处和每日路线定下来。',
+    owner: '行程负责人', ownerRev: 1, state: 'active',
+    taskIds: ['c1', 'c2', 'c3'], lastActivity: '1 小时前 · 住处候选更新', updatedAt: '2026-11-14T14:48:00+08:00', sources: ['对话'],
+  },
+  {
+    id: 'd', name: 'D 旧站下线', goal: '把旧官网下线，保留归档和跳转。',
+    owner: '运维负责人', ownerRev: 1, state: 'archived',
+    taskIds: ['d1', 'd2'], lastActivity: '9 月 28 日 · 归档；跳转规则仍待验收', updatedAt: '2026-09-28T18:00:00+08:00', sources: ['对话'],
+  },
+]
+
+const tasks = {
+  a1: {
+    id: 'a1', projectId: 'a', title: '登录改版', status: 'working',
+    owner: '开发负责人', ownerRev: 2, goal: '把登录页换成新的账号体系，兼容旧会话。',
+    children: ['a1a', 'a1b'], lastEvent: '刚刚', lastEventShort: '刚刚', source: '对话',
+    summary: '登录页已切到新账号体系；接口鉴权完成，错误提示文案在等父负责人验收。',
+    next: '等子任务收尾；现在不需要你。',
+    reports: [
+      { who: '开发负责人', at: '今天 10:30', what: '把两个子任务挂到登录改版下；接口鉴权先走。' },
+      { who: '小助', at: '今天 10:31', what: '判断：拆解合理；两个子任务各自有负责人和交付物。' },
+    ],
+  },
+  a1a: {
+    id: 'a1a', parentId: 'a1', projectId: 'a', title: '接口鉴权', status: 'done',
+    owner: '鉴权负责人', ownerRev: 1, goal: '接好新账号体系的鉴权，旧 token 平滑迁移。',
+    lastEvent: '今天 10:12 · 已由上级负责人接受', lastEventShort: '10:12', source: '子任务',
+    childAccepted: true,
+    summary: '鉴权接口已上线预发；旧 token 双读通过。',
+    next: '已由上级负责人接受；最终验收在根任务「登录改版」。',
+    deliverables: [
+      { name: '鉴权接口', meta: '代码 · 1 个文件 · +96 / −12' },
+      { name: '旧 token 双读记录', meta: '文档 · 2 条验证记录' },
+    ],
+    reports: [
+      { who: '鉴权负责人', at: '今天 10:02', what: '汇报了结果：鉴权接口已上线预发，旧 token 双读通过。' },
+      { who: '开发负责人', at: '今天 10:12', what: '接受了子任务；交付物归档。' },
+    ],
+  },
+  a1b: {
+    id: 'a1b', parentId: 'a1', projectId: 'a', title: '错误提示文案', status: 'waiting',
+    owner: '文案负责人', ownerRev: 3, goal: '统一登录失败提示，给出下一步。',
+    children: ['a1b1'], lastEvent: '今天 08:20 · 已向开发负责人汇报', lastEventShort: '08:20', source: '子任务',
+    summary: '6 条登录失败提示已交；回调签名文案已由你接受；等开发负责人判断。',
+    next: '等上级负责人验收；现在不需要你。',
+    reports: [
+      { who: '文案负责人', at: '今天 08:20', what: '汇报了初稿：6 条登录失败提示，含下一步建议。' },
+      { who: '开发负责人', at: '今天 08:22', what: '还没有判断；等这一轮联调结束。' },
+    ],
+  },
+  a1b1: {
+    id: 'a1b1', parentId: 'a1b', projectId: 'a', title: '回调签名文案', status: 'done',
+    owner: '文案负责人', ownerRev: 3, goal: '把回调失败提示和签名错误说清楚。',
+    lastEvent: '今天 08:10 · 已由上级负责人接受', lastEventShort: '08:10', source: '子任务',
+    childAccepted: true,
+    summary: '回调签名相关 2 条提示已交；由文案负责人验收。',
+    next: '已由上级负责人接受；最终验收在根任务「登录改版」。',
+    deliverables: [{ name: '回调签名文案', meta: '文档 · 2 条提示 · 1 条示例' }],
+    reports: [
+      { who: '文案负责人', at: '今天 08:05', what: '汇报了回调签名提示的 2 条改法。' },
+      { who: '文案负责人', at: '今天 08:10', what: '接受了这条子任务；交给上级负责人。' },
+    ],
+  },
+  a2: {
+    id: 'a2', projectId: 'a', title: '支付接入', status: 'review', pending: 'review',
+    owner: '支付负责人', ownerRev: 1, goal: '接通新的支付通道，灰度 10% 不新增失败。',
+    lastEvent: '12 分钟前 · 汇报了结果', lastEventShort: '12 分钟前', source: '对话',
+    attentionAt: '12 分钟前',
+    summary: '支付回调已接通，灰度 10% 验证通过；2 个文件、2 条验收条件。',
+    next: '等你验收；批准后任务结束，退回会重开执行。',
+    deliverables: [
+      { name: '支付接入 diff', meta: '代码 · 2 个文件 · +184 / −37' },
+      { name: '灰度验证记录', meta: '文档 · 3 条记录 · 10% 流量' },
+    ],
+    criteria: [
+      { kind: '规则', text: '预发环境下单成功率达到 99.9%。' },
+      { kind: '人工确认', text: '灰度 10% 时无新增支付失败。' },
+    ],
+    reports: [
+      { who: '支付负责人', at: '今天 11:40', what: '汇报了结果：支付回调已接通，灰度 10% 验证通过。' },
+      { who: '小助', at: '今天 11:42', what: '判断：交付完整，转给你验收。' },
+    ],
+  },
+  a3: {
+    id: 'a3', projectId: 'a', title: '数据迁移', status: 'answer', pending: 'answer',
+    owner: '数据负责人', ownerRev: 2, goal: '把历史订单迁到新库，保留旧查询一年。',
+    lastEvent: '1 小时前 · 提出了问题', lastEventShort: '1 小时前', source: '对话',
+    attentionAt: '1 小时前',
+    question: '历史订单要保留几年？只读查询要不要一起保留？',
+    summary: '迁移脚本和双写方案已就绪；保留年限没定，负责人暂停。',
+    next: '等你回答；回答后负责人继续。',
+    reports: [
+      { who: '数据负责人', at: '今天 10:15', what: '提出问题：历史订单保留几年？只读查询要不要一起保留？' },
+      { who: '小助', at: '今天 10:16', what: '已把问题转给你；负责人暂停，等你回答。' },
+    ],
+  },
+  a4: {
+    id: 'a4', projectId: 'a', title: '权限梳理', status: 'done', doneAt: '昨天',
+    owner: '权限负责人', ownerRev: 1, goal: '梳理后台角色，去掉重复权限。',
+    lastEvent: '昨天 · 任务完成', lastEventShort: '昨天', source: '对话',
+    summary: '后台角色从 18 个收敛到 9 个；重复权限已合并。',
+    next: '已结束。',
+    deliverables: [{ name: '权限矩阵', meta: '文档 · 9 个角色 · 3 条合并说明' }],
+    reports: [
+      { who: '权限负责人', at: '昨天 16:20', what: '汇报了结果：权限矩阵已更新，重复角色合并。' },
+      { who: '小助', at: '昨天 16:22', what: '结果已归档；任务结束。' },
+    ],
+  },
+
+  b1: {
+    id: 'b1', projectId: 'b', title: '电机选型与驱动', status: 'working',
+    owner: '硬件负责人', ownerRev: 1, goal: '选定电机和驱动板，跑通低速闭环。',
+    children: ['b1a', 'b1b'], lastEvent: '今天 10:05 · 固件联调中', lastEventShort: '10:05', source: '对话',
+    summary: '驱动板和固件在联调；轮速标定已交，等父负责人验收。',
+    next: '等子任务收尾；现在不需要你。',
+    reports: [
+      { who: '硬件负责人', at: '今天 09:55', what: '把驱动固件和轮速标定拆成两个子任务。' },
+    ],
+  },
+  b1a: {
+    id: 'b1a', parentId: 'b1', projectId: 'b', title: '驱动固件', status: 'working',
+    owner: '固件负责人', ownerRev: 1, goal: '把驱动板固件跑到可标定的状态。',
+    lastEvent: '今天 10:05 · 低速抖动还在调', lastEventShort: '10:05', source: '子任务',
+    summary: '驱动固件 v3 已烧录；还在调低速抖动。',
+    next: '等负责人继续；现在不需要你。',
+    reports: [{ who: '固件负责人', at: '今天 10:05', what: '汇报了进展：v3 已烧录，低速抖动还在调。' }],
+  },
+  b1b: {
+    id: 'b1b', parentId: 'b1', projectId: 'b', title: '轮速标定', status: 'waiting',
+    owner: '标定负责人', ownerRev: 1, goal: '标定左右轮速，给出可复现的记录。',
+    lastEvent: '今天 09:40 · 已向硬件负责人汇报', lastEventShort: '09:40', source: '子任务',
+    summary: '轮速标定记录已交，等硬件负责人判断。',
+    next: '等上级负责人验收；现在不需要你。',
+    deliverables: [{ name: '轮速标定记录', meta: '表格 · 2 组轮速 · 1 段视频' }],
+    reports: [
+      { who: '标定负责人', at: '今天 09:40', what: '汇报了结果：两组轮速标定完成，记录已交。' },
+      { who: '硬件负责人', at: '今天 09:42', what: '还没有判断；等驱动固件稳定后一起看。' },
+    ],
+  },
+  b2: {
+    id: 'b2', projectId: 'b', title: '移动底盘', status: 'working',
+    owner: '硬件负责人', ownerRev: 1, goal: '把底盘、电机和避障装成一个能跑的整机。',
+    children: ['b2a'], lastEvent: '今天 10:20 · 底盘方案已定', lastEventShort: '10:20', source: '对话',
+    summary: '底盘方案已定；避障子任务在等激光雷达。',
+    next: '等避障子任务收尾；现在不需要你。',
+    reports: [
+      { who: '硬件负责人', at: '今天 10:20', what: '底盘方案已定；把避障感知拆成子任务。' },
+    ],
+  },
+  b2a: {
+    id: 'b2a', parentId: 'b2', projectId: 'b', title: '避障感知', status: 'blocked',
+    owner: '硬件负责人', ownerRev: 1, goal: '在桌面范围内稳定识别桌沿和手。',
+    lastEvent: '今天 10:40 · 标记了阻塞', lastEventShort: '10:40', source: '子任务',
+    blocker: '等激光雷达到货；供应商预计 2 天。',
+    summary: '避障方案已定，硬件没到，无法开始实测。',
+    next: '等负责人处理；现在不需要你。',
+    reports: [
+      { who: '硬件负责人', at: '今天 10:40', what: '标记阻塞：等激光雷达到货，供应商预计 2 天。' },
+    ],
+  },
+  b3: {
+    id: 'b3', projectId: 'b', title: '抓取机构', status: 'queued',
+    owner: '机械负责人', ownerRev: 1, goal: '做一套能抓起 300g 物体的夹爪。',
+    lastEvent: '昨天 · 任务排队', lastEventShort: '昨天', source: '对话',
+    summary: '还没有开始；等避障感知完成。',
+    next: '等负责人处理；现在不需要你。',
+  },
+  b4: {
+    id: 'b4', projectId: 'b', title: '需求与场地确认', status: 'done', doneAt: '昨天',
+    owner: '硬件负责人', ownerRev: 1, goal: '确认桌面尺寸、电源和测试场地。',
+    lastEvent: '昨天 · 任务完成', lastEventShort: '昨天', source: '对话',
+    summary: '桌面尺寸 120×60cm，电源和测试场地已确认。',
+    next: '已结束。',
+    reports: [{ who: '硬件负责人', at: '昨天 14:10', what: '结果已归档；任务结束。' }],
+  },
+
+  c1: {
+    id: 'c1', projectId: 'c', title: '机票与日期', status: 'review', pending: 'review',
+    owner: '行程负责人', ownerRev: 1, goal: '定下京都 5 天的往返日期和航班。',
+    lastEvent: '1 小时前 · 汇报了结果', lastEventShort: '1 小时前', source: '对话',
+    attentionAt: '1 小时前',
+    summary: '11 月 2 日去、11 月 6 日回，两个航班方案都可在 24 小时内取消。',
+    next: '等你验收；批准后任务结束，退回会重开执行。',
+    deliverables: [
+      { name: '航班对比', meta: '表格 · 2 个方案 · 含退改签' },
+      { name: '日期建议', meta: '文档 · 1 页 · 避开周末高峰' },
+    ],
+    criteria: [
+      { kind: '人工确认', text: '11 月 2 日出发、11 月 6 日返回可以接受。' },
+      { kind: '规则', text: '两个方案都必须在 24 小时内可取消。' },
+    ],
+    reports: [
+      { who: '行程负责人', at: '今天 09:50', what: '汇报了结果：11 月 2 日去、11 月 6 日回，两个航班方案。' },
+      { who: '小助', at: '今天 09:52', what: '判断：交付完整，转给你验收。' },
+    ],
+  },
+  c2: {
+    id: 'c2', projectId: 'c', title: '住处候选', status: 'working',
+    owner: '住处负责人', ownerRev: 1, goal: '选出 3 个可取消的住处候选。',
+    lastEvent: '1 小时前 · 新增 2 个候选', lastEventShort: '1 小时前', source: '对话',
+    summary: '已筛出 3 个可取消的住处；还在比通勤。',
+    next: '等负责人继续；现在不需要你。',
+    reports: [{ who: '住处负责人', at: '今天 09:30', what: '新增 2 个可取消候选；还在比到地铁站的时间。' }],
+  },
+  c3: {
+    id: 'c3', projectId: 'c', title: '预算', status: 'done', doneAt: '昨天',
+    owner: '行程负责人', ownerRev: 1, goal: '给出 5 天行程的总预算。',
+    lastEvent: '昨天 · 任务完成', lastEventShort: '昨天', source: '对话',
+    summary: '5 天预算 8,600 元，含机票和住宿。',
+    next: '已结束。',
+    reports: [{ who: '行程负责人', at: '昨天 18:00', what: '结果已归档；任务结束。' }],
+  },
+
+  u1: {
+    id: 'u1', projectId: null, title: '整理迁移说明', status: 'failed', pending: 'retry',
+    owner: '默认执行配置', ownerRev: null, goal: '把迁移步骤整理成一份可执行的说明。',
+    lastEvent: '今天 09:10 · 连续 2 次失败', lastEventShort: '09:10', source: '对话',
+    attentionAt: '今天 09:10',
+    failure: '连续 2 次失败：没有权限读取迁移目录。',
+    summary: '没有产出；失败在读取源目录。',
+    next: '等你决定重试或停止。',
+    reports: [
+      { who: '默认执行配置', at: '今天 09:10', what: '连续 2 次失败：没有权限读取迁移目录。' },
+      { who: '小助', at: '今天 09:11', what: '已停止重试；等你决定重试或停止。' },
+    ],
+  },
+  u2: {
+    id: 'u2', projectId: null, title: '评估新的 OCR 方案', status: 'queued',
+    owner: '默认执行配置', ownerRev: null, goal: '比较两个 OCR 方案的准确率和成本。',
+    lastEvent: '昨天 · 任务排队', lastEventShort: '昨天', source: '对话',
+    summary: '还没有开始；排在迁移任务之后。',
+    next: '等负责人处理；现在不需要你。',
+  },
+
+  d1: {
+    id: 'd1', projectId: 'd', title: '旧站归档', status: 'done', doneAt: '9 月 26 日',
+    owner: '运维负责人', ownerRev: 1, goal: '把旧站内容打包归档。',
+    lastEvent: '9 月 26 日 · 任务完成', lastEventShort: '9 月 26 日', source: '对话',
+    summary: '旧站内容已归档到冷存储。', next: '已结束。',
+  },
+  d2: {
+    id: 'd2', projectId: 'd', title: '跳转规则', status: 'review', pending: 'review',
+    owner: '运维负责人', ownerRev: 1, goal: '为旧链接配置跳转。',
+    lastEvent: '9 月 28 日 · 交付已就绪，等你验收', lastEventShort: '9 月 28 日', source: '对话',
+    summary: '旧链接跳转规则已按清单配好；归档项目里这条仍等你验收。',
+    next: '等你验收；不处理会一直停在这里。',
+    deliverables: [{ name: 'redirects.csv', meta: '312 条旧链接 · 2 KB' }],
+    criteria: [{ kind: '规则', text: '312 条旧链接都返回目标页；没有 404。' }],
+    reports: [{ who: '运维负责人', at: '9 月 28 日', what: '交付跳转规则；项目先归档，待办不隐藏。' }],
+  },
+}
+
+const state = {
+  screen: 'projects',
+  projectId: null,
+  projectFrom: 'projects',
+  taskId: null,
+  taskFrom: null,
+  filter: 'all',
+  query: '',
+  expanded: { a1: true, a1b: true, b2: true },
+  allExpanded: false,
+  drawer: false,
+  modal: null,
+  lastFocus: null,
+}
+
+const params = new URLSearchParams(location.search)
+const layout = params.get('layout') || 'side'
+document.body.classList.remove('layout-side', 'layout-wide', 'layout-narrow')
+document.body.classList.add(`layout-${['side', 'wide', 'narrow'].includes(layout) ? layout : 'side'}`)
+if (params.get('clean') === '1') document.body.classList.add('clean')
+
+const byId = id => tasks[id]
+const projectById = id => projects.find(p => p.id === id)
+const activeProjects = () => projects.filter(p => p.state === 'active')
+const projectRoots = p => p.taskIds.map(id => tasks[id]).filter(Boolean)
+const projectTasks = p => projectRoots(p).flatMap(t => [t, ...(t.children || []).map(id => tasks[id]).filter(Boolean)])
+const unassignedRoots = () => Object.values(tasks).filter(t => !t.parentId && !t.projectId)
+const rootTasks = () => [...projects.flatMap(projectRoots), ...unassignedRoots()]
+const projectName = id => projectById(id)?.name || '未归入项目'
+const projectLabel = id => {
+  const p = projectById(id)
+  return p ? `${p.name}${p.state === 'archived' ? '（已归档）' : ''}` : '未归入项目'
+}
+
+// Mirrors the shipped attentionFor: a live root's own person stage counts; a blocked/failed root is a person
+// decision even if the worker is still around, while a blocked child with a living ancestor owner stays quiet.
+const ATTENTION_STATUS = new Set(['review', 'answer', 'delivery', 'blocked', 'failed'])
+const attentionKind = t => {
+  if (!t || t.ended || doneStatus(t)) return null
+  if (t.pending) return t.pending
+  if (t.status === 'delivery') return 'retry'
+  if (ATTENTION_STATUS.has(t.status)) return t.status === 'review' ? 'review' : t.status === 'answer' ? 'answer' : 'retry'
+  return null
+}
+const attentionRoots = list => list.filter(t => attentionKind(t))
+const PENDING_ORDER = { review: 0, answer: 1, retry: 2 }
+const pendingRoots = () => attentionRoots(rootTasks())
+  .sort((a, b) => (PENDING_ORDER[attentionKind(a)] ?? 9) - (PENDING_ORDER[attentionKind(b)] ?? 9))
+const doneStatus = t => t.status === 'done' || t.status === 'stopped'
+
+const STATUS = {
+  working: { label: '进行中', cls: 'working' },
+  review: { label: '待你验收', cls: 'review' },
+  answer: { label: '待你回答', cls: 'answer' },
+  blocked: { label: '被卡住', cls: 'blocked' },
+  failed: { label: '失败', cls: 'failed' },
+  queued: { label: '排队中', cls: 'queued' },
+  done: { label: '已完成', cls: 'done' },
+  waiting: { label: '等上级验收', cls: 'waiting' },
+  stopped: { label: '已停止', cls: 'stopped' },
+}
+
+const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
+const chip = (status, extra = '') => {
+  const meta = STATUS[status] || STATUS.queued
+  return `<span class="chip ${meta.cls} ${extra}"><span class="dot"></span>${meta.label}</span>`
+}
+const projectChip = p => {
+  if (p.state === 'archived') return '<span class="chip archived"><span class="dot"></span>已归档</span>'
+  const counts = projectCounts(p)
+  if (counts.attention) return `<span class="chip review"><span class="dot"></span>待你 ${counts.attention}</span>`
+  if (counts.blocked) return `<span class="chip blocked"><span class="dot"></span>有阻塞 ${counts.blocked}</span>`
+  if (counts.total && counts.done === counts.total) return '<span class="chip done"><span class="dot"></span>全部完成</span>'
+  if (!counts.total) return '<span class="chip queued"><span class="dot"></span>还没有任务</span>'
+  return '<span class="chip working"><span class="dot"></span>进行中</span>'
+}
+
+function projectCounts(p) {
+  const roots = projectRoots(p)
+  const all = projectTasks(p)
+  return {
+    total: roots.length,
+    done: roots.filter(t => t.status === 'done').length,
+    open: roots.filter(t => t.status !== 'done' && t.status !== 'stopped').length,
+    attention: attentionRoots(roots).length + (p.ownerUnavailable ? 1 : 0),
+    blocked: all.filter(t => t.status === 'blocked').length,
+    failed: all.filter(t => t.status === 'failed').length,
+  }
+}
+
+function pendingTaskMeta(t, kind = attentionKind(t)) {
+  if (kind === 'review') return {
+    tag: '验收', action: '去验收', modal: 'review',
+    title: `「${t.title}」的交付已就绪`,
+    what: t.summary,
+    next: '查看并验收，或退回修改。',
+    consequence: '不处理会一直停在这里，负责人不会继续。',
+    verb: '验收',
+  }
+  if (kind === 'answer') return {
+    tag: '回答', action: '回答', modal: 'answer',
+    title: `「${t.title}」需要你回答`,
+    what: t.question,
+    next: '回答后负责人继续。',
+    consequence: '不回答，这个任务会一直停在这里。',
+    verb: '回答',
+  }
+  const blocked = t.status === 'blocked'
+  return {
+    tag: '处理', action: blocked ? '处理' : '重试', modal: 'retry',
+    title: blocked ? `「${t.title}」被阻塞，需要你决定` : `「${t.title}」失败了，负责人已停止`,
+    what: t.failure || t.blocker,
+    next: '重试会重新开始；停止会结束这个任务。',
+    consequence: blocked ? '不处理，任务会一直停在阻塞状态。' : '不处理，任务会停在失败状态。',
+    verb: '处理',
+  }
+}
+
+function avatar(name) {
+  const palettes = [
+    ['#eef2f7', '#45505e'], ['#f5efe8', '#7a5a3a'], ['#edf5ef', '#3f6449'],
+    ['#f3eef7', '#5e4a70'], ['#f7f0ef', '#7a4a45'], ['#eef4f6', '#3d5f68'],
+  ]
+  const source = String(name || '默')
+  let sum = 0
+  for (const ch of source) sum += ch.codePointAt(0)
+  const [bg, fg] = palettes[sum % palettes.length]
+  return `<span class="avatar" style="background:${bg};color:${fg}" aria-hidden="true">${esc(source.slice(0, 1))}</span>`
+}
+
+const ownerText = (owner, rev) => rev ? `${owner} · 第 ${rev} 版` : owner
+const taskOwner = t => ownerText(t.owner, t.ownerRev)
+const projectOwner = p => ownerText(p.owner, p.ownerRev)
+const pct = (done, total) => total ? Math.round(done / total * 100) : 0
+
+function sortProjects(list) {
+  return [...list].sort((a, b) => {
+    const ca = projectCounts(a), cb = projectCounts(b)
+    return cb.attention - ca.attention || cb.blocked - ca.blocked
+      || Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || a.name.localeCompare(b.name)
+  })
+}
+
+function touchProject(id, text) {
+  const p = projectById(id)
+  if (!p) return
+  p.lastActivity = text
+  p.updatedAt = new Date().toISOString()
+}
+
+function focusRows(list, options = {}) {
+  if (!list.length) return ''
+  return list.map(t => {
+    const kind = attentionKind(t)
+    const meta = pendingTaskMeta(t, kind)
+    const from = options.from === 'projects' && projectById(t.projectId)?.state === 'archived' ? 'archived' : (options.from || 'project')
+    return `<div class="focus-row">
+      <span class="chip ${kind === 'review' ? 'review' : kind === 'answer' ? 'answer' : 'blocked'} mini">${meta.tag}</span>
+      <button class="link focus-task" type="button" data-open-task="${t.id}" data-from="${from}">${esc(t.title)}</button>
+      ${options.hideProject ? '' : `<span class="focus-project">${esc(projectLabel(t.projectId))}</span>`}
+      <span class="time">${esc(t.attentionAt || t.lastEvent)}</span>
+      ${options.hideAction ? '' : `<button class="go" type="button" data-modal="${meta.modal}" data-task="${t.id}">${meta.action}</button>`}
+    </div>`
+  }).join('')
+}
+
+function focusStrip(list = pendingRoots()) {
+  const issues = projects.filter(p => p.ownerUnavailable)
+  const total = list.length + issues.length
+  if (!total) return `<div class="focus empty">
+    <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">0</span></div>
+    <div class="focus-empty">现在没有等你处理的事。有新结果或需要你确认时会出现在这里。</div>
+  </div>`
+  const issueRows = issues.map(p => `<div class="focus-row"><span class="chip review mini">处理</span><button class="link focus-task" type="button" data-open-project="${p.id}" data-project-from="${p.state === 'archived' ? 'archived' : 'projects'}">修负责 worker「${esc(p.name)}」</button><span class="focus-project">${p.state === 'archived' ? '已归档' : '项目'}</span></div>`).join('')
+  const taskRows = focusRows(list.slice(0, Math.max(0, 4 - issues.length)), { from: 'projects' })
+  return `<div class="focus">
+    <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">${total}</span><button class="focus-all" type="button" data-go="notices">全部 ${total}</button></div>
+    ${issueRows}${taskRows}
+    ${total > 4 ? `<div class="focus-row"><span class="focus-project">还有 ${total - 4} 条，打开全部查看。</span></div>` : ''}
+  </div>`
+}
+
+function projectPendingLine(p) {
+  if (p.ownerUnavailable) return `<div class="card-pending"><span class="label">待你</span><button class="link" type="button" data-modal="project-settings" data-project="${p.id}">修负责 worker「${esc(p.name)}」</button></div>`
+  const pending = attentionRoots(projectRoots(p))
+  if (!pending.length) return ''
+  return `<div class="card-pending"><span class="label">待你</span>${pending.slice(0, 2).map((t, i) => {
+    const meta = pendingTaskMeta(t)
+    return `${i ? '<span class="sep">·</span>' : ''}<button class="link" type="button" data-modal="${meta.modal}" data-task="${t.id}">${meta.verb}「${esc(t.title)}」</button>`
+  }).join('')}${pending.length > 2 ? `<span class="sep">·</span><span class="muted">还有 ${pending.length - 2} 条</span>` : ''}</div>`
+}
+
+function projectCard(p, from = 'projects') {
+  const counts = projectCounts(p)
+  const blocked = projectTasks(p).find(t => t.status === 'blocked')
+  return `<article class="project-card" data-open-project="${p.id}" data-project-from="${from}" data-attention="${counts.attention > 0}">
+    <div class="card-top"><button class="card-name" type="button" data-open-project="${p.id}" data-project-from="${from}" aria-label="打开项目 ${esc(p.name)}">${esc(p.name)}</button>${projectChip(p)}</div>
+    <p class="card-goal" title="${esc(p.goal)}">${esc(p.goal)}</p>
+    <div class="card-meta">${avatar(p.owner)}<span class="owner" title="项目负责 worker 负责协调与拆任务；任务负责人是实际执行者">负责 worker ${esc(projectOwner(p))}</span><span class="card-progress">${counts.total ? `${counts.done}/${counts.total} 顶层任务完成` : ''}</span></div>
+    ${counts.total ? `<div class="bar" aria-hidden="true"><i style="width:${pct(counts.done, counts.total)}%"></i></div>` : ''}
+    ${projectPendingLine(p) || `<div class="card-note">${counts.total ? '现在不需要你 · 负责 worker 推进中' : '还没有任务；先告诉小助第一件事'}</div>`}
+    ${blocked ? `<div class="card-blocked" title="${esc(blocked.blocker)}">阻塞：${esc(blocked.blocker)}</div>` : ''}
+    <div class="card-foot"><span class="last">${esc(p.lastActivity)}</span><span class="src">${p.sources.map(s => `<span class="src-chip">${esc(s)}</span>`).join('')}</span></div>
+  </article>`
+}
+
+function unassignedSection() {
+  const list = unassignedRoots()
+  if (!list.length) return ''
+  return `<div class="ua-compact">
+    <span class="ua-label">未归入项目</span><span class="count">${list.length} 个任务</span>
+    <span class="ua-names">${list.map(t => `${esc(t.title)}（${STATUS[t.status]?.label || '进行中'}）`).join('、')}</span>
+    <button class="ua-action" type="button" data-go="unassigned">全部处理</button>
+  </div>`
+}
+
+
+function projectsView() {
+  const active = sortProjects(activeProjects())
+  const archived = projects.filter(p => p.state === 'archived')
+  return `<div class="page-head">
+    <div><h1 class="page-title">项目</h1><p class="page-sub">项目由主会话识别，绑定负责 worker；负责 worker 协调并拆任务，任务负责人执行。归档只影响默认列表，不影响任务和待办。</p></div>
+    <div class="page-actions">
+      <button class="btn btn-ghost btn-sm wide-only" type="button" data-toast="原型：会回到主对话。">返回主对话</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-go="all">全部任务</button>
+      <button class="btn btn-primary btn-sm" type="button" data-modal="create-project">新建项目</button>
+    </div>
+  </div>
+  ${focusStrip()}
+  <div class="project-filter" role="tablist" aria-label="项目归档过滤">
+    <button class="filter" type="button" role="tab" aria-pressed="true" data-go="projects">未归档 <span class="n">${active.length}</span></button>
+    <button class="filter" type="button" role="tab" aria-pressed="false" data-go="archived">已归档 <span class="n">${archived.length}</span></button>
+  </div>
+  <div class="projects">${active.map(p => projectCard(p)).join('')}</div>
+  ${unassignedSection()}`
+}
+
+function detailFocus(p) {
+  if (p.ownerUnavailable) return `<div class="note"><b>项目负责 worker 不可用。</b><br>先修负责 worker 配置，之后的新任务才会使用它；已有任务按各自的配置执行。</div>`
+  if (!p.taskIds.length) return `<div class="note"><b>项目已创建，还没有任务。</b><br>主会话识别到第一件事后会派给项目负责 worker；新任务受理后出现在这里。</div>`
+  const list = attentionRoots(projectRoots(p))
+  if (!list.length) {
+    if (p.state === 'archived') return `<div class="note">项目已归档；任务、交付物和待办都保留，恢复后回到默认列表。</div>`
+    const blocked = projectTasks(p).filter(t => t.status === 'blocked')
+    if (blocked.length) {
+      return `<div class="note"><b>有 ${blocked.length} 个任务被阻塞，负责人处理中。</b><br>${esc(blocked[0].blocker || '阻塞原因见任务行。')} 现在不需要你。</div>`
+    }
+    return `<div class="note">现在不需要你。负责 worker 会继续推进；有结果或需要你决定时会通知你。</div>`
+  }
+  return `<div class="focus detail-focus">
+    <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">${list.length}</span></div>
+    ${focusRows(list, { hideProject: true })}
+  </div>`
+}
+
+function chevron(open) {
+  return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform:rotate(${open ? 90 : 0}deg);transition:transform .12s ease"><path d="m9 6 6 6-6 6"/></svg>`
+}
+
+function taskMeta(t, child) {
+  const parts = [`<span class="owner">${esc(taskOwner(t))}</span>`]
+  if (t.children?.length) {
+    const done = t.children.map(id => byId(id)).filter(c => c && doneStatus(c)).length
+    parts.push(`${t.children.length} 个子任务 · ${done} 个完成`)
+  }
+  if (child && t.status === 'waiting') parts.push(`<span class="waiting">已向${esc(byId(t.parentId)?.owner || '上级')}汇报</span>`)
+  else if (child && t.childAccepted) parts.push('已由上级负责人接受')
+  else if (t.pending === 'review') parts.push('交付已就绪')
+  else if (t.pending === 'answer') parts.push('等你回答问题')
+  else if (t.pending === 'retry') parts.push('失败，等你决定')
+  else if (t.blocker) parts.push(esc(t.blocker))
+  else parts.push(esc(t.lastEvent))
+  return parts.join('<span class="dotsep">·</span>')
+}
+
+function treeRow(t, depth = 0) {
+  const child = depth > 0
+  const hasChildren = t.children?.length
+  const open = !!state.expanded[t.id]
+  const rowClass = [
+    'tree-row', child ? 'child' : 'root',
+    attentionKind(t) ? 'pending' : '', doneStatus(t) ? 'done' : '',
+  ].filter(Boolean).join(' ')
+  const indent = child ? ` style="padding-left:${21 + (depth - 1) * 18}px"` : ''
+  return `<div class="${rowClass}"${indent}>
+    <button class="tree-toggle" type="button" ${hasChildren ? `data-action="toggle" data-task="${t.id}" aria-expanded="${open}" aria-label="${open ? '收起' : '展开'}子任务"` : 'disabled aria-hidden="true"'} >${hasChildren ? chevron(open) : ''}</button>
+    <button class="tree-main" type="button" data-open-task="${t.id}" data-from="project">
+      <span class="tree-title">${esc(t.title)}</span>
+      <span class="tree-meta">${taskMeta(t, child)}</span>
+    </button>
+    ${chip(t.status)}
+    <span class="tree-time">${esc(t.lastEventShort || '')}</span>
+  </div>
+  ${open && hasChildren ? t.children.map(id => byId(id)).filter(Boolean).map(c => treeRow(c, depth + 1)).join('') : ''}`
+}
+
+function activitySection(p) {
+  if (!p.taskIds.length) return `<div class="section-head"><h3>最近活动</h3><span class="count">0</span></div><p class="body-text muted">刚建项目，还没有活动。第一件任务开始后，这里会记录结果和判断。</p>`
+  const items = p.id === 'a' ? [
+    ['刚刚', '登录改版', '错误提示文案已向开发负责人汇报'],
+    ['12 分钟前', '支付接入', '支付负责人汇报了结果，等你验收'],
+    ['1 小时前', '数据迁移', '数据负责人提出了问题'],
+    ['昨天', '权限梳理', '任务完成'],
+  ] : p.id === 'b' ? [
+    ['今天 10:40', '避障感知', '负责人标记了阻塞：等激光雷达到货'],
+    ['今天 09:05', '电机选型与驱动', '轮速标定等上级验收'],
+    ['昨天', '需求与场地确认', '任务完成'],
+  ] : p.id === 'c' ? [
+    ['1 小时前', '机票与日期', '交付已就绪，等你验收'],
+    ['今天 09:30', '住处候选', '新增 2 个可取消候选'],
+    ['昨天', '预算', '任务完成'],
+  ] : p.id === 'd' ? [
+    ['9 月 28 日', '跳转规则', '交付已就绪，等你验收'],
+    ['9 月 26 日', '旧站归档', '任务完成'],
+  ] : []
+  return `<div class="section-head"><h3>最近活动</h3><span class="count">${items.length}</span></div>
+  <ul class="activity-list">${items.map(([time, task, what]) => {
+    const match = Object.values(tasks).find(t => t.title === task)
+    const name = match ? `<button class="link" type="button" data-open-task="${match.id}" data-from="project">${esc(task)}</button>` : `<b>${esc(task)}</b>`
+    return `<li><span class="activity-time">${esc(time)}</span><span class="activity-main">${name} · ${esc(what)}</span></li>`
+  }).join('')}</ul>`
+}
+
+function projectView() {
+  const p = projectById(state.projectId) || projects[0]
+  const roots = projectRoots(p)
+  const active = roots.filter(t => !doneStatus(t))
+  const done = roots.filter(t => doneStatus(t))
+  const counts = projectCounts(p)
+  const allOpen = roots.filter(t => t.children?.length).every(t => state.expanded[t.id]) && roots.some(t => t.children?.length)
+  const back = state.projectFrom === 'archived'
+    ? '<button class="detail-back" type="button" data-go="archived">‹ 已归档</button>'
+    : '<button class="detail-back" type="button" data-go="projects">‹ 项目</button>'
+  return `${back}
+  <div class="detail-title-row"><h1 class="detail-title">${esc(p.name)}</h1>${projectChip(p)}</div>
+  <p class="detail-goal">${esc(p.goal)}</p>
+  <div class="detail-meta">${avatar(p.owner)}<span>负责 worker ${esc(projectOwner(p))}</span><span class="dotsep">·</span><span>${counts.total ? `${counts.total} 个顶层任务 · ${counts.done}/${counts.total} 完成` : '还没有任务'}</span><span class="dotsep">·</span><span>${p.state === 'archived' ? esc(p.lastActivity) : esc(p.lastActivity.split(' · ')[0]) + ' 更新'}</span><button class="btn btn-ghost btn-sm more" type="button" data-modal="project-settings" data-project="${p.id}">更多</button></div>
+  ${detailFocus(p)}
+  <div class="project-columns">
+    <div class="project-main">
+      <div class="section-head"><h3>顶层任务</h3><span class="count">${counts.total}</span>${roots.some(t => t.children?.length) ? `<button class="action" type="button" data-action="toggle-all">${allOpen ? '收起子任务' : '展开全部子任务'}</button>` : ''}</div>
+      ${roots.length ? `<div class="tree">${active.map(t => treeRow(t)).join('')}</div>` : `<div class="empty-project"><p>还没有任务。</p><p>告诉小助这个项目要推进的第一件事；新任务受理后会出现在这里。</p><button class="btn btn-outline btn-sm" type="button" data-toast="原型：会回到主对话，让你说第一件事。">打开主对话</button></div>`}
+      ${done.length ? `<div class="done-label">已完成 ${done.length}</div><div class="tree">${done.map(t => treeRow(t)).join('')}</div>` : ''}
+    </div>
+    <aside class="project-side">${activitySection(p)}</aside>
+  </div>`
+}
+
+const FILTERS = [
+  ['all', '全部'], ['attention', '待你处理'], ['running', '进行中'], ['blocked', '有阻塞'], ['failed', '失败'],
+]
+
+function filterRoots() {
+  let list = rootTasks()
+  if (state.filter === 'attention') list = list.filter(t => attentionKind(t))
+  else if (state.filter === 'running') list = list.filter(t => t.status === 'working')
+  else if (state.filter === 'blocked') list = list.filter(t => t.status === 'blocked')
+  else if (state.filter === 'failed') list = list.filter(t => t.status === 'failed')
+  const q = state.query.trim().toLowerCase()
+  if (q) list = list.filter(t => `${t.title} ${t.owner} ${projectName(t.projectId)}`.toLowerCase().includes(q))
+  return list
+}
+
+function flatRow(t) {
+  return `<button class="flat-row ${attentionKind(t) ? 'pending' : ''}" type="button" data-open-task="${t.id}" data-from="all">
+    ${chip(t.status)}
+    <span class="flat-main"><span class="flat-title">${esc(t.title)}</span><span class="flat-meta"><span>${esc(projectLabel(t.projectId))}</span><span class="dotsep">·</span><span>${esc(taskOwner(t))}</span></span></span>
+    <span class="flat-time">${esc(t.lastEventShort || '')}</span>
+  </button>`
+}
+
+function allView() {
+  const counts = {
+    all: rootTasks().length,
+    attention: rootTasks().filter(t => attentionKind(t)).length,
+    running: rootTasks().filter(t => t.status === 'working').length,
+    blocked: rootTasks().filter(t => t.status === 'blocked').length,
+    failed: rootTasks().filter(t => t.status === 'failed').length,
+  }
+  const list = filterRoots()
+  return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>
+  <h1 class="page-title">全部任务</h1>
+  <p class="page-sub">跨项目的顶层任务扁平列表；子任务在项目详情展开，筛选只统计顶层任务。用于查找和迁移，日常先看项目。</p>
+  <div class="filters">
+    ${FILTERS.map(([key, label]) => `<button class="filter" type="button" data-filter="${key}" aria-pressed="${state.filter === key}"${key === 'blocked' || key === 'failed' ? ' title="只统计顶层任务；子任务在项目详情展开查看"' : ''}>${label}<span class="n">${counts[key]}</span></button>`).join('')}
+    <span class="search-wrap"><input class="search" id="task-search" type="search" placeholder="搜索任务、负责人或项目" value="${esc(state.query)}"></span>
+  </div>
+  <div class="flat-list">${list.length ? list.map(flatRow).join('') : '<div class="empty-list">没有匹配的任务。试试清空搜索或切换筛选。</div>'}</div>`
+}
+
+function unassignedView() {
+  const list = unassignedRoots()
+  return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>
+  <h1 class="page-title">未归入项目</h1>
+  <p class="page-sub">这些任务还没有项目。归入只改变展示位置，不改任务本身。</p>
+  ${list.length ? `<div class="unassigned" style="margin-top:12px">${list.map(t => `<div class="ua-row">
+    ${chip(t.status)}
+    <button class="link ua-title" type="button" data-open-task="${t.id}" data-from="unassigned">${esc(t.title)}</button>
+    <span class="ua-meta">${esc(t.owner)}</span>
+    <button class="ua-action" type="button" data-modal="assign" data-task="${t.id}">归入项目</button>
+    ${attentionKind(t) === 'retry' ? `<button class="ua-action" type="button" data-modal="retry" data-task="${t.id}">处理</button>` : ''}
+  </div>`).join('')}</div>` : '<div class="empty-list">没有未归入的任务。现有任务都已经在项目里。</div>'}
+  <div class="section" style="margin-top:14px"><p class="body-text muted">提示：项目由主会话识别或你明确创建；系统不会按标题、来源或计划编号自动把任务归进项目。</p></div>`
+}
+
+function archivedView() {
+  const list = projects.filter(p => p.state === 'archived')
+  return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>
+  <h1 class="page-title">已归档</h1>
+  <p class="page-sub">归档只把项目移出默认列表；任务、交付物、来源和待办都还在。</p>
+  <div class="project-filter" role="tablist" aria-label="项目归档过滤">
+    <button class="filter" type="button" role="tab" aria-pressed="false" data-go="projects">未归档 <span class="n">${activeProjects().length}</span></button>
+    <button class="filter" type="button" role="tab" aria-pressed="true" data-go="archived">已归档 <span class="n">${list.length}</span></button>
+  </div>
+  <div class="projects">${list.map(p => projectCard(p, 'archived')).join('')}</div>`
+}
+
+function taskBack(t) {
+  if (t.parentId) {
+    const parent = byId(t.parentId)
+    return `<button class="detail-back" type="button" data-open-task="${parent.id}" data-from="${state.taskFrom || 'project'}">‹ ${esc(parent.title)}</button>`
+  }
+  if (state.taskFrom === 'all') return `<button class="detail-back" type="button" data-go="all">‹ 全部任务</button>`
+  if (state.taskFrom === 'notices') return `<button class="detail-back" type="button" data-go="notices">‹ 待你处理</button>`
+  if (state.taskFrom === 'archived') return `<button class="detail-back" type="button" data-go="archived">‹ 已归档</button>`
+  if (state.taskFrom === 'projects') return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>`
+  if (state.taskFrom === 'unassigned' || !t.projectId) return `<button class="detail-back" type="button" data-go="unassigned">‹ 未归入项目</button>`
+  return `<button class="detail-back" type="button" data-go="project" data-project="${t.projectId}" data-project-from="${state.projectFrom}">‹ ${esc(projectName(t.projectId))}</button>`
+}
+
+function decisionFor(t) {
+  if (t.pending === 'review') {
+    return `<div class="decision">
+      <div class="decision-kicker">需要你验收</div>
+      <div class="decision-title">交付已就绪</div>
+      <p class="decision-text">${(t.deliverables || []).length} 个交付物、${(t.criteria || []).length} 条验收条件已就绪。批准后任务结束；退回会重开执行。不处理会一直停在这里，负责人不会继续。</p>
+      <div class="decision-actions"><button class="btn btn-primary" type="button" data-modal="review" data-task="${t.id}">查看交付物并验收</button><button class="btn btn-outline" type="button" data-modal="return" data-task="${t.id}">退回修改</button></div>
+    </div>`
+  }
+  if (t.pending === 'answer') {
+    return `<div class="decision">
+      <div class="decision-kicker">需要你回答</div>
+      <div class="decision-title">${esc(t.question)}</div>
+      <p class="decision-text">回答后负责人继续；不回答，这个任务会一直停在这里。</p>
+      <div class="decision-actions"><button class="btn btn-primary" type="button" data-modal="answer" data-task="${t.id}">回答</button><button class="btn btn-outline" type="button" data-toast="原型：会打开来源会话。">打开来源</button></div>
+    </div>`
+  }
+  if (t.pending === 'retry') {
+    return `<div class="decision">
+      <div class="decision-kicker">需要你处理</div>
+      <div class="decision-title">任务失败了，负责人已停止</div>
+      <p class="decision-text">${esc(t.failure)} 重试会重新开始；停止会结束这个任务。</p>
+      <div class="decision-actions"><button class="btn btn-primary" type="button" data-modal="retry" data-task="${t.id}">重试</button><button class="btn btn-danger" type="button" data-modal="stop" data-task="${t.id}">停止</button></div>
+    </div>`
+  }
+  if (t.status === 'blocked') {
+    return `<div class="note"><b>等负责人处理，现在不需要你。</b><br>${esc(t.blocker)} 阻塞解除后负责人会继续；有结果或需要你决定时会通知你。</div>`
+  }
+  if (t.status === 'waiting') {
+    return `<div class="note"><b>等上级负责人验收，现在不需要你。</b><br>子任务的结果先交给上级负责人；最终验收在根任务「${esc(byId(t.parentId)?.title || '上级任务')}」。</div>`
+  }
+  if (doneStatus(t)) {
+    return `<div class="note ${t.status === 'stopped' ? '' : 'green'}"><b>${t.status === 'stopped' ? '已停止' : '已完成'}${t.doneAt ? ` · ${esc(t.doneAt)}` : ''}。</b>${t.next ? ` ${esc(t.next)}` : ''}</div>`
+  }
+  return ''
+}
+
+function resultSection(t) {
+  const deliverables = t.deliverables || []
+  const criteria = t.criteria || []
+  return `<div class="section">
+    <div class="section-head2"><h3>结果</h3>${deliverables.length ? `<span class="count">${deliverables.length} 个交付物</span>` : ''}</div>
+    <p class="body-text">${esc(t.summary || '还没有结果。')}</p>
+    ${deliverables.map(d => `<div class="deliverable">
+      <span class="file-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg></span>
+      <span class="deliverable-main"><span class="deliverable-name">${esc(d.name)}</span><span class="deliverable-meta">${esc(d.meta)}</span></span>
+      <button class="deliverable-action" type="button" data-toast="原型：会打开交付物。">打开</button>
+    </div>`).join('')}
+    ${criteria.length ? `<div class="criteria-label">验收条件</div><ul class="criteria">${criteria.map(c => `<li><span class="kind">${esc(c.kind)}</span><span>${esc(c.text)}</span></li>`).join('')}</ul>` : ''}
+  </div>`
+}
+
+function ownerSection(t) {
+  const parent = t.parentId ? byId(t.parentId) : null
+  const project = t.projectId ? projectById(t.projectId) : null
+  return `<div class="section">
+    <div class="section-head2"><h3>谁在做</h3></div>
+    <div class="owner-grid">
+      <div class="owner-cell"><div class="k">任务负责人</div><div class="v">${avatar(t.owner)}<span>${esc(taskOwner(t))}</span></div></div>
+      ${parent ? `<div class="owner-cell"><div class="k">上级任务负责人</div><div class="v">${avatar(parent.owner)}<span>${esc(taskOwner(parent))}</span></div></div>`
+        : project ? `<div class="owner-cell"><div class="k">项目负责 worker</div><div class="v">${avatar(project.owner)}<span>${esc(projectOwner(project))}</span></div></div>`
+        : `<div class="owner-cell"><div class="k">项目</div><div class="v"><span>未归入项目</span></div></div>`}
+    </div>
+    ${project && !parent ? `<p class="subtask-note">项目负责 worker 负责项目协调与拆任务；这个任务按自己的任务负责人执行。</p>` : ''}
+    ${!t.ownerRev ? `<p class="subtask-note">历史任务没有负责人配置；按部署默认执行。</p>` : ''}
+  </div>`
+}
+
+function subtasksSection(t) {
+  const children = (t.children || []).map(id => byId(id)).filter(Boolean)
+  if (t.parentId && !children.length) return ''
+  if (doneStatus(t) && !children.length) return ''
+  return `<div class="section">
+    <div class="section-head2"><h3>子任务</h3><span class="count">${children.length}</span></div>
+    ${children.length ? children.map(c => `<button class="subtask-row" type="button" data-open-task="${c.id}" data-from="${state.taskFrom || 'project'}">
+      <span class="subtask-title">${esc(c.title)}</span>${chip(c.status)}<span class="subtask-owner">${esc(c.owner)}</span>
+    </button>`).join('') : `<p class="body-text muted">没有拆子任务。需要拆解时，请负责人在执行中决定；视图不会自动造节点。</p>`}
+    ${doneStatus(t) ? '' : `<button class="btn btn-outline btn-sm" type="button" data-modal="decompose" data-task="${t.id}">请负责人拆解</button>`}
+  </div>`
+}
+
+function reportsSection(t) {
+  const reports = t.reports || []
+  return `<div class="section">
+    <div class="section-head2"><h3>汇报历史</h3><span class="count">${reports.length}</span></div>
+    ${reports.length ? `<ul class="timeline">${reports.map(r => `<li><div class="who">${esc(r.who)} · ${esc(r.at)}</div><div class="what">${esc(r.what)}</div></li>`).join('')}</ul>` : '<p class="body-text muted">还没有汇报。</p>'}
+  </div>`
+}
+
+function taskView() {
+  const t = byId(state.taskId)
+  if (!t) return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button><div class="empty-list">这个任务不存在。</div>`
+  const parent = t.parentId ? byId(t.parentId) : null
+  const project = t.projectId ? projectById(t.projectId) : null
+  return `${taskBack(t)}
+  <div class="detail-title-row"><h1 class="detail-title">${esc(t.title)}</h1>${chip(t.status)}${parent ? '<span class="chip queued">子任务</span>' : ''}</div>
+  <p class="detail-goal">${esc(t.goal || '')}</p>
+  <div class="detail-meta">${avatar(t.owner)}<span>任务负责人 ${esc(taskOwner(t))}</span><span class="dotsep">·</span><span>${esc(project ? projectName(project.id) : '未归入项目')}</span><span class="dotsep">·</span><span>${esc(t.source || '对话')}</span></div>
+  ${decisionFor(t)}
+  ${resultSection(t)}
+  ${!t.pending && !['blocked', 'waiting', 'done', 'stopped'].includes(t.status) ? `<div class="section"><div class="section-head2"><h3>下一步</h3></div><p class="body-text">${esc(t.next || '负责人会继续推进。')}</p></div>` : ''}
+  ${ownerSection(t)}
+  ${subtasksSection(t)}
+  ${t.blocker ? `<div class="section"><div class="section-head2"><h3>阻塞</h3></div><p class="body-text">${esc(t.blocker)}</p><p class="subtask-note">负责人正在处理；需要你接手时会升级成待你处理。</p></div>` : ''}
+  ${reportsSection(t)}
+  <div class="section">
+    <div class="section-head2"><h3>来源</h3></div>
+    <div class="source-row"><span class="source-chip">${esc(t.source || '对话')}</span><button class="btn btn-ghost btn-xs" type="button" data-toast="原型：会打开来源会话。">打开来源</button></div>
+    <p class="source-note">来源内容不会复制到项目页；这里只保留入口和归属。</p>
+  </div>
+  <div class="section">
+    <details class="exec"><summary>执行会话与技术详情</summary><div class="exec-body">独立执行会话 · 负责人 ${esc(taskOwner(t))}。技术细节默认折叠，避免打扰读任务的人。<br><button class="btn btn-outline btn-xs" type="button" data-toast="原型：会打开执行会话。">打开执行会话</button></div></details>
+  </div>`
+}
+
+function drawerContent() {
+  const pending = pendingRoots()
+  const issueProjects = activeProjects().filter(p => p.ownerUnavailable)
+  if (!pending.length && !issueProjects.length) return '<div class="drawer-empty">现在没有等你处理的事。<br>有新结果或需要你确认时会出现在这里。</div>'
+  const pendingArchived = projects.filter(p => p.state === 'archived' && (attentionRoots(projectRoots(p)).length || p.ownerUnavailable))
+  const order = [...sortProjects(activeProjects()).map(p => p.id), ...pendingArchived.map(p => p.id), null]
+  const groups = order.map(id => ({ id, tasks: pending.filter(t => (t.projectId || null) === id) }))
+    .filter(g => g.tasks.length || (g.id && projectById(g.id)?.ownerUnavailable))
+  return groups.map(g => {
+    const p = g.id ? projectById(g.id) : null
+    const issue = p?.ownerUnavailable
+      ? `<article class="notice" data-kind="owner"><div class="notice-title">「${esc(p.name)}」的负责 worker 不可用</div><div class="notice-what">配置的 profile 已停用或不存在；新任务不会静默回退。</div><div class="notice-consequence">修好后，之后的新任务才会使用；已有任务按各自的配置执行。</div><div class="notice-actions"><button class="btn btn-primary btn-sm" type="button" data-open-project="${p.id}" data-project-from="${p.state === 'archived' ? 'archived' : 'projects'}">查看项目</button></div></article>`
+      : ''
+    return `<div class="group-head"><span class="barline" aria-hidden="true"></span><span class="proj">${g.id ? esc(projectLabel(g.id)) : '未归入项目'}</span><span class="count">${g.tasks.length + (issue ? 1 : 0)}</span></div>
+    ${issue}
+    ${g.tasks.map(t => {
+      const meta = pendingTaskMeta(t)
+      return `<article class="notice" data-kind="${t.pending}">
+        <div class="notice-title">${esc(meta.title)}</div>
+        <div class="notice-what">${esc(meta.what)}</div>
+        <div class="notice-next">${esc(meta.next)}</div>
+        <div class="notice-consequence">${esc(meta.consequence)}</div>
+        <div class="notice-actions"><button class="btn btn-primary btn-sm" type="button" data-modal="${meta.modal}" data-task="${t.id}">${meta.action}</button><button class="link" type="button" data-action="view-task" data-task="${t.id}">查看任务</button></div>
+      </article>`
+    }).join('')}`
+  }).join('')
+}
+
+
+const PROFILES = [
+  { id: 'dev-owner', title: '开发负责人', rev: 2 },
+  { id: 'hw-owner', title: '硬件负责人', rev: 1 },
+  { id: 'travel-owner', title: '行程负责人', rev: 1 },
+  { id: 'ops-owner', title: '运维负责人', rev: 1 },
+  { id: 'default', title: '默认执行配置', rev: null },
+]
+
+function ownerOptions(selected) {
+  return PROFILES.map(p => `<option value="${p.id}" ${p.title === selected ? 'selected' : ''}>${esc(p.title)}${p.rev ? ` · 第 ${p.rev} 版` : ''}</option>`).join('')
+}
+
+function projectOwnerOptions(selected) {
+  return PROFILES.filter(p => p.id !== 'default').map(p => `<option value="${p.id}" ${p.title === selected ? 'selected' : ''}>${esc(p.title)}${p.rev ? ` · 第 ${p.rev} 版` : ''}</option>`).join('')
+}
+
+function modalShell(title, sub, body, actions, extraClass = '') {
+  return `<div class="modal-overlay" id="modal-overlay">
+    <div class="modal ${extraClass}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+      <button class="icon-btn" type="button" aria-label="关闭" data-close="modal" style="position:absolute;top:10px;right:10px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      <h2>${esc(title)}</h2>${sub ? `<p class="sub">${sub}</p>` : ''}${body}
+      ${actions ? `<div class="modal-actions">${actions}</div>` : ''}
+    </div>
+  </div>`
+}
+
+function modalHtml() {
+  const m = state.modal
+  if (!m) return ''
+  const t = m.taskId ? byId(m.taskId) : null
+  const p = m.projectId ? projectById(m.projectId) : null
+  if (m.type === 'guide') {
+    return modalShell('原型导览', '这是设计原型，不是已实现界面；动作只改内存数据。', `<div class="guide-list">
+      <button type="button" data-guide="projects">项目列表（默认页）</button>
+      <button type="button" data-guide="project:a">A 系统开发 · 项目详情</button>
+      <button type="button" data-guide="task:a2">支付接入 · 待人验收</button>
+      <button type="button" data-guide="task:a1a">接口鉴权 · 子任务（已由上级接受）</button>
+      <button type="button" data-guide="task:a1b">错误提示文案 · 等上级验收</button>
+      <button type="button" data-guide="task:u1">整理迁移说明 · 失败/未归入</button>
+      <button type="button" data-guide="notices">通知抽屉（按项目分组）</button>
+      <button type="button" data-guide="all">全部任务</button>
+      <button type="button" data-guide="unassigned">未归入项目</button>
+      <button type="button" data-guide="archived">已归档</button>
+      <span class="tiny">布局</span>
+      <button type="button" data-guide-layout="side">右侧栏（1440 默认）</button>
+      <button type="button" data-guide-layout="wide">宽面板</button>
+      <button type="button" data-guide-layout="narrow">620 窄面板</button>
+      <span class="tiny">截图时用 ?clean=1 隐藏这个按钮。</span>
+      <button type="button" data-guide-reset>重置演示</button>
+    </div>`, '')
+  }
+  if (m.type === 'create-project') {
+    return modalShell('新建项目（人工补建）', '主路径是主会话识别项目并绑定负责 worker；这里用于人工补建/演示。', `
+      <div class="field"><label for="project-name">项目名</label><input id="project-name" placeholder="例如 A 系统开发"></div>
+      <div class="field"><label for="project-goal">一句话目标</label><textarea id="project-goal" placeholder="这个项目要做到什么？一句话就够。"></textarea></div>
+      <div class="field"><label for="project-owner">负责 worker（必须选一个可用 worker；协调项目/拆任务，不是所有任务的执行者）</label><select id="project-owner">${projectOwnerOptions('开发负责人')}</select></div>
+      <p class="small">项目是 Ticket 的容器层，不执行任务、不批准任务；项目 Mandate 仅用于协调与建任务。负责 worker 可创建任务并指派其他 worker。已有任务可以之后归入。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="create-project">创建项目</button>`)
+  }
+  if (m.type === 'review' && t) {
+    return modalShell(`验收「${t.title}」`, '确认交付物和验收条件；批准后任务结束。', `
+      <p class="body-text">${esc(t.summary)}</p>
+      <div class="section"><div class="section-head2"><h3>交付物</h3></div>${(t.deliverables || []).map(d => `<div class="deliverable"><span class="file-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg></span><span class="deliverable-main"><span class="deliverable-name">${esc(d.name)}</span><span class="deliverable-meta">${esc(d.meta)}</span></span></div>`).join('')}</div>
+      <ul class="criteria">${(t.criteria || []).map(c => `<li><span class="kind">${esc(c.kind)}</span><span>${esc(c.text)}</span></li>`).join('')}</ul>
+      <p class="small">确认后任务结束；如需修改，用「退回」并写一句原因。验收条件不是自动规则，最终由你判断。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="approve" data-task="${t.id}">确认验收</button>`)
+  }
+  if (m.type === 'return' && t) {
+    return modalShell(`退回「${t.title}」`, '退回会重开执行；写清楚要改什么，负责人才能继续。', `
+      <div class="field"><label for="return-reason">退回原因</label><textarea id="return-reason" placeholder="例如：灰度数据只有 5%，请补到 10% 再交。"></textarea></div>
+      <p class="small">退回不会结束项目；交付物会保留，新的执行从你的说明开始。</p>
+      <p class="small">目标态：当前没有专用退回接口，需要走续做/重新受理；这里只演示状态变化。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="return" data-task="${t.id}">确认退回（原型）</button>`)
+  }
+  if (m.type === 'answer' && t) {
+    return modalShell(`回答「${t.title}」`, '这是负责人在等你回答的问题。', `
+      <div class="quote">${esc(t.question)}</div>
+      <div class="field"><label for="answer-text">你的回答</label><textarea id="answer-text" placeholder="例如：历史订单保留 3 年；只读查询保留 1 年。"></textarea></div>
+      <p class="small">目标态是页内回答；当前实现会打开来源会话让你回答。这里演示目标态，提交只改原型数据。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="answer" data-task="${t.id}">提交回答（原型）</button>`)
+  }
+  if (m.type === 'retry' && t) {
+    return modalShell(`重试「${t.title}」`, '重试会从失败处重新开始，不会复用失败的执行。', `
+      <div class="quote">${esc(t.failure || t.blocker || '上一次执行失败。')}</div>
+      <p class="small">重试会创建新的执行；如果问题还在，负责人可能会再次失败。你也可以选择停止。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="retry" data-task="${t.id}">确认重试</button>`)
+  }
+  if (m.type === 'stop' && t) {
+    return modalShell(`停止「${t.title}」`, '停止会结束这个任务；已产生的交付物会保留。', `
+      <div class="danger-note">停止后这个任务不会再自动继续；需要继续时，要重新发起或重开。</div>
+      <p class="small">如果只是暂时不想处理，可以取消并让它保持原状态。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-danger" type="button" data-confirm="stop" data-task="${t.id}">停止任务</button>`)
+  }
+  if (m.type === 'assign' && t) {
+    return modalShell(`把「${t.title}」归入项目`, '归入只改变展示位置；任务的负责人、授权和交付物都不变。', `
+      <div class="field"><label for="assign-project">选择项目</label><select id="assign-project">${activeProjects().map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+      <p class="small">归入后它会出现在项目的任务树里；不想归入时保持“未归入项目”即可。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="assign" data-task="${t.id}">归入项目</button>`)
+  }
+  if (m.type === 'archive-project' && p) {
+    return modalShell(`归档「${p.name}」`, '归档只影响默认列表，不结束任务、不隐藏待办；之后可恢复。', `
+      <p class="body-text">项目会从默认项目列表移到「已归档」。项目里的任务、交付物和待你处理的事项都保留；未结束任务不会停止。</p>
+      <p class="small">如果只想暂时收起，也可以归档；需要时在「已归档」里恢复。归档不会删除数据。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="archive-project" data-project="${p.id}">确认归档</button>`)
+  }
+  if (m.type === 'project-settings' && p) {
+    const note = p.state === 'active'
+      ? `<p class="small">归档只把项目移出默认列表；任务、交付物和待办都保留。未结束任务不会因归档停止，归档项目的待办仍在“待你处理”。换负责 worker 只影响之后的新任务。</p>`
+      : `<p class="small">已归档；恢复后回到默认列表。任务、交付物和待办都保留。换负责 worker 只影响之后的新任务。</p>`
+    return modalShell('项目设置', '项目只组织任务；项目 Mandate 仅用于协调与建任务，不获得任务验收权。负责 worker 负责协调与拆任务，不是所有任务的执行者。', `
+      <div class="field"><label for="settings-name">项目名</label><input id="settings-name" value="${esc(p.name)}"></div>
+      <div class="field"><label for="settings-goal">一句话目标</label><textarea id="settings-goal">${esc(p.goal)}</textarea></div>
+      <div class="field"><label for="settings-owner">负责 worker（必须可用；不能选默认执行配置）</label><select id="settings-owner">${projectOwnerOptions(p.owner)}</select></div>
+      ${note}`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button>${p.state === 'active' ? `<button class="btn btn-danger" type="button" data-modal="archive-project" data-project="${p.id}">归档项目</button>` : `<button class="btn btn-outline" type="button" data-confirm="restore-project" data-project="${p.id}">恢复项目</button>`}<button class="btn btn-primary" type="button" data-confirm="save-project" data-project="${p.id}">保存</button>`)
+  }
+  if (m.type === 'decompose' && t) {
+    return modalShell(`请负责人拆解「${t.title}」`, '拆解由负责人决定；视图不会直接造子任务。', `
+      <p class="body-text">会把“请评估是否需要拆成子任务，并说明每个子任务的负责人和交付物”作为一条输入发给负责人。</p>
+      <p class="small">如果负责人认为不需要拆，它会继续单干；没有独立负责人和独立交付时，不硬造节点。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="decompose" data-task="${t.id}">打开主对话并发送</button>`)
+  }
+  return ''
+}
+
+function openModal(type, taskId, projectId) {
+  state.lastFocus = document.activeElement
+  state.modal = { type, taskId, projectId }
+  renderModal()
+  requestAnimationFrame(() => {
+    const root = document.getElementById('modal-root')
+    const first = root.querySelector('input, textarea, select, .modal-actions .btn-primary, .modal-actions .btn, .guide-list button')
+    if (first) first.focus()
+  })
+}
+
+function closeModal() {
+  const focus = state.lastFocus
+  state.modal = null
+  renderModal()
+  if (focus && focus.isConnected) focus.focus()
+}
+
+function renderModal() {
+  document.getElementById('modal-root').innerHTML = modalHtml()
+}
+
+function toast(message) {
+  const el = document.getElementById('toast')
+  el.textContent = message
+  el.classList.add('show')
+  clearTimeout(toast.timer)
+  toast.timer = setTimeout(() => el.classList.remove('show'), 2600)
+}
+
+function updateFab() {
+  const n = pendingRoots().length + projects.filter(p => p.ownerUnavailable).length
+  const fab = document.getElementById('notice-fab')
+  fab.hidden = n === 0 || state.screen === 'projects'
+  document.getElementById('fab-label').textContent = n ? `${n} 条待处理` : '没有待处理'
+  const count = document.getElementById('fab-count')
+  count.textContent = String(n)
+  count.hidden = n === 0
+}
+
+function renderDrawer() {
+  const n = pendingRoots().length + projects.filter(p => p.ownerUnavailable).length
+  document.getElementById('drawer-count').textContent = String(n)
+  document.getElementById('drawer-body').innerHTML = drawerContent()
+}
+
+function openDrawer() {
+  state.lastDrawerFocus = document.activeElement
+  state.drawer = true
+  document.getElementById('overlay').classList.add('open')
+  const drawer = document.getElementById('drawer')
+  drawer.classList.add('open')
+  drawer.setAttribute('aria-hidden', 'false')
+  renderDrawer()
+  drawer.focus()
+}
+
+function closeDrawer() {
+  state.drawer = false
+  document.getElementById('overlay').classList.remove('open')
+  const drawer = document.getElementById('drawer')
+  drawer.classList.remove('open')
+  drawer.setAttribute('aria-hidden', 'true')
+  const focus = state.lastDrawerFocus
+  if (focus && focus.isConnected && !focus.closest('#drawer')) focus.focus()
+  else document.getElementById('notice-fab')?.focus()
+}
+
+function renderPanel(keepScroll = false) {
+  const body = document.getElementById('panel-body')
+  const top = body.scrollTop
+  let html = ''
+  if (state.screen === 'projects') html = projectsView()
+  else if (state.screen === 'project') html = projectView()
+  else if (state.screen === 'task') html = taskView()
+  else if (state.screen === 'all') html = allView()
+  else if (state.screen === 'unassigned') html = unassignedView()
+  else if (state.screen === 'archived') html = archivedView()
+  else html = projectsView()
+  body.innerHTML = html
+  body.scrollTop = keepScroll ? top : 0
+  if (state.focusSearch) {
+    state.focusSearch = false
+    const input = document.getElementById('task-search')
+    if (input) {
+      input.focus()
+      input.setSelectionRange(input.value.length, input.value.length)
+    }
+  }
+}
+
+function renderAll(keepScroll = false) {
+  renderPanel(keepScroll)
+  if (state.drawer) renderDrawer()
+  updateFab()
+}
+
+function navigate(screen, opts = {}) {
+  state.screen = screen
+  if (screen === 'project') { state.projectId = opts.projectId || state.projectId; state.projectFrom = opts.from || state.projectFrom || 'projects' }
+  if (screen === 'task') {
+    state.taskId = opts.taskId
+    state.taskFrom = opts.from || null
+  }
+  state.drawer = false
+  document.getElementById('overlay').classList.remove('open')
+  document.getElementById('drawer').classList.remove('open')
+  document.getElementById('drawer').setAttribute('aria-hidden', 'true')
+  renderAll()
+}
+
+function openProject(id, from = 'projects') {
+  navigate('project', { projectId: id, from })
+}
+
+function openTask(id, from) {
+  navigate('task', { taskId: id, from: from || (byId(id)?.projectId ? 'project' : 'unassigned') })
+}
+
+function handleConfirm(action, taskId, projectId) {
+  const t = taskId ? byId(taskId) : null
+  if (action === 'create-project') {
+    const name = document.getElementById('project-name')?.value.trim()
+    const goal = document.getElementById('project-goal')?.value.trim()
+    const ownerId = document.getElementById('project-owner')?.value
+    if (!name || !goal) { toast('项目名和一句话目标都要填。'); return }
+    const profile = PROFILES.find(p => p.id === ownerId) || PROFILES.find(p => p.id !== 'default')
+    const id = `prj_${Date.now().toString(36)}`
+    projects.push({ id, name, goal, owner: profile.title, ownerRev: profile.rev, state: 'active', taskIds: [], lastActivity: '刚刚 · 项目已创建', updatedAt: new Date().toISOString(), sources: ['对话'] })
+    closeModal()
+    navigate('project', { projectId: id })
+    toast(`已创建「${name}」；告诉小助第一件要做的事。`)
+    return
+  }
+  if (action === 'approve' && t) {
+    t.status = 'done'; t.pending = null; t.doneAt = '刚刚'; t.lastEvent = '刚刚 · 你验收了交付'; t.lastEventShort = '刚刚'
+    t.next = '已结束。'
+    ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: '验收通过；任务结束。' })
+    touchProject(t.projectId, `刚刚 · ${t.title}验收通过`)
+    closeModal(); renderAll(); toast(`已验收「${t.title}」；任务结束。`)
+    return
+  }
+  if (action === 'return' && t) {
+    const reason = document.getElementById('return-reason')?.value.trim()
+    if (!reason) { toast('写一句退回原因，负责人才能继续。'); return }
+    t.status = 'working'; t.pending = null; t.attentionAt = null; t.lastEvent = '刚刚 · 你退回了交付'; t.lastEventShort = '刚刚'
+    t.next = '负责人会按你的退回说明修改，再交一次。'
+    ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: `退回：${reason}` })
+    touchProject(t.projectId, `刚刚 · 退回了「${t.title}」`)
+    closeModal(); renderAll(); toast(`已退回「${t.title}」；负责人会按说明修改。`)
+    return
+  }
+  if (action === 'answer' && t) {
+    const answer = document.getElementById('answer-text')?.value.trim()
+    if (!answer) { toast('先写一句回答。'); return }
+    t.status = 'working'; t.pending = null; t.attentionAt = null; t.question = null
+    t.lastEvent = '刚刚 · 你回答了问题'; t.lastEventShort = '刚刚'
+    t.next = '负责人会按你的回答继续；有结果再通知你。'
+    ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: `回答：${answer}` })
+    touchProject(t.projectId, `刚刚 · 回答了「${t.title}」`)
+    closeModal(); renderAll(); toast(`回答已发给负责人；「${t.title}」继续。`)
+    return
+  }
+  if (action === 'retry' && t) {
+    t.status = 'working'; t.pending = null; t.attentionAt = null; t.failure = null
+    t.lastEvent = '刚刚 · 你重试了任务'; t.lastEventShort = '刚刚'
+    t.next = '负责人会重新开始；有结果或再次失败会通知你。'
+    ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: '重试任务；负责人重新开始。' })
+    touchProject(t.projectId, `刚刚 · 重试了「${t.title}」`)
+    closeModal(); renderAll(); toast(`已重试「${t.title}」；负责人会重新开始。`)
+    return
+  }
+  if (action === 'stop' && t) {
+    t.status = 'stopped'; t.pending = null; t.attentionAt = null
+    t.lastEvent = '刚刚 · 你停止了任务'; t.lastEventShort = '刚刚'
+    t.summary = '按你的要求停止；没有继续。'; t.next = '已停止。'
+    ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: '停止任务；不再继续。' })
+    touchProject(t.projectId, `刚刚 · 停止了「${t.title}」`)
+    closeModal(); renderAll(); toast(`已停止「${t.title}」。`)
+    return
+  }
+  if (action === 'assign' && t) {
+    const nextId = document.getElementById('assign-project')?.value
+    if (!nextId) { toast('先选择一个项目。'); return }
+    if (t.projectId) {
+      const old = projectById(t.projectId)
+      if (old) old.taskIds = old.taskIds.filter(id => id !== t.id)
+    }
+    t.projectId = nextId
+    const p = projectById(nextId)
+    if (p && !p.taskIds.includes(t.id)) p.taskIds.push(t.id)
+    if (p) { p.lastActivity = `刚刚 · 归入了「${t.title}」`; p.updatedAt = new Date().toISOString() }
+    closeModal(); renderAll(); toast(`已把「${t.title}」归入「${p?.name || '项目'}」。`)
+    return
+  }
+  if (action === 'save-project' && projectId) {
+    const p = projectById(projectId)
+    if (!p) return
+    const name = document.getElementById('settings-name')?.value.trim()
+    const goal = document.getElementById('settings-goal')?.value.trim()
+    const ownerId = document.getElementById('settings-owner')?.value
+    if (!name || !goal) { toast('项目名和一句话目标都要填。'); return }
+    const profile = PROFILES.find(item => item.id === ownerId) || PROFILES.find(item => item.id !== 'default')
+    p.name = name; p.goal = goal; p.owner = profile.title; p.ownerRev = profile.rev; p.updatedAt = new Date().toISOString()
+    closeModal(); renderAll(); toast('项目设置已保存；负责 worker 只影响之后的新任务。')
+    return
+  }
+  if (action === 'archive-project' && projectId) {
+    const p = projectById(projectId)
+    if (!p) return
+    p.state = 'archived'; p.lastActivity = '刚刚 · 已归档'; p.updatedAt = new Date().toISOString()
+    closeModal(); navigate('projects'); toast(`已归档「${p.name}」；任务、交付物和待办都还在，可在已归档查看。`)
+    return
+  }
+  if (action === 'restore-project' && projectId) {
+    const p = projectById(projectId)
+    if (!p) return
+    p.state = 'active'; p.lastActivity = '刚刚 · 已恢复'; p.updatedAt = new Date().toISOString()
+    closeModal(); navigate('project', { projectId, from: 'projects' }); toast(`已恢复「${p.name}」。`)
+    return
+  }
+  if (action === 'decompose' && t) {
+    closeModal()
+    toast('已把拆解请求放进主对话（原型）；拆解由负责人决定。')
+    return
+  }
+}
+
+document.addEventListener('click', event => {
+  const el = event.target.closest('[data-go],[data-open-project],[data-open-task],[data-filter],[data-modal],[data-toast],[data-close],[data-confirm],[data-action],[data-guide],[data-guide-layout],[data-guide-reset]')
+  if (!el) return
+  if (el.dataset.confirm) {
+    event.preventDefault()
+    handleConfirm(el.dataset.confirm, el.dataset.task, el.dataset.project)
+    return
+  }
+  if (el.dataset.guide) {
+    event.preventDefault()
+    closeModal()
+    const value = el.dataset.guide
+    if (value === 'notices') openDrawer()
+    else if (value.startsWith('project:')) navigate('project', { projectId: value.slice(8) })
+    else if (value.startsWith('task:')) openTask(value.slice(5), 'project')
+    else navigate(value)
+    return
+  }
+  if (el.dataset.guideLayout) {
+    event.preventDefault()
+    const next = new URL(location.href)
+    next.searchParams.set('layout', el.dataset.guideLayout)
+    next.searchParams.delete('screen')
+    next.searchParams.delete('project')
+    next.searchParams.delete('task')
+    location.href = next.toString()
+    return
+  }
+  if (el.dataset.guideReset) {
+    event.preventDefault()
+    const next = new URL(location.href)
+    next.search = `?layout=${layout}`
+    location.href = next.toString()
+    return
+  }
+  if (el.dataset.close === 'modal') { event.preventDefault(); closeModal(); return }
+  if (el.dataset.close === 'drawer') { event.preventDefault(); closeDrawer(); return }
+  if (el.dataset.toast) { event.preventDefault(); toast(el.dataset.toast); return }
+  if (el.dataset.modal) {
+    event.preventDefault()
+    openModal(el.dataset.modal, el.dataset.task, el.dataset.project)
+    return
+  }
+  if (el.dataset.openProject) { event.preventDefault(); openProject(el.dataset.openProject, el.dataset.projectFrom || 'projects'); return }
+  if (el.dataset.openTask) { event.preventDefault(); openTask(el.dataset.openTask, el.dataset.from); return }
+  if (el.dataset.filter) {
+    event.preventDefault()
+    state.filter = el.dataset.filter
+    renderPanel(true)
+    return
+  }
+  if (el.dataset.action) {
+    event.preventDefault()
+    if (el.dataset.action === 'toggle') {
+      state.expanded[el.dataset.task] = !state.expanded[el.dataset.task]
+      renderPanel(true)
+      return
+    }
+    if (el.dataset.action === 'toggle-all') {
+      const roots = projectRoots(projectById(state.projectId)).filter(t => t.children?.length)
+      const allOpen = roots.every(t => state.expanded[t.id])
+      roots.forEach(t => { state.expanded[t.id] = !allOpen })
+      renderPanel(true)
+      return
+    }
+    if (el.dataset.action === 'view-task') {
+      closeDrawer(); openTask(el.dataset.task, 'notices')
+      return
+    }
+    if (el.dataset.action === 'open-chat') { toast('原型：会回到主对话。'); return }
+    return
+  }
+  if (el.dataset.go === 'notices') { event.preventDefault(); openDrawer(); return }
+  if (el.dataset.go === 'project') { event.preventDefault(); openProject(el.dataset.project, el.dataset.projectFrom || 'projects'); return }
+  if (el.dataset.go) { event.preventDefault(); navigate(el.dataset.go); return }
+})
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    if (state.modal) { closeModal(); return }
+    if (state.drawer) { closeDrawer(); return }
+  }
+  if ((event.key === 'Enter' || event.key === ' ') && event.target.matches?.('.card-name[data-open-project]')) {
+    event.preventDefault()
+    openProject(event.target.dataset.openProject)
+    return
+  }
+  if ((event.key === 'Enter' || event.key === ' ') && event.target.matches?.('[data-open-task]')) {
+    event.preventDefault()
+    openTask(event.target.dataset.openTask, event.target.dataset.from || 'project')
+    return
+  }
+})
+
+document.addEventListener('input', event => {
+  if (event.target.id !== 'task-search') return
+  state.query = event.target.value
+  state.focusSearch = true
+  renderPanel()
+})
+
+document.getElementById('overlay').addEventListener('click', closeDrawer)
+document.getElementById('modal-root').addEventListener('click', event => {
+  if (event.target.id === 'modal-overlay' || event.target.id === 'modal-root') closeModal()
+})
+
+function init() {
+  const screen = params.get('screen')
+  const modal = params.get('modal')
+  if (modal) {
+    state.modal = { type: modal, taskId: params.get('task') || 'a2', projectId: params.get('project') || 'a' }
+  }
+  if (screen === 'project') {
+    state.screen = 'project'
+    state.projectId = params.get('project') || 'a'
+  } else if (screen === 'task') {
+    state.screen = 'task'
+    state.taskId = params.get('task') || 'a2'
+    state.taskFrom = params.get('from') || (byId(state.taskId)?.projectId ? 'project' : 'unassigned')
+  } else if (screen === 'all' || screen === 'unassigned' || screen === 'archived') {
+    state.screen = screen
+  } else if (screen === 'notices') {
+    state.screen = 'projects'
+    state.drawer = true
+  }
+  renderAll()
+  if (state.drawer) openDrawer()
+  if (state.modal) renderModal()
+}
+
+init()
+
+</script>
+</body>
+</html>

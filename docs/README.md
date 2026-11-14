@@ -6,7 +6,7 @@ evolution set, then the plan set when you are picking up work.
 | Layer | Where | What it answers |
 | --- | --- | --- |
 | Numbered mechanism and operations | `docs/000`–`docs/010` | How the system works, how it is authorized, operated and extended. |
-| Design and evolution | `docs/011`–`docs/028` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, the reusable profile layer over the worker role, the task-first interface proposal, the first, second and third implemented UX slices, the post-upgrade verification checklist, and the plugin-as-main-page route. |
+| Design and evolution | `docs/011`–`docs/029` | Why it has this shape, the product/organization principles above the mechanism, the workspace model they imply, the end-to-end evidence path, the Goal read model those principles expose, the reusable profile layer over the worker role, the task-first interface proposal, the first, second and third implemented UX slices, the post-upgrade verification checklist, the plugin-as-main-page route, and the project task-view design proposal (Ticket kinds, project-owned work, archive). |
 | Plans | [`plan/`](plan/README.md) | What to build, in what order, and the current status of every task. |
 | Runbooks and evidence | [`runbooks/`](runbooks/why-not-sent.md), [`images/`](images/), [`prototypes/`](prototypes/ux-redesign.html) | What to do when something is stuck; the before/after captures and the clickable prototype the documents cite. |
 
@@ -30,7 +30,7 @@ Read 000–010 in order; each builds only on the ones before it.
 
 ## Design and evolution
 
-These eighteen are written in Chinese. 011 and 012 are a cross-referencing pair:
+These nineteen are written in Chinese. 011 and 012 are a cross-referencing pair:
 read 011 for the principles and their cross-check against the existing
 documents, then 012 for the evolution story. 013 applies them to the workspace
 model (space as an execution reference, orthogonal to the task tree). 014
@@ -76,6 +76,7 @@ replacement.
 | 026 | [UX third batch](026-ux-third-batch.zh.md) | The third implemented UX slice within plugin-only extension points: a main-Agent card at the top of the task view with browser-local name and avatar, four first-level entries (Tasks, Notices, Files, Settings), a frame-wide floating notice entry with quiet state and focus return, a read-only task-deliverable Files page, four rollback flags, and an explicit list of remaining host limits mapped to the upstream requests in 022. |
 | 027 | [Post-upgrade verification](027-post-upgrade-verification.zh.md) | The 2026-11-13 diagnosis of "still the old panel": the artifact, revision and build time the running process actually served, the cached old document and bundle that explain a tab left open across a restart, the four flag defaults and their Settings › Display locations, the host shell versus plugin panel boundary, the new build identity and reload prompt, and a per-screen checklist for the next restart. |
 | 028 | [Plugin as the main page](028-plugin-main-page.zh.md) | The 2026-11-14 route change after the correction: keep the DSH upstream and host shell unchanged and make selecting Superagent open the existing main Conversation, with tasks, notices, files and settings in its header opening in host right-sidebar pages, a panel return path as fallback, a new `ux.appShell.v1` rollback, the abandoned host-level goals, and same-viewport before/after evidence. |
+| 029 | [Project task view](029-project-task-view.zh.md) | The design proposal for the project layer as Ticket kinds: project/task/subtask are Tickets, a project binds an owner worker, tasks stay root authorization units, a project is archivable with an unarchived/archived filter, and person-actionable pending remains project-grouped. Includes a clickable prototype and same-viewport evidence; the current store has no projects, no child Tickets and no profile snapshots, so migration starts read-only and manual. |
 
 011 is the product and organization layer; 012 is the platform mechanism and
 evolution layer; 013 is the execution-location design that applies both; 014
