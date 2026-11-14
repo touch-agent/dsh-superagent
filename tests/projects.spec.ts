@@ -120,6 +120,35 @@ describe('project tickets and hierarchy', () => {
     expect(h.repo.decisions.byThread('chat:t1').filter(item => item.admission)).toHaveLength(1)
   })
 
+  it('links a human-accepted task to a project without changing its owner or authorization', () => {
+    const h = harness()
+    const project = h.repo.tickets.get(h.project().ticketId!)!
+    const decision = h.accept({ projectTicketId: project.id }, { triggerId: '2', title: 'Human task' })
+    const task = h.repo.tickets.get(decision.ticketId!)!
+    expect(task).toMatchObject({ kind: 'task', projectTicketId: project.id, title: 'Human task' })
+    expect(task.parentTicketId).toBeUndefined()
+    expect(task.mandate).toMatchObject({ scope: 'small' })
+    expect(task.mandate).not.toHaveProperty('capabilities')
+    expect(task.profile?.id).toBe(ownerProfile)
+    expect(task.assignments).toHaveLength(1)
+    expect(projectOfTask(task, id => h.repo.tickets.get(id))?.id).toBe(project.id)
+    expect(isUnassignedTask(task)).toBe(false)
+    expect(h.executor.start).toHaveBeenCalledOnce()
+  })
+
+  it('refuses a task link to a missing, archived, or combined project container', () => {
+    const h = harness()
+    const project = h.repo.tickets.get(h.project().ticketId!)!
+    expect(() => h.accept({ projectTicketId: 'missing' }, { triggerId: '2', title: 'Unknown link' }))
+      .toThrowError(new UserError('unknownTicket'))
+    expect(() => h.accept({ project: { goal: 'Nested', ownerProfileId: ownerProfile }, projectTicketId: project.id },
+      { triggerId: '3', title: 'Nested project' })).toThrowError(new UserError('projectInvalid'))
+    h.engine.archiveProject(project.id, true, member)
+    expect(() => h.accept({ projectTicketId: project.id }, { triggerId: '4', title: 'Archived link' }))
+      .toThrowError(new UserError('projectArchived'))
+    expect(h.repo.tickets.list().filter(item => item.title === 'Archived link')).toHaveLength(0)
+  })
+
   it('inherits the project link into delegated subtasks and reads legacy tickets as unassigned tasks', () => {
     const h = harness()
     const project = h.repo.tickets.get(h.project().ticketId!)!

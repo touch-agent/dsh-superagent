@@ -67,7 +67,7 @@ export type AssessmentOutcome =
    * project container instead of a task: it binds an owner worker and grants only the capabilities written there.
    */
   | { kind: 'accept'; title: string; scope: string; reason: string | Reason; acknowledgement?: string; rules?: string[]; audit?: Record<string, unknown>;
-    name?: string; note?: string; form?: 'lightweight'; project?: ProjectAccept }
+    name?: string; note?: string; form?: 'lightweight'; project?: ProjectAccept; projectTicketId?: string }
   | { kind: 'stop'; ticketId: string; reason: string | Reason; audit?: Record<string, unknown> }
 
 /** Semantic judgement. `request` queues the assessment, idempotently per `evalId`; the outcome returns through `Engine.decide`. */

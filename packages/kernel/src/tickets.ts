@@ -109,10 +109,16 @@ export class Tickets extends EnginePart {
     const primary = this.repo.triggers.get(evaluation.primary ?? triggerIds.at(-1)!)
     const origin = { triggerId: primary?.id ?? triggerIds[0]!, triggerIds }
     const project = outcome.project
+    const projectId = outcome.projectTicketId?.trim()
     if (project && outcome.form === 'lightweight') throw new UserError('projectInvalid')
+    // A human/main-Session accept in a project context keeps the task's own Mandate and owner; only its membership is
+    // recorded. A project container cannot be a task in another project, and an archived project takes no new tasks.
+    if (project && projectId) throw new UserError('projectInvalid')
+    const membership = projectId ? this.projectFor(projectId) : undefined
+    if (membership && isProjectArchived(membership)) throw new UserError('projectArchived')
     let ticket: Ticket = { id, title: outcome.title, decisionId, mandate, form: outcome.form ?? 'tracked', kind: project ? 'project' : 'task',
       channels: [], assignments: [], inputs: [], undelivered: [], createdAt: at, updatedAt: at, origin,
-      ...(project ? { goal: project.goal.trim() } : {}) }
+      ...(project ? { goal: project.goal.trim() } : {}), ...(membership ? { projectTicketId: membership.id } : {}) }
     for (const triggerId of triggerIds) {
       const channel = this.repo.triggers.get(triggerId)?.channel
       if (channel && !ticket.channels.some(item => sameChannel(item, channel))) ticket.channels.push(channel)

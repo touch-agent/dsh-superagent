@@ -66,6 +66,7 @@ const RouteItemSchema = z.object({
     capabilities: z.array(z.enum(['create-task', 'assign-worker'])).max(2).optional()
       .describe('accept: what the project Mandate may do; defaults to both create-task and assign-worker.'),
   }).strict().nullish().describe('accept: create a project container instead of a flat task; its tasks come through admission, never as sibling root tasks.'),
+  project_ticket_id: z.string().min(1).nullish().describe('accept: put this task in an existing live, unarchived project; it keeps its own Mandate and owner. Cannot be combined with project.'),
   reason: z.string().nullish().describe('ignore and stop: why, at most 500 characters; an ignore needs it.'),
 }).strict()
 type RouteItem = z.infer<typeof RouteItemSchema>
@@ -79,6 +80,7 @@ const FIELDS: Record<Field, { check: z.ZodType; reads: readonly Kind[]; needs: r
   form: { check: z.literal('lightweight'), reads: ['accept'], needs: [] },
   acknowledgement: { check: AcknowledgementSchema, reads: ['accept'], needs: ['accept'] },
   note: { check: RoutingNoteSchema, reads: ['accept', 'attach'], needs: [] },
+  project_ticket_id: { check: z.string(), reads: ['accept'], needs: [] },
   reason: { check: z.string().max(500), reads: ['ignore', 'stop'], needs: ['ignore'] },
 }
 /** Why an item cannot run: a field its kind needs is missing, or one it reads breaks its limit. */
@@ -95,6 +97,8 @@ function invalid(item: RouteItem): string | undefined {
   }
   if (item.project && item.kind !== 'accept') return 'project is only for accept'
   if (item.project && item.form === 'lightweight') return 'a project cannot be a lightweight lookup'
+  if (item.project_ticket_id && item.kind !== 'accept') return 'project_ticket_id is only for accept'
+  if (item.project && item.project_ticket_id) return 'project_ticket_id cannot be combined with project'
   return undefined
 }
 type Routed = { decision?: DecisionKind; reason: string; ticketId?: string | undefined; triggerIds?: readonly string[] }
@@ -115,7 +119,8 @@ function route(host: MainToolsHost, item: RouteItem, decided: ReadonlyMap<string
         acknowledgement: item.acknowledgement!, name: item.worktree_name!, ...note,
         ...(item.form === 'lightweight' ? { form: 'lightweight' } : {}),
         ...(item.project ? { project: { goal: item.project.goal, ownerProfileId: item.project.owner_profile_id,
-          ...(item.project.capabilities ? { capabilities: item.project.capabilities } : {}) } } : {}) })
+          ...(item.project.capabilities ? { capabilities: item.project.capabilities } : {}) } } : {}),
+        ...(item.project_ticket_id ? { projectTicketId: item.project_ticket_id } : {}) })
       // A Decision that created no ticket is the item's refusal; one that existed before keeps what it was accepted with.
       if (decision.kind !== 'accept' || !decision.ticketId) return { refused: `Ticket was not created: ${reasonText(decision.reason)}` }
       if (decision.id === before) {

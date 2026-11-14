@@ -10,9 +10,9 @@ seam for project tasks with capability-scoped `create-task`/`assign-worker`
 tools and no cross-project escalation; project archival that leaves task
 visibility and attention unchanged; project dispatch that routes a Trigger to
 the project worker, with an explicit refusal for unknown, non-project or
-archived destinations and the flat task path when no project is named; the
+archived destinations, the flat task path when no project is named; the
 `projects`/`unassigned` board projection with `active`/`archived`/`all`/`off`
 filters; `GET projects/:id`, archive and restore routes; and the
 `ux.projects.v1` rollback switch. Tickets are persisted as JSON, so the new
 fields need no migration: old Tickets read as unassigned tasks, and
-`GET tasks?projects=off` keeps the pre-project response shape.
+`GET tasks?projects=off` keeps the pre-project response shape. A human/main-Session accept may pass `projectTicketId` to put a task in an existing project without changing its Mandate or owner.
