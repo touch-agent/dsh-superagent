@@ -12,10 +12,11 @@ import type { ApiResponse } from '../app/api.ts'
 import { taskDetailV2 } from './features.ts'
 import { usePanel } from './provider.tsx'
 import { useTasksView, type TasksViewClient } from './tasks-view.ts'
-import { errorText, fullTime, valueLabel, when, type T } from './text.ts'
+import { errorText, fullTime, localized, valueLabel, when, type T } from './text.ts'
 import { Hint } from './widgets.tsx'
 
 type ProfileRow = ApiResponse<'GET profiles'>['profiles'][number]
+const EMPTY_PROFILES: readonly ProfileRow[] = []
 
 const STATUS_TONE: Record<TaskView['status'], TagTone> = { queued: 'neutral', working: 'info', idle: 'neutral', review: 'warning',
   answer: 'warning', delivery: 'warning', blocked: 'warning', failed: 'danger', done: 'success' }
@@ -114,8 +115,12 @@ function Done({ task, t, onOpenTicket }: { task: TaskView; t: T; onOpenTicket: (
   </div>
 }
 
+/** One ancestor link above an open task; a project crumb is supplied by the project page. */
+export interface TaskCrumb { label: string; onClick?: () => void }
+
 /** Who is doing the work at this level, in human words from the profile registry. */
-function Owner({ task, t, profiles }: { task: TaskView; t: T; profiles: readonly ProfileRow[] }) {
+function Owner({ task, t, profiles, project }: { task: TaskView; t: T; profiles: readonly ProfileRow[]
+  project?: { name: string; owner: string } }) {
   if (task.form === 'lightweight') return <div className="dt-task-detail-section"><h4>{t('taskDetailOwner')}</h4>
     <Hint>{t('tasksLightweightNote')}</Hint></div>
   const own = ownerLabel(t, task.owner?.profile, profiles)
@@ -125,6 +130,8 @@ function Owner({ task, t, profiles }: { task: TaskView; t: T; profiles: readonly
     <p className="dt-task-owner"><Tag tone="neutral">{t('taskDetailOwnerWorker')}</Tag>
       <span>{own.text}</span></p>
     {own.description && <p className="dt-hint dt-task-owner-note">{own.description}</p>}
+    {project && <p className="dt-task-owner"><Tag tone="quiet">{t('projectsProjectOwner')}</Tag>
+      <span>{project.owner}</span></p>}
     {parent && <>
       <p className="dt-task-owner"><Tag tone="quiet">{t('taskDetailOwnerUpstream')}</Tag><span>{parent.text}</span></p>
       {parent.description && <p className="dt-hint dt-task-owner-note">{parent.description}</p>}
@@ -227,17 +234,42 @@ function LevelRow({ task, t, onEnter, onOpenTicket, v2 = false, profiles = [] }:
   </li>
 }
 
+/** The reports people and parent owners already made at this level, newest first; no entry is invented. */
+function ReportHistory({ task, t }: { task: TaskView; t: T }) {
+  const entries: { at: string; label: string; text?: string; who?: string }[] = []
+  for (const item of task.deliverables) entries.push({ at: item.at, label: t('taskHistoryDelivered'),
+    text: `${valueLabel(t, 'artifact', item.artifact.kind)} · ${item.artifact.ref} · ${item.artifact.revision}` })
+  for (const item of task.delegation?.dispositions ?? []) entries.push({ at: item.at,
+    label: valueLabel(t, 'decision', item.decision), ...item.reason ? { text: item.reason } : {},
+    ...item.by?.name ? { who: localized(t, item.by.name) } : {} })
+  const resolution = task.delegation?.resolution
+  if (resolution) entries.push({ at: resolution.at, label: t(`delegationResolution.${resolution.kind}`),
+    ...resolution.reason ? { text: resolution.reason } : {}, ...resolution.by?.name ? { who: localized(t, resolution.by.name) } : {} })
+  if (task.review?.accepted) entries.push({ at: task.review.accepted.at, label: t('taskHierarchyAccepted'),
+    ...task.review.accepted.by?.name ? { who: localized(t, task.review.accepted.by.name) } : {} })
+  const ordered = entries.filter(item => item.at).sort((left, right) => Date.parse(right.at) - Date.parse(left.at)).slice(0, 8)
+  if (!ordered.length) return <p className="dt-hint">{t('taskHierarchyNoReports')}</p>
+  return <ul className="dt-task-history">{ordered.map((item, index) => <li key={`${item.at}:${index}`}>
+    <Tag tone="quiet">{item.label}</Tag>
+    {item.who && <span className="dt-hint">{item.who}</span>}
+    {item.text && <span className="dt-task-report">{item.text}</span>}
+    <time dateTime={item.at} className="dt-hint">{when(item.at, t('lang'))}</time>
+  </li>)}</ul>
+}
+
 /**
  * The dedicated hierarchy detail. `task` is the row a person entered from; a child click swaps the focus instead of
  * navigating away, and the breadcrumb keeps the way back. The store loads each level's direct children on demand.
  */
-export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskView; store: TasksViewClient
-  onBack: () => void; onOpenTicket: (id: string) => void }) {
+export function TaskDetail({ task, store, onBack, onOpenTicket, crumbs = [], backLabel, project, projects = EMPTY_PROFILES }: {
+  task: TaskView; store: TasksViewClient; onBack: () => void; onOpenTicket: (id: string) => void
+  crumbs?: readonly TaskCrumb[]; backLabel?: string; project?: { name: string; owner: string }
+  projects?: readonly ProfileRow[] }) {
   const { t, call, openSession, notify } = usePanel()
   const snapshot = useTasksView(store)
   const v2 = taskDetailV2()
   // Profile titles and descriptions are read-only; loading them only in the deeper view keeps the rollback path silent.
-  const [profiles, setProfiles] = useState<ProfileRow[]>([])
+  const [profiles, setProfiles] = useState<readonly ProfileRow[]>([])
   // Entries keep the row a person entered from; every render resolves the same id against the newest poll answer,
   // so an open detail does not freeze at the first render while the list keeps moving underneath it.
   const [stack, setStack] = useState<Array<{ id: string; task: TaskView }>>(() => [{ id: task.id, task }])
@@ -255,18 +287,32 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
   const deeper = (focus.childSummary?.total ?? 0) - children.length
   const source = useMemo(() => focus.sources.map(item => item.source).find(Boolean) ?? focus.origin.source, [focus])
   useEffect(() => {
-    if (!v2) { setProfiles([]); return }
+    if (!v2 || projects.length > 0) { setProfiles(projects); return }
     let active = true
     call('GET profiles').then(result => { if (active) setProfiles(result.profiles) }, () => { if (active) setProfiles([]) })
     return () => { active = false }
-  }, [call, v2])
+  }, [call, projects, v2])
   return <section className="dt-task-detail" aria-label={t('taskHierarchyGoal')}>
     <div className="dt-task-detail-head">
       <div>
         <Button variant="ghost" size="sm" icon={<Icon name="chevron-left" size={14} />} onClick={() => {
           if (stack.length > 1) setStack(stack.slice(0, -1)); else onBack()
-        }}>{stack.length > 1 ? t('taskHierarchyParent') : t('taskHierarchyBack')}</Button>
-        {stack.length > 1 && <p className="dt-hint">{resolved.map(item => item.title).join(' / ')}</p>}
+        }}>{stack.length > 1 ? t('taskHierarchyParent') : backLabel ?? t('taskHierarchyBack')}</Button>
+        {(crumbs.length > 0 || stack.length > 1) && <nav className="dt-task-crumbs" aria-label={t('projectsBreadcrumb')}>
+          {crumbs.map((crumb, index) => <span key={`${crumb.label}:${index}`} className="dt-task-crumb-item">
+            {index > 0 && <span className="dt-task-crumb-sep" aria-hidden>/</span>}
+            {crumb.onClick ? <button type="button" className="dt-textlink" onClick={crumb.onClick}>{crumb.label}</button>
+              : <span>{crumb.label}</span>}
+          </span>)}
+          {resolved.map((item, index) => {
+            const current = index === resolved.length - 1
+            return <span key={item.id} className="dt-task-crumb-item">
+              {index > 0 || crumbs.length > 0 ? <span className="dt-task-crumb-sep" aria-hidden>/</span> : null}
+              {current ? <span aria-current="page">{item.title}</span>
+                : <button type="button" className="dt-textlink" onClick={() => setStack(stack.slice(0, index + 1))}>{item.title}</button>}
+            </span>
+          })}
+        </nav>}
         <h2 className="dt-task-detail-title">{focus.title}</h2>
         <div className="dt-task-level-meta">{t('taskHierarchyStatus')} · {statusLabel(t, focus.status)}
           {source && ` · ${t('taskHierarchySource')} ${valueLabel(t, 'source', source)}`}</div>
@@ -290,6 +336,7 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
       {focus.form === 'lightweight' ? <Hint>{t('tasksLightweightNote')}</Hint> : <>
         <p className="dt-task-owner"><Tag tone="neutral">{t('tasksRole.parentWorker')}</Tag>
           <span>{profileText(t, focus.owner?.profile)}</span></p>
+        {project && <p className="dt-task-owner"><Tag tone="quiet">{t('projectsProjectOwner')}</Tag><span>{project.owner}</span></p>}
         {focus.parentOwner && <p className="dt-task-owner"><Tag tone="quiet">{t('taskHierarchyParent')}</Tag>
           <span>{t('tasksRole.parentWorker')} · {profileText(t, focus.parentOwner.profile)}</span></p>}
         <p className="dt-task-report"><span>{focus.parentTicketId
@@ -316,6 +363,10 @@ export function TaskDetail({ task, store, onBack, onOpenTicket }: { task: TaskVi
     <div className="dt-task-detail-section">
       <h4>{t('taskHierarchyReports')}</h4>
       <Reports task={focus} t={t} v2={v2} profiles={profiles} />
+    </div>
+    <div className="dt-task-detail-section">
+      <h4>{t('taskHierarchyReportHistory')}</h4>
+      <ReportHistory task={focus} t={t} />
     </div>
     <div className="dt-task-detail-section">
       <h4>{t('taskHierarchySession')}</h4>

@@ -1,10 +1,39 @@
 # 029 项目任务视图：项目、层级、负责人与待处理
 
-> 状态：**设计提案，未实现**。本单只交付设计文档、可点击 HTML 原型、同视口截图与迁移可行性说明；不改产品代码、不写真实数据、不改现有接口。
+> 状态：**客户端项目视图已实现，受 `ux.projects.v1` 控制；服务端项目投影由并行数据分支提供，尚未合并。** 本文档保留设计、原型和验收说明，并新增 §0.1 的实现状态与真实应用截图。
 >
 > 输入：工单 `717a055c…`（「重设计任务视图」）、触发 `f37bfc2c…`，以及 2026-11-14 人工 review 对 #86 的三条意见（项目/任务/子任务都是 Ticket；项目由主会话识别并绑定负责 worker；项目可归档、默认看未归档）。基线：`touch-agent/dsh-superagent` main `46e1089`。
 >
 > 关系：承接任务视图架构提案（`docs/tasks-view-architecture.zh.md`）和 [021](021-ux-redesign.zh.md)、[023](023-ux-first-batch.zh.md)、[024](024-ux-second-batch.zh.md)、[026](026-ux-third-batch.zh.md)、[028](028-plugin-main-page.zh.md)。本版按 review 把「项目」从 Ticket 之上的 KV 覆盖层改为 **Ticket 的一种层级**，并把创建路径改为「主会话识别项目 → 项目负责 worker → 任务」。
+
+## 0.1 实现状态（2026-11-15）
+
+**已实现（本单，客户端）：**
+
+- `GET tasks` 返回 `projects` 时，任务页默认显示项目列表：项目名、一句话目标、负责 worker、顶层进度、待处理/阻塞和最近活动；`projects` 缺失时仍走原平面列表。
+- 未归档/已归档过滤、归档数量和“查看已归档/查看未归档”；归档项目的任务仍出现在“全部任务”，待人项仍出现在“等你处理”并标“已归档”。默认板只带未归档项目时，归档视图通过同一条 `GET tasks?projects=archived` 读取，不新增项目存储。
+- 项目 → 任务 → 子任务下钻：项目详情含任务树、负责人、状态、子任务展开和最近活动；任务/子任务详情含项目面包屑、负责 worker、交付物、阻塞和汇报历史；返回保留来源。
+- 项目级 worker/权限/问题与任务级待人分开计数和展示；缺 goal、缺 owner、缺父任务或项目消失时显示未知/引导，不猜项目、负责人或层级。
+- `ux.projects.v1` 关闭，或服务端没有 `projects` 字段时，UI 与当前 main 的平面列表一致。
+
+**未实现（留待并行数据分支/后续单）：**
+
+- 项目 Ticket、`kind`/`projectTicketId`/`archivedAt`、项目协调 Session、`create-task`/`assign-worker`、归档/恢复写路径和 §2.5 受理 seam。
+- 本单不写服务端、不建第二套 store；项目/任务归属只读契约字段。
+- 通知中心按项目重组的写路径未改；待处理条已在项目页按项目/任务分层。
+
+**真实应用截图（1440×900、浅色、zh-CN、DPR=1）：**
+
+基线是 main `b6a41d7` 构建的应用（平面任务列表），After 是本分支构建的应用；两边使用同一组合成 `GET tasks`/`GET profiles` fixture（任务名、项目名、人员均为合成，无飞书私有内容），通过真实 DSH Web 面板截取，不是原型截图。归档/详情在基线没有等价界面，因此 Before 复用同一张平面列表基线并明确标注。
+
+| 场景 | Before（main `b6a41d7`） | After（本分支） |
+| --- | --- | --- |
+| 项目列表 | [before-tasks.png](images/task-projects/implementation/before-tasks.png)：平面任务列表，无项目层 | [after-projects.png](images/task-projects/implementation/after-projects.png)：项目卡、负责 worker、进度、待人/阻塞、最近活动 |
+| 归档视图 | 基线无归档概念；复用 [before-tasks.png](images/task-projects/implementation/before-tasks.png) | [after-archived.png](images/task-projects/implementation/after-archived.png)：未归档 2 / 已归档 1，归档项目任务与待人项保留 |
+| 项目详情/任务树 | 基线无项目详情；复用 [before-tasks.png](images/task-projects/implementation/before-tasks.png) | [after-project-detail.png](images/task-projects/implementation/after-project-detail.png)：项目头、负责 worker、任务树、子任务进度、最近活动 |
+| 子任务详情 | 基线无项目子任务详情；复用 [before-tasks.png](images/task-projects/implementation/before-tasks.png) | [after-task-detail.png](images/task-projects/implementation/after-task-detail.png)：面包屑、负责 worker、交付物；[after-task-detail-history.png](images/task-projects/implementation/after-task-detail-history.png)：阻塞/向上汇报/汇报历史 |
+
+**截图限制：** 服务端项目投影尚未合并，截图通过浏览器注入契约响应验证 UI；它证明客户端渲染和交互，不证明真实项目 Ticket 的创建、归档或权限链路。数据分支合并后仍需用真实项目数据复拍一次。
 
 ## 0. 结论摘要
 
@@ -610,7 +639,7 @@ A 系统开发                                  [更多]
 
 | 视图字段 | 来源 | 说明 |
 | --- | --- | --- |
-| `project.id/name/goal` | `Ticket`（`kind='project'`）的 `id/title/goal` | 项目就是 Ticket；`goal` 是新增的可选字段，项目卡片/详情的一句话目标；`origin` 只是来源，不当目标。 |
+| `project.id/title/goal` | `Ticket`（`kind='project'`）的 `id/title/goal` | 项目就是 Ticket；`goal` 是新增的可选字段，项目卡片/详情的一句话目标；`origin` 只是来源，不当目标。 |
 | `project.state` | `Ticket.archivedAt` | 有值 = archived；缺省 = active；可恢复。 |
 | `project.owner` | 项目 `Ticket.profile` + profiles | 显示 worker/title + revision；空/停用 → 项目级 attention；不静默回退默认配置。 |
 | `project.tasks` | `GET tasks` 根 `TaskView` where `projectTicketId=project.id && TaskView.kind !== 'review'` | 任务仍是根；子任务在 `TaskView.children`；review 行不计入项目任务。 |
