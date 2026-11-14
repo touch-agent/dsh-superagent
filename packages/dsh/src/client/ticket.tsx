@@ -64,7 +64,7 @@ function Assignments({ ticket }: { ticket: TicketPageView }) {
       </div>
     </div>
     {!ticket.parentTicketId && item.ref && item.ref !== ticket.sessionId && <div className="dt-row-actions"><SessionButton variant="outline"
-      sessionId={item.ref} /></div>}
+      sessionId={item.ref} label={t('openExecutorSession')} /></div>}
   </li>)}</ul>
 }
 /**
@@ -317,6 +317,8 @@ export function TicketPage({ id }: { id: string }) {
     return reason ? t('endedAt', { time, outcome, reason }) : t('endedAtShort', { time, outcome })
   })()
   const channel = data.channels[0]
+  // An open Ticket may still get its first Assignment; an ended one never will.
+  const noSessionReason = t(data.ended ? 'endedNoExecutorSession' : 'noExecutorSession')
   const delegationRows: [string, ReactNode][] = data.delegation ? [
     [t('delegationGoal'), data.delegation.goal],
     [t('delegationAttempt'), String(data.delegation.attempt)],
@@ -330,8 +332,12 @@ export function TicketPage({ id }: { id: string }) {
       {data.actions.retry && <ConfirmButton variant="outline" icon="refresh" label={t('retry')} title={t('retryTitle')}
         message={t('retryConfirm', { title: data.title })}
         onConfirm={() => after(call('POST tickets/:id/retry', { id }))} />}
-      {data.conversationSession && <SessionButton variant="outline" sessionId={data.conversationSession} label={t('openConversation')} />}
+      {data.sessionId
+        ? <SessionButton variant="outline" sessionId={data.sessionId} label={t('openExecutorSession')} />
+        : <Button variant="outline" disabled title={noSessionReason}>{t('openExecutorSession')}</Button>}
     </PageHead>
+    {/* A Ticket without a started Assignment has no executor Session; the action stays visible and says why. */}
+    {!data.sessionId && <Hint>{noSessionReason}</Hint>}
     {error && <LoadState error={error} loading={false} />}
     <div className="dt-row-meta dt-status-line">
       <StageMark state={status.dot} icon={status.icon} label={status.label} />
@@ -421,9 +427,8 @@ export function TicketPage({ id }: { id: string }) {
       </Details>}
       <Details icon="hash" title={t('identifiers')}>
         <KeyValues rows={[[t('ticketId'), <span className="dt-mono">{data.id}</span>],
-          // The Executor Session is E3: an explicit entry, never an id or button on the E1 default page.
-          ...!data.parentTicketId && data.sessionId ? [[t('term.executorSession'), <SessionButton variant="outline"
-            sessionId={data.sessionId} />] as [string, ReactNode]] : [],
+          // The page-head action opens the executor Session; this fold keeps its id for reference.
+          ...data.sessionId ? [[t('term.executorSession'), <span className="dt-mono">{data.sessionId}</span>] as [string, ReactNode]] : [],
           ...legacy && data.mandate.scope ? [[t('legacyAssignment'), <span
             className="dt-mono dt-clamp">{data.mandate.scope}</span>] as [string, ReactNode]] : []]} />
       </Details>

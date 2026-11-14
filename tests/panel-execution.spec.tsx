@@ -93,12 +93,34 @@ it('says a review-stage Ticket without a preview cannot be reviewed and offers n
   expect(all('button').some(button => button.textContent === zh.approve)).toBe(false)
 })
 
-it('opens the conversation that started the Ticket from its page header', async () => {
-  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, conversationSession: 'master' }
+it('opens the Ticket\'s executor Session from its page header', async () => {
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
-  await click(zh.openConversation)
-  expect(server.opened).toEqual(['master'])
+  await click(zh.openExecutorSession)
+  expect(server.opened).toEqual(['worker-t1'])
+})
+
+it('disables the executor Session action and explains why when no assignment has started', async () => {
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, sessionId: '' }
+  await mount()
+  await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
+  const action = all('button').find(button => button.textContent === zh.openExecutorSession)! as HTMLButtonElement
+  expect(action.disabled).toBe(true)
+  expect(action.getAttribute('title')).toBe(zh.noExecutorSession)
+  expect(text()).toContain(zh.noExecutorSession)
+  await click(action)
+  expect(server.opened).toEqual([])
+})
+
+it('says an ended Ticket has no executor Session to open', async () => {
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, sessionId: '', state: 'ended',
+    ended: { at: '2026-09-23T00:00:00Z', by: 'human', reason: 'Human asked to stop', outcome: 'stopped' } }
+  await mount()
+  await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
+  const action = all('button').find(button => button.textContent === zh.openExecutorSession)! as HTMLButtonElement
+  expect(action.disabled).toBe(true)
+  expect(action.getAttribute('title')).toBe(zh.endedNoExecutorSession)
+  expect(text()).toContain(zh.endedNoExecutorSession)
 })
 
 it('shows a Ticket with its stage, its Mandate details with the Trigger and Decision behind it, its Threads, and the rest behind disclosures', async () => {

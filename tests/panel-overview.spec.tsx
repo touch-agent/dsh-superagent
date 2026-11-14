@@ -80,8 +80,8 @@ it('offers each Ticket that needs a person its E0 actions on the overview: answe
     'https://applink.feishu.cn/client/chat/open?openChatId=oc_1']])
   await click(zh.problemAggregateShow)
   expect(all('.dt-ticket-note').map(note => note.textContent)).toContain('LlmError: no adapter registered for provider "provider-a"')
-  // The default row carries goal, state and the decision; opening the Executor Session is an E3 detail on the Ticket page.
-  expect(all('.dt-ticket-actions button').map(button => button.textContent)).not.toContain(zh.openSession)
+  // The default row carries goal, state and the decision; its executor Session opens from the Ticket page.
+  expect(all('.dt-ticket-actions button').map(button => button.textContent)).not.toContain(zh.openExecutorSession)
   expect(all('.dt-ticket .dt-ticket-meta').map(meta => meta.textContent).join(' ')).not.toContain('未送达')
   expect(text()).not.toMatch(/worker-|Assignment|Session id|sessionId|assignmentId|workerId/)
   await click(zh.retry)
@@ -107,12 +107,11 @@ it('puts the approval decision in E0 words and folds the object id and action ki
   expect(details.textContent).toContain('mail.reply')
 })
 
-it('keeps the Executor Session entry on the Ticket page as an explicit E3 detail, not on the E1 default page', async () => {
+it('keeps the Executor Session entry on the Ticket page, not on the E1 overview rows', async () => {
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
   expect(text()).not.toContain(zh.openSession)
-  await click(zh.identifiers)
-  await click(find(zh.openSession))
+  await click(zh.openExecutorSession)
   expect(server.opened).toEqual(['worker-t1'])
 })
 
