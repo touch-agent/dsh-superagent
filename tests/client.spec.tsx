@@ -16,10 +16,11 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
 type Entry = { options: { name: string; id?: string; key?: string; order?: number; locale?: string; label?: () => string }; component: ComponentType<Record<string, unknown>> }
 const t = ((key: keyof typeof zh, values: Record<string, string | number> = {}) => (zh[key] ?? key)
   .replace(/\{(\w+)\}/g, (_match, name: string) => String(values[name] ?? ''))) as never
-function fixture(listed: string[], options: { appShell?: boolean } = {}) {
+function fixture(listed: string[], options: { appShell?: boolean; files?: boolean } = {}) {
   // Keep the surface registrations these specs assert; the batch-3 panel spec exercises the four-entry defaults.
   for (const flag of ['ux.navFour.v1', 'ux.masterCard.v1', 'ux.noticeButton.v1', 'ux.filesPage.v1', 'ux.appShell.v1']) {
-    localStorage.setItem(flag, options.appShell && (flag === 'ux.navFour.v1' || flag === 'ux.appShell.v1') ? 'on' : 'off')
+    localStorage.setItem(flag, options.appShell && (flag === 'ux.navFour.v1' || flag === 'ux.appShell.v1'
+      || (flag === 'ux.filesPage.v1' && options.files)) ? 'on' : 'off')
   }
   const entries: Entry[] = []
   const dictionaries: Record<string, unknown> = {}
@@ -109,6 +110,37 @@ it('puts the four destinations in the main Conversation header, and only there',
   const other = await render(actions, { t, sessionId: 'other' })
   expect(other.container.querySelector('.dt-header-actions')).toBeNull()
   other.dispose()
+})
+
+it('opens each header destination in the host right sidebar without leaving the conversation panel', async () => {
+  serve()
+  const { entries, opened } = fixture([], { appShell: true, files: true })
+  const navigations: Event[] = []
+  const onNavigate = (event: Event) => navigations.push(event)
+  window.addEventListener(PANEL_NAVIGATE, onNavigate)
+  const actions = entries.find(entry => entry.options.id === 'system-conversation-actions')!
+  const view = await render(actions, { t, sessionId: 'master' })
+  for (const label of [zh['tab.tasks'], zh['tab.notifications'], zh['tab.files'], zh['tab.settings']]) {
+    const button = [...view.container.querySelectorAll<HTMLButtonElement>('button')].find(item => item.getAttribute('aria-label') === label)!
+    await act(async () => { button.click() })
+  }
+  expect(opened).toEqual(['tasks', 'notifications', 'files', 'settings'])
+  expect(navigations).toEqual([])
+  window.removeEventListener(PANEL_NAVIGATE, onNavigate)
+  view.dispose()
+})
+
+it('registers the four side pages and renders them without the panel header or navigation', async () => {
+  serve()
+  const { entries, tabs } = fixture([], { appShell: true, files: true })
+  expect((tabs as { kind: string }[]).map(definition => definition.kind)).toEqual(['tasks', 'notifications', 'files', 'settings'])
+  const tasks = entries.find(entry => entry.options.key === 'dsh-superagent-side-tasks')!
+  const view = await render(tasks, { t })
+  expect(view.container.querySelector('.dt-side-page')).not.toBeNull()
+  expect(view.container.querySelector('.dt-head')).toBeNull()
+  expect(view.container.querySelector('.dt-search')).toBeNull()
+  expect(view.container.querySelector('.dt-tasks-layout')).not.toBeNull()
+  view.dispose()
 })
 
 it('keeps the host New Session shortcut only when the conversation home does not own the entrance', () => {

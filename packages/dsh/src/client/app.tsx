@@ -1,5 +1,6 @@
 /** Root panel: the conversation-home bridge or the auxiliary page, its navigation and the active route view. */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import type { AuxKind } from './aux.ts'
 import type { SearchView } from './api.ts'
 import type { ThreadFilter } from '../app/api.ts'
 import { Button, Dot, Icon, Input, Modal, SegmentedTabs } from './controls.tsx'
@@ -38,6 +39,10 @@ export interface AppProps {
   tasks?: TasksViewClient
   /** The host already mounts the frame-wide floating notice entry; an embedded/standalone mount draws its own copy. */
   shellNotice?: boolean
+  /** A host right-sidebar tab: no panel header, navigation or home; the tab's own route starts at `initialRoute`. */
+  side?: AuxKind
+  /** The first route of a right-sidebar tab (embedded mounts default to the conversation home). */
+  initialRoute?: Route
 }
 
 function Glossary({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -160,8 +165,10 @@ function Header({ masterId, hideMaster = false }: { masterId: string | undefined
   </div>
 }
 
-function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks, conversation = false, onBackHome }: { route: Route; openTab: (tab: Tab) => void
-  deploymentForm: DeploymentForm; pageId: string; tabPrefix: string; tasks?: TasksViewClient; conversation?: boolean; onBackHome?: () => void }) {
+function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks, conversation = false, onBackHome, side = false,
+  onBack, canBack }: { route: Route; openTab: (tab: Tab) => void
+  deploymentForm: DeploymentForm; pageId: string; tabPrefix: string; tasks?: TasksViewClient; conversation?: boolean
+  onBackHome?: () => void; side?: boolean; onBack?: () => void; canBack?: boolean }) {
   const { t, call } = usePanel()
   const { state, error, reload } = usePanelData()
   const consolidated = opsInSettings()
@@ -218,26 +225,29 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks, conve
   const back = () => { requestPanelHome(); onBackHome?.() }
   // The card holds the entrance on the fallback task page; the conversation bar owns it on every auxiliary page.
   const cardHere = !conversation && masterCard() && route.page === 'tasks'
-  return <div className="dt-page">
-    <div className="dt-column">
-      {conversation && <div className="dt-conversation-bar">
+  return <div className={side ? 'dt-page dt-side-page' : 'dt-page'}>
+    <div className={side ? 'dt-column dt-side-column' : 'dt-column'}>
+      {side && canBack && <div className="dt-side-back">
+        <Button variant="ghost" size="sm" icon={<Icon name="chevron-left" size={14} />} onClick={onBack}>{t('back')}</Button>
+      </div>}
+      {!side && conversation && <div className="dt-conversation-bar">
         <Button variant="ghost" size="sm" icon={<Icon name="chevron-left" size={14} />} disabled={!state?.masterId}
           onClick={back}>{t('backToConversation')}</Button>
         <span className="dt-hint">{t('backToConversationHint')}</span>
       </div>}
-      <Header masterId={state?.masterId} hideMaster={conversation || cardHere} />
+      {!side && <Header masterId={state?.masterId} hideMaster={conversation || cardHere} />}
       {banners}
-      {nav}
-      <main id={pageId} role="tabpanel" className="dt-main"
-        {...tabs.includes(selected) ? { 'aria-labelledby': `${tabPrefix}-${selected}` } : { 'aria-label': t(`tab.${selected}`) }}>{page}</main>
+      {!side && nav}
+      <main id={pageId} role="tabpanel" className={side ? 'dt-main dt-side-main' : 'dt-main'}
+        {...!side && tabs.includes(selected) ? { 'aria-labelledby': `${tabPrefix}-${selected}` } : { 'aria-label': t(`tab.${selected}`) }}>{page}</main>
     </div>
   </div>
 }
 
 /** Root panel component managing route history and shared panel state. */
-export function App({ t, openSession, deploymentForm, embedded = false, tasks, shellNotice = false }: AppProps) {
-  // The embedded Status page keeps its own route and does not overwrite the panel's remembered route.
-  const [location, setLocation] = useState<Location>(() => embedded ? { route: homeRoute(), stack: [] } : initialLocation())
+export function App({ t, openSession, deploymentForm, embedded = false, tasks, shellNotice = false, side, initialRoute }: AppProps) {
+  // The embedded Status page and right-side tabs keep their own route and do not overwrite the panel's remembered route.
+  const [location, setLocation] = useState<Location>(() => embedded ? { route: initialRoute ?? homeRoute(), stack: [] } : initialLocation())
   useEffect(() => { if (!embedded) remember(location) }, [location, embedded])
   // Preserve the last opened settings group across navigation so the Settings tab reopens at it.
   const move = useCallback((next: (current: Location) => Pick<Location, 'route' | 'stack'>) =>
@@ -258,8 +268,8 @@ export function App({ t, openSession, deploymentForm, embedded = false, tasks, s
     window.addEventListener(PANEL_NAVIGATE, onNavigate)
     return () => window.removeEventListener(PANEL_NAVIGATE, onNavigate)
   }, [navigate, embedded])
-  const pageId = embedded ? 'dt-page-status' : 'dt-page'
-  const tabPrefix = embedded ? 'dt-page-status-tab' : 'dt-tab'
+  const pageId = side ? `dt-page-side-${side}` : embedded ? 'dt-page-status' : 'dt-page'
+  const tabPrefix = side ? `dt-page-side-${side}-tab` : embedded ? 'dt-page-status-tab' : 'dt-tab'
   const conversation = !embedded && appShell()
   // The intent is read once per mount; a header action or a page opened while mounted overrides it.
   const [wantsHome, setWantsHome] = useState(() => !embedded && panelWantsHome())
@@ -267,10 +277,12 @@ export function App({ t, openSession, deploymentForm, embedded = false, tasks, s
   const browse = useCallback((route: Route) => { markPanelPage(); setWantsHome(false); navigate(route) }, [navigate])
   // Leaving the panel to the host, another plugin or the conversation makes the next Superagent selection start at home.
   useEffect(() => () => { if (!embedded) requestPanelHome() }, [embedded])
-  return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? homeRoute())}>
+  return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} interval={side ? 10_000 : 5_000}
+    backLabel={routeLabel(t, location.stack.at(-1) ?? homeRoute())}>
     <NotificationHost shellNotice={shellNotice}>
       {home ? <ConversationHome onBrowse={browse} /> : <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm}
-        pageId={pageId} tabPrefix={tabPrefix} tasks={tasks} conversation={conversation} onBackHome={() => setWantsHome(true)} />}
+        pageId={pageId} tabPrefix={tabPrefix} tasks={tasks} conversation={conversation} onBackHome={() => setWantsHome(true)}
+        {...side ? { side: true, onBack: back, canBack: location.stack.length > 0 } : {}} />}
     </NotificationHost>
   </PanelProvider>
 }

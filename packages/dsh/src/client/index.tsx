@@ -18,10 +18,11 @@ import { openKnownSession, SessionNavigationError } from '../navigation.ts'
 import { ActivityFeedClient } from './activity-feed.ts'
 import { App } from './app.tsx'
 import { caller } from './api.ts'
+import { auxRoute, auxTabId, type AuxKind } from './aux.ts'
 import { ConversationActions } from './conversation-home.tsx'
 import { AttentionStore, useAttention } from './attention.ts'
 import { PluginConfig, usePageForm } from './deployment.tsx'
-import { appShell, entryThreeZones, navFour, noticeButton, taskViewV1 } from './features.ts'
+import { appShell, entryThreeZones, filesPage, navFour, noticeButton, taskViewV1 } from './features.ts'
 import { GlobalNoticeButton } from './global-notice.tsx'
 import { en, zh, type DshSuperagentKey } from './locales.ts'
 import { MasterStore } from './master.ts'
@@ -30,6 +31,7 @@ import { messages } from './provider.tsx'
 import { mountStyles } from './styles.ts'
 import { EventsBridge, EventsTab, EventsTitle, MasterBadge, MasterEntry, SystemView, SystemViewSeat } from './system.tsx'
 import { TasksTab, TasksTitle } from './tasks.tsx'
+import { AUX_TABS, SideMounted } from './side-tabs.tsx'
 import { TasksViewClient } from './tasks-view.ts'
 import type { T } from './text.ts'
 import type { Route } from './route.ts'
@@ -96,12 +98,26 @@ export function apply(ctx: ClientContext): void {
   // duplicate entries; the old tabs stay registered only on the fallback navigation.
   const four = navFour()
   const openEvents = () => {
-    if (four) { openPanel({ page: 'notifications' }); return }
+    if (four) { openAux('notifications'); return }
     try { ctx.get('sidebarRight')?.openTab(EVENTS_KIND) } catch { /* a host without the right sidebar has no Events tab */ }
   }
   const openTasks = () => {
-    if (four) { openPanel({ page: 'tasks' }); return }
+    if (four) { openAux('tasks'); return }
     try { ctx.get('sidebarRight')?.openTab(TASKS_KIND) } catch { /* a host without the right sidebar has no Task tab */ }
+  }
+  // In the conversation-home route an auxiliary destination opens a host right-sidebar tab; the main Conversation keeps
+  // the content column. A host without that sidebar falls back to the management panel at the same route.
+  const openSide = (kind: AuxKind): boolean => {
+    try {
+      const right = ctx.get('sidebarRight')
+      if (!right) return false
+      right.openTab(kind)
+      return true
+    } catch { return false }
+  }
+  const openAux = (kind: AuxKind) => {
+    if (appShell() && openSide(kind)) return
+    openPanel(auxRoute(kind))
   }
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({}) },
     (props: { t: T }) => <Mounted ctx={ctx} t={props.t} openSession={openSession} tasks={tasks} />))
@@ -110,7 +126,21 @@ export function apply(ctx: ClientContext): void {
   if (appShell()) ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities', id: 'system-conversation-actions', order: 890, locale: NS
   }, (props: { t: T; sessionId: string }) => <ConversationActions t={props.t} sessionId={props.sessionId} master={master}
-    attention={attention} activity={activity} onOpen={openPanel} />))
+    attention={attention} activity={activity} onOpen={openAux} />))
+  // The four destinations are host right-sidebar tabs in the conversation-home route. The host owns docking, floating,
+  // resizing and closing; each tab body is an embedded App, so links inside a page stay in that tab.
+  if (appShell()) {
+    for (const tab of AUX_TABS) {
+      if (tab.kind === 'files' && !filesPage()) continue
+      const id = auxTabId(tab.kind)
+      try {
+        ctx.effect(() => ctx.get('sidebarRightTabs')?.register({ id, kind: tab.kind, title: () => t(tab.title),
+          priority: 'extension' }) ?? (() => {}), `dsh-superagent: ${tab.kind} side tab`)
+      } catch { /* a host without the right sidebar keeps the panel fallback */ }
+      ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: id, locale: NS },
+        (props: { t: T }) => <SideMounted ctx={ctx} t={props.t} openSession={openSession} tasks={tasks} kind={tab.kind} />))
+    }
+  }
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 10, label: () => t('panel'), locale: NS },
     (props: SidebarPanelIconOwnerProps) => <HammerIcon {...props} attention={entryThreeZones() ? attention : undefined}
       badge={count => t('entryBadge', { count })} />))
@@ -155,7 +185,8 @@ export function apply(ctx: ClientContext): void {
   // needs a person, and opening the panel drawer (or the Notifications page when no panel is mounted).
   if (noticeButton()) ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'dsh-superagent-notice', order: 40,
     locale: NS }, (props: { t: T }) => <GlobalNoticeButton t={props.t} call={call}
-      onOpenPanel={() => openPanel({ page: 'notifications' })} />))
+      onOpenPanel={() => openPanel({ page: 'notifications' })}
+      onOpenSide={() => appShell() && openSide('notifications')} />))
   // An invisible Session companion: it keeps the stream alive and opens Events on the first unread notice.
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
     id: 'system-events-bridge', order: 900, locale: NS }, () => <EventsBridge activity={activity} master={master} autoOpen={autoOpen}
