@@ -27,3 +27,8 @@ it('writes one rule per line, each selector once within its block', () => {
     blocks.at(-1)!.push(selector)
   }
 })
+
+it('keeps the host split control out of the Superagent side pages', () => {
+  // The split control would open a second right-sidebar column; these pages stay in their one tab set.
+  expect(css).toContain('[data-dockkit-pane]:has(.dt-side-page) [data-dockkit-split-button]')
+})

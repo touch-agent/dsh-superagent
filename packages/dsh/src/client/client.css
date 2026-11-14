@@ -733,8 +733,9 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 
 /* Right-sidebar tabs: the main Conversation keeps the content column; these pages stack in the narrow pane. */
 .dt-side-page { padding: 12px 14px 28px; }
+/* The host split control would open a second right-sidebar column; these pages stay in one page set. */
+[data-dockkit-pane]:has(.dt-side-page) [data-dockkit-split-button] { display: none; }
 .dt-side-page > .dt-column { max-width: none; padding-bottom: 16px; gap: 16px; }
-.dt-side-back { display: flex; align-items: center; margin: 0 0 -4px -8px; }
 .dt-side-main { gap: 16px; }
 .dt-side-page .dt-tasks-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .dt-side-page .dt-tasks-aside { min-width: 0; }

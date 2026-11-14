@@ -1,6 +1,6 @@
 # 028 插件即主页面：点开即主对话
 
-> 状态：已实现（2026-11-14），新增 `ux.appShell.v1`，默认开启；同日后续修正把四个页头入口改为宿主右侧栏独立页，主对话保持可见。四项既有开关保留，任一项回退都不删记录、不改授权。
+> 状态：已实现（2026-11-14），新增 `ux.appShell.v1`，默认开启；同日后续修正把四个页头入口改为宿主右侧栏独立页，主对话保持可见；再修正去掉侧栏页里重复的返回与分栏按钮。四项既有开关保留，任一项回退都不删记录、不改授权。
 > 输入：[021 界面重构提案](021-ux-redesign.zh.md) 的主 Agent、四项导航、通知和任务方向，[026 第三批](026-ux-third-batch.zh.md) 已落地的卡/导航/浮层/文件页，以及工单“插件即主页面：整屏布局放进 Superagent”的后续修正：点击 Superagent 后应直接进入主对话；任务、通知、文件、设置从页头图标打开，并在右侧栏/浮窗显示，不再把主对话替换成状态页。
 > 基线：`touch-agent/dsh-superagent` main `4388fa4`。本文的 After 截图来自本分支构建，Before 截图来自同一视口下的 main。
 
@@ -50,12 +50,12 @@
 | 文件 | 宿主右侧栏 › 文件页 | 无；`ux.filesPage.v1` 关闭时整个按钮不出现 |
 | 设置 | 宿主右侧栏 › 设置页（显示组） | 无 |
 
-按钮调用 `ctx.sidebarRight.openTab(kind)`，由宿主在右侧栏打开一个独立 tab。右侧栏可以停靠、拖宽、分栏、浮成独立窗口或关闭；这些行为由宿主负责，主对话内容列始终保留。插件不再调用 `openPanelRoute` 把主面板切到辅助页。
+按钮调用 `ctx.sidebarRight.openTab(kind)`，由宿主在右侧栏打开一个独立 tab。右侧栏可以停靠、拖宽、浮成独立窗口或关闭；这些行为由宿主负责，主对话内容列始终保留。插件页里隐藏宿主的“分栏”按钮：再开一列会把同一组辅助页重复展开，和“一页只承载一组辅助页”的交互冲突。插件不再调用 `openPanelRoute` 把主面板切到辅助页。
 
 每个 tab 的内容是一个 embedded `App`，固定从该页开始：
 
 - tab 内点任务详情、通知动作、文件所属任务或设置分组，只改这个 tab 自己的路由；主对话、页头和其他 tab 都不跳转。
-- 进入嵌套页后 tab 顶部出现“返回”；关闭 tab 由宿主负责。
+- 进入嵌套页后只保留页面自己的返回（任务详情、Ticket 页的返回条）；侧栏外壳不再额外渲染“返回”，避免同一位置出现两个。关闭 tab 由宿主负责。
 - 不同 tab 可以并排或浮动；未挂载的 tab 重新打开时回到该页初始路由，不恢复上次嵌套页。
 - 右下浮动通知入口优先复用已挂载的抽屉；主对话里没有抽屉宿主时打开通知侧栏页，同样不切走主面板。
 
@@ -64,7 +64,7 @@
 ### 3.3 辅助页、返回和持久化
 
 - 四图标只注册在主 Session 的页头；进入其他会话时整个组不渲染，避免污染宿主的普通对话。
-- 右侧栏 tab 没有插件面板的页头、搜索和四项导航，只有当前页内容；宿主 tab 已经提供标题、关闭、分栏和浮动控件。
+- 右侧栏 tab 没有插件面板的页头、搜索和四项导航，只有当前页内容；宿主 tab 已经提供标题、关闭、全屏、收起和浮动控件，插件页隐藏分栏按钮。
 - 面板里的辅助页仍保留给没有右侧栏的宿主和直接链接：顶部有“‹ 返回主对话”，下面沿用四项导航。主路径不再经过它。
 - 打开/关闭右侧栏 tab 不改变主面板当前页；再次点 Superagent 仍从主对话开始。
 - 浏览器刷新回到主对话；右侧栏布局由宿主保存，但 tab 内容从初始页重新挂载，不恢复嵌套页。辅助页不是可收藏的 URL。
@@ -86,6 +86,7 @@
 - 替换宿主页头、宿主设置弹窗、宿主原生通知中心。
 - 隐藏宿主侧栏后宣称“用户只看见 Superagent”。
 - 跨设备同步主 Agent 名字/头像。
+- 拦截宿主的全局分栏快捷键；插件只隐藏 Superagent 侧栏页上的“分栏”按钮，快捷键和宿主 DOM 改版仍归宿主。
 
 这些都需要改宿主或上游；本路线明确只改插件，宿主 chrome 继续存在。
 
@@ -97,13 +98,13 @@
 | `client/auxiliary.ts` | 四个辅助页的类型、初始路由和 tab id |
 | `client/side-tabs.tsx` | 右侧栏 tab 的 embedded `App` 内容 |
 | `client/panel.ts` | 首页/辅助页意图、路由记忆、`openPanelRoute` 选中面板（仅面板回退） |
-| `client/app.tsx` | 首页与辅助页分流、侧栏模式（无面板页头/导航、嵌套返回）、关闭面板时重置意图 |
+| `client/app.tsx` | 首页与辅助页分流、侧栏模式（无面板页头/导航、返回交给页面自身）、关闭面板时重置意图 |
 | `client/index.tsx` | 注册主对话四图标、四个 `sidebar.right.pane.tab` 类型与正文、`sidebarRight.openTab` 打开路径；`ux.appShell.v1` 开启时不注册 `conversation.hero.options` 的重复入口 |
 | `client/tasks.tsx` | 保留第三批两列任务页；侧栏窄宽度下由 CSS 压成单列 |
 | `client/global-notice.tsx` | 浮动通知入口优先开右侧栏通知页，没有侧栏时回退面板 |
 | `client/locales.ts`、`client.css` | 文案、页头图标/角标、侧栏页与返回条、过渡卡样式 |
 | `tests/panel-ux-conversation-home.spec.tsx` | 首页自动打开、辅助页返回、任务两列、外壳与四项导航回退 |
-| `tests/client.spec.tsx` | 页头四图标打开四个右侧栏 kind；只注册一份四图标；非主 Session 不渲染；侧栏页无面板页头/搜索 |
+| `tests/client.spec.tsx` | 页头四图标打开四个右侧栏 kind；只注册一份四图标；非主 Session 不渲染；侧栏页无面板页头/搜索；下钻后不出现重复返回 |
 
 ## 6. 证据
 
@@ -128,7 +129,13 @@
 | 文件 | [before-side-files.png](images/plugin-main-page/before-side-files.png) | [after-side-files.png](images/plugin-main-page/after-side-files.png) |
 | 设置 | [before-side-settings.png](images/plugin-main-page/before-side-settings.png) | [after-side-settings.png](images/plugin-main-page/after-side-settings.png) |
 
-截图来自真实运行中的 DSH + 本插件构建；不包含飞书私聊内容。After 的主对话是预览环境中的主 Session，仅用于展示入口位置。
+**后续修正：去掉重复的返回与分栏入口** Before：`46e1089`（PR #84 合并点，侧栏页下钻后同时出现外壳“返回”和页面返回，右上角保留宿主“分栏”按钮）；After：本分支（同一视口、同一合成任务页）。
+
+| 场景 | Before `46e1089` | After 本分支 |
+| --- | --- | --- |
+| 侧栏任务页下钻到 Ticket | [before-duplicate-actions.png](images/plugin-main-page/before-duplicate-actions.png)（两个“返回” + 分栏按钮） | [after-duplicate-actions.png](images/plugin-main-page/after-duplicate-actions.png)（只剩页面自己的“任务”返回，分栏按钮隐藏） |
+
+截图来自真实运行中的 DSH + 本插件构建；Before/After 使用同一个合成任务“示例项目：整理上线清单”，不包含飞书私聊内容。After 的主对话是预览环境中的主 Session，仅用于展示入口位置。
 
 ## 7. 验证
 

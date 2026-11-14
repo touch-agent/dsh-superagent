@@ -165,10 +165,9 @@ function Header({ masterId, hideMaster = false }: { masterId: string | undefined
   </div>
 }
 
-function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks, conversation = false, onBackHome, side = false,
-  onBack, canBack }: { route: Route; openTab: (tab: Tab) => void
+function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks, conversation = false, onBackHome, side = false }: { route: Route; openTab: (tab: Tab) => void
   deploymentForm: DeploymentForm; pageId: string; tabPrefix: string; tasks?: TasksViewClient; conversation?: boolean
-  onBackHome?: () => void; side?: boolean; onBack?: () => void; canBack?: boolean }) {
+  onBackHome?: () => void; side?: boolean }) {
   const { t, call } = usePanel()
   const { state, error, reload } = usePanelData()
   const consolidated = opsInSettings()
@@ -227,9 +226,6 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks, conve
   const cardHere = !conversation && masterCard() && route.page === 'tasks'
   return <div className={side ? 'dt-page dt-side-page' : 'dt-page'}>
     <div className={side ? 'dt-column dt-side-column' : 'dt-column'}>
-      {side && canBack && <div className="dt-side-back">
-        <Button variant="ghost" size="sm" icon={<Icon name="chevron-left" size={14} />} onClick={onBack}>{t('back')}</Button>
-      </div>}
       {!side && conversation && <div className="dt-conversation-bar">
         <Button variant="ghost" size="sm" icon={<Icon name="chevron-left" size={14} />} disabled={!state?.masterId}
           onClick={back}>{t('backToConversation')}</Button>
@@ -282,7 +278,7 @@ export function App({ t, openSession, deploymentForm, embedded = false, tasks, s
     <NotificationHost shellNotice={shellNotice}>
       {home ? <ConversationHome onBrowse={browse} /> : <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm}
         pageId={pageId} tabPrefix={tabPrefix} tasks={tasks} conversation={conversation} onBackHome={() => setWantsHome(true)}
-        {...side ? { side: true, onBack: back, canBack: location.stack.length > 0 } : {}} />}
+        {...side ? { side: true } : {}} />}
     </NotificationHost>
   </PanelProvider>
 }
