@@ -331,7 +331,7 @@ export function TaskDetail({ task, store, onBack, onOpenTicket, crumbs = [], bac
       {!v2 && focus.goal.decision && <p className="dt-task-report"><Tag tone="warning">{t('tasksDecision')}</Tag>
         <span>{focus.goal.decision.question ?? valueLabel(t, 'stage', focus.goal.decision.kind ?? '')}</span></p>}
     </div>
-    {v2 ? <Owner task={focus} t={t} profiles={profiles} /> : <div className="dt-task-detail-section">
+    {v2 ? <Owner task={focus} t={t} profiles={profiles} project={project} /> : <div className="dt-task-detail-section">
       <h4>{t('taskHierarchyOwner')}</h4>
       {focus.form === 'lightweight' ? <Hint>{t('tasksLightweightNote')}</Hint> : <>
         <p className="dt-task-owner"><Tag tone="neutral">{t('tasksRole.parentWorker')}</Tag>

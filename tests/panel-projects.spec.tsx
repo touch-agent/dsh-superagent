@@ -134,6 +134,8 @@ it('drills from project to task to child with owners, statuses, expansion and br
   expect(crumbs.textContent).toContain('项目')
   expect(crumbs.textContent).toContain('接入网关')
   expect(crumbs.textContent).toContain('补齐回调签名')
+  expect(task.textContent).toContain(zh['projectsProjectOwner'])
+  expect(task.textContent).toContain('支付 worker · 第 2 版')
   expect(task.textContent).toContain(zh['taskHierarchyReportHistory'])
   expect(task.textContent).toContain('docs/pay.md')
   expect(task.textContent).toContain('缺少回调签名')

@@ -164,7 +164,7 @@ function ProjectList({ board, profiles, t, extraArchived, loadingArchived, onLoa
   const [expanded, setExpanded] = useState(false)
   const projects = board.projects ?? []
   const active = projects.filter(project => !isArchived(project))
-  const archivedProjects = [...projects.filter(isArchived), ...extraArchived]
+  const archivedProjects = [...projects.filter(isArchived), ...extraArchived.filter(isArchived)]
   const archivedCount = board.totals?.archivedProjects ?? archivedProjects.length
   const chooseArchived = (value: boolean) => {
     setArchived(value)
