@@ -918,7 +918,7 @@ function projectCard(p) {
   return `<article class="project-card" data-open-project="${p.id}" data-attention="${counts.attention > 0}">
     <div class="card-top"><button class="card-name" type="button" data-open-project="${p.id}" aria-label="打开项目 ${esc(p.name)}">${esc(p.name)}</button>${projectChip(p)}</div>
     <p class="card-goal" title="${esc(p.goal)}">${esc(p.goal)}</p>
-    <div class="card-meta">${avatar(p.owner)}<span class="owner">${counts.total ? '负责人 ' : '负责人 '}${esc(projectOwner(p))}</span><span class="card-progress">${counts.done}/${counts.total} 完成</span></div>
+    <div class="card-meta">${avatar(p.owner)}<span class="owner">${counts.total ? '负责人 ' : '负责人 '}${esc(projectOwner(p))}</span><span class="card-progress">${counts.done}/${counts.total} 顶层任务完成</span></div>
     <div class="bar" aria-hidden="true"><i style="width:${pct(counts.done, counts.total)}%"></i></div>
     ${projectPendingLine(p) || `<div class="card-note">${counts.total ? '现在不需要你 · 负责人推进中' : '还没有任务；先告诉小助第一件事'}</div>`}
     ${blocked ? `<div class="card-blocked" title="${esc(blocked.blocker)}">阻塞：${esc(blocked.blocker)}</div>` : ''}
