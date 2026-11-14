@@ -11,7 +11,7 @@
 | # | 结论 | 为什么 | 影响 |
 | --- | --- | --- | --- |
 | 1 | **项目、任务、子任务都是 Ticket，只是层级不同。** 项目是 `kind='project'` 的容器 Ticket；任务仍是根 Ticket，带 `projectTicketId`；子任务仍是现有 `parentTicketId` 子 Ticket。 | review 明确要求「本质上都是 Ticket，只补层级归属字段，复用负责人、会话、状态」。这比另建 Project 实体/覆盖层少一套数据、少一次 join，也不会让项目视图与 Ticket 真相分叉。 | Ticket 只加可选字段 `kind`、`projectTicketId`、`archivedAt`、`goal`；子任务仍由现有 `parentTicketId` 表示，不新建 Project 表、不写 `task-catalogue.v1`。 |
-| 2 | **项目 Ticket 是容器，不是第二个执行/授权工作单元。** 它没有**任务执行** Assignment、交付物、审批；不按任务完成而结束；归档只写 `archivedAt`。项目负责 worker 有一个**项目协调 Session**（复用 `worker-<ticketId>` 会话设施，不进入任务执行队列），负责协调、建任务和指派，不产生交付/验收。 | 项目是持续工作线，不能被一个任务完成结束；也不能让项目抢走任务的 Mandate/Approval。 | 项目不进入「全部任务」的扁平列表；`GET tasks` 的 `tasks` 仍是根任务，项目单独在 `projects` 投影。 |
+| 2 | **项目 Ticket 是容器，不是第二个任务执行/任务授权根；另有仅做协调的项目会话。** 它没有**任务执行** Assignment、交付物、审批；不按任务完成而结束；归档只写 `archivedAt`。项目负责 worker 有一个**项目协调 Session**（复用 `worker-<ticketId>` 会话设施，不进入任务执行队列），负责协调、建任务和指派，不产生交付/验收。 | 项目是持续工作线，不能被一个任务完成结束；也不能让项目抢走任务的 Mandate/Approval。 | 项目不进入「全部任务」的扁平列表；`GET tasks` 的 `tasks` 仍是根任务，项目单独在 `projects` 投影。 |
 | 3 | **层级固定为：项目 → 任务（根 Ticket）→ 子任务（子 Ticket）→ 更深子 Ticket。** 项目 → 任务用 `projectTicketId`；任务 → 子任务沿用现有 `parentTicketId`/`delegation`。 | 任务必须保留根 Ticket 的授权、attention、审批和结束语义；若把任务改成项目的子 Ticket，父审查会吞掉人的验收，且旧 `GET tasks` 根列表会消失。 | 任务仍是根；`projectTicketId` 只是归属。子任务仍继承任务授权并向任务 owner 汇报。 |
 | 4 | **项目负责 worker 是项目 Ticket 的 `profile` 快照；它负责协调和拆任务，不是所有任务的执行者。** 项目必须绑定一个可用的 worker/profile，不再静默回退「默认执行配置」。 | review 要求项目有负责 worker，且该 worker 能创建任务、指派其他 worker；这必须是一项受 Mandate 约束的能力，不能只是展示字段。 | 项目卡/详情显示「负责 worker」；项目级 attention 负责 worker 不可用；已有任务按自己的 owner 执行，不被项目 worker 改写。 |
 | 5 | **创建路径是「主会话识别项目 → 绑定项目负责 worker → 该 worker 拆任务/指派 worker」。** 主会话识别到同一项目的新需求，直接派给该项目负责 worker；项目 owner 可自己干（任务 owner=自己）或指派其他 worker。 | review 明确项目由主会话识别，并给 worker 创建任务/指派 worker 的权限。原设计「必须先改创建流程」把因果关系说反了：这条路径本身就是设计。 | 新增 worker 能力 `create-task`、`assign-worker`，受项目 Mandate 的 capability/scope 约束；视图不直接造 Ticket。 |
@@ -92,7 +92,7 @@
 
 | 字段 | 类型 | 默认/约束 | 说明 |
 | --- | --- | --- | --- |
-| `capabilities?` | `('create-task' \| 'assign-worker')[]` | 缺省 = 不新增能力 | 项目协调能力 allowlist；受 project scope 约束，不能扩大现有授权；不映射到 action level。 |
+| `capabilities?` | `('create-task' \| 'assign-worker')[]` | 缺省 = 无；项目受理时按项目 owner worker 授予 | 项目协调能力 allowlist；受 project scope 约束，不能扩大现有授权；不映射到 action level。项目 accept 未写 capability 时，项目卡显示项目级 attention，不静默给权限。 |
 
 **为什么项目 → 任务不用 `parentTicketId`：** 现有 `parentTicketId` 同时是**授权/汇报父链**（子 Ticket 没有自己的 Mandate/Decision，父 owner 接受子报告）。如果把任务挂成项目的子 Ticket，任务的验收会变成项目 worker 的父审，人的验收/attention 被吞掉，旧根任务列表也会消失。项目 → 任务只是**归属**，任务必须继续是根授权单元；所以用 `projectTicketId`，而任务 → 子任务继续用 `parentTicketId`。
 
@@ -105,7 +105,7 @@
 | 问题 | 结论 |
 | --- | --- |
 | 项目 Ticket 能执行吗？ | **不能执行任务。** 没有任务交付 Assignment、交付物、验收按钮，不进入任务执行队列；但它有一个**项目协调 Session**（见 §2.5），只做协调/建任务/指派。 |
-| 项目 Ticket 有 Mandate 吗？ | 有，但只定义项目范围和负责 worker 的协调能力（创建任务/指派 worker）；项目 Ticket 本身也经主会话/人的现有 accept 创建 project Mandate/Decision，不把项目变成任务审批根。项目 worker 创建任务走 §2.5 的受理契约，由现有 accept/Decision 路径签发任务 Mandate（scope 收窄，actor=受理者，不是 worker 自签）；任务仍是根授权单元。默认不新增人工点击，但这是需产品/安全确认的新契约。 |
+| 项目 Ticket 有 Mandate 吗？ | 有，但只定义项目范围和负责 worker 的协调能力（创建任务/指派 worker）；项目 Ticket 本身也经主会话/人的现有 accept 创建 project Mandate/Decision，并在受理时写入项目 scope 与 `create-task`/`assign-worker` capability；不把项目变成任务审批根。项目 worker 创建任务走 §2.5 的受理契约，由现有 Decision 模型 + 新增受理 seam 签发任务 Mandate（scope 收窄，actor=受理者，不是 worker 自签）；任务仍是根授权单元。默认不新增人工点击，但这是需产品/安全确认的新契约。 |
 | 项目什么时候结束？ | **不随任务完成结束。** 只有人明确说归档/手动归档，写 `archivedAt`；归档可恢复。 |
 | 项目能嵌套项目吗？ | v1 不做；`projectTicketId` 只指向项目，项目 Ticket 不能再有 `projectTicketId`。 |
 | 项目负责 worker 能替人验收吗？ | **不能。** 项目 worker 只能创建/指派任务；任务的 review/answer/blocked/failed 仍走人的 attention。 |
@@ -133,11 +133,11 @@
 
 **项目协调 Session。** 项目创建时，主会话为项目 Ticket 建一个 `worker-<projectTicketId>` 协调 Session，绑定项目 Ticket 的 `profile`（负责 worker）。它不是任务 Assignment：没有交付物、验收和任务执行队列，只承载项目级输入（同项目新需求、建任务/派任务请求）和项目摘要。主会话识别到同一项目的新需求时，把它作为 Input 投到这个 Session；该 Session 持有项目 Mandate 的 `create-task`/`assign-worker` 能力，并在 Session 内做 scope/所有权检查。
 
-**任务受理契约（新增；需产品/安全确认）。** `create-task` 不直接伪造 Ticket，也不让 worker 自签 Decision；它把任务草稿交给现有 accept/Decision 路径：
+**任务受理契约（新增；需产品/安全确认）。** `create-task` 不直接伪造 Ticket，也不让 worker 自签 Decision；它把任务草稿交给「现有 Decision 模型 + 新增受理 seam」：
 
-1. **前置检查：** 项目 Ticket 是 active 且已有 Mandate；请求来自项目的协调 Session；负责 worker 的 profile 可用；请求带项目 scope、ownerProfileId（默认项目 worker）和幂等键。
+1. **前置检查：** 项目 Ticket 是 active 且 accept 已写入 project Mandate（scope + `create-task`/`assign-worker` capability）；请求来自项目的协调 Session；负责 worker 的 profile 可用；请求带项目 scope、ownerProfileId（默认项目 worker）和幂等键。缺少 capability 时项目级 attention，不静默授予。
 2. **生成受理请求，不是 Ticket：** 草稿包含标题、目标、owner、项目归属、预计交付；不含 Approval/验收结论。
-3. **现有 accept 路径签发：** 由受理者（主会话/现有 accept 权威）按项目 Mandate 自动受理，生成根任务 `decisionId` + `mandate`（scope 是项目 scope 的子集），Decision 记录 `source=project-coordination` 和项目 Ticket id；默认不新增人工点击。
+3. **现有 Decision 模型 + 新增受理 seam：** 现有 `Decision` 需要 `evalId`/`threadKey`/`triggerIds`，而协调 Session 的草稿没有独立 Thread/Eval；实现必须新增可审计的 admission record（或直接 seam），由受理者（主会话/新增权威）按项目 Mandate 生成根任务 `decisionId` + `mandate`（scope 是项目 scope 的子集），记录 `source=project-coordination` 和项目 Ticket id；默认不新增人工点击。不能把草稿伪装成已有 Trigger，也不能让 worker 自签 Decision。
 4. **任务仍是根：** 任务 Ticket 带 `projectTicketId`/`profile`，人的 review/answer/delivery/blocked/failed 语义不变；项目不接管 Approval/outbox。
 5. **失败不落半成品：** 任一步检查失败返回拒绝并写项目级 attention；不创建 Ticket，不产生悬空 Decision/Mandate。
 6. **assign-worker：** 只在任务尚未开始/允许改派时改 `profile`；校验目标 worker/profile 与项目 scope，不能把任务移出项目或扩大 scope。
@@ -306,7 +306,7 @@ A 系统开发                                  [更多]
 #### 任务（根 Ticket，`kind='task'`）
 
 - **主路径：** 主会话识别需求 → 若属于已有项目，直接派给项目负责 worker；若是新项目，先建项目 Ticket 并绑定负责 worker，再由该 worker 建任务。
-- **项目负责 worker 创建任务：** 使用 `create-task` 能力，在项目协调 Session 里提交任务草稿；按 §2.5 的受理契约，由现有 accept/Decision 路径签发任务 Mandate（scope 收窄，actor=受理者，不是 worker 自签），默认不新增人工点击，仍保留人的 attention/验收；owner 可以是项目 worker 自己，也可以是 `assign-worker` 指定的其他 worker。若产品/安全不接受自动受理，退回普通 accept：worker 只提交请求，由人/主会话确认。
+- **项目负责 worker 创建任务：** 使用 `create-task` 能力，在项目协调 Session 里提交任务草稿；按 §2.5 的受理契约，由现有 Decision 模型 + 新增受理 seam 签发任务 Mandate（scope 收窄，actor=受理者，不是 worker 自签），默认不新增人工点击，仍保留人的 attention/验收；owner 可以是项目 worker 自己，也可以是 `assign-worker` 指定的其他 worker。若产品/安全不接受自动受理，退回普通 accept：worker 只提交请求，由人/主会话确认。
 - **主会话/人明确在项目上下文里提需求** 时，可把 `projectTicketId` 带进受理；项目归属不改变任务授权。
 - **已有未归入任务：** 在“未归入项目”里归入；只写 `projectTicketId`，不改任务 owner/授权/交付物。
 - **页面不直接造 Ticket：** 项目页的按钮只打开主对话/复制建议句；宿主没有预填输入框扩展点。
@@ -456,8 +456,8 @@ A 系统开发                                  [更多]
 | 阶段 | 交付 | 数据写入 | 验收 |
 | --- | --- | --- | --- |
 | P0 字段与只读 | Ticket 加可选 `kind`/`projectTicketId`/`archivedAt`/`goal`；旧 Ticket 读作 task/未归入；项目列表/详情/任务树读取；没有项目时显示未归入；`kind` 只做 project/task，子任务仍看 `parentTicketId` | 无；读空项目 | 旧任务不被隐藏；旧 `GET tasks` 仍返回根任务；回退开关可回旧列表。 |
-| P1 项目 Ticket 与负责 worker | 主会话/人建项目：创建 `kind='project'` Ticket，绑定可用 profile，建立项目协调 Session；改名/目标/换负责 worker/归档/恢复 | 写项目 Ticket 的 `profile`/`goal`/`archivedAt` | 项目卡显示负责 worker；空项目允许；项目不执行任务、不验收；协调 Session 可接收同项目需求。 |
-| P2 项目任务与 worker 能力 | 主会话识别同一项目的新需求，投到项目协调 Session；worker 用 `create-task` 提交草稿、`assign-worker` 指派；任务带 `projectTicketId` | 走 §2.5 的现有 accept 路径写任务 Decision/Mandate + `projectTicketId`/`profile`；不伪造 Decision | 新任务出现在项目；旧任务不改；worker 能力受 Mandate/capability/scope 约束；人仍是任务验收者；若安全不批准自动受理，退回人工 accept。 |
+| P1 项目 Ticket 与负责 worker | 主会话/人建项目：创建 `kind='project'` Ticket，经 accept 写 project Mandate（scope + capabilities），绑定可用 profile，建立项目协调 Session；改名/目标/换负责 worker/归档/恢复 | 写项目 Ticket 的 `mandate`/`profile`/`goal`/`archivedAt` | 项目卡显示负责 worker；空项目允许；项目不执行任务、不验收；能力存在才可建任务；协调 Session 可接收同项目需求。 |
+| P2 项目任务与 worker 能力 | 主会话识别同一项目的新需求，投到项目协调 Session；worker 用 `create-task` 提交草稿、`assign-worker` 指派；任务带 `projectTicketId` | 走 §2.5 的现有 Decision 模型 + 新增受理 seam 写任务 Decision/Mandate + `projectTicketId`/`profile`；不伪造 Decision | 新任务出现在项目；旧任务不改；worker 能力受 Mandate/capability/scope 约束；人仍是任务验收者；若安全不批准自动受理，退回人工 accept。 |
 | P3 树/详情/归档过滤 | 项目树递归、任务/子任务详情、未归档/已归档过滤、归档项目任务仍在全部任务 | 无新增持久化 | 下钻/返回正确；归档不隐藏待办；已归档可恢复。 |
 | P4 通知归组 | notice 带 `projectTicketId`；项目卡/详情/抽屉三处一致；归档项目待办带标记 | 无新增持久化 | 计数一致；子任务父审不打扰人；归档待办不被隐藏。 |
 | P5 可选建议 | 主会话对“像同一项目”的建议，默认关闭，人确认才建/归入 | 只在确认后写 | 不自动建项目；可关闭/回退。 |
@@ -474,7 +474,7 @@ A 系统开发                                  [更多]
 
 ### 6.4 兼容、回退与不变量
 
-- **不变量：** 任务仍是根授权单元，并有自己的 Mandate/Decision（由 §2.5 的现有 accept 路径签发，scope 收窄）；子 Ticket 没有 Mandate/Decision；Approval/outbox 的 `ticketId` 仍是根任务；项目 Ticket 不执行任务、不交付、不批准，但有独立的项目协调 Session；`projectTicketId` 只做归属；子任务 `parentTicketId`/`rootTicketId` 语义不变。
+- **不变量：** 任务仍是根授权单元，并有自己的 Mandate/Decision（由 §2.5 的现有 Decision 模型 + 新增受理 seam 签发，scope 收窄）；子 Ticket 没有 Mandate/Decision；Approval/outbox 的 `ticketId` 仍是根任务；项目 Ticket 不执行任务、不交付、不批准，但有独立的项目协调 Session；`projectTicketId` 只做归属；子任务 `parentTicketId`/`rootTicketId` 语义不变。
 - **兼容：** Ticket 只加可选字段；`GET tasks` 的 `tasks` 仍是根任务（项目 Ticket 被排除）；`GET tasks/:id` 的 `task`/`children` 不变；旧客户端忽略新字段。
 - **回退：** 关 `ux.projects.v1` → 项目投影消失，回旧任务页；Ticket 新字段保留、不删任务/归属；重新打开恢复。
 - **损坏/空值：** `projectTicketId` 指向不存在/非项目 Ticket 时读作未归入并提示，不猜项目；项目 Ticket profile 不可用 → 项目级 attention，已有任务不动。
@@ -571,7 +571,7 @@ A 系统开发                                  [更多]
 
 1. **`TaskView.kind` 冲突：** 现有 `TaskView.kind` 是 `'ticket' | 'review'`，设计却写 `kind?: 'task' | 'subtask'`，会让 review 行渲染错乱。已改为：`Ticket.kind` 只做 `'project' | 'task'`，子任务仍由 `parentTicketId` 表示；`TaskView` 现有 `kind` 不动，另加派生的 `ticketKind`/`projectTicketId`（§2.4、附录 B）。
 2. **项目 goal 无存储：** 已新增可选 `Ticket.goal`（项目一句话目标）；`TaskView.goal` 仍是现有 `GoalView` 投影，不混用（§2.1、附录 A/B）。
-3. **任务级 Decision/Mandate 自签：** 已删除“worker 自签”的说法，改为 §2.5 的受理契约：项目 worker 只提交草稿，由现有 accept/Decision 路径签发任务 Mandate；默认不新增人工点击，但这被明确标为需产品/安全确认的新契约，并提供“普通 accept + 人工确认”的安全回退。
+3. **任务级 Decision/Mandate 自签：** 已删除“worker 自签”的说法，改为 §2.5 的受理契约：项目 worker 只提交草稿，由现有 Decision 模型 + 新增受理 seam 签发任务 Mandate；默认不新增人工点击，但这被明确标为需产品/安全确认的新契约，并提供“普通 accept + 人工确认”的安全回退。
 4. **项目 worker 无执行上下文：** 已定义**项目协调 Session**（`worker-<projectTicketId>`，复用现有会话设施，仅协调/建任务/指派，无任务交付/验收）；主会话把同项目需求投到该 Session，能力检查在 Session 内完成（§2.5、§3.6、P1/P2）。
 
 非阻断处置：归档待人任务的返回来源加 `已归档` 分支；`active.map(projectCard)` 不再把数组索引当 `from`；项目负责人下拉移除“默认执行配置”并在创建/保存校验；统一“负责 worker”文案和“项目 Mandate 仅用于协调”的说明；归档加确认框；§3.2 的“只读归档列表”改为“列表不编辑元数据、可详情/恢复/处理待办”；§7.2 明确 Before 是面板回退页、不与 After 同布局；`kind` 不双写 `subtask`，并补层级不变量；`Mandate.capabilities` 改为 project scope allowlist，不再声称按 action level；补主会话归档/恢复路径。原型已按 N1–N5 修改并在 CDP 重测。
@@ -580,19 +580,19 @@ A 系统开发                                  [更多]
 
 - Review：[PR #86 review comment](https://github.com/touch-agent/dsh-superagent/pull/86#pullrequestreview-5903016804)（对 `4af0c72`；最初 not ready）。处置：负责人说明、根 blocked 语义、三层递归、空项目、归档返回、排序等。
 - 复审：[follow-up review](https://github.com/touch-agent/dsh-superagent/pull/86#pullrequestreview-5903147567)（`43c342d`，COMMENTED，不是 approval）结论 ready for human review；非阻断计数 bug 已修。
-- 本轮修复推送后再做一次 fresh-context 复审，检查三条 review 与上述阻断是否真正落地；复审通过前不报告 ready。
+- **Focused re-review（修复后，同一 fresh-context reviewer）：** 结论 **ready for human review**；四个阻断项全部关闭，原型 N1–N5 在 headless Chrome 复核通过（归档待人返回 `已归档`、项目卡 from 不再是索引、owner 下拉无默认、归档有确认框、无 console error）。剩余 5 个非阻断：P1 写 project Mandate capability、§0 #2 措辞、review 行不计项目任务、Decision admission seam、§8.3 主对照口径；均已按上一条修复并记录在本节/§2.5/附录 A。复审不是 approval，PR 仍由人合并。
 
 ### 8.3 已知限制
 
 - 这是设计/原型，不是实现；项目创建/归入/换负责 worker/归档/页内回答都还没有产品代码。
-- 项目 Ticket 的 Mandate、§2.5 任务受理契约（现有 accept 路径签发任务 Mandate）、项目协调 Session、worker `create-task`/`assign-worker` 的 scope/所有权/幂等检查都需实现单验证；本单给出契约和回退，但不声称已实现。
+- 项目 Ticket 的 Mandate、§2.5 任务受理契约（现有 Decision 模型 + 新增 admission seam）、项目协调 Session、worker `create-task`/`assign-worker` 的 scope/所有权/幂等检查都需实现单验证；本单给出契约和回退，但不声称已实现。
 - 真实数据没有项目、没有子 Ticket、没有 profile 快照；P1 之前项目视图只能显示“未归入项目”。
 - 项目协调 Session 是新增运行上下文：它不进入任务执行队列，但需要在实现单证明不会产生第二个执行/审批根；若宿主只能复用主 Session，实现需把项目 scope/capability 挂到主 Session，而不是悄悄让项目 Ticket 变成任务。
 - 项目 Mandate 内自动受理是安全/产品取舍；默认方案与人工确认回退都必须在实现前定案，不能把 worker 自签 Decision 作为既成事实。
 - 自动建议默认关闭，且永远不自动写；如果产品要求“主会话自动识别并写项目”，需要主会话评估可信信号，不能靠标题猜。
 - 现有结果通知会弹浮层；本设计建议改为安静结果，属于行为取舍，需要产品确认。
 - 窄宽度（<620px）只做 CSS 规划，未真机/移动端验证。
-- Before/After 不是同一 fixture；主对照是 1440×900 宽面板任务列表，其余对照已在 §7.2 标明限制。
+- Before/After 不是同一 fixture 或 surface；主对照是 1440×900 的面板回退页（Before）与宽面板原型（After），其余对照已在 §7.2 标明限制。
 
 ## 9. 待确认的产品取舍
 
@@ -603,7 +603,7 @@ A 系统开发                                  [更多]
 5. **项目是否自动归档？** 只建议，不自动；全部完成仍显示，直到人归档。
 6. **是否支持子项目/项目嵌套？** v1 不做；`projectTicketId` 只指项目，项目不能再被归入项目。
 7. **归档有未结束/待办项目时，任务是否继续执行？** 本设计：归档只影响默认列表，不停止任务、不取消待办；项目 worker 仍会收到/处理待办，待人项仍在抽屉。若产品要“归档即暂停”，需要单独定义暂停语义，不在本设计偷做。
-8. **项目 Mandate 内能否自动受理任务？** 这是新的授权/安全契约（§2.5）。默认方案是项目 worker 提交草稿、现有 accept 路径签发任务 Mandate，不新增人工点击；若安全不批准，退回普通 accept（人/主会话确认）。两种路径都不能让 worker 自签 Decision，也不能扩大项目 scope。
+8. **项目 Mandate 内能否自动受理任务？** 这是新的授权/安全契约（§2.5）。默认方案是项目 worker 提交草稿、现有 Decision 模型 + 新增受理 seam 签发任务 Mandate，不新增人工点击；若安全不批准，退回普通 accept（人/主会话确认）。两种路径都不能让 worker 自签 Decision，也不能扩大项目 scope。
 9. **项目协调 Session 是否独立？** 本设计需要一个可寻址的协调上下文来承载同项目需求和 `create-task`/`assign-worker` 能力；实现可复用现有 `worker-<ticketId>` 设施，也可把 scope/capability 挂到主 Session。无论哪种，都必须能回答“谁在协调、能力在哪检查、为什么不产生第二个执行/审批根”。
 
 ## 附录 A：字段映射（现有 → 项目视图）
@@ -613,14 +613,15 @@ A 系统开发                                  [更多]
 | `project.id/name/goal` | `Ticket`（`kind='project'`）的 `id/title/goal` | 项目就是 Ticket；`goal` 是新增的可选字段，项目卡片/详情的一句话目标；`origin` 只是来源，不当目标。 |
 | `project.state` | `Ticket.archivedAt` | 有值 = archived；缺省 = active；可恢复。 |
 | `project.owner` | 项目 `Ticket.profile` + profiles | 显示 worker/title + revision；空/停用 → 项目级 attention；不静默回退默认配置。 |
-| `project.tasks` | `GET tasks` 根 `TaskView` where `projectTicketId=project.id` | 任务仍是根；子任务在 `TaskView.children`。 |
-| `project.counts.attention` | 根 `TaskView.attention` + 项目级 worker 问题 | 只计人；子等待父不计。 |
-| `project.counts.blocked` | 根+子 `TaskView.status === 'blocked'` | 所有阻塞，含 owner 可处理的子任务；根 blocked 同时进 `attention` 和阻塞行。 |
-| `project.counts.done` | 根 `ended.outcome` completed/merged，或 `status done` | 不计 dropped/stopped 为完成。 |
-| `project.lastActivityAt` | 根任务 `updatedAt`/activity 最新 | 只读；不新增活动表。 |
+| `project.tasks` | `GET tasks` 根 `TaskView` where `projectTicketId=project.id && TaskView.kind !== 'review'` | 任务仍是根；子任务在 `TaskView.children`；review 行不计入项目任务。 |
+| `unassigned` | 根 `TaskView` where `projectTicketId` 为空 && `kind !== 'review'` | 旧任务/未归入；review 行不计。 |
+| `project.counts.attention` | 过滤后的根 `TaskView.attention` + 项目级 worker 问题 | 只计人；子等待父不计；review 行不计。 |
+| `project.counts.blocked` | 过滤后的根+子 `TaskView.status === 'blocked'` | 所有阻塞，含 owner 可处理的子任务；根 blocked 同时进 `attention` 和阻塞行；review 行不计。 |
+| `project.counts.done` | 过滤后的根 `ended.outcome` completed/merged，或 `status done` | 不计 dropped/stopped 为完成；review 行不计。 |
+| `project.lastActivityAt` | 过滤后的根任务 `updatedAt`/activity 最新 | 只读；review 不计；不新增活动表。 |
 | `task.kind` | `TaskView.kind`（现有 `'ticket' \| 'review'`） | **不改**；review 行仍靠它渲染。层级另用 `ticketKind`（派生）。 |
 | `task.ticketKind` | `Ticket.parentTicketId` 派生 | `task` = 根任务；`subtask` = 子 Ticket；`Ticket.kind` 只区分 project/task。 |
-| `task.projectTicketId` | `Ticket.projectTicketId` | 子任务读时从任务继承；review 从被审任务。 |
+| `task.projectTicketId` | `Ticket.projectTicketId` | 子任务读时从任务继承；review 从被审任务，但 `kind='review'` 只用于详情链接，不计入 `project.tasks`/counts/`unassigned`。 |
 | `task.owner` | `Ticket.profile` + profiles | 任务负责人；历史 ticket 可能为空。 |
 | `task.childSummary` | `TaskView.childSummary` | 子任务进度；父审/失败/阻塞分开。 |
 | `task.deliverables/review` | `TaskView.deliverables/review` | 交付/验收；子任务接受不是人的验收。 |
@@ -651,7 +652,7 @@ interface TaskBoardView {
   milestones: TaskMilestone[]   // 现有
   totals: { milestones: number; tasks: number; tickets: number; open: number; attention: number }
   projects: ProjectView[]       // 新；项目 Ticket 的只读投影
-  unassigned: TaskView[]        // 新：projectTicketId 为空的根任务
+  unassigned: TaskView[]        // 新：projectTicketId 为空且 kind !== 'review' 的根任务
 }
 
 interface ProjectView {
@@ -662,7 +663,7 @@ interface ProjectView {
   state: 'active' | 'archived'
   counts: { tasks: number; open: number; done: number; attention: number; blocked: number; failed: number }
   lastActivityAt?: string
-  tasks: TaskView[]             // 根任务；子任务通过 GET tasks/:id 展开
+  tasks: TaskView[]             // 根任务，排除 review；子任务通过 GET tasks/:id 展开
 }
 
 // TaskView：只加可选字段；children 语义不变
@@ -675,7 +676,7 @@ interface TaskView {
 
 // 受理/派发请求（实现单确认，不新增 Project 实体）
 // 项目：创建 kind='project' 的 Ticket，需要 project Mandate/Decision 和 ownerProfileId；同步建立项目协调 Session。项目不执行任务。
-// 任务：项目 worker 在协调 Session 提交草稿，走 §2.5 的现有 accept/Decision 路径签发任务 Mandate；不在 worker 内自签 Decision。
+// 任务：项目 worker 在协调 Session 提交草稿，走 §2.5 的现有 Decision 模型 + 新增受理 seam 签发任务 Mandate；不在 worker 内自签 Decision。
 // 安全回退：若不批准项目 Mandate 内自动受理，退回普通 accept（人/主会话确认），任务语义不变。
 // worker 工具：create-task（项目内建根任务）、assign-worker（任务尚未开始时改 owner）
 ```
