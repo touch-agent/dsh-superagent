@@ -957,7 +957,7 @@ function focusStrip(list = pendingRoots()) {
     <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">0</span></div>
     <div class="focus-empty">现在没有等你处理的事。有新结果或需要你确认时会出现在这里。</div>
   </div>`
-  const issueRows = issues.map(p => `<div class="focus-row"><span class="chip review mini">处理</span><button class="link focus-task" type="button" data-open-project="${p.id}" data-project-from="${p.state === 'archived' ? 'archived' : 'projects'}">修「${esc(p.name)}」负责 worker</button><span class="focus-project">${p.state === 'archived' ? '已归档' : '项目'}</span></div>`).join('')
+  const issueRows = issues.map(p => `<div class="focus-row"><span class="chip review mini">处理</span><button class="link focus-task" type="button" data-open-project="${p.id}" data-project-from="${p.state === 'archived' ? 'archived' : 'projects'}">修负责 worker「${esc(p.name)}」</button><span class="focus-project">${p.state === 'archived' ? '已归档' : '项目'}</span></div>`).join('')
   const taskRows = focusRows(list.slice(0, Math.max(0, 4 - issues.length)), { from: 'projects' })
   return `<div class="focus">
     <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">${total}</span><button class="focus-all" type="button" data-go="notices">全部 ${total}</button></div>
@@ -967,7 +967,7 @@ function focusStrip(list = pendingRoots()) {
 }
 
 function projectPendingLine(p) {
-  if (p.ownerUnavailable) return `<div class="card-pending"><span class="label">待你</span><button class="link" type="button" data-modal="project-settings" data-project="${p.id}">修负责人配置「${esc(p.name)}」</button></div>`
+  if (p.ownerUnavailable) return `<div class="card-pending"><span class="label">待你</span><button class="link" type="button" data-modal="project-settings" data-project="${p.id}">修负责 worker「${esc(p.name)}」</button></div>`
   const pending = attentionRoots(projectRoots(p))
   if (!pending.length) return ''
   return `<div class="card-pending"><span class="label">待你</span>${pending.slice(0, 2).map((t, i) => {
@@ -1017,7 +1017,7 @@ function projectsView() {
     <button class="filter" type="button" role="tab" aria-pressed="true" data-go="projects">未归档 <span class="n">${active.length}</span></button>
     <button class="filter" type="button" role="tab" aria-pressed="false" data-go="archived">已归档 <span class="n">${archived.length}</span></button>
   </div>
-  <div class="projects">${active.map(projectCard).join('')}</div>
+  <div class="projects">${active.map(p => projectCard(p)).join('')}</div>
   ${unassignedSection()}`
 }
 
@@ -1208,6 +1208,7 @@ function taskBack(t) {
   }
   if (state.taskFrom === 'all') return `<button class="detail-back" type="button" data-go="all">‹ 全部任务</button>`
   if (state.taskFrom === 'notices') return `<button class="detail-back" type="button" data-go="notices">‹ 待你处理</button>`
+  if (state.taskFrom === 'archived') return `<button class="detail-back" type="button" data-go="archived">‹ 已归档</button>`
   if (state.taskFrom === 'projects') return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>`
   if (state.taskFrom === 'unassigned' || !t.projectId) return `<button class="detail-back" type="button" data-go="unassigned">‹ 未归入项目</button>`
   return `<button class="detail-back" type="button" data-go="project" data-project="${t.projectId}" data-project-from="${state.projectFrom}">‹ ${esc(projectName(t.projectId))}</button>`
@@ -1339,7 +1340,7 @@ function drawerContent() {
   return groups.map(g => {
     const p = g.id ? projectById(g.id) : null
     const issue = p?.ownerUnavailable
-      ? `<article class="notice" data-kind="owner"><div class="notice-title">「${esc(p.name)}」的负责人配置不可用</div><div class="notice-what">配置的 profile 已停用或不存在；新任务不会静默回退。</div><div class="notice-consequence">修好后，之后的新任务才会使用；已有任务按各自的配置执行。</div><div class="notice-actions"><button class="btn btn-primary btn-sm" type="button" data-open-project="${p.id}" data-project-from="${p.state === 'archived' ? 'archived' : 'projects'}">查看项目</button></div></article>`
+      ? `<article class="notice" data-kind="owner"><div class="notice-title">「${esc(p.name)}」的负责 worker 不可用</div><div class="notice-what">配置的 profile 已停用或不存在；新任务不会静默回退。</div><div class="notice-consequence">修好后，之后的新任务才会使用；已有任务按各自的配置执行。</div><div class="notice-actions"><button class="btn btn-primary btn-sm" type="button" data-open-project="${p.id}" data-project-from="${p.state === 'archived' ? 'archived' : 'projects'}">查看项目</button></div></article>`
       : ''
     return `<div class="group-head"><span class="barline" aria-hidden="true"></span><span class="proj">${g.id ? esc(projectLabel(g.id)) : '未归入项目'}</span><span class="count">${g.tasks.length + (issue ? 1 : 0)}</span></div>
     ${issue}
@@ -1367,6 +1368,10 @@ const PROFILES = [
 
 function ownerOptions(selected) {
   return PROFILES.map(p => `<option value="${p.id}" ${p.title === selected ? 'selected' : ''}>${esc(p.title)}${p.rev ? ` · 第 ${p.rev} 版` : ''}</option>`).join('')
+}
+
+function projectOwnerOptions(selected) {
+  return PROFILES.filter(p => p.id !== 'default').map(p => `<option value="${p.id}" ${p.title === selected ? 'selected' : ''}>${esc(p.title)}${p.rev ? ` · 第 ${p.rev} 版` : ''}</option>`).join('')
 }
 
 function modalShell(title, sub, body, actions, extraClass = '') {
@@ -1408,8 +1413,8 @@ function modalHtml() {
     return modalShell('新建项目（人工补建）', '主路径是主会话识别项目并绑定负责 worker；这里用于人工补建/演示。', `
       <div class="field"><label for="project-name">项目名</label><input id="project-name" placeholder="例如 A 系统开发"></div>
       <div class="field"><label for="project-goal">一句话目标</label><textarea id="project-goal" placeholder="这个项目要做到什么？一句话就够。"></textarea></div>
-      <div class="field"><label for="project-owner">负责 worker（协调项目/拆任务，不是所有任务的执行者）</label><select id="project-owner">${ownerOptions('开发负责人')}</select></div>
-      <p class="small">项目是 Ticket 的容器层，不执行、不批准；负责 worker 可创建任务并指派其他 worker。已有任务可以之后归入。</p>`,
+      <div class="field"><label for="project-owner">负责 worker（必须选一个可用 worker；协调项目/拆任务，不是所有任务的执行者）</label><select id="project-owner">${projectOwnerOptions('开发负责人')}</select></div>
+      <p class="small">项目是 Ticket 的容器层，不执行任务、不批准任务；项目 Mandate 仅用于协调与建任务。负责 worker 可创建任务并指派其他 worker。已有任务可以之后归入。</p>`,
       `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="create-project">创建项目</button>`)
   }
   if (m.type === 'review' && t) {
@@ -1452,16 +1457,22 @@ function modalHtml() {
       <p class="small">归入后它会出现在项目的任务树里；不想归入时保持“未归入项目”即可。</p>`,
       `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="assign" data-task="${t.id}">归入项目</button>`)
   }
+  if (m.type === 'archive-project' && p) {
+    return modalShell(`归档「${p.name}」`, '归档只影响默认列表，不结束任务、不隐藏待办；之后可恢复。', `
+      <p class="body-text">项目会从默认项目列表移到「已归档」。项目里的任务、交付物和待你处理的事项都保留；未结束任务不会停止。</p>
+      <p class="small">如果只想暂时收起，也可以归档；需要时在「已归档」里恢复。归档不会删除数据。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="archive-project" data-project="${p.id}">确认归档</button>`)
+  }
   if (m.type === 'project-settings' && p) {
     const note = p.state === 'active'
       ? `<p class="small">归档只把项目移出默认列表；任务、交付物和待办都保留。未结束任务不会因归档停止，归档项目的待办仍在“待你处理”。换负责 worker 只影响之后的新任务。</p>`
       : `<p class="small">已归档；恢复后回到默认列表。任务、交付物和待办都保留。换负责 worker 只影响之后的新任务。</p>`
-    return modalShell('项目设置', '项目只组织任务，不获得授权；负责 worker 负责协调与拆任务，不是所有任务的执行者。', `
+    return modalShell('项目设置', '项目只组织任务；项目 Mandate 仅用于协调与建任务，不获得任务验收权。负责 worker 负责协调与拆任务，不是所有任务的执行者。', `
       <div class="field"><label for="settings-name">项目名</label><input id="settings-name" value="${esc(p.name)}"></div>
       <div class="field"><label for="settings-goal">一句话目标</label><textarea id="settings-goal">${esc(p.goal)}</textarea></div>
-      <div class="field"><label for="settings-owner">负责 worker</label><select id="settings-owner">${ownerOptions(p.owner)}</select></div>
+      <div class="field"><label for="settings-owner">负责 worker（必须可用；不能选默认执行配置）</label><select id="settings-owner">${projectOwnerOptions(p.owner)}</select></div>
       ${note}`,
-      `<button class="btn btn-outline" type="button" data-close="modal">取消</button>${p.state === 'active' ? `<button class="btn btn-danger" type="button" data-confirm="archive-project" data-project="${p.id}">归档项目</button>` : `<button class="btn btn-outline" type="button" data-confirm="restore-project" data-project="${p.id}">恢复项目</button>`}<button class="btn btn-primary" type="button" data-confirm="save-project" data-project="${p.id}">保存</button>`)
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button>${p.state === 'active' ? `<button class="btn btn-danger" type="button" data-modal="archive-project" data-project="${p.id}">归档项目</button>` : `<button class="btn btn-outline" type="button" data-confirm="restore-project" data-project="${p.id}">恢复项目</button>`}<button class="btn btn-primary" type="button" data-confirm="save-project" data-project="${p.id}">保存</button>`)
   }
   if (m.type === 'decompose' && t) {
     return modalShell(`请负责人拆解「${t.title}」`, '拆解由负责人决定；视图不会直接造子任务。', `
@@ -1598,7 +1609,7 @@ function handleConfirm(action, taskId, projectId) {
     const goal = document.getElementById('project-goal')?.value.trim()
     const ownerId = document.getElementById('project-owner')?.value
     if (!name || !goal) { toast('项目名和一句话目标都要填。'); return }
-    const profile = PROFILES.find(p => p.id === ownerId) || PROFILES[3]
+    const profile = PROFILES.find(p => p.id === ownerId) || PROFILES.find(p => p.id !== 'default')
     const id = `prj_${Date.now().toString(36)}`
     projects.push({ id, name, goal, owner: profile.title, ownerRev: profile.rev, state: 'active', taskIds: [], lastActivity: '刚刚 · 项目已创建', updatedAt: new Date().toISOString(), sources: ['对话'] })
     closeModal()
@@ -1674,7 +1685,7 @@ function handleConfirm(action, taskId, projectId) {
     const goal = document.getElementById('settings-goal')?.value.trim()
     const ownerId = document.getElementById('settings-owner')?.value
     if (!name || !goal) { toast('项目名和一句话目标都要填。'); return }
-    const profile = PROFILES.find(item => item.id === ownerId) || PROFILES[3]
+    const profile = PROFILES.find(item => item.id === ownerId) || PROFILES.find(item => item.id !== 'default')
     p.name = name; p.goal = goal; p.owner = profile.title; p.ownerRev = profile.rev; p.updatedAt = new Date().toISOString()
     closeModal(); renderAll(); toast('项目设置已保存；负责 worker 只影响之后的新任务。')
     return
