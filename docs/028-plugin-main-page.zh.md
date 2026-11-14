@@ -94,7 +94,7 @@
 | 文件 | 作用 |
 | --- | --- |
 | `client/conversation-home.tsx` | 过渡卡（自动打开主 Session、失败重试）；主对话页头四图标，点击交给右侧栏 |
-| `client/aux.ts` | 四个辅助页的类型、初始路由和 tab id |
+| `client/auxiliary.ts` | 四个辅助页的类型、初始路由和 tab id |
 | `client/side-tabs.tsx` | 右侧栏 tab 的 embedded `App` 内容 |
 | `client/panel.ts` | 首页/辅助页意图、路由记忆、`openPanelRoute` 选中面板（仅面板回退） |
 | `client/app.tsx` | 首页与辅助页分流、侧栏模式（无面板页头/导航、嵌套返回）、关闭面板时重置意图 |

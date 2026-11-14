@@ -1,6 +1,6 @@
 /** Root panel: the conversation-home bridge or the auxiliary page, its navigation and the active route view. */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import type { AuxKind } from './aux.ts'
+import type { AuxKind } from './auxiliary.ts'
 import type { SearchView } from './api.ts'
 import type { ThreadFilter } from '../app/api.ts'
 import { Button, Dot, Icon, Input, Modal, SegmentedTabs } from './controls.tsx'

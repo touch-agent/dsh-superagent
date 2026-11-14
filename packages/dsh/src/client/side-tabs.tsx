@@ -4,7 +4,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { App } from './app.tsx'
-import { auxRoute, type AuxKind } from './aux.ts'
+import { auxRoute, type AuxKind } from './auxiliary.ts'
 import { usePageForm } from './deployment.tsx'
 import type { DshSuperagentKey } from './locales.ts'
 import type { TasksViewClient } from './tasks-view.ts'

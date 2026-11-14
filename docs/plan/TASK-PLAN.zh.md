@@ -591,7 +591,7 @@ graph LR
 ### T5-11 插件即主页面：点开即主对话 · Platform · 2 人日
 
 - **目标**：不改 DSH 上游、不改宿主 shell，点击 Superagent 直接进入现有主对话；任务、通知、文件、设置从主对话页头图标进入宿主右侧栏的独立页，主对话保持可见；面板辅助页保留“返回主对话”作为回退；主对话仍可交代任务、追问进展、看整体情况或接收主动汇报。
-- **交付**：`features.ts` 的 `ux.appShell.v1`（依赖 `ux.navFour.v1`）；`conversation-home.tsx` 的自动打开主 Session、失败重试与四图标；`aux.ts` / `side-tabs.tsx` 的四个右侧栏页；`app.tsx` 的侧栏 embedded 模式、嵌套返回与关闭面板重置；`index.tsx` 注册 `sidebar.right.pane.tab` 四类和 `sidebarRight.openTab` 路径、`ux.appShell.v1` 开启时不注册 `conversation.hero.options` 重复入口；`client.css` 的页头图标/角标、侧栏页/返回条与过渡卡；设置 › 显示开关与回退说明；`docs/021`、`docs/026` 补路线修正，重写 `docs/028-plugin-main-page.zh.md`；TRACKING、TASK-PLAN、changeset、README/docs 索引同步。
+- **交付**：`features.ts` 的 `ux.appShell.v1`（依赖 `ux.navFour.v1`）；`conversation-home.tsx` 的自动打开主 Session、失败重试与四图标；`auxiliary.ts` / `side-tabs.tsx` 的四个右侧栏页；`app.tsx` 的侧栏 embedded 模式、嵌套返回与关闭面板重置；`index.tsx` 注册 `sidebar.right.pane.tab` 四类和 `sidebarRight.openTab` 路径、`ux.appShell.v1` 开启时不注册 `conversation.hero.options` 重复入口；`client.css` 的页头图标/角标、侧栏页/返回条与过渡卡；设置 › 显示开关与回退说明；`docs/021`、`docs/026` 补路线修正，重写 `docs/028-plugin-main-page.zh.md`；TRACKING、TASK-PLAN、changeset、README/docs 索引同步。
 - **验收**：点开 Superagent 自动打开主 Session，用户落在主对话而不是任务页；主对话页头只出现四个图标，普通会话不出现；任务/通知/文件/设置各自在右侧栏打开独立页，主对话始终可见；侧栏页内进入任务详情/通知动作/设置分组只在该 tab 内导航，提供返回；没有右侧栏的宿主回退到面板辅助页并保留“返回主对话”；关闭 `ux.appShell.v1` 回到 026/第三批布局，关闭四项导航回到三入口，文件页开关独立；主 Session 缺失/归档时显示原因、重试和四个辅助页入口，不空白；宿主侧栏/页头/设置入口在文档中如实写为外部环境，不隐藏宿主 chrome 后宣称整页属于插件；`pnpm check` 全绿；1440×900 同视口浅色 Before/After 覆盖主对话、四个右侧栏页与面板回退；面板测试覆盖首页、返回、两列任务页和回退；独立 review 回答“10 秒知道下一步”和“不假装拥有宿主能力”。
 - **估时**：2 人日。**依赖**：T5-10（四项导航、主 Agent 卡、浮层通知、文件页）。**回退**：`ux.appShell.v1` 关闭即回 026；不删记录、不改授权、不改宿主。
 - **泳道**：Platform。

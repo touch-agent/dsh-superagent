@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ActivityFeedClient } from './activity-feed.ts'
-import type { AuxKind } from './aux.ts'
+import type { AuxKind } from './auxiliary.ts'
 import { useActivityFeed } from './activity-feed.ts'
 import { useAttention } from './attention.ts'
 import { Button, Icon } from './controls.tsx'
