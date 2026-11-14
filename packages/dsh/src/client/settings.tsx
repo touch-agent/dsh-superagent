@@ -4,7 +4,7 @@ import type { DecisionFilter, StateView } from './api.ts'
 import type { TicketFilter } from '../app/api.ts'
 import { Button, Icon, InfoTip, Switch, type IconName } from './controls.tsx'
 import { BUILD, buildMismatch, reloadClient } from './build.ts'
-import { ERROR_AGGREGATE, EVENTS_AUTO_OPEN, FILES_PAGE, FIRST_USE, MASTER_CARD, NAV_FOUR, NOTICE_BUTTON, NOTIFY_DRAWER,
+import { APP_SHELL, ERROR_AGGREGATE, EVENTS_AUTO_OPEN, FILES_PAGE, FIRST_USE, MASTER_CARD, NAV_FOUR, NOTICE_BUTTON, NOTIFY_DRAWER,
   NOTIFY_OVERLAY, OPS_IN_SETTINGS, TASK_DETAIL_V2, TASK_HIERARCHY, autoOpenPreference, featureEnabled, notifyAutoDismiss,
   opsInSettings, restoreFirstUse, setAutoOpenPreference, setFeature, setNotifyAutoDismiss } from './features.ts'
 import { Hint } from './widgets.tsx'
@@ -54,6 +54,7 @@ function DisplaySettings() {
   const [detail, setDetail] = useState(() => featureEnabled(TASK_DETAIL_V2))
   const [onboarding, setOnboarding] = useState(() => featureEnabled(FIRST_USE))
   const [fourNav, setFourNav] = useState(() => featureEnabled(NAV_FOUR))
+  const [shell, setShell] = useState(() => featureEnabled(APP_SHELL))
   const [card, setCard] = useState(() => featureEnabled(MASTER_CARD))
   const [button, setButton] = useState(() => featureEnabled(NOTICE_BUTTON))
   const [files, setFiles] = useState(() => featureEnabled(FILES_PAGE))
@@ -134,6 +135,14 @@ function DisplaySettings() {
         <Switch checked={fourNav} label={t('navFourSetting')} onChange={next => { setFourNav(next); setFeature(NAV_FOUR, next) }} />
       </div>
       <Hint>{fourNav ? t('navFourHint') : t('navFourDisabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('appShellSection')}<InfoTip text={t('appShellHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('appShellSetting')}<InfoTip text={t('appShellHint')} /></div>
+        <Switch checked={shell} label={t('appShellSetting')} onChange={next => { setShell(next); setFeature(APP_SHELL, next) }} />
+      </div>
+      <Hint>{!fourNav ? t('appShellNeedsNav') : shell ? t('appShellHint') : t('appShellDisabled')}</Hint>
     </div>
     <div className="dt-form dt-block">
       <h2 className="dt-block-title">{t('masterCardSection')}<InfoTip text={t('masterCardHint')} /></h2>

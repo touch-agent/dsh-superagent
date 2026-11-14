@@ -34,6 +34,12 @@ export const MASTER_CARD = 'ux.masterCard.v1'
 export const NOTICE_BUTTON = 'ux.noticeButton.v1'
 /** UX batch 3's Files page; off removes the nav entry and keeps the richer task detail unchanged. */
 export const FILES_PAGE = 'ux.filesPage.v1'
+/**
+ * The 2026-11-14 route: the plugin panel is the application shell, so the main Agent card, the four-entry navigation
+ * and the content area share one full-width frame. It depends on the four-entry navigation; off restores the batch-3
+ * panel exactly. No host surface is replaced or hidden by this switch.
+ */
+export const APP_SHELL = 'ux.appShell.v1'
 /** The person's per-browser preference, like the unread cursor: absent means the stable-phase default, off. */
 const AUTO_OPEN_PREF = 'dsh-superagent/events-auto-open'
 /** Whether a floating card closes itself after the hold window; a browser preference, not policy. */
@@ -92,6 +98,8 @@ export const navFour = (): boolean => featureEnabled(NAV_FOUR)
 export const masterCard = (): boolean => featureEnabled(MASTER_CARD)
 export const noticeButton = (): boolean => featureEnabled(NOTICE_BUTTON)
 export const filesPage = (): boolean => featureEnabled(FILES_PAGE)
+/** The plugin-as-main-page shell; it needs the four-entry navigation, so turning that off also turns this off. */
+export const appShell = (): boolean => featureEnabled(APP_SHELL) && navFour()
 
 /** Whether a floating card auto-closes; on by default, and off keeps it until a person closes it. */
 export const notifyAutoDismiss = (): boolean => {

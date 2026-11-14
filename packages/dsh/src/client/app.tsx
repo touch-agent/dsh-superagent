@@ -1,12 +1,14 @@
-/** Root panel shell: header with global search and glossary, top-level navigation tabs, and active route view. */
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+/** Root panel shell: the plugin's own application frame (or the pre-shell header), navigation, and active route view. */
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { SearchView } from './api.ts'
 import type { ThreadFilter } from '../app/api.ts'
 import { Button, Dot, Icon, Input, Modal, SegmentedTabs } from './controls.tsx'
+import type { IconName } from './controls.tsx'
 import type { DeploymentForm } from './deployment.tsx'
 import { EvalStatus } from './eval.tsx'
 import { ExecutionStatus } from './execution.tsx'
-import { masterCard, noticeButton, opsInSettings } from './features.ts'
+import { appShell, masterCard, noticeButton, opsInSettings } from './features.ts'
+import { MasterCard } from './master-card.tsx'
 import { BUILD, buildMismatch, reloadClient } from './build.ts'
 import { ticketMark } from './marks.ts'
 import { GLOSSARY, GLOSSARY_VALUES, en, zh, type DshSuperagentKey } from './locales.ts'
@@ -21,7 +23,7 @@ import { homeRoute, initialLocation, isOpsTab, lastSettingsGroup, parseRoute, re
 import { SettingsPage } from './settings.tsx'
 import { SourceStatus } from './source.tsx'
 import { TasksPage } from './tasks.tsx'
-import type { TasksViewClient } from './tasks-view.ts'
+import { TasksViewClient, useTasksView } from './tasks-view.ts'
 import { actorName, errorText, reasonLabel, valueLabel, type T, readableMarkers } from './text.ts'
 import { ThreadPage } from './thread.tsx'
 import { TicketPage } from './ticket.tsx'
@@ -113,7 +115,8 @@ function SearchResults({ result, query, onClose }: { result: SearchView; query: 
   </div>
 }
 
-function Header({ masterId, hideMaster = false }: { masterId: string | undefined; hideMaster?: boolean }) {
+function Header({ masterId, hideMaster = false, shell = false }: { masterId: string | undefined; hideMaster?: boolean
+  shell?: boolean }) {
   const { t, call, openSession, notify } = usePanel()
   const notices = useNoticeCenter()
   const [glossary, setGlossary] = useState(false)
@@ -137,8 +140,8 @@ function Header({ masterId, hideMaster = false }: { masterId: string | undefined
     call('GET search', { query: { q: text } }).then(value => { if (request === latest.current) setResult({ query: text, value }) },
       failure => { if (request === latest.current) notify(errorText(failure)) })
   }
-  return <header className="dt-head">
-    <div className="dt-head-title"><h1 className="dt-title">{t('title')}</h1></div>
+  return <div className={shell ? 'dt-shell-tools' : 'dt-head'}>
+    {!shell && <div className="dt-head-title"><h1 className="dt-title">{t('title')}</h1></div>}
     <div className="dt-toolbar">
       <form ref={search} className="dt-search" role="search" onSubmit={submit} onKeyDown={event => { if (event.key === 'Escape') show() }}>
         <Input type="search" icon={<Icon name="search" />} value={query} placeholder={t('searchPlaceholder')} aria-label={t('searchLabel')}
@@ -156,15 +159,34 @@ function Header({ masterId, hideMaster = false }: { masterId: string | undefined
         onClick={() => { if (masterId) openSession(masterId).catch(failure => notify(errorText(failure))) }}>{t('openMaster')}</Button>}
     </div>
     <Glossary open={glossary} onClose={() => setGlossary(false)} />
+  </div>
+}
+
+const SHELL_ICON: Partial<Record<Tab, IconName>> = { tasks: 'queue', notifications: 'bell', files: 'inbox',
+  settings: 'settings' }
+
+/** The app-shell header: the main-Agent card and the internal navigation share one sticky frame. */
+function ShellHeader({ store, masterId, paused, running, nav }: { store: TasksViewClient; masterId: string | undefined
+  paused: boolean; running: number; nav: ReactNode }) {
+  const { openSession } = usePanel()
+  const snapshot = useTasksView(store)
+  const attention = snapshot.data?.tasks.filter(task => task.attention).length ?? 0
+  return <header className="dt-app-header">
+    {masterCard() && <MasterCard masterId={masterId} paused={paused} running={running} attention={attention} onOpen={openSession} />}
+    <div className="dt-app-navrow">{nav}<Header masterId={masterId} hideMaster={masterCard()} shell /></div>
   </header>
 }
 
 function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { route: Route; openTab: (tab: Tab) => void
   deploymentForm: DeploymentForm; pageId: string; tabPrefix: string; tasks?: TasksViewClient }) {
-  const { t } = usePanel()
+  const { t, call } = usePanel()
   const { state, error, reload } = usePanelData()
   const consolidated = opsInSettings()
   const tabs = visibleTabs()
+  const shell = appShell()
+  // The shell and the page share one task snapshot; a caller that already owns one keeps ownership of disposal.
+  const store = useMemo(() => tasks ?? new TasksViewClient(call), [tasks, call])
+  useEffect(() => () => { if (!tasks) store.dispose() }, [store, tasks])
   // A record detail reached by a direct link (a task, a message) keeps no tab selected; an operations list opens Settings.
   const selected: Tab = consolidated && isOpsTab(route.page) ? (route.id === undefined ? 'settings' : route.page) : route.page
   // Keep the active tab scrolled into view on narrow screens when routes change via links.
@@ -177,9 +199,9 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
   const page = (() => {
     switch (route.page) {
       case 'overview': return <OverviewPage />
-      case 'tasks': return <TasksPage tasks={tasks} />
-      case 'notifications': return <NotificationsPage tasks={tasks} />
-      case 'files': return <FilesPage tasks={tasks} />
+      case 'tasks': return <TasksPage tasks={store} />
+      case 'notifications': return <NotificationsPage tasks={store} />
+      case 'files': return <FilesPage tasks={store} />
       case 'source': return consolidated ? settings('source') : <SourceStatus />
       case 'trigger': return route.id !== undefined ? <ThreadPage key={route.id} id={route.id} target={route.query?.trigger} />
         : consolidated ? settings('trigger', {}, route.query?.filter ?? 'subscribed')
@@ -197,22 +219,37 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
           {...state ? { state } : {}} deploymentForm={deploymentForm} />
     }
   })()
-  // The main-Agent card already carries the entrance on its own page; keeping the header shortcut there too would
-  // render the same action twice. Every other page keeps the header action as the single entry.
+  const nav = <SegmentedTabs className={shell ? 'dt-app-tabs' : 'dt-tabs'} label={t('pagesLabel')} value={selected} onChange={openTab}
+    items={tabs.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId,
+      ...shell ? { icon: SHELL_ICON[value] } : {} }))} />
+  const banners = <>
+    {buildMismatch(BUILD, state?.build) && <div className="dt-banner dt-build-mismatch" role="status">
+      <span className="dt-banner-label">{t('buildMismatchTitle')}</span>{' '}
+      {t('buildMismatchDetail', { client: BUILD.buildId, server: state!.build.buildId })}
+      <div className="dt-banner-actions">
+        <Button variant="outline" size="sm" onClick={() => { void reloadClient() }}>{t('buildReload')}</Button>
+      </div>
+    </div>}
+    {error && state && <p className="dt-error" role="status">{error.message}</p>}
+  </>
+  if (shell) return <div className="dt-page dt-app-shell">
+    <div className="dt-app-column">
+      <ShellHeader store={store} masterId={state?.masterId} paused={!!state?.paused} running={state?.load.running ?? 0}
+        nav={nav} />
+      <div className="dt-app-main">
+        {banners}
+        <main id={pageId} role="tabpanel" className="dt-main"
+          {...tabs.includes(selected) ? { 'aria-labelledby': `${tabPrefix}-${selected}` } : { 'aria-label': t(`tab.${selected}`) }}>{page}</main>
+      </div>
+    </div>
+  </div>
+  // The card holds the entrance on its own page; keeping the header shortcut there too would render one action twice.
   const cardHere = masterCard() && route.page === 'tasks'
   return <div className="dt-page">
     <div className="dt-column">
       <Header masterId={state?.masterId} hideMaster={cardHere} />
-      {buildMismatch(BUILD, state?.build) && <div className="dt-banner dt-build-mismatch" role="status">
-        <span className="dt-banner-label">{t('buildMismatchTitle')}</span>{' '}
-        {t('buildMismatchDetail', { client: BUILD.buildId, server: state!.build.buildId })}
-        <div className="dt-banner-actions">
-          <Button variant="outline" size="sm" onClick={() => { void reloadClient() }}>{t('buildReload')}</Button>
-        </div>
-      </div>}
-      {error && state && <p className="dt-error" role="status">{error.message}</p>}
-      <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={selected} onChange={openTab}
-        items={tabs.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId }))} />
+      {banners}
+      {nav}
       <main id={pageId} role="tabpanel" className="dt-main"
         {...tabs.includes(selected) ? { 'aria-labelledby': `${tabPrefix}-${selected}` } : { 'aria-label': t(`tab.${selected}`) }}>{page}</main>
     </div>

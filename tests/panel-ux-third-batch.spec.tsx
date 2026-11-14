@@ -10,10 +10,10 @@ usePanel()
 afterEach(() => localStorage.clear())
 /** The batch-3 defaults: nav four, card, floating entry and Files are on; the earlier specs pin them off. */
 function newDefaults() {
-  for (const flag of ['ux.navFour.v1', 'ux.masterCard.v1', 'ux.noticeButton.v1', 'ux.filesPage.v1',
+  for (const flag of ['ux.navFour.v1', 'ux.masterCard.v1', 'ux.noticeButton.v1', 'ux.filesPage.v1', 'ux.appShell.v1',
     'ux.opsInSettings.v1', 'ux.taskDetail.v2', 'ux.firstUse.v1']) localStorage.removeItem(flag)
 }
-const navTabs = () => all('.dt-column > .dt-tabs [role="tab"]').map(item => item.textContent)
+const navTabs = () => all('.dt-column > .dt-tabs [role="tab"], .dt-app-tabs [role="tab"]').map(item => item.textContent)
 const card = () => document.querySelector<HTMLElement>('.dt-master-card')
 const fab = () => document.querySelector<HTMLButtonElement>('.dt-notice-fab')
 const drawer = () => document.querySelector<HTMLElement>('.dt-drawer')
@@ -29,16 +29,17 @@ it('opens on the task view with the main-Agent card and exactly four first-level
   expect(document.querySelector('#dt-tab-tasks')?.getAttribute('aria-selected')).toBe('true')
 })
 
-it('offers one main-Session action on the task page, and the header action elsewhere', async () => {
+it('offers exactly one main-Session action while the app-shell card is on screen', async () => {
   newDefaults()
   await mount()
   const labels = () => all('button').map(item => item.textContent?.trim())
-  // The card's entrance replaces the header shortcut while the card is on screen; two buttons would be one action twice.
+  // The shell's card carries the entrance on every page; a second header shortcut would duplicate one action.
   expect(labels().filter(label => label === zh.masterOpen)).toHaveLength(1)
   expect(labels().filter(label => label === zh.openMaster)).toHaveLength(0)
   await click(zh['tab.notifications'])
-  expect(card()).toBeNull()
-  expect(labels().filter(label => label === zh.openMaster)).toHaveLength(1)
+  expect(card()).not.toBeNull()
+  expect(labels().filter(label => label === zh.masterOpen)).toHaveLength(1)
+  expect(labels().filter(label => label === zh.openMaster)).toHaveLength(0)
 })
 
 it('renames the main Agent and keeps the name across a remount', async () => {

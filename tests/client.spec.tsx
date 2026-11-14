@@ -16,9 +16,11 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
 type Entry = { options: { name: string; id?: string; key?: string; order?: number; locale?: string; label?: () => string }; component: ComponentType<Record<string, unknown>> }
 const t = ((key: keyof typeof zh, values: Record<string, string | number> = {}) => (zh[key] ?? key)
   .replace(/\{(\w+)\}/g, (_match, name: string) => String(values[name] ?? ''))) as never
-function fixture(listed: string[]) {
+function fixture(listed: string[], options: { appShell?: boolean } = {}) {
   // Keep the surface registrations these specs assert; the batch-3 panel spec exercises the four-entry defaults.
-  for (const flag of ['ux.navFour.v1', 'ux.masterCard.v1', 'ux.noticeButton.v1', 'ux.filesPage.v1']) localStorage.setItem(flag, 'off')
+  for (const flag of ['ux.navFour.v1', 'ux.masterCard.v1', 'ux.noticeButton.v1', 'ux.filesPage.v1', 'ux.appShell.v1']) {
+    localStorage.setItem(flag, options.appShell && (flag === 'ux.navFour.v1' || flag === 'ux.appShell.v1') ? 'on' : 'off')
+  }
   const entries: Entry[] = []
   const dictionaries: Record<string, unknown> = {}
   const opened: string[] = []
@@ -93,6 +95,15 @@ it('registers a localized main panel, sidebar entry and Plugin Manager row page,
   expect(nav.options.label?.()).toBe('Superagent')
 })
 
+
+it('keeps the host New Session shortcut only when the app shell does not own the main-Session entrance', () => {
+  const before = fixture([])
+  expect(before.entries.map(entry => entry.options.name)).toContain('conversation.hero.options')
+  // With the plugin as the main page, the card inside the panel is the one entrance; the host-side copy is not registered.
+  const after = fixture([], { appShell: true })
+  expect(after.entries.map(entry => entry.options.name)).not.toContain('conversation.hero.options')
+  expect(after.entries.map(entry => entry.options.name)).toContain('sidebar.panellist')
+})
 
 it('marks the sidebar icon when something waits for a person, and stops polling when the three-zone entry is off', async () => {
   serve()
