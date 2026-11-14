@@ -25,7 +25,7 @@ function harness(mode: 'single' | 'explicit' | 'auto' = 'single', maxTickets = 5
     outbox: { send: message => { sent.push(message) }, status: () => undefined, withdraw: vi.fn(), recall: vi.fn(() => 'recalled' as const) } })
   const dispatch = (input: DispatchInput, text = 'Fix the flaky test', id = 'msg_1') => dispatchConversation(agent(text, id),
     { engine, disposition: triggerId => repo.triggers.disposition(triggerId), ticket: ticketId => repo.tickets.get(ticketId),
-      thread: key => repo.threads.get(key), config: () => settings.dispatch }, input)
+      project: projectId => repo.tickets.get(projectId), thread: key => repo.threads.get(key), config: () => settings.dispatch }, input)
   return { repo, engine, dispatch, sent, settings }
 }
 
@@ -353,5 +353,78 @@ describe('more status questions', () => {
     expect(scope).toContain('A')
     expect(scope).toContain('B')
     expect(scope).toContain('Do C.')
+  })
+})
+
+describe('project dispatch', () => {
+  const project = (repo: MemoryRepositories, id = 'project-1', fields: Partial<Ticket> = {}): Ticket => {
+    const ticket: Ticket = { id, title: 'Project', kind: 'project', goal: 'Ship it', decisionId: 'decision-project-1',
+      mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' },
+        actor: { source: 'conversation', id: 'local-user' }, scope: 'project work', capabilities: ['create-task', 'assign-worker'] },
+      channels: [], assignments: [], inputs: [], undelivered: [], createdAt: '2026-11-08T00:00:00Z',
+      updatedAt: '2026-11-08T00:00:00Z', origin: { triggerId: 'origin-project', triggerIds: ['origin-project'] }, ...fields }
+    repo.tickets.save(ticket)
+    return ticket
+  }
+
+  it('routes the whole message to a project without creating a flat task', () => {
+    const h = harness('single')
+    project(h.repo)
+    const result = h.dispatch({ projectId: 'project-1', title: 'New request' }, 'Please add a project task', 'msg_project')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(openTickets(h.repo).filter(ticket => ticket.kind !== 'project')).toHaveLength(0)
+    expect(result.items?.[0]).toMatchObject({ projectId: 'project-1', ticketId: 'project-1' })
+    expect(h.repo.tickets.get('project-1')!.inputs).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'trigger' })]))
+    expect(h.repo.tickets.get('project-1')!.undelivered).not.toEqual([])
+  })
+
+  it('routes one item of a split to a project and keeps its siblings as tasks', () => {
+    const h = harness('auto')
+    project(h.repo)
+    const result = h.dispatch({ items: [{ title: 'Project request', scope: 'Do it in the project.', projectId: 'project-1' },
+      { title: 'Loose request', scope: 'Do it alone.' }] }, 'Two requests', 'msg_split_project')
+    if ('refused' in result) throw new Error(result.refused)
+    const tasks = openTickets(h.repo).filter(ticket => ticket.kind !== 'project')
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]!.title).toBe('Loose request')
+    expect(result.items?.find(item => item.projectId === 'project-1')?.title).toBe('Project request')
+  })
+
+  it('keeps an unclear project as a normal flat task', () => {
+    const h = harness('single')
+    const result = h.dispatch({ title: 'No project named' }, 'Unclear request', 'msg_unclear')
+    if ('refused' in result) throw new Error(result.refused)
+    expect(openTickets(h.repo)).toHaveLength(1)
+    expect(openTickets(h.repo)[0]).toMatchObject({ kind: 'task', title: 'No project named' })
+    expect(openTickets(h.repo)[0]!.projectTicketId).toBeUndefined()
+  })
+
+  it('refuses an unknown, task or archived destination before receiving the message', () => {
+    const h = harness('single')
+    const task = h.dispatch({ title: 'Task' }, 'A task', 'msg_task')
+    if ('refused' in task) throw new Error(task.refused)
+    project(h.repo, 'archived-1', { archivedAt: '2026-11-08T01:00:00Z' })
+    for (const projectId of ['missing', task.ticket!.id, 'archived-1']) {
+      const result = h.dispatch({ projectId, title: 'No destination' }, `Refused ${projectId}`, `msg_refused_${projectId}`)
+      expect(result).toMatchObject({ refused: expect.any(String) })
+      expect(h.repo.triggers.disposition(`conversation:msg_refused_${projectId}`)).toBeUndefined()
+    }
+    // A message naming both destinations is ambiguous and refused.
+    const ambiguous = h.dispatch({ projectId: 'archived-1', ticketId: task.ticket!.id, title: 'Both' }, 'Ambiguous', 'msg_both')
+    expect(ambiguous).toMatchObject({ refused: expect.stringContaining('either') })
+  })
+})
+
+describe('project dispatch conflicts', () => {
+  it('refuses to merge items that name different projects', () => {
+    const h = harness('auto', 1)
+    for (const id of ['p1', 'p2']) h.repo.tickets.save({ id, title: id, kind: 'project', goal: 'g', decisionId: 'd',
+      mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' },
+        actor: { source: 'conversation', id: 'local-user' }, scope: 's', capabilities: ['create-task'] },
+      channels: [], assignments: [], inputs: [], undelivered: [], createdAt: '2026-11-08T00:00:00Z', updatedAt: '2026-11-08T00:00:00Z',
+      origin: { triggerId: 'x', triggerIds: ['x'] } })
+    const result = h.dispatch({ items: [{ title: 'One', projectId: 'p1' }, { title: 'Two', projectId: 'p2' }] }, 'Two projects', 'msg_two_projects')
+    expect(result).toMatchObject({ refused: expect.stringContaining('more than one project') })
+    expect(openTickets(h.repo)).toHaveLength(2)
   })
 })

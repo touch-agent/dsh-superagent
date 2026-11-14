@@ -583,6 +583,9 @@ The domain kernel is the workspace package `packages/kernel` (`@superagent/kerne
 | `tests/review-aggregate.spec.ts` | The root review aggregate: parent and accepted child deliveries deduplicated by artifact revision with both person confirmations kept, a new accepted child changing `reviewRevision` so an old approval returns `reviewStale`, a returned child leaving the aggregate, and parent acceptance never counting as a person confirmation (rule-only work still ends) |
 | `tests/tasks-children.spec.ts` | The child-aware task projection: the board stays root-only with child counts, `GET tasks/:id`-shaped detail loads direct children one level at a time, `waiting` maps to idle, dropped/cancelled children stay terminal, an orphan is blocked, person attention excludes a child awaiting its parent owner and includes a failed child only when no living ancestor can decide it, and 500 roots/2000 children project under the p95 budget with no per-row Ticket query |
 | `tests/tasks-view.spec.ts` | The flat task projection: tracked form and parent-worker role data, review ownership, a previewed delivery and its dedupe key, no review card without a preview, lightweight inline steps with no worker or deliverables, live attention plus last event, and an unowned review left as its own row |
+| `tests/projects.spec.ts` | Project Tickets as containers: accept with an owner worker and coordination Session, a Decision admission seam for root tasks with mandate narrowing and idempotency, dispatch to the coordination Session, capability and cross-project refusals, archive/restore without ending tasks, children inheriting the project link, and legacy tickets read as unassigned tasks |
+| `tests/projects-view.spec.ts` | The project board projection: projects out of the flat task rows, active/archived/all/off filters, unassigned work including a broken project link, project counts and worker/capability attention, the project detail hierarchy, and the rollback shape |
+| `tests/project-tools.spec.ts` | The coordination Session's tool surface: only read, create-task, assign-worker and thread tools for a project, and no project create/assign tools on a task |
 | `tests/panel-tasks.spec.tsx` | The compact task list and right Task tab: parent worker and reviewer rows, a lightweight row and detail that fake no worker or delivery, empty and retryable error states, and the task selection shared with Events, including a review narrowing to its reviewed Ticket |
 | `tests/settings.spec.ts` | Settings saves that race a model or account check, a Policy sync that a save outran, and the refusals of the pause, a sync and a block |
 | `tests/views.spec.ts` | What the management views derive from the Store, such as the Thread a dropped message belongs to, the settings card and health entries a Source that supplies only a manifest produces, a review-stage Ticket's preview and its inability to be reviewed without one, and the approvals queue leaving a due request out |
@@ -657,7 +660,9 @@ and no run is retried. A budget failure prints the median, every file's executio
 over 500 ms and the ten slowest tests (file and name), so the growth can be found directly; it does
 not raise either ceiling.
 
-On 2026-11-13 the list held 313 tests. On an idle development machine a three-run sample was
+On 2026-11-13 the list held 313 tests. On 2026-11-15, with the 029 project suite added, it held 332 tests in 16 files;
+five runs measured 392/377/424/425/375 ms (392 ms median, 5.1× headroom). The final follow-ups added a human project-link test and an owner-capability test (335 tests;
+378/364/363/388/376 ms, 376 ms median, 5.3× headroom). On an idle development machine a three-run sample was
 555/470/504 ms (504 ms median, about 4× headroom). The five-run protocol on the same development
 machine, under heavy unrelated system load (load average around 17), produced
 799/1,078/1,105/765/935 ms — a 935 ms median and 2.1× headroom. CI is tighter within a run but varies between

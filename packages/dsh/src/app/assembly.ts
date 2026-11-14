@@ -168,8 +168,11 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
   // Every domain event is graded and stored in the same transaction that produced it; no other part needs the log itself.
   const activity = new ActivityLog(store)
   const engine = parts.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, inline, outbox, trace,
+    // A project's coordination Session runs through the same Executor, without an Assignment or worktree.
+    coordination: { start: project => executor.start(project), deliver: project => executor.deliver(project) },
     // Profile binding is a read-only execution-configuration lookup; a failure leaves a ticket legacy, never failing accept.
-    profile: { bindRoot: ticket => profiles.bindRoot(ticket), bindChild: (parent, child) => profiles.bindChild(parent, child) },
+    profile: { bindRoot: ticket => profiles.bindRoot(ticket), bindNamed: (ticket, profileId, reason) => profiles.bindNamed(ticket, profileId, reason),
+      bindChild: (parent, child) => profiles.bindChild(parent, child) },
     // A child directory is flat when the deployment keeps the default; turning the flag off restores the nested layout.
     childSibling: () => store.settings().executor.workspace.childSibling,
     // A lightweight ticket runs inline and has no workspace or assignment text, so it must not claim execution metadata.
@@ -210,7 +213,9 @@ export function assemble(host: AssemblyHost, store: Store): Assembled {
     requestPass: () => { host.requestPass() }, sendReplies: () => outbox.sent(),
     quietly: run => host.quietly(run),
     dispatch: (agent, input) => dispatchConversation(agent, { engine: { receive: trigger => engine.receive(trigger), decide: (id, outcome) => engine.decide(id, outcome),
-      attach: (ticketId, triggerId, note) => engine.attach(ticketId, triggerId, note) }, disposition: id => store.triggers.disposition(id),
-      ticket: id => store.tickets.get(id), thread: key => store.threads.get(key), config: () => store.settings().dispatch }, input) }
+      attach: (ticketId, triggerId, note) => engine.attach(ticketId, triggerId, note),
+      dispatchToProject: (projectId, triggerId, note) => engine.dispatchToProject(projectId, triggerId, note) },
+      disposition: id => store.triggers.disposition(id), ticket: id => store.tickets.get(id), project: id => store.tickets.get(id),
+      thread: key => store.threads.get(key), config: () => store.settings().dispatch }, input) }
   return parts
 }

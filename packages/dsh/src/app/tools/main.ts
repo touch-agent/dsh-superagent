@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { UserError, followupOwners, key, liveTicket, reasonText, threadKey, type Decision, type DecisionKind, type EngineForMainSession, type EngineForPeople }
   from '@superagent/kernel'
 import { IM_WORDS, NOTE_WORDS, wordCount } from '../../infra/text.ts'
+import { PANEL_ACTOR } from '../approvals.ts'
 import { LIMITS } from '../../limits.ts'
 import { AssessmentSchema, EvalReadSchema, WorktreeNameSchema, type MasterAssessor } from '../assessment.ts'
 import { ticketCard } from '../cards.ts'
@@ -22,7 +23,7 @@ const RoutingNoteSchema = z.string().trim()
   .describe(`Optional routing background or explicit human constraint, at most ${NOTE_WORDS} words. Never add implementation instructions or replace the original source.`)
 export interface MainToolsHost {
   readonly context: Context
-  readonly engine: Pick<EngineForMainSession, 'decide' | 'attach' | 'reply' | 'requestStatus' | 'note' | 'bindChannel'> & EngineForPeople
+  readonly engine: Pick<EngineForMainSession, 'decide' | 'attach' | 'dispatchToProject' | 'reply' | 'requestStatus' | 'note' | 'bindChannel'> & EngineForPeople
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'threads' | 'atomic' | 'replyStatus' | 'settings'>
   readonly prompts: Pick<Prompts, 'preview' | 'save'>
   readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery' | 'modelRetry'>
@@ -59,11 +60,18 @@ const RouteItemSchema = z.object({
   form: z.literal('lightweight').nullish().describe('accept: a read-only lookup of named files; omit to stay tracked.'),
   acknowledgement: z.string().nullish().describe(`accept: one brief sentence of at most ${IM_WORDS} words naming the concrete change and intended result in the source language. It is posted as a reply to the original source on acceptance, so do not quote the source; quote an earlier proposal briefly only when the trigger merely confirms it and the sentence does not already state it. No generic I will handle it.`),
   note: z.string().nullish().describe(`accept and attach: ${RoutingNoteSchema.description ?? ''}`),
+  project: z.object({
+    goal: z.string().trim().min(1).max(2000).describe('accept: what the project is for, from the original request.'),
+    owner_profile_id: z.string().min(1).describe('accept: the worker Profile that coordinates this project and owns its tasks by default.'),
+    capabilities: z.array(z.enum(['create-task', 'assign-worker'])).max(2).optional()
+      .describe('accept: what the project Mandate may do; defaults to both create-task and assign-worker.'),
+  }).strict().nullish().describe('accept: create a project container instead of a flat task; its tasks come through admission, never as sibling root tasks.'),
+  project_ticket_id: z.string().min(1).nullish().describe('accept: put this task in an existing live, unarchived project; it keeps its own Mandate and owner. Cannot be combined with project.'),
   reason: z.string().nullish().describe('ignore and stop: why, at most 500 characters; an ignore needs it.'),
 }).strict()
 type RouteItem = z.infer<typeof RouteItemSchema>
 type Kind = RouteItem['kind']
-type Field = Exclude<keyof RouteItem, 'kind' | 'trigger_id'>
+type Field = Exclude<keyof RouteItem, 'kind' | 'trigger_id' | 'project'>
 /** Each field's check, the kinds whose items read it and those that need it; an item of another kind leaves it unread. */
 const FIELDS: Record<Field, { check: z.ZodType; reads: readonly Kind[]; needs: readonly Kind[] }> = {
   ticket_id: { check: z.string(), reads: ['attach', 'stop'], needs: ['attach', 'stop'] },
@@ -72,6 +80,7 @@ const FIELDS: Record<Field, { check: z.ZodType; reads: readonly Kind[]; needs: r
   form: { check: z.literal('lightweight'), reads: ['accept'], needs: [] },
   acknowledgement: { check: AcknowledgementSchema, reads: ['accept'], needs: ['accept'] },
   note: { check: RoutingNoteSchema, reads: ['accept', 'attach'], needs: [] },
+  project_ticket_id: { check: z.string(), reads: ['accept'], needs: [] },
   reason: { check: z.string().max(500), reads: ['ignore', 'stop'], needs: ['ignore'] },
 }
 /** Why an item cannot run: a field its kind needs is missing, or one it reads breaks its limit. */
@@ -86,6 +95,10 @@ function invalid(item: RouteItem): string | undefined {
     const checked = check.safeParse(value)
     if (!checked.success) return `${field}: ${checked.error.issues[0]?.message ?? 'invalid'}`
   }
+  if (item.project && item.kind !== 'accept') return 'project is only for accept'
+  if (item.project && item.form === 'lightweight') return 'a project cannot be a lightweight lookup'
+  if (item.project_ticket_id && item.kind !== 'accept') return 'project_ticket_id is only for accept'
+  if (item.project && item.project_ticket_id) return 'project_ticket_id cannot be combined with project'
   return undefined
 }
 type Routed = { decision?: DecisionKind; reason: string; ticketId?: string | undefined; triggerIds?: readonly string[] }
@@ -104,7 +117,10 @@ function route(host: MainToolsHost, item: RouteItem, decided: ReadonlyMap<string
       const before = host.store.triggers.disposition(item.trigger_id)?.decisionId
       const decision = host.engine.decide(item.trigger_id, { kind: 'accept', title: item.title!, scope: item.title!, reason: { code: 'explicitRouted' },
         acknowledgement: item.acknowledgement!, name: item.worktree_name!, ...note,
-        ...(item.form === 'lightweight' ? { form: 'lightweight' } : {}) })
+        ...(item.form === 'lightweight' ? { form: 'lightweight' } : {}),
+        ...(item.project ? { project: { goal: item.project.goal, ownerProfileId: item.project.owner_profile_id,
+          ...(item.project.capabilities ? { capabilities: item.project.capabilities } : {}) } } : {}),
+        ...(item.project_ticket_id ? { projectTicketId: item.project_ticket_id } : {}) })
       // A Decision that created no ticket is the item's refusal; one that existed before keeps what it was accepted with.
       if (decision.kind !== 'accept' || !decision.ticketId) return { refused: `Ticket was not created: ${reasonText(decision.reason)}` }
       if (decision.id === before) {
@@ -174,6 +190,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
         scope: z.string().trim().min(1).max(2000).optional().describe('What the person asked for, in their terms.'),
         acknowledgement: AcknowledgementSchema.optional().describe('One sentence naming the change and result, in the source language.'),
         ticket_id: z.string().optional().describe('Attach the whole message to this ticket instead of starting work.'),
+        project_id: z.string().optional().describe('Route the whole message to this project\'s coordination Session instead of starting a flat task; omit when the project is unclear.'),
         note: RoutingNoteSchema.optional().describe('attach: routing background or an explicit constraint, never instructions.'),
         form: z.literal('lightweight').optional().describe('Only for a read-only lookup of named files; omit to stay tracked.'),
         items: z.array(z.object({
@@ -181,22 +198,38 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
           scope: z.string().trim().min(1).max(2000).optional().describe('What this item asks for, in the person\'s terms.'),
           acknowledgement: AcknowledgementSchema.optional().describe('One sentence for this item.'),
           ticket_id: z.string().optional().describe('Attach this item to an existing ticket instead of starting work.'),
+          project_id: z.string().optional().describe('Route this item to this project\'s coordination Session; omit when unclear.'),
           worktree_name: WorktreeNameSchema.optional(),
           form: z.literal('lightweight').optional().describe('Only for this item\'s read-only lookup; omit to stay tracked.'),
           note: RoutingNoteSchema.optional().describe('attach: routing background, never instructions.'),
-        }).strict().refine(item => !!item.title || !!item.scope || !!item.ticket_id, 'An item needs a title, a scope, or a ticket_id'))
+        }).strict().refine(item => !!item.title || !!item.scope || !!item.ticket_id || !!item.project_id,
+          'An item needs a title, a scope, a ticket_id, or a project_id'))
           .min(1).max(LIMITS.dispatchTickets.max).optional()
           .describe('Requests the message holds; the configured mode decides the split.'),
       }).strict(),
       execute: async args => {
         const result = host.quietly(() => host.dispatch(agent, { title: args.title, scope: args.scope, acknowledgement: args.acknowledgement,
-          ticketId: args.ticket_id, note: args.note, form: args.form, items: args.items?.map(item => ({ title: item.title, scope: item.scope,
-            acknowledgement: item.acknowledgement, ticketId: item.ticket_id, name: item.worktree_name, note: item.note, form: item.form })) }))
+          ticketId: args.ticket_id, projectId: args.project_id, note: args.note, form: args.form, items: args.items?.map(item => ({ title: item.title,
+            scope: item.scope, acknowledgement: item.acknowledgement, ticketId: item.ticket_id, projectId: item.project_id, name: item.worktree_name,
+            note: item.note, form: item.form })) }))
         if ('refused' in result) return result
         host.requestPass()
         const cards = (result.tickets ?? (result.ticket ? [result.ticket] : [])).map(ticketCard)
         return { trigger_id: result.triggerId, ...(result.duplicate ? { duplicate: true } : result.attached ? { attached: true } : { decision: 'accept' }),
           ...cards.length ? result.tickets?.length ? { tickets: cards } : { ticket: cards[0] } : {}, ...result.items ? { items: result.items } : {} }
+      },
+    }),
+    tool({
+      name: 'orchestrator_project_archive',
+      description: 'Archive or restore a project only on an explicit person request. Archiving changes the project list filter only; its tasks, deliveries and attention stay visible and countable.',
+      schema: z.object({
+        project_id: z.string().describe('The project ticket.'),
+        archived: z.boolean().describe('true archives; false restores.'),
+        reason: z.string().max(500).optional().describe('Why the person asked.'),
+      }).strict(),
+      execute: async args => {
+        const project = host.engine.archiveProject(args.project_id, args.archived, PANEL_ACTOR, args.reason)
+        return { ...(args.archived ? { archived: true } : { restored: true }), project: ticketCard(project) }
       },
     }),
     tool({

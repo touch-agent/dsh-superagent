@@ -95,6 +95,17 @@ export const USER_ERRORS = {
   sourceNotInstalled: ['refused', 'The {source} Source kind is not installed'],
   noLabels: ['refused', 'This Source has no names to refresh'],
   nothingToSync: ['refused', 'The {source} Source\'s part of the Policy has nothing to sync from, or the Source is off or waiting for setup'],
+  projectInvalid: ['refused', 'A project accept needs a title, a goal, an available owner worker profile and no lightweight form'],
+  notProject: ['refused', 'This Ticket is a task, not a project container'],
+  projectArchived: ['refused', 'The project is archived; restore it before new work'],
+  projectCapabilityMissing: ['refused', 'The project Mandate does not grant {capability}'],
+  projectWorkerUnavailable: ['refused', 'The project owner worker or the requested worker profile is unavailable'],
+  projectOwnerRequired: ['refused', 'A project must bind an available owner worker profile'],
+  projectHasNoAssignment: ['refused', 'A project container has no task assignment, deliverable or review'],
+  projectCannotEnd: ['refused', 'A project is archived, not ended; its tasks keep running'],
+  notProjectCoordinator: ['refused', 'Only the project\'s own coordination session may create or assign its tasks'],
+  taskNotInProject: ['refused', 'The task does not belong to that project'],
+  taskStarted: ['refused', 'The task already started; only a task that has not started can change owner'],
 } as const satisfies Record<string, readonly ['missing' | 'refused', string]>
 export type UserErrorCode = keyof typeof USER_ERRORS
 

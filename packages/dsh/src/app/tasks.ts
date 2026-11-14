@@ -5,7 +5,8 @@
  * reviews and pull requests come from the ownership derivation shared with the Events tab. Nothing here writes to the
  * Store: a board is a projection of the Tickets, Threads and reports that exist, so it cannot disagree with them.
  */
-import { childUnresolved, depthOf, latestReport, liveTicket, reviewAggregate, rootTicketIdOf, threadKey, ticketForm, traceId,
+import { childUnresolved, depthOf, isProjectArchived, isProjectTicket, latestReport, liveTicket, permitsProject, projectOfTask,
+  reviewAggregate, rootTicketIdOf, threadKey, ticketForm, traceId,
   type Artifact, type HumanCriterion, type PreviewRef, type ReviewSource, type RuleCriterion, type Span, type Thread, type ThreadFacts,
   type Ticket, type TicketOutcome, type Trigger } from '@superagent/kernel'
 import { activityStatusOf, type ActivityRecord, type ActivityStatus } from './activity.ts'
@@ -181,6 +182,8 @@ export interface TaskInlineView {
   traceId: string
 }
 
+/** How a task Ticket sits in its hierarchy; the project container is a ProjectView, never a TaskView. */
+export type TaskHierarchyKind = 'task' | 'subtask'
 /** One Ticket as the task list reads it; reviews stay separate rows and name the Ticket they review. */
 export interface TaskView {
   id: string
@@ -188,6 +191,12 @@ export interface TaskView {
   /** For a review, the Ticket whose pull request it reviews, when ownership resolves one. */
   reviewedTicketId?: string
   title: string
+  /** `project` is never a task row; it appears only through `GET projects/:id` and a project's `tasks`. */
+  ticketKind?: TaskHierarchyKind
+  /** The project a task belongs to; absent means unassigned, and a stale link is reported as `projectBroken`. */
+  projectTicketId?: string
+  /** Its `projectTicketId` named no live project Ticket; the task reads as unassigned rather than guessing one. */
+  projectBroken?: true
   /** Missing on records written before forms existed; both the data and the UI read that as `tracked`. */
   form: 'tracked' | 'lightweight'
   status: ActivityStatus
@@ -244,7 +253,54 @@ export interface TaskBoardView {
   milestones: TaskMilestone[]
   /** The root Ticket rows both the right tab and the status page read; children are loaded from `GET tasks/:id`. */
   tasks: TaskView[]
-  totals: { milestones: number; tasks: number; tickets: number; open: number; attention: number; children?: number }
+  /** Unarchived projects, or those the `projects` query asks for; absent when the projection is rolled back. */
+  projects?: ProjectView[]
+  /** Root tasks no project owns; a stale `projectTicketId` stays here, marked `projectBroken`. */
+  unassigned?: TaskView[]
+  totals: { milestones: number; tasks: number; tickets: number; open: number; attention: number; children?: number
+    /** Projects included by the filter, all projects, and unassigned root tasks. */
+    projects?: number; archivedProjects?: number; unassigned?: number }
+}
+
+/** Which projects a board request includes; `off` restores the pre-project response shape. */
+export type ProjectFilter = 'active' | 'archived' | 'all' | 'off'
+
+/** Why a project needs a person, derived from its bound worker and Mandate, never from a task's state. */
+export interface ProjectAttentionView {
+  kind: 'worker' | 'capability' | 'question'
+  detail?: string
+  at?: string
+}
+
+/**
+ * One project container as the project list reads it. Its tasks are root tasks linked by `projectTicketId`; subtasks
+ * stay below them. An archived project stays here when the filter asks for archived ones, and its tasks and attention
+ * remain in the task list and its counts.
+ */
+export interface ProjectView {
+  id: string
+  name: string
+  goal?: string
+  state: 'active' | 'archived'
+  archivedAt?: string
+  createdAt: string
+  updatedAt: string
+  /** The owner worker the project bound at accept; absent means the project must be repaired before it can create tasks. */
+  owner?: TaskActorView
+  /** The coordination Session id (`worker-<projectId>`), for the details view only. */
+  coordinator: { sessionId: string }
+  /** The project-level problem a person can act on, beyond its tasks' attention. */
+  attention?: ProjectAttentionView
+  /** Direct root tasks, newest first; their own `children` stay below them. */
+  tasks: TaskView[]
+  counts: { tasks: number; open: number; attention: number; working: number; review: number; blocked: number; failed: number; done: number }
+  lastActivityAt?: string
+}
+
+/** One project detail request: the project card and its task hierarchy to `depth` levels. */
+export interface ProjectDetailView {
+  project: ProjectView
+  tasks: TaskView[]
 }
 
 /** One detail request: the selected Ticket and its direct children, for one-layer expansion or a deeper tree. */
@@ -551,6 +607,9 @@ function taskView(ticket: Ticket, view: Snapshot, owners: OwnershipIndex, tree: 
   const form = ticketForm(ticket)
   const trigger = triggers?.get(ticket.origin.triggerId) ?? view.store.triggers.get(ticket.origin.triggerId)
   const review = isReviewTicket(ticket)
+  // A project link counts only while it names a live project Ticket; a stale one reads as unassigned, never as a guess.
+  const linked = ticket.projectTicketId ? view.store.tickets.get(ticket.projectTicketId) : undefined
+  const project = linked?.kind === 'project' && !linked.ended ? linked : undefined
   const parent = review ? owners.of(ticket.id).parent : undefined
   const children = tree.childrenOf(ticket.id)
   const status = nodeStatus(ticket, children)
@@ -566,7 +625,10 @@ function taskView(ticket: Ticket, view: Snapshot, owners: OwnershipIndex, tree: 
   const parentActor = parentProfile ? { profile: { id: parentProfile.id, revision: parentProfile.revision } } : {}
   const blocker = blockerOf(ticket, latestReport(ticket), childSummary)
   return {
-    id: ticket.id, kind: review ? 'review' : 'ticket', ...parent ? { reviewedTicketId: parent } : {}, title: ticket.title, form, status,
+    id: ticket.id, kind: review ? 'review' : 'ticket', ...parent ? { reviewedTicketId: parent } : {}, title: ticket.title,
+    ticketKind: ticket.parentTicketId ? 'subtask' : 'task',
+    ...project ? { projectTicketId: project.id } : {}, ...ticket.projectTicketId && !project ? { projectBroken: true as const } : {},
+    form, status,
     ...terminal ? { terminal } : {}, ...!ticket.parentTicketId && attentionFor(ticket, tree) ? { attention: true } : {},
     ...owners.of(ticket.id).plan ? { plan: owners.of(ticket.id).plan } : {},
     origin: { source: trigger?.source ?? '', triggerId: ticket.origin.triggerId, preview: preview(trigger?.text ?? ''),
@@ -608,14 +670,57 @@ function readContext(host: ViewHost, tickets: readonly Ticket[]): {
   return { latest, byTrace, triggers: new Map(host.store.triggers.all().map(trigger => [trigger.id, trigger])) }
 }
 
+/**
+ * The project's own problem, which no task row can show: a missing or invalid bound worker, a Mandate without the
+ * capability to create tasks, or a question stored on the project. It grants nothing; it tells a person what to repair.
+ */
+function projectAttentionOf(project: Ticket): ProjectAttentionView | undefined {
+  if (project.attention) return { kind: 'question', detail: markdown(project.attention.question) }
+  if (!project.profile || !project.profile.selection.valid) {
+    return { kind: 'worker', detail: 'The project has no available owner worker; repair the project profile before it creates tasks.' }
+  }
+  if (!permitsProject(project.mandate, 'create-task')) {
+    return { kind: 'capability', detail: 'The project Mandate does not grant create-task; a person must accept its tasks.' }
+  }
+  return undefined
+}
+
+/** One project card from its direct root tasks, all derived at request time. */
+function projectView(project: Ticket, tasks: readonly TaskView[]): ProjectView {
+  const statuses = tasks.map(task => task.status)
+  const count = (status: ActivityStatus) => statuses.filter(item => item === status).length
+  const attention = projectAttentionOf(project)
+  const latest = tasks.flatMap(task => task.lastEventAt ? [task.lastEventAt] : []).sort().at(-1)
+  const updated = Date.parse(project.updatedAt)
+  const lastActivityAt = latest ?? (Number.isFinite(updated) ? project.updatedAt : undefined)
+  return {
+    id: project.id, name: project.title, ...project.goal ? { goal: project.goal } : {},
+    state: isProjectArchived(project) ? 'archived' : 'active', ...project.archivedAt ? { archivedAt: project.archivedAt } : {},
+    createdAt: project.createdAt, updatedAt: project.updatedAt,
+    ...project.profile ? { owner: { role: 'owner', profile: { id: project.profile.id, revision: project.profile.revision } } } : {},
+    coordinator: { sessionId: workerSessionId(project.id) },
+    ...attention ? { attention } : {},
+    tasks: [...tasks],
+    counts: { tasks: tasks.length, open: statuses.filter(status => status !== 'done').length,
+      attention: tasks.filter(task => task.attention).length, working: count('working') + count('queued'),
+      review: count('review'), blocked: count('blocked'), failed: count('failed'), done: count('done') },
+    ...lastActivityAt ? { lastActivityAt } : {},
+  }
+}
+const projectIncluded = (project: Ticket, filter: ProjectFilter): boolean => filter === 'all' ? true
+  : filter === 'archived' ? isProjectArchived(project) : !isProjectArchived(project)
+
 /** Build the board from the Store and the source facts the panel already reads. */
-export function taskBoard(host: ViewHost, now = new Date()): TaskBoardView {
+export function taskBoard(host: ViewHost, now = new Date(), options: { projects?: ProjectFilter } = {}): TaskBoardView {
   const view = snapshot(host)
+  const projectFilter = options.projects ?? 'active'
   // Read every Ticket once and index parents in memory: the board needs roots plus each root's child counts, never a query
   // per root. `list()` would hide the children; `allList()` is the one read this projection is allowed.
   const all = host.store.tickets.allList()
   const tree = treeIndex(all)
-  const roots = all.filter(ticket => !ticket.parentTicketId)
+  const projects = all.filter(isProjectTicket)
+  // A project is a container, never a task row: the flat list and the plan tree stay root tasks only.
+  const roots = all.filter(ticket => !ticket.parentTicketId && !isProjectTicket(ticket))
   const owners = ownershipIndex(all)
   const at = now.getTime()
   // A review that belongs to a Ticket is shown below it, never again as its own task row.
@@ -639,13 +744,72 @@ export function taskBoard(host: ViewHost, now = new Date()): TaskBoardView {
   // The flat list is the one projection the right tab and the status page share; its order is stable for tests and people.
   const { latest, byTrace, triggers } = readContext(host, all)
   // A board row does not read the file system for a Space: only the detail page shows one, so the 2,500-row projection stays cheap.
+  const rows = new Map(roots.map(ticket => [ticket.id, taskView(ticket, view, owners, tree, at, latest.get(ticket.id),
+    byTrace.get(traceId(ticket.origin.triggerId)) ?? [], undefined, triggers)]))
   const tasks = roots.slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
-    .map(ticket => taskView(ticket, view, owners, tree, at, latest.get(ticket.id), byTrace.get(traceId(ticket.origin.triggerId)) ?? [], undefined, triggers))
-  const children = all.length - roots.length
-  return { generatedAt: new Date(at).toISOString(), milestones, tasks,
+    .map(ticket => rows.get(ticket.id)!)
+  const children = all.length - roots.length - projects.length
+  const base = { generatedAt: new Date(at).toISOString(), milestones, tasks,
     totals: { milestones: milestones.length, tasks: milestones.reduce((sum, milestone) => sum + milestone.children.length, 0),
       tickets: roots.length, open: roots.filter(liveTicket).length, attention: tasks.filter(task => task.attention).length,
       ...children ? { children } : {} } }
+  // `off` is the deployment rollback: the response keeps the pre-project shape, with no project fields.
+  if (projectFilter === 'off' || !projects.length) return base
+  const byProject = new Map<string, Ticket[]>()
+  const unassignedRoots: Ticket[] = []
+  for (const root of roots) {
+    const project = projectOfTask(root, id => tree.get(id))
+    if (!project) unassignedRoots.push(root)
+    // A review is its own row, not project execution work.
+    else if (rows.get(root.id)?.kind !== 'review') byProject.set(project.id, [...byProject.get(project.id) ?? [], root])
+  }
+  const included = projects.filter(project => projectIncluded(project, projectFilter))
+  const projectViews = included.map(project => {
+    const own = (byProject.get(project.id) ?? []).slice()
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
+      .map(ticket => rows.get(ticket.id)!)
+    return projectView(project, own)
+  }).sort((left, right) => Number(!!right.attention) - Number(!!left.attention)
+    || (right.lastActivityAt ?? right.updatedAt).localeCompare(left.lastActivityAt ?? left.updatedAt)
+    || left.id.localeCompare(right.id))
+  const unassigned = unassignedRoots.slice()
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
+    .map(ticket => rows.get(ticket.id)!)
+  return { ...base, projects: projectViews, unassigned,
+    totals: { ...base.totals, projects: projectViews.length, archivedProjects: projects.filter(isProjectArchived).length,
+      unassigned: unassigned.length } }
+}
+
+/**
+ * One project and its task hierarchy: the project card plus its root tasks to `depth` levels (1 by default, at most 5).
+ * A task linked to a project that is missing, ended or not a project reads as unassigned elsewhere, so it never appears
+ * under a project it does not really belong to.
+ */
+export function projectDetail(host: ViewHost, id: string, depth = 1, now = new Date()): ProjectDetailView | undefined {
+  const project = host.store.tickets.get(id)
+  if (!project || !isProjectTicket(project)) return undefined
+  const everything = host.store.tickets.allList()
+  const taskRoots = everything.filter(ticket => !ticket.parentTicketId && !isProjectTicket(ticket) && ticket.projectTicketId === id)
+  const rootIds = new Set(taskRoots.map(ticket => ticket.id))
+  // A task's descendants share its authorization root, which is the root task itself.
+  const related = everything.filter(ticket => !isProjectTicket(ticket) && rootIds.has(ticket.rootTicketId ?? ticket.id))
+  const tree = treeIndex([project, ...related])
+  const view = snapshot(host)
+  const at = now.getTime()
+  const { latest, byTrace, triggers } = readContext(host, related)
+  const spaces = new SpaceProjection(host.store, 0, () => false)
+  const levels = Math.max(0, Math.min(5, depth))
+  const owners = ownershipIndex(related)
+  const build = (current: Ticket, remaining: number): TaskView => {
+    const row = taskView(current, view, owners, tree, at, latest.get(current.id), byTrace.get(traceId(current.origin.triggerId)) ?? [], spaces, triggers)
+    if (remaining <= 0) return row
+    const children = tree.childrenOf(current.id).map(child => build(child, remaining - 1))
+    return children.length ? { ...row, children } : row
+  }
+  const ordered = taskRoots.slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
+  // A review Ticket is its own row, not project execution work, matching the board's project grouping.
+  const tasks = ordered.map(ticket => build(ticket, levels)).filter(task => task.kind !== 'review')
+  return { project: projectView(project, tasks), tasks }
 }
 
 /**

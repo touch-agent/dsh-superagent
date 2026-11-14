@@ -35,7 +35,7 @@ import { executorLoad, ticketDetail, ticketList } from './views/tickets.ts'
 import { ticketTimeline } from './views/timeline.ts'
 import { triggerTrace } from './views/trace.ts'
 import { activityFeed, activityLookup } from './activity.ts'
-import { taskBoard, taskDetail } from './tasks.ts'
+import { projectDetail, taskBoard, taskDetail } from './tasks.ts'
 import { goalBoard, goalDetail } from './goals.ts'
 import { spaceRows } from './spaces.ts'
 import { contextGroupBoard } from './context-groups.ts'
@@ -173,7 +173,7 @@ function routes(runtime: HttpHost) {
     'GET overview': () => overview(views(runtime), runtime.health, policyVersion(store.settings()),
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
     'GET metrics': () => metrics(store),
-    'GET tasks': () => taskBoard(views(runtime)),
+    'GET tasks': ({ query }) => taskBoard(views(runtime), new Date(), { projects: query.projects }),
     'GET goals': () => goalBoard(runtime),
     'GET goals/:id': ({ params }) => {
       const goal = goalDetail(runtime, params.id)
@@ -236,6 +236,19 @@ function routes(runtime: HttpHost) {
       const detail = taskDetail(views(runtime), params.id, query.depth)
       if (!detail) throw new RouteError(404, 'Ticket not found')
       return detail
+    },
+    'GET projects/:id': ({ params, query }) => {
+      const detail = projectDetail(views(runtime), params.id, query.depth)
+      if (!detail) throw new RouteError(404, 'Project not found')
+      return detail
+    },
+    'POST projects/:id/archive': ({ params }) => {
+      runtime.engine.archiveProject(params.id, true, PANEL_ACTOR)
+      return { archived: true }
+    },
+    'POST projects/:id/restore': ({ params }) => {
+      runtime.engine.archiveProject(params.id, false, PANEL_ACTOR)
+      return { archived: false }
     },
     'GET activity': ({ query }) => activityFeed(store.activity, query.after, query.limit, query.level, activityLookup(store)),
     'GET search': ({ query }) => search(views(runtime), query.q, runtime.sourceLinks),

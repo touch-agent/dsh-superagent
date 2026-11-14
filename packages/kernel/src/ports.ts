@@ -1,8 +1,8 @@
 /** Ports the core depends on. Sources, policies, assessors, executors, and channels are project-specific. */
 import type { Action, ActionLevel, OutboundAction, OutboundKind } from './action.ts'
 import type { Approval } from './approval.ts'
-import type { Assignment, ChannelRef, Decision, DecisionKind, Mandate, MandateBasis, Strength, Thread, Ticket, TicketEndBy, TicketOutcome, Trigger }
-  from './model.ts'
+import type { ActorRef, Assignment, ChannelRef, Decision, DecisionKind, Mandate, MandateBasis, ProjectAccept, Strength, Thread, Ticket, TicketEndBy,
+  TicketOutcome, Trigger } from './model.ts'
 import type { Reason } from './reasons.ts'
 import type { Span } from './trace.ts'
 
@@ -63,10 +63,11 @@ export type AssessmentOutcome =
   | { kind: 'unavailable'; reason: string | Reason; audit?: Record<string, unknown> }
   /**
    * An accept: `rules` the assessment matched, `name` the ticket's requested short name, `note` a routing note for its
-   * worker, and `form` how it runs (tracked unless the accept chooses the lightweight inline path).
+   * worker, and `form` how it runs (tracked unless the accept chooses the lightweight inline path). `project` creates a
+   * project container instead of a task: it binds an owner worker and grants only the capabilities written there.
    */
   | { kind: 'accept'; title: string; scope: string; reason: string | Reason; acknowledgement?: string; rules?: string[]; audit?: Record<string, unknown>;
-    name?: string; note?: string; form?: 'lightweight' }
+    name?: string; note?: string; form?: 'lightweight'; project?: ProjectAccept; projectTicketId?: string }
   | { kind: 'stop'; ticketId: string; reason: string | Reason; audit?: Record<string, unknown> }
 
 /** Semantic judgement. `request` queues the assessment, idempotently per `evalId`; the outcome returns through `Engine.decide`. */
@@ -95,6 +96,18 @@ export interface Executor {
    * Assignment; optional because an inline executor owns no workspace.
    */
   release?(ticket: Ticket): void
+}
+
+/**
+ * Runs a project's coordination Session. A project has no Assignment: this port starts its Session and hands it the
+ * project's waiting Inputs, while `Engine.projectInputsDelivered` records what reached it. It queues work only, and its
+ * failures leave the project waiting rather than creating a task or widening the project Mandate.
+ */
+export interface CoordinationExecutor {
+  /** Queue the project's first run: its brief and any waiting Inputs. */
+  start(project: Ticket): void
+  /** Queue delivery of the project's waiting Inputs to its coordination Session. */
+  deliver(project: Ticket): void
 }
 
 /** One Action a lightweight ticket ran, with when it ran and whether it succeeded. */
@@ -202,6 +215,12 @@ export interface DomainEvents {
   'ticket.end.pending': { ticketId: string; by: 'thread' | 'follows'; outcome: 'merged' | 'closed' }
   /** A child Ticket's parent or root became unavailable; a person decides it and it is never resumed silently. */
   'ticket.child.orphaned': { parentTicketId: string; ticketId: string; reason: string }
+  /** A project's coordination Session admitted a task through the Decision admission seam. */
+  'project.task.admitted': { projectId: string; ticketId: string; decisionId: string; requestedBy: ActorRef }
+  /** A project's coordination Session changed a not-yet-started task's owner worker. */
+  'project.worker.changed': { projectId: string; ticketId: string; profileId: string; by: ActorRef }
+  /** A project was archived or restored; its tasks and their attention are untouched. */
+  'project.archived': { projectId: string; archived: boolean; by: ActorRef }
 }
 export type DomainEvent = { [K in keyof DomainEvents]: { type: K; at: string; data: DomainEvents[K] } }[keyof DomainEvents]
 

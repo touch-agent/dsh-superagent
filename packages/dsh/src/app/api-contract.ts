@@ -63,6 +63,7 @@ const ThreadsQuery = { type: 'object', properties: {
 } } as const satisfies Schema
 const TasksQuery = { type: 'object', properties: {
   depth: { type: 'integer', minimum: 1, maximum: 5, default: 1 },
+  projects: { type: 'string', enum: ['active', 'archived', 'all', 'off'], default: 'active' },
 } } as const satisfies Schema
 const ThreadQuery = { type: 'object', properties: {
   limit: limit(50, 100),
@@ -103,6 +104,8 @@ const PromptsSave = { type: 'object', properties: { config: {}, baseRevision: { 
 const BlockParams = { block: { type: 'string',
   pattern: '^(?:policy|eval|dispatch|executor|source:[a-z][a-z0-9-]*)$' } } as const satisfies Record<string, Schema>
 const ProfileParams = { id: { type: 'string', pattern: '^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$' } } as const satisfies Record<string, Schema>
+/** A project is a Ticket; the route only fixes the id envelope. */
+const ProjectParams = { id: { type: 'string', minLength: 1 } } as const satisfies Record<string, Schema>
 /** A profile draft is validated by `Profiles.validateDraft`; the route fixes only the envelope and an audit reason. */
 const profileReason = { type: 'string', minLength: 1, maxLength: 500 } as const satisfies Schema
 const ProfileCreate = { type: 'object', properties: { profile: {}, reason: profileReason },
@@ -125,7 +128,7 @@ export const ROUTES = {
   'GET overview': {},
   'GET metrics': {},
   'GET activity': { query: ActivityQuery },
-  'GET tasks': {},
+  'GET tasks': { query: TasksQuery },
   'GET goals': {},
   'GET goals/:id': {},
   'GET spaces': {},
@@ -142,6 +145,9 @@ export const ROUTES = {
     required: ['reason'] } },
   'PUT profiles/config': { body: ProfileConfig },
   'GET tasks/:id': { query: TasksQuery },
+  'GET projects/:id': { params: ProjectParams, query: TasksQuery },
+  'POST projects/:id/archive': { params: ProjectParams },
+  'POST projects/:id/restore': { params: ProjectParams },
   'GET search': { query: SearchQuery, requiredQuery: true },
   'GET sources': { public: true },
   'GET settings': { public: true },

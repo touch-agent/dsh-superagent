@@ -1,6 +1,6 @@
 # 029 项目任务视图：项目、层级、负责人与待处理
 
-> 状态：**设计提案，未实现**。本单只交付设计文档、可点击 HTML 原型、同视口截图与迁移可行性说明；不改产品代码、不写真实数据、不改现有接口。
+> 状态：**设计已定稿；P0 数据与派发层已实现（见附录 D），面板 UI 未实现**。本文档仍是字段与接口契约；实现记录、偏差与未完成项见附录 D。历史说明：本单最初只交付设计文档、可点击 HTML 原型、同视口截图与迁移可行性说明；后续数据层单按本设计落地，不改面板 UI。
 >
 > 输入：工单 `717a055c…`（「重设计任务视图」）、触发 `f37bfc2c…`，以及 2026-11-14 人工 review 对 #86 的三条意见（项目/任务/子任务都是 Ticket；项目由主会话识别并绑定负责 worker；项目可归档、默认看未归档）。基线：`touch-agent/dsh-superagent` main `46e1089`。
 >
@@ -694,3 +694,32 @@ interface TaskView {
 - 项目卡/详情/抽屉的计数是否同源？归档项目待办是否被过滤掉？
 - 旧 Ticket/旧接口是否兼容？任务是否仍是根授权单元，子任务父审是否没有吞掉人的验收？
 - 原型是否只画目标态、没有把项目 worker 的能力说成已实现？
+
+## 附录 D：数据与派发层实现状态（2026-11-15）
+
+> 状态：**P0 数据与派发层已实现；项目任务视图的面板 UI 未实现。** 本 PR 只动 kernel/dsh 的数据、投影、HTTP、工具与会话分派，不改面板组件，不写真实项目数据，不做自动迁移。
+
+### D.1 已实现
+
+- **Ticket 层级**：`Ticket.kind` 只取 `project` / `task`；项目是根 Ticket 容器，任务仍是带 Mandate/Decision 的根 Ticket，子任务继续用 `parentTicketId`。新增可选 `Ticket.goal`、`projectTicketId`、`archivedAt`；旧 Ticket 没有这些字段时按 `kind='task'`、无项目读取，不丢历史，也不自动归组。
+- **项目受理**：`orchestrator_route` 的 `accept` 新增可选 `project: { goal, owner_profile_id, capabilities? }`；项目必须绑定可用的 owner worker Profile，不静默回退默认执行配置；项目不建 Assignment、不启动任务执行 worker，只启动协调 Session。
+- **项目协调 Session**：会话 id 仍为 `worker-<projectId>`，工作目录为 `<stateDir>/projects/<projectId>`（不建 git worktree）；项目 input 持久投递，`projectInputsDelivered` 清空待投递列表后才算送达。
+- **派发规则**：主会话/HTTP 调用方通过 `project_id` 指定项目；`dispatchToProject` 直接把 Trigger 投给项目协调 Session，不新建扁平任务。指定了未知、非项目或已归档目的地的，在接收消息前拒绝；未指定项目时保持原有扁平任务路径，不按标题猜项目。
+- **权限**：项目 Mandate 新增 `capabilities: ('create-task' | 'assign-worker')[]`，默认两项都授予，也允许显式空数组（只走人工受理）。项目协调 Session 只有 `orchestrator_read`、`orchestrator_create_task`、`orchestrator_assign_worker` 与 Thread 工具；`create-task`/`assign-worker` 在 engine 侧再次校验 capability、项目归属与任务是否已开始；`create-task` 选项目 owner 以外的人需要 `assign-worker`，跨项目请求返回 `notProjectCoordinator`，没有跨项目提权。
+- **受理 seam**：`admitProjectTask` 为每个任务签发一条 `kind='accept'` 的 Decision，`Decision.admission` 记录 `projectTicketId`、`requestedBy`、`ownerProfileId`、`idempotencyKey`；任务 Mandate 继承项目的 strength/basis/ceiling，scope 收窄为「项目 scope + 任务 scope」，actor 是项目受理者（不是协调 worker），不带项目 capability；`Decision.admission.requestedBy` 单独记录发起请求的协调 worker。重复的 `idempotencyKey` 返回同一任务。capability 为空时协调 Session 不能自动受理；普通人工 accept 仍可创建任务，并可在项目上下文里带 `projectTicketId` 归入项目，只写归属、不改变任务 Mandate/owner，已归档或未知项目拒绝。
+- **归档**：`archiveProject` 只写/删 `archivedAt`，幂等；项目不结束、不产生交付物，`stopTicket`/`retry` 对项目返回 `projectCannotEnd`。任务与 attention 不因归档消失；默认 `projects=active`，可用 `archived`/`all` 查看已归档，`off` 回滚为旧响应形状。
+- **读取投影**：`GET tasks` 的 `tasks` 仍是根任务，项目只在 `projects`，没有项目的根任务在 `unassigned`；项目任务按 `projectTicketId` 分组，非法/失效链接留在 `unassigned` 并带 `projectBroken`；子任务仍通过 `GET tasks/:id` 展开。新增 `GET projects/:id`、`POST projects/:id/archive`、`POST projects/:id/restore`。
+- **回滚**：服务端 `GET tasks?projects=off` 返回旧响应形状；客户端开关 `ux.projects.v1`（`features.ts` 的 `PROJECTS`）供后续 UI 接入，本项目未改面板。
+- **测试**：`tests/projects.spec.ts`（17 项：层级、受理 seam 与幂等、人工受理归入项目、allow/deny/跨项目、归档、派发、缺 owner、迁移读取）、`tests/projects-view.spec.ts`（4 项：投影、过滤、计数、坏链接、回滚形状、详情）、`tests/project-tools.spec.ts`（2 项：项目/任务工具面）、`tests/dispatch-split.spec.ts` 的项目派发用例、`tests/http.spec.ts` 的项目路由与 `projects=off`。
+
+### D.2 与设计稿的偏差 / 尚未实现
+
+1. **视图字段名按附录 B 对齐**：`ProjectView.name`、`TaskView.ticketKind: 'task' | 'subtask'`；项目本身不进 `TaskView`，项目详情与看板都排除 review 行。`ProjectView.owner` 复用现有 `TaskActorView`（`role: 'owner'` + `profile.id/revision`），不含设计稿的显示标题；`ProfileSnapshot` 不保存显示名，面板可另行解析。额外提供 `coordinator.sessionId`、`counts.working/review` 与 `attention`，均为只读派生字段。
+2. **没有「把已有任务归入/移出项目」的写入口**。本单只在受理时写入 `projectTicketId`（项目协调自动受理或人工/主会话 accept）及子任务继承；存量任务保持 `unassigned`。设计附录 B 的「任务归入/移出」写路径留给后续 UI/管理动作，避免在本数据层单里引入未定义的权限与审计。
+3. **没有独立 `POST tasks` 建任务路由**。协调 Session 通过 `orchestrator_create_task` 工具走 kernel 受理 seam；人工仍走既有 accept，并可在项目上下文里带 `projectTicketId` 归入项目。面板 UI 未接入，因此没有新增项目页、弹窗、项目卡或归档交互。
+4. **项目不建工作目录/worktree**，协调 Session 目录为 `projects/<id>`；这是与任务执行隔离的部署选择，不改任务 worker 的目录规则。
+5. **`TaskView` 新增可选字段，旧客户端可忽略**；`ProjectView`/`unassigned`/`totals.projects` 在无项目或 `projects=off` 时省略，保持旧响应形状。未做数据库 schema 迁移：Ticket 以 JSON 持久化，新字段为可选。
+6. **归档只改变项目读取过滤与新建任务/派发**；归档项目的历史任务仍可读取、计数和审批，协调 Session 不再自动接收新 input。
+7. **项目协调需要启用 Agent Profiles 并有一个可用的 owner Profile**。Profiles 关闭或 owner 不可用时，项目仍可创建、读取和归档，但协调 Session 不启动、项目级 attention 指向 worker，`create-task`/`assign-worker` 返回 `projectWorkerUnavailable`；这是有意的非静默回退，不在项目里偷偷使用默认执行配置。
+8. **没有项目改名或更换项目负责 worker 的写入口**。项目在 accept 时绑定 owner Profile 快照，之后只能归档/恢复；附录 B 的「改名/换负责 worker」写路径留给后续管理动作，避免本数据层单在没有 UI 和审计设计时改动已绑定快照。
+9. **受理 Decision 不新增 Eval**。`Decision.evalId` 是必填字段，受理 seam 写入确定性的 admission 键，但仓库里没有对应 Eval；区分与审计以 `Decision.admission`、`Decision.reason.code='projectAdmission'` 和项目 Mandate 为准，不把该 id 当作可回放的 Eval。

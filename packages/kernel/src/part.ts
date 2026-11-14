@@ -2,8 +2,8 @@
 import { UserError } from './errors.ts'
 import { followupOwners, reached, threadKey } from './model.ts'
 import type { Thread, ThreadRef, Ticket, Trigger } from './model.ts'
-import type { Assessor, AssessmentOutcome, DomainEvent, DomainEvents, Executor, InlineExecutor, Outbox, Policy, Repositories, SourceScope, TraceSink }
-  from './ports.ts'
+import type { Assessor, AssessmentOutcome, CoordinationExecutor, DomainEvent, DomainEvents, Executor, InlineExecutor, Outbox, Policy, Repositories,
+  SourceScope, TraceSink } from './ports.ts'
 import type { ProfileBinder } from './profile.ts'
 import { spanId, traceId, type SpanKind } from './trace.ts'
 
@@ -16,6 +16,8 @@ export interface EngineOptions {
   executor: Executor
   /** Runs lightweight tickets inline, without an Assignment; an accept must not choose that form without one. */
   inline?: InlineExecutor
+  /** Runs a project's coordination Session; absent leaves the project waiting for a host that provides one. */
+  coordination?: CoordinationExecutor
   outbox: Outbox
   prepareTicket?: (ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>) => Ticket
   /**

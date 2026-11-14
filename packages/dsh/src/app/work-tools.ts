@@ -5,6 +5,12 @@
  */
 export const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
   'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent']
+/**
+ * The tools a project's coordination Session keeps: it reads context and admits or assigns tasks, and it never edits code,
+ * reports a delivery or delegates a child, since each task carries its own Mandate and worker.
+ */
+export const PROJECT_TOOLS = ['orchestrator_read', 'orchestrator_create_task', 'orchestrator_assign_worker',
+  'orchestrator_thread_follow', 'orchestrator_thread_unrelated']
 /** A child Ticket's owner may not start or message other Sessions: it reports only to its parent owner through the Engine. */
 export const CHILD_DENIED = new Set(['subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent'])
 /** The work tools a profile may list: the role ceiling, sorted and de-duplicated for a stable schema and hash. */

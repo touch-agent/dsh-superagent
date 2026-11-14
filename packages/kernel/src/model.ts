@@ -139,6 +139,35 @@ export type MandateBasis = Received & { sender?: string; rules?: string[] } & (
   | { via: 'humanIdentity'; addressed?: 'mention' | 'direct' }
 )
 
+/** The only two kinds of Ticket. Absent means `task`, which every record written before projects existed is. */
+export type TicketKind = 'project' | 'task'
+/** What a project's owner worker may do inside the project under the project Mandate; it grants nothing outside it. */
+export type ProjectCapability = 'create-task' | 'assign-worker'
+/** The project accept options: the container's goal and the owner worker it binds, never a task's execution. */
+export interface ProjectAccept {
+  /** The ongoing work line's goal; the project's own `goal`, distinct from any one task's. */
+  goal: string
+  /** The profile id the project binds as its responsible worker, resolved at accept; it never silently falls back. */
+  ownerProfileId: string
+  /** Capabilities written into the project Mandate; absent defaults to both, while an explicit empty list grants none. */
+  capabilities?: ProjectCapability[]
+}
+/**
+ * The admission seam's audit record: who admitted a task inside a project, from which project Mandate, under which
+ * idempotency key. It is stored on the ticket's accept Decision, not in place of one, and it never widens authority.
+ */
+export interface AdmissionRecord {
+  id: string
+  projectTicketId: string
+  /** The coordinating worker that requested the task, or the main Session on the human-accept fallback. */
+  requestedBy: ActorRef
+  ownerProfileId: string
+  idempotencyKey: string
+  /** The coordination Input the task came from, when there was one. */
+  triggerId?: string
+  at: string
+}
+
 /** Immutable authorization produced by an accept decision; execution is bounded by it and it never changes. */
 export interface Mandate {
   strength: Strength
@@ -147,6 +176,11 @@ export interface Mandate {
   basis: MandateBasis
   actor: ActorRef
   scope: string
+  /**
+   * What a project's owner worker may do within the project. Present only on a project ticket's Mandate; it narrows the
+   * project to coordination and never authorizes task execution or a task's own delivery.
+   */
+  capabilities?: ProjectCapability[]
   /**
    * The highest action level this authorization permits. A Mandate accepted before the action gate has none, and the
    * Policy's current maximum applies until it is re-accepted; a recorded ceiling is never widened by a later Policy.
@@ -228,6 +262,8 @@ export interface Decision {
   mandate?: Mandate
   /** Assessor-supplied audit data (rule assessments, direction, evidence). */
   audit?: Record<string, unknown>
+  /** The admission seam that created a task inside a project, for audit and idempotency. */
+  admission?: AdmissionRecord
   /** A person dismissed the problem an unavailable Decision shows. */
   dismissed?: true
 }
@@ -411,6 +447,17 @@ export interface Ticket {
   origin: { triggerId: string; triggerIds: string[] }
   /** The execution configuration it bound at creation; absent means legacy (role settings, live prompt, role work tools). */
   profile?: ProfileSnapshot
+  /**
+   * `project` for a container Ticket that coordinates an ongoing work line, `task` otherwise. Absent on every record
+   * written before projects existed and read as `task`.
+   */
+  kind?: TicketKind
+  /** On a task: the project Ticket it belongs to. Absent means unassigned; it never changes a task's authorization root. */
+  projectTicketId?: string
+  /** A project's ongoing goal, or a task's own goal from the admission seam; routing background only. */
+  goal?: string
+  /** When a project was archived. Only projects archive; tasks keep running and their attention stays visible. */
+  archivedAt?: string
   /** What its Executor chose: its short name, directory and assignment text. */
   execution?: Execution
   /** The latest failed delivery of an Input to its worker, until a delivery succeeds. */
@@ -433,6 +480,38 @@ export type RootTicket = Ticket & { parentTicketId?: never; rootTicketId?: never
 export type ChildTicket = Ticket & { parentTicketId: string; rootTicketId: string; delegation: Delegation; decisionId?: never; mandate?: never }
 /** Whether `ticket` is a child ticket. */
 export const isChildTicket = (ticket: Pick<Ticket, 'parentTicketId'>): boolean => ticket.parentTicketId !== undefined
+/** A Ticket's kind, defaulting every record written before projects existed to `task`. */
+export const ticketKindOf = (ticket: Pick<Ticket, 'kind'>): TicketKind => ticket.kind === 'project' ? 'project' : 'task'
+/** Whether the Ticket is a project container rather than an authorization root for work. */
+export const isProjectTicket = (ticket: Pick<Ticket, 'kind'>): boolean => ticket.kind === 'project'
+/** Whether a project is archived; a task never is. */
+export const isProjectArchived = (ticket: Pick<Ticket, 'kind' | 'archivedAt'>): boolean =>
+  isProjectTicket(ticket) && ticket.archivedAt !== undefined
+/** Whether a project Mandate permits `capability`; a Mandate without capabilities permits none. */
+export const permitsProject = (mandate: Pick<Mandate, 'capabilities'> | undefined, capability: ProjectCapability): boolean =>
+  !!mandate && (mandate.capabilities ?? []).includes(capability)
+/**
+ * The project a task belongs to, resolved through `get`: only a live project Ticket counts. A missing, ended or non-project
+ * target reads as unassigned rather than guessing, so a stale link never invents a project.
+ */
+export function projectOfTask(ticket: Pick<Ticket, 'projectTicketId'>, get: (id: string) => Ticket | undefined): Ticket | undefined {
+  if (!ticket.projectTicketId) return undefined
+  const project = get(ticket.projectTicketId)
+  return project && isProjectTicket(project) && !project.ended ? project : undefined
+}
+/** Whether a root Ticket is a task no project owns; a child is not a root task and a project is not a task. */
+export const isUnassignedTask = (ticket: Pick<Ticket, 'kind' | 'parentTicketId' | 'projectTicketId'>): boolean =>
+  !isProjectTicket(ticket) && ticket.parentTicketId === undefined && ticket.projectTicketId === undefined
+/** The project link a task inherits: its own, or its nearest ancestor's when a child was written before the field existed. */
+export function projectTicketIdOf(ticket: Pick<Ticket, 'projectTicketId' | 'parentTicketId'>, get: (id: string) => Ticket | undefined): string | undefined {
+  if (ticket.projectTicketId) return ticket.projectTicketId
+  let cursor = ticket.parentTicketId ? get(ticket.parentTicketId) : undefined
+  for (let depth = 0; cursor && depth < 64; depth += 1) {
+    if (cursor.projectTicketId) return cursor.projectTicketId
+    cursor = cursor.parentTicketId ? get(cursor.parentTicketId) : undefined
+  }
+  return undefined
+}
 /** The authorization root's id: a root ticket's own id, or a child's `rootTicketId`. */
 export const rootTicketIdOf = (ticket: Pick<Ticket, 'id' | 'rootTicketId'>): string => ticket.rootTicketId ?? ticket.id
 /** The authorization root, when it exists, resolved through `get`. */
