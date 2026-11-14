@@ -24,7 +24,7 @@
 
 ### 1.1 当前界面
 
-当前任务页（面板回退形态，1440×900，浅色，合成 fixture）见 [before-tasks.png](images/plugin-main-page/before-tasks.png)；右侧栏形态见 [after-side-tasks.png](images/plugin-main-page/after-side-tasks.png)（该 fixture 没有任务，只用于看布局；文件名为历史批次命名，内容为当前实现）。它已经能回答“每个任务到哪了”，但首屏仍是**没有项目层的任务列表**：
+当前任务页（面板回退形态，1440×900，浅色，真实本地任务状态）见 [before-tasks.png](images/plugin-main-page/before-tasks.png)；右侧栏形态见 [after-side-tasks.png](images/plugin-main-page/after-side-tasks.png)（该 fixture 没有任务，只用于看布局；文件名为历史批次命名，内容为当前实现）。它已经能回答“每个任务到哪了”，但首屏仍是**没有项目层的任务列表**：
 
 - 顶部是主 Agent 卡和一句说明，下面是 `列表 / 任务树（E2）/ 计划树（E2）/ 图（E2）` 和 `全部 / 待我处理 / 进行中 / 失败` 过滤。
 - 每行是任务标题、状态、审查/产出物、负责人和最近产出；选中后展开一层子任务或右侧详情。
@@ -519,7 +519,7 @@ A 系统开发                                  [更多]
 
 **截图来源与方法：**
 
-- 主对照和通知/侧栏 Before 是仓库里当前实现的真实界面截图（合成 fixture），基线 `main@46e1089`；`after-side-tasks.png` 的 fixture 是 0 任务，只用于布局对照。任务详情 Before 是当前实现参考，文件名历史批次命名，不宣称与 `46e1089` 逐像素一致。
+- 主对照和通知/侧栏 Before 是仓库里当前实现的真实界面截图（本地状态，不是合成 fixture；任务名/日期来自本地数据），不是 `main@46e1089` 的逐像素基线；`after-side-tasks.png` 的 fixture 是 0 任务，只用于布局对照。任务详情 Before 是当前实现参考，文件名历史批次命名，不宣称与 `46e1089` 逐像素一致。
 - After 全部来自本分支 `docs/prototypes/task-projects.html`，用 Chrome headless（CDP，DPR=1，1440×900 或 620×900，浅色，zh-CN）截取；**After 是原型，不是已实现界面**。
 - 两边不是同一批任务/项目数据；主对照比较“首屏能不能回答我有哪几个项目、各自负责 worker 和待处理”，不是像素级重绘。实现 PR 仍需按同一 fixture 补像素级对照。
 - 没有真实飞书内容、账号或会话名；After 的姓名/项目均为合成。
