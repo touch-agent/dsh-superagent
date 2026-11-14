@@ -883,7 +883,7 @@ function focusRows(list, options = {}) {
     const meta = pendingTaskMeta(t)
     return `<div class="focus-row">
       <span class="chip ${t.pending === 'retry' ? 'failed' : 'review'} mini">${meta.tag}</span>
-      <button class="link focus-task" type="button" data-open-task="${t.id}" data-from="project">${esc(t.title)}</button>
+      <button class="link focus-task" type="button" data-open-task="${t.id}" data-from="${options.from || 'project'}">${esc(t.title)}</button>
       ${options.hideProject ? '' : `<span class="focus-project">${esc(projectName(t.projectId))}</span>`}
       <span class="time">${esc(t.attentionAt || t.lastEvent)}</span>
       ${options.hideAction ? '' : `<button class="go" type="button" data-modal="${meta.modal}" data-task="${t.id}">${meta.action}</button>`}
@@ -898,7 +898,7 @@ function focusStrip(list = pendingRoots()) {
   </div>`
   return `<div class="focus">
     <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">${list.length}</span><button class="focus-all" type="button" data-go="notices">全部 ${list.length}</button></div>
-    ${focusRows(list.slice(0, 4))}
+    ${focusRows(list.slice(0, 4), { from: 'projects' })}
     ${list.length > 4 ? `<div class="focus-row"><span class="focus-project">还有 ${list.length - 4} 条，打开全部查看。</span></div>` : ''}
   </div>`
 }
@@ -1128,6 +1128,8 @@ function taskBack(t) {
     return `<button class="detail-back" type="button" data-open-task="${parent.id}" data-from="project">‹ ${esc(parent.title)}</button>`
   }
   if (state.taskFrom === 'all') return `<button class="detail-back" type="button" data-go="all">‹ 全部任务</button>`
+  if (state.taskFrom === 'notices') return `<button class="detail-back" type="button" data-go="notices">‹ 待你处理</button>`
+  if (state.taskFrom === 'projects') return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>`
   if (state.taskFrom === 'unassigned' || !t.projectId) return `<button class="detail-back" type="button" data-go="unassigned">‹ 未归入项目</button>`
   return `<button class="detail-back" type="button" data-go="project" data-project="${t.projectId}">‹ ${esc(projectName(t.projectId))}</button>`
 }
@@ -1331,8 +1333,9 @@ function modalHtml() {
   if (m.type === 'return' && t) {
     return modalShell(`退回「${t.title}」`, '退回会重开执行；写清楚要改什么，负责人才能继续。', `
       <div class="field"><label for="return-reason">退回原因</label><textarea id="return-reason" placeholder="例如：灰度数据只有 5%，请补到 10% 再交。"></textarea></div>
-      <p class="small">退回不会结束项目；交付物会保留，新的执行从你的说明开始。</p>`,
-      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="return" data-task="${t.id}">确认退回</button>`)
+      <p class="small">退回不会结束项目；交付物会保留，新的执行从你的说明开始。</p>
+      <p class="small">目标态：当前没有专用退回接口，需要走续做/重新受理；这里只演示状态变化。</p>`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="return" data-task="${t.id}">确认退回（原型）</button>`)
   }
   if (m.type === 'answer' && t) {
     return modalShell(`回答「${t.title}」`, '这是负责人在等你回答的问题。', `
