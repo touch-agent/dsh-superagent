@@ -17,7 +17,7 @@ never fakes a conversation. `ux.appShell.v1` restores the previous header and
 task-view layout, while the four earlier flags keep their own fallbacks and no
 record is deleted.
 
-The browser bundle now measures 827,842 bytes for the home card, header actions,
+The browser bundle now measures 827,843 bytes for the home card, header actions,
 right-sidebar page shells and new copy; it stays under the `lib/client.js`
 ceiling of 830,000 bytes. The total ceiling moves from 1,860,000 to 1,866,000
 bytes for the four embedded page shells.
