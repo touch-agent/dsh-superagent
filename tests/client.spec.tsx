@@ -68,9 +68,9 @@ const board = { generatedAt: '2026-09-23T12:00:00Z', totals: { milestones: 1, ta
                 startedAt: '2026-09-22T02:00:00Z', href: { page: 'execution', id: 'r1' }, children: [] }] }] }],
     graph: { start: '2026-09-22T00:00:00Z', end: '2026-09-23T12:00:00Z', lanes: 1, branches: [
       { id: 't1', title: '修复登录（T2-03）', task: 'T2-03', start: '2026-09-22T00:00:00Z', status: 'working', lane: 0 }] } }] }
-const serve = (activity: ActivityRecord[] = [feedItem]) => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+const serve = (activity: ActivityRecord[] = [feedItem], taskRows: unknown[] = []) => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
   const path = new URL(url, 'http://127.0.0.1').pathname.replace('/orchestrator/api/', '')
-  if (path === 'tasks') return Response.json(board)
+  if (path === 'tasks') return Response.json({ ...board, tasks: taskRows })
   if (path === 'overview') return Response.json({ approvals: [], problems: [], person: [], running: [], recent: [], executor: { running: 0, queued: 0, maxWorkers: 3, idle: 0 }, flow: { triggers: 0, filtered: 0, judged: 0, accepted: 0, evaluating: 0 }, metrics: { window: { since: '', hours: 24 }, ttfa: { samples: 0, medianSeconds: null, p90Seconds: null }, duplicates: { sends: 0, repeated: 0 }, recovery: { interrupted: 0, recovered: 0, medianSeconds: null }, throughput: { decisions: 0, perHour: 0 }, approval: { samples: 0, medianSeconds: null, p90Seconds: null } }, policyVersion: 'v' })
   if (path === 'tickets') return Response.json({ items: [], total: 0, offset: 0, limit: 20 })
   if (path === 'activity') {
@@ -140,6 +140,24 @@ it('registers the four side pages and renders them without the panel header or n
   expect(view.container.querySelector('.dt-head')).toBeNull()
   expect(view.container.querySelector('.dt-search')).toBeNull()
   expect(view.container.querySelector('.dt-tasks-layout')).not.toBeNull()
+  view.dispose()
+})
+
+it('keeps only the page-owned back button when a side page drills into a task', async () => {
+  serve([feedItem], [{ id: 't1', kind: 'ticket', title: '修复登录（T2-03）', form: 'tracked', status: 'working',
+    origin: { source: 'conversation', triggerId: 'tr1', preview: '修复登录', at: '2026-09-22T00:00:00Z' },
+    sources: [{ source: 'conversation' }], startedAt: '2026-09-22T00:00:00Z', lastEventAt: '2026-09-23T12:00:00Z',
+    execution: { assignments: 1 }, goal: { id: 't1', statement: '修复登录', state: { stage: 'working' }, results: [] },
+    deliverables: [] }])
+  const { entries } = fixture([], { appShell: true, files: true })
+  const tasks = entries.find(entry => entry.options.key === 'dsh-superagent-side-tasks')!
+  const view = await render(tasks, { t })
+  await act(async () => { view.container.querySelector<HTMLButtonElement>('.dt-tasks-row')!.click() })
+  const open = [...view.container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === zh.tasksOpen)!
+  await act(async () => { open.click() })
+  // The ticket page's own header owns the way back; the side shell must not add a second one.
+  expect(view.container.querySelector('.dt-side-back')).toBeNull()
+  expect(view.container.querySelectorAll('.dt-page-head')).toHaveLength(1)
   view.dispose()
 })
 

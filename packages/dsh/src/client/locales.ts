@@ -520,7 +520,6 @@ const TEXT = {
     'This deployment disabled Plugin as the main page; the panel returns to the batch-3 header and task-view layout, and the main conversation stays reachable from the header and the session list.'],
   appShellNeedsNav: ['「插件即主页面」依赖四项导航；先打开「任务 / 通知 / 文件 / 设置」，它才会生效。',
     'Plugin as the main page depends on the four-entry navigation; turn on Tasks / Notices / Files / Settings first for it to take effect.'],
-  back: ['返回', 'Back'],
   backToConversation: ['返回主对话', 'Back to main conversation'],
   backToConversationHint: ['任务、通知、文件和设置都在主对话页头的图标里。', 'Tasks, notices, files and settings are in the main conversation header.'],
   conversationHomeTitle: ['Superagent 主对话', 'Superagent main conversation'],
