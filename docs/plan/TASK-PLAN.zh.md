@@ -588,11 +588,11 @@ graph LR
 - **泳道**：Platform。
 - **实现状态（2026-11-14）**：PR #78 合并 `f2aef7f`，PR #81 合并 `5101d02`，PR #82 合并 `4388fa4`；四项默认入口、主 Agent 卡、浮层通知、文件页与逐项回退已落地，`tests/panel-ux-third-batch.spec.tsx` 覆盖默认面与回退；026 的宿主限制清单保留。
 
-### T5-11 插件即主页面：整屏应用外壳 · Platform · 2 人日
+### T5-11 插件即主页面：点开即主对话 · Platform · 2 人日
 
-- **目标**：不改 DSH 上游、不改宿主 shell，把 021 的页面设计放进插件自己的面板：插件占满宿主给的宽高，自绘顶部主 Agent 卡、任务/通知/文件/设置四项内部导航、内容区和右下通知入口；默认落在任务页并给出「待你处理」摘要；减少页面内的宿主占位，修正卡片与页头主会话入口的重复。
-- **交付**：`features.ts` 增加 `ux.appShell.v1`（依赖 `ux.navFour.v1`）；`app.tsx` 增加全宽应用外壳、共享任务快照、外壳工具区和四项图文导航；`tasks.tsx` 在外壳内把卡片移到外壳顶部，增加右侧待你处理摘要与现有过滤器联动；`master-card.tsx` 继续复用；`index.tsx` 在外壳模式下不注册宿主 `conversation.hero.options` 的重复主会话入口；`client.css` 增加外壳/摘要/窄屏样式；设置 › 显示增加开关与回退说明；`docs/021`、`docs/026` 补路线修订，新增 `docs/028-plugin-main-page.zh.md`；TRACKING、TASK-PLAN、changeset、README/docs 索引同步。
-- **验收**：默认落在任务页，外壳顶部显示主 Agent 卡、四个内部导航、搜索/词汇表与右下通知入口；任务列表和任务详情共享同一个外壳，外壳内所有页只有一个主会话动作；待你处理摘要只列 `attention` 任务、可进入详情或应用现有过滤，空态不伪造事项；关闭 `ux.appShell.v1` 回到 026 布局，关闭四项导航回到三入口，关闭卡片后页头主会话入口出现，浮层/文件页开关独立；页面内不出现“需要宿主”的占位；宿主侧栏/工作区/设置入口在文档中如实写为外部环境；`pnpm check` 全绿；1440×900 同视口浅色 Before/After 覆盖任务列表、任务详情、通知抽屉与设置，面板测试覆盖默认页、卡、四项导航、通知入口、摘要和回退；独立 review 回答“10 秒知道下一步”和“不假装拥有宿主能力”，结论留在 PR。
+- **目标**：不改 DSH 上游、不改宿主 shell，点击 Superagent 直接进入现有主对话；任务、通知、文件、设置从主对话页头图标进入，每个辅助页都有“返回主对话”；主对话仍可交代任务、追问进展、看整体情况或接收主动汇报。
+- **交付**：`features.ts` 的 `ux.appShell.v1`（依赖 `ux.navFour.v1`）；`conversation-home.tsx` 的自动打开主 Session、失败重试与四个辅助页入口；`panel.ts` 的首页/辅助页意图与路由记忆；`app.tsx` 的首页分流、返回条与关闭面板重置；`index.tsx` 在 `conversation.session.header.utilities` 注册主 Session 四图标、`ux.appShell.v1` 开启时不注册 `conversation.hero.options` 重复入口；`client.css` 的页头图标/角标、返回条与过渡卡；设置 › 显示开关与回退说明；`docs/021`、`docs/026` 补路线修正，重写 `docs/028-plugin-main-page.zh.md`；TRACKING、TASK-PLAN、changeset、README/docs 索引同步。
+- **验收**：点开 Superagent 自动打开主 Session，用户落在主对话而不是任务页；主对话页头只出现四个图标，普通会话不出现；任务/通知/文件/设置各自打开辅助页，均有“返回主对话”，返回后回到主对话；关闭 `ux.appShell.v1` 回到 026/第三批布局，关闭四项导航回到三入口，文件页开关独立；主 Session 缺失/归档时显示原因、重试和四个辅助页入口，不空白；宿主侧栏/页头/设置入口在文档中如实写为外部环境，不隐藏宿主 chrome 后宣称整页属于插件；`pnpm check` 全绿；1440×900 同视口浅色 Before/After 覆盖主对话、任务页、通知页与设置页；面板测试覆盖首页、返回、两列任务页和回退；独立 review 回答“10 秒知道下一步”和“不假装拥有宿主能力”。
 - **估时**：2 人日。**依赖**：T5-10（四项导航、主 Agent 卡、浮层通知、文件页）。**回退**：`ux.appShell.v1` 关闭即回 026；不删记录、不改授权、不改宿主。
 - **泳道**：Platform。
 

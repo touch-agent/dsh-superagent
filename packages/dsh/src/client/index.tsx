@@ -18,6 +18,7 @@ import { openKnownSession, SessionNavigationError } from '../navigation.ts'
 import { ActivityFeedClient } from './activity-feed.ts'
 import { App } from './app.tsx'
 import { caller } from './api.ts'
+import { ConversationActions } from './conversation-home.tsx'
 import { AttentionStore, useAttention } from './attention.ts'
 import { PluginConfig, usePageForm } from './deployment.tsx'
 import { appShell, entryThreeZones, navFour, noticeButton, taskViewV1 } from './features.ts'
@@ -104,6 +105,12 @@ export function apply(ctx: ClientContext): void {
   }
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({}) },
     (props: { t: T }) => <Mounted ctx={ctx} t={props.t} openSession={openSession} tasks={tasks} />))
+  // The main Conversation is the plugin home. Its header carries the four Superagent destinations; every other Session
+  // keeps the host header unchanged.
+  if (appShell()) ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities', id: 'system-conversation-actions', order: 890, locale: NS
+  }, (props: { t: T; sessionId: string }) => <ConversationActions t={props.t} sessionId={props.sessionId} master={master}
+    attention={attention} activity={activity} onOpen={openPanel} />))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 10, label: () => t('panel'), locale: NS },
     (props: SidebarPanelIconOwnerProps) => <HammerIcon {...props} attention={entryThreeZones() ? attention : undefined}
       badge={count => t('entryBadge', { count })} />))

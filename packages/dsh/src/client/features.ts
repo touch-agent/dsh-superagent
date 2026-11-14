@@ -35,9 +35,9 @@ export const NOTICE_BUTTON = 'ux.noticeButton.v1'
 /** UX batch 3's Files page; off removes the nav entry and keeps the richer task detail unchanged. */
 export const FILES_PAGE = 'ux.filesPage.v1'
 /**
- * The 2026-11-14 route: the plugin panel is the application shell, so the main Agent card, the four-entry navigation
- * and the content area share one full-width frame. It depends on the four-entry navigation; off restores the batch-3
- * panel exactly. No host surface is replaced or hidden by this switch.
+ * The 2026-11-14 route: selecting Superagent opens the host's main Conversation, and tasks, notices, files and settings
+ * live in that Conversation's header. It depends on the four-entry navigation; off restores the batch-3 panel exactly.
+ * No host surface is replaced or hidden by this switch.
  */
 export const APP_SHELL = 'ux.appShell.v1'
 /** The person's per-browser preference, like the unread cursor: absent means the stable-phase default, off. */

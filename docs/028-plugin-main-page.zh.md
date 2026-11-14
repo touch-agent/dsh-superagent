@@ -1,126 +1,134 @@
-# 028 插件即主页面：整屏应用外壳
+# 028 插件即主页面：点开即主对话
 
 > 状态：已实现（2026-11-14），新增 `ux.appShell.v1`，默认开启；四项既有开关保留，任一项回退都不删记录、不改授权。
-> 输入：[021 界面重构提案](021-ux-redesign.zh.md) 的主 Agent、四项导航、通知和任务优先方向，[026 第三批](026-ux-third-batch.zh.md) 已落地的卡/导航/浮层/文件页，以及工单“插件即主页面：整屏布局放进 Superagent”。
+> 输入：[021 界面重构提案](021-ux-redesign.zh.md) 的主 Agent、四项导航、通知和任务方向，[026 第三批](026-ux-third-batch.zh.md) 已落地的卡/导航/浮层/文件页，以及工单“插件即主页面：整屏布局放进 Superagent”的后续修正：点击 Superagent 后应直接进入主对话，任务、通知、文件、设置改为对话页头图标或浮层入口。
 > 基线：`touch-agent/dsh-superagent` main `4388fa4`。本文的 After 截图来自本分支构建，Before 截图来自同一视口下的 main。
 
-## 1. 路线变化
+## 1. 路线修正
 
-021 的目标态把主 Agent 大卡放到宿主侧栏最上方、移除宿主“新会话/插件/工作区”行、替换宿主工作区。它要求改 DSH 上游或宿主的 sidebar 组合，成本远大于插件本身。
+第一版把插件面板做成“应用外壳”：顶部主 Agent 卡，下面四个 tab，默认落在任务页。这个方向被推翻：它仍然是“插件里的另一套任务首页”，不是“点开 Superagent 就开始交代任务”。
 
-本轮换一条路：**不改 DSH 上游，不改宿主 shell，把 021 的页面设计直接放进插件自己的面板。** 宿主给插件面板的是一块完整的、可滚动的区域；插件在这块区域里自绘应用外壳：
+修正后的目标是：
 
-```
-┌ 插件面板（宿主给的全部可用宽高）──────────────────────────────┐
-│ 主 Agent 卡：头像、名字、一句状态、进入主会话                  │
-│ 任务 / 通知 / 文件 / 设置        搜索、词汇表、主会话快捷入口  │
-├──────────────────────────────────────────────────────────────┤
-│ 内容区：默认任务页；右侧“待你处理”摘要                         │
-│                                                              │
-│                                           右下角通知入口      │
-└──────────────────────────────────────────────────────────────┘
-```
+1. 点击 Superagent（或从设置上方的入口打开）后，看到的是**主对话**，不是任务列表。
+2. 用户可以直接在主对话里交代任务、追问进展、看整体情况，或接收主 Agent 的主动汇报。
+3. 任务、通知、文件、设置从主对话页头的四个图标进入；打开后是辅助页，每页都有“返回主对话”。
+4. 不改 DSH 上游、不改宿主 shell；宿主侧栏、工作区列表和宿主设置入口继续存在。
 
-宿主仍是宿主：左侧插件列表、工作区/会话列表、宿主自己的设置入口都在面板之外，插件不替换、不隐藏、不伪造。
+因此，**主对话是页面，插件面板只是进入它的桥和四个辅助页的容器**。插件不再自绘一套对话界面，也不把任务页伪装成首页。
 
-## 2. 为什么不是继续改宿主
+## 2. 为什么不是插件内自绘对话
 
-| 方案 | 需要改什么 | 结果 |
+公开的 DSH 插件扩展点没有“把宿主 Conversation 嵌进插件面板”的席位。可选做法只有：
+
+| 方案 | 问题 |
+| --- | --- |
+| 在插件面板里 iframe 宿主对话 | 同源可以绕，但会复制一套导航/焦点/快捷键，且宿主升级即碎；不做 |
+| 用宿主 CSS 隐藏侧栏/页头，假装“只有 Superagent” | 改的是宿主 shell，违反“不改 shell”，也不稳定 |
+| 让插件面板自己实现聊天 UI + 会话存储 | 第二套对话系统，重复宿主能力，偏离“复用主 Agent” |
+| **打开宿主的现有主 Session（本路线）** | 主对话本身是宿主的；插件只负责入口和四个辅助页；宿主 chrome 仍可见，但这是公开扩展点能做到的最接近形态 |
+
+因此“整个页面都变成 Superagent 的页面”在本路线中的准确含义是：**内容区变成主对话；插件不再用任务页占据内容区**。宿主左侧的插件/工作区列表、宿主页头和宿主设置入口不在插件控制范围内，文档不把它们写成已替换。
+
+## 3. 交互
+
+### 3.1 打开即主对话
+
+- `ux.appShell.v1` 开启且 `ux.navFour.v1` 开启时，插件 `main` 面板挂载后立即调用 `openSession(state.masterId)`，打开**现有**主 Session；不新建 Session、不复制历史。
+- 面板自身渲染一张很轻的过渡卡（“正在打开主对话”），成功后宿主切到主对话，卡消失。
+- 如果主 Session 不在会话列表（归档、删除、状态目录换了），卡上说明原因，给出“重新打开主对话”和四个辅助页入口；不把错误变成空白。
+- 自动打开每个主 Session 只尝试一次，避免重渲染时反复抢导航。
+
+### 3.2 主对话页头的四个入口
+
+主 Session 的页头 utilities 里注册四个图标按钮：
+
+| 图标 | 打开 | 角标 |
 | --- | --- | --- |
-| 上游 DSH 增加“主 Agent 顶置席位” | DSH 客户端 sidebar/workspace 组合、升级与兼容维护 | 超出本工单；插件无法单独完成 |
-| 宿主 fork 后删除“新会话/插件/工作区” | 维护宿主分支，跟随 DSH 升级 | 成本高，且用户失去宿主会话入口 |
-| **插件面板自绘应用外壳（本路线）** | 只改插件自己的 `main` 面板和 `shell.overlay` | 不改上游、不改 shell；页面内的信息架构完整；宿主项诚实留在外部 |
+| 任务 | 插件面板 › 任务页 | 待你处理数量 |
+| 通知 | 插件面板 › 通知页 | 有未读活动时一个小圆点 |
+| 文件 | 插件面板 › 文件页 | 无；`ux.filesPage.v1` 关闭时整个按钮不出现 |
+| 设置 | 插件面板 › 设置页 | 无 |
 
-因此本路线**放弃**以下宿主级目标，不再把它们当成待完成项：
+这些按钮只注册在主 Session 的页头；进入其他会话时不显示，避免污染宿主的普通对话。按钮调用 `openPanelRoute`：记住目标页、选中插件面板；面板挂载时读到的意图是“辅助页”，不是“首页”，所以不会再自动跳回主对话。
 
-- 把主 Agent 卡放到宿主“新会话”按钮之上。
-- 删除、重排或改名宿主的“新会话/插件/工作区/会话”行。
-- 用插件任务页替换宿主 workspace region，或让插件页成为宿主默认主视图。
-- 替换宿主设置弹窗、宿主通知中心或宿主原生一级导航。
+### 3.3 辅助页与返回
+
+辅助页沿用第三批的四项导航和内容区，但顶部多一条返回条：
+
+```
+‹ 返回主对话   任务、通知、文件和设置都在主对话页头的图标里。
+Superagent
+任务  通知  文件  设置
+...
+```
+
+- “返回主对话”先清除“辅助页”意图，再调用 `openSession(masterId)`；回到主对话后，下一次点 Superagent 仍从主对话开始。
+- 任一辅助页被直接链接打开、刷新或从通知里跳转，面板都保留返回条；直接链接不会把首页重新抢回去。
+- 关闭面板或切到宿主其他会话时，插件把意图重置为“首页”；下次点 Superagent 还是主对话，而不是上次的辅助页。
+
+### 3.4 回退
+
+- `ux.appShell.v1` 关闭：完全回到 026/第三批的“页头 + 居中列 + 任务页卡片”，不注册主对话页头四图标，也不自动跳主对话。
+- `ux.navFour.v1` 关闭：`ux.appShell.v1` 随之失效，回到三入口布局。
+- `ux.masterCard.v1` 关闭：只影响回退后的任务页卡片；主对话路线不依赖卡片。
+- `ux.filesPage.v1` 关闭：文件按钮和文件页入口消失，其余三个入口保留。
+- 所有开关只改客户端可见性；不删任务、通知、文件、审批或会话记录。
+
+## 4. 与宿主边界
+
+本路线**没有**做以下事情，也不把它们留成“待完成”：
+
+- 删除或重排宿主的新会话、插件、工作区、会话行。
+- 用插件页面替换宿主 workspace region，或让插件成为宿主默认主视图。
+- 替换宿主页头、宿主设置弹窗、宿主原生通知中心。
+- 隐藏宿主侧栏后宣称“用户只看见 Superagent”。
 - 跨设备同步主 Agent 名字/头像。
 
-这些都依赖宿主或上游改动；本路线只保证“插件页内部”是一个完整的应用，而不是继续堆宿主占位。
+这些都需要改宿主或上游；本路线明确只改插件，宿主 chrome 继续存在。
 
-## 3. 页面与交互
+## 5. 代码落点
 
-### 3.1 应用外壳
-
-- 插件面板占满宿主给的宽高。1440×900 视口、宿主侧栏 280px 时，`.dt-page` 为 1160×900；去掉外壳两侧内边距后，`.dt-main` 实测 1099px，右侧摘要占 320px。
-- 顶部主 Agent 卡：头像、名字（默认“小助”）、“主 Agent”标签、一句状态、改名/换头像、进入主会话。状态优先级沿用 026：暂停 > 连接中 > 待你处理 N > 正在处理 N > 待命。
-- 四项内部导航：任务、通知、文件、设置；每项一个图标和文字，键盘可 Tab/方向键切换。
-- 右上工具区：搜索、词汇表；`ux.masterCard.v1` 关闭时才显示“打开主 Session”，避免与卡片重复。
-- 内容区占满剩余宽度；右下角沿用 `shell.overlay` 的常驻通知按钮。
-- 窄屏（≤720px）收窄内边距，导航和工具区换行；≤1080px 时任务页右侧摘要折到列表下方。
-
-### 3.2 默认页：任务
-
-- `ux.appShell.v1` 依赖 `ux.navFour.v1`；两者都开时，默认路由仍是任务页，不回到概览或运维页。
-- 任务主列保留列表/任务树/计划树/图、过滤器和任务详情。打开详情会把面板滚回顶部；切换视图会退出详情并回到所选视图。
-- 右侧“待你处理”摘要只列 `GET tasks` 里 `attention` 为真的任务，最多 4 条；显示任务标题和它等待的决定类型；点一条进入任务详情（任务层级关闭时进入现有执行页），点“在任务列表里看待我处理”应用现有的“待我处理”过滤器并切回列表。
-- 摘要不是第二套收件箱：没有新 API、没有写操作，空态直接说“现在没有等你处理的事”。
-
-### 3.3 其他页
-
-- 通知：仍是现有抽屉/通知页，入口在右下角浮层；浮层和抽屉可键盘操作，Esc 关闭。
-- 文件：仍是只读的任务交付物投影，不改文件内容。
-- 设置：仍是插件页；显示页新增“插件即主页面”开关，四项旧开关逐项保留。
-- 任务详情：仍在应用外壳内打开，主 Agent 卡和四项导航保持可见；返回后回到任务列表。
-
-## 4. 修复的重复入口
-
-| 重复/分散 | 处理 |
+| 文件 | 作用 |
 | --- | --- |
-| 任务页“打开主 Session”与主 Agent 卡“进入主会话” | 应用外壳下卡片常驻，页头快捷入口不再渲染；所有页面只有一个主会话动作 |
-| 宿主“新会话”页的“主会话”按钮与卡片 | 应用外壳开启时，插件不再注册 `conversation.hero.options` 的 `system-master`；宿主 shell 本身不变 |
-| 右栏“系统事件/任务”标签与一级导航 | 沿用 026：四项模式下不注册右栏重复标签 |
-| 一级通知页与浮层通知按钮 | 有意保留：一个是页面，一个是 frame-wide 快捷入口，不复制列表 |
-| 浮层“N 条待处理”与卡片“N 个任务等你处理” | 浮层标题改为“N 条通知”；任务等待数只出现在卡片和右侧摘要，两个数字不再看起来像同一个计数 |
-
-关闭 `ux.appShell.v1` 后，第三批的页头 + 任务视图布局原样回来，包括任务页卡片替代页头入口的非外壳行为。
-
-## 5. 开关与回退
-
-| 开关 | 默认 | 关闭后 |
-| --- | --- | --- |
-| `ux.appShell.v1` | 开 | 回到 026 布局：页头 + 居中 960px 列 + 任务页顶部卡片 |
-| `ux.navFour.v1` | 开 | 回到三入口/旧导航；应用外壳也随之为关 |
-| `ux.masterCard.v1` | 开 | 外壳内不画卡片，工具区恢复“打开主 Session” |
-| `ux.noticeButton.v1` | 开 | 回到页头铃铛；抽屉与记录保留 |
-| `ux.filesPage.v1` | 开 | 文件页从导航移除；任务详情里的产出物仍在 |
-
-应用外壳关闭时，其他四项开关按各自语义独立生效；关闭四项导航不会留下空外壳。
+| `client/conversation-home.tsx` | 过渡卡（自动打开主 Session、失败重试、四个辅助页入口）；主对话页头四图标 |
+| `client/panel.ts` | 首页/辅助页意图、路由记忆、`openPanelRoute` 选中面板 |
+| `client/app.tsx` | 首页与辅助页分流、返回条、关闭面板时重置意图 |
+| `client/index.tsx` | 注册主对话 `conversation.session.header.utilities`；`ux.appShell.v1` 开启时不注册 `conversation.hero.options` 的重复入口 |
+| `client/tasks.tsx` | 保留第三批两列任务页；从页头进入时仍显示“待你处理”摘要 |
+| `client/locales.ts`、`client.css` | 文案、返回条、页头图标/角标、过渡卡样式 |
+| `tests/panel-ux-conversation-home.spec.tsx` | 首页自动打开、辅助页返回、任务两列、外壳与四项导航回退 |
+| `tests/client.spec.tsx` | 主对话页头只注册一份四图标，非主 Session 不渲染 |
 
 ## 6. 证据
 
-Before：main `4388fa4`，1440×900，浅色，`zh-CN`，宿主侧栏 280px。
-After：本分支构建，同一视口/主题/语言/数据夹具。
+Before：main `4388fa4`，1440×900，浅色，`zh-CN`，宿主侧栏 280px。Before 是旧路线“点开 Superagent 落在任务页”。
+After：本分支构建，同一视口/主题/语言。
 
 | 场景 | Before | After |
 | --- | --- | --- |
-| 任务列表（默认页） | [before-tasks.png](images/plugin-main-page/before-tasks.png) | [after-tasks.png](images/plugin-main-page/after-tasks.png) |
-| 任务详情 | [before-task-detail.png](images/plugin-main-page/before-task-detail.png) | [after-task-detail.png](images/plugin-main-page/after-task-detail.png) |
-| 通知抽屉 | [before-notifications.png](images/plugin-main-page/before-notifications.png) | [after-notifications.png](images/plugin-main-page/after-notifications.png) |
-| 设置·显示 | [before-settings.png](images/plugin-main-page/before-settings.png) | [after-settings.png](images/plugin-main-page/after-settings.png) |
+| 点开 Superagent | [before-tasks.png](images/plugin-main-page/before-tasks.png)（任务页落地） | [after-conversation.png](images/plugin-main-page/after-conversation.png)（主对话 + 页头四图标） |
+| 任务页 | [before-tasks.png](images/plugin-main-page/before-tasks.png) | [after-tasks.png](images/plugin-main-page/after-tasks.png)（带返回主对话） |
+| 通知页 | [before-notifications.png](images/plugin-main-page/before-notifications.png) | [after-notifications.png](images/plugin-main-page/after-notifications.png) |
+| 设置页 | [before-settings.png](images/plugin-main-page/before-settings.png) | [after-settings.png](images/plugin-main-page/after-settings.png) |
 | 设置·显示里的开关细节 | [before-settings-switches.png](images/plugin-main-page/before-settings-switches.png) | [after-settings-switches.png](images/plugin-main-page/after-settings-switches.png) |
 
-截图使用合成 API 夹具，不包含真实飞书内容。
+截图来自真实运行中的 DSH + 本插件构建；不包含飞书私聊内容。After 的主对话是预览环境中的主 Session，仅用于展示入口位置。
 
 ## 7. 验证
 
 - `pnpm typecheck`
-- `pnpm vitest run tests/panel-ux-app-shell.spec.tsx tests/panel-ux-third-batch.spec.tsx tests/client.spec.tsx`
-- `pnpm vitest run tests/panel*.spec.tsx`（20 个文件，181 个测试）
-- 全量 `pnpm check`（见 PR 的检查记录）
-
-面板测试覆盖：默认落在任务页；外壳内主 Agent 卡；四项导航；待你处理摘要与过滤；任务详情仍在外壳内；外壳关闭回到 026 布局；四项导航关闭回到三入口；卡片关闭后页头主会话入口出现；宿主 `conversation.hero.options` 在外壳模式下不注册。
+- `env -u GIT_CONFIG_GLOBAL pnpm check`
+- 重点：`pnpm vitest run tests/panel-ux-conversation-home.spec.tsx tests/client.spec.tsx tests/panel-ux-third-batch.spec.tsx`
+- 实机：点 Superagent 自动进主对话；主对话页头出现任务/通知/文件/设置；四个入口各自打开辅助页并显示返回条；返回后回到主对话；普通会话不出现四图标；关闭 `ux.appShell.v1` 回到第三批布局。
 
 ## 8. 两个验收问题
 
-1. **第一次用的人 10 秒内知道下一步吗？** 打开即见“小助”、待你处理数量和任务列表；有等待事项时右侧直接列出可点的任务，主按钮是“进入主会话”。下一步不需要先理解插件、工作区或工单编号。
-2. **是否假装拥有宿主能力？** 没有。页面内没有“需要宿主”的占位或空壳；宿主侧栏、工作区、宿主设置入口都留在外部，文档和设置文案明确说明它们不归插件控制。应用外壳只声明自己掌控面板内部。
+1. **第一次用的人 10 秒内知道下一步吗？** 点开 Superagent 已经在主对话里，输入框就在眼前；需要看任务/通知时，页头四个图标是稳定入口。不需要先理解“插件”“工作区”“工单”这些词。
+2. **是否假装拥有宿主能力？** 没有。主对话是宿主现有 Session，插件不伪造聊天；宿主侧栏/页头/设置可见，文档明确写为外部环境；没有隐藏宿主 chrome 后宣称整页属于插件。
 
 ## 9. 未做
 
-- 宿主级主 Agent 席位、宿主 sidebar 重排、宿主原生通知/设置外壳、跨设备身份同步：本路线已放弃，不是待办。
-- 移动端断点只做了 CSS 折行和面板测试，没有真机截图。
-- 主 Agent 名字/头像仍是浏览器本地偏好，不跨设备。
+- 把宿主侧栏、页头或设置替换成插件自己的版本：需要宿主扩展点，本路线不做。
+- 插件内嵌宿主对话：公开 API 无此席位，不用 iframe/宿主 CSS hack。
+- 移动端真机；只做了窄屏 CSS 与面板测试。

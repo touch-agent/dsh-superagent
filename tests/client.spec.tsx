@@ -96,6 +96,21 @@ it('registers a localized main panel, sidebar entry and Plugin Manager row page,
 })
 
 
+it('puts the four destinations in the main Conversation header, and only there', async () => {
+  serve()
+  const { entries } = fixture([], { appShell: true })
+  localStorage.removeItem('ux.filesPage.v1')
+  const actions = entries.find(entry => entry.options.id === 'system-conversation-actions')!
+  expect(actions).toBeTruthy()
+  const main = await render(actions, { t, sessionId: 'master' })
+  expect([...main.container.querySelectorAll('.dt-header-action')].map(item => item.getAttribute('aria-label')))
+    .toEqual([zh['tab.tasks'], zh['tab.notifications'], zh['tab.files'], zh['tab.settings']])
+  main.dispose()
+  const other = await render(actions, { t, sessionId: 'other' })
+  expect(other.container.querySelector('.dt-header-actions')).toBeNull()
+  other.dispose()
+})
+
 it('keeps the host New Session shortcut only when the app shell does not own the main-Session entrance', () => {
   const before = fixture([])
   expect(before.entries.map(entry => entry.options.name)).toContain('conversation.hero.options')

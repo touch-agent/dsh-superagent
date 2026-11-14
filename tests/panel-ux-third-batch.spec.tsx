@@ -8,12 +8,13 @@ import { server } from './fixtures/panel-server.ts'
 
 usePanel()
 afterEach(() => localStorage.clear())
-/** The batch-3 defaults: nav four, card, floating entry and Files are on; the earlier specs pin them off. */
+/** The batch-3 defaults: nav four, card, floating entry and Files are on; the later conversation-home route is off. */
 function newDefaults() {
-  for (const flag of ['ux.navFour.v1', 'ux.masterCard.v1', 'ux.noticeButton.v1', 'ux.filesPage.v1', 'ux.appShell.v1',
+  for (const flag of ['ux.navFour.v1', 'ux.masterCard.v1', 'ux.noticeButton.v1', 'ux.filesPage.v1',
     'ux.opsInSettings.v1', 'ux.taskDetail.v2', 'ux.firstUse.v1']) localStorage.removeItem(flag)
+  localStorage.setItem('ux.appShell.v1', 'off')
 }
-const navTabs = () => all('.dt-column > .dt-tabs [role="tab"], .dt-app-tabs [role="tab"]').map(item => item.textContent)
+const navTabs = () => all('.dt-column > .dt-tabs [role="tab"]').map(item => item.textContent)
 const card = () => document.querySelector<HTMLElement>('.dt-master-card')
 const fab = () => document.querySelector<HTMLButtonElement>('.dt-notice-fab')
 const drawer = () => document.querySelector<HTMLElement>('.dt-drawer')
@@ -29,17 +30,17 @@ it('opens on the task view with the main-Agent card and exactly four first-level
   expect(document.querySelector('#dt-tab-tasks')?.getAttribute('aria-selected')).toBe('true')
 })
 
-it('offers exactly one main-Session action while the app-shell card is on screen', async () => {
+it('offers one main-Session action: the card on Tasks, the header shortcut on other pages', async () => {
   newDefaults()
   await mount()
   const labels = () => all('button').map(item => item.textContent?.trim())
-  // The shell's card carries the entrance on every page; a second header shortcut would duplicate one action.
+  // The card replaces the header shortcut on Tasks; another entry there would duplicate one action.
   expect(labels().filter(label => label === zh.masterOpen)).toHaveLength(1)
   expect(labels().filter(label => label === zh.openMaster)).toHaveLength(0)
   await click(zh['tab.notifications'])
-  expect(card()).not.toBeNull()
-  expect(labels().filter(label => label === zh.masterOpen)).toHaveLength(1)
-  expect(labels().filter(label => label === zh.openMaster)).toHaveLength(0)
+  expect(card()).toBeNull()
+  expect(labels().filter(label => label === zh.masterOpen)).toHaveLength(0)
+  expect(labels().filter(label => label === zh.openMaster)).toHaveLength(1)
 })
 
 it('renames the main Agent and keeps the name across a remount', async () => {
