@@ -1151,7 +1151,7 @@ function allView() {
   const list = filterRoots()
   return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>
   <h1 class="page-title">全部任务</h1>
-  <p class="page-sub">跨项目的顶层任务扁平列表；用于查找和迁移。日常先看项目。</p>
+  <p class="page-sub">跨项目的顶层任务扁平列表；子任务在项目详情展开，筛选只统计顶层任务。用于查找和迁移，日常先看项目。</p>
   <div class="filters">
     ${FILTERS.map(([key, label]) => `<button class="filter" type="button" data-filter="${key}" aria-pressed="${state.filter === key}">${label}<span class="n">${counts[key]}</span></button>`).join('')}
     <span class="search-wrap"><input class="search" id="task-search" type="search" placeholder="搜索任务、负责人或项目" value="${esc(state.query)}"></span>
@@ -1191,7 +1191,7 @@ function taskBack(t) {
   if (state.taskFrom === 'notices') return `<button class="detail-back" type="button" data-go="notices">‹ 待你处理</button>`
   if (state.taskFrom === 'projects') return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>`
   if (state.taskFrom === 'unassigned' || !t.projectId) return `<button class="detail-back" type="button" data-go="unassigned">‹ 未归入项目</button>`
-  return `<button class="detail-back" type="button" data-go="project" data-project="${t.projectId}">‹ ${esc(projectName(t.projectId))}</button>`
+  return `<button class="detail-back" type="button" data-go="project" data-project="${t.projectId}" data-project-from="${state.projectFrom}">‹ ${esc(projectName(t.projectId))}</button>`
 }
 
 function decisionFor(t) {
@@ -1759,7 +1759,7 @@ document.addEventListener('click', event => {
     return
   }
   if (el.dataset.go === 'notices') { event.preventDefault(); openDrawer(); return }
-  if (el.dataset.go === 'project') { event.preventDefault(); openProject(el.dataset.project); return }
+  if (el.dataset.go === 'project') { event.preventDefault(); openProject(el.dataset.project, el.dataset.projectFrom || 'projects'); return }
   if (el.dataset.go) { event.preventDefault(); navigate(el.dataset.go); return }
 })
 
