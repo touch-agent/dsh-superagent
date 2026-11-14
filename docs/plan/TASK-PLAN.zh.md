@@ -596,6 +596,14 @@ graph LR
 - **估时**：2 人日。**依赖**：T5-10（四项导航、主 Agent 卡、浮层通知、文件页）。**回退**：`ux.appShell.v1` 关闭即回 026；不删记录、不改授权、不改宿主。
 - **泳道**：Platform。
 
+### T5-12 029 项目任务数据与派发层 · Platform · 3 人日
+
+- **目标**：按 `../029-project-task-view.zh.md` 落地项目/任务/子任务的 Ticket 数据模型、项目协调 Session、显式派发、受 Mandate 约束的项目 worker 能力、归档与受理 Decision seam；本单不改面板 UI，不写真实项目数据。
+- **交付**：kernel 的 `Ticket.kind`/`goal`/`projectTicketId`/`archivedAt`、项目 accept 选项、`admitProjectTask`/`assignProjectTask`/`archiveProject`/`dispatchToProject`/`projectInputsDelivered`、项目事件与错误/原因码；dsh 的项目投影（`projects`/`unassigned`、`ticketKind`、过滤与回滚）、`GET projects/:id` 与归档/恢复路由、`GET tasks?projects=`、协调 Session 的 `orchestrator_create_task`/`orchestrator_assign_worker` 工具与项目工具面、主会话 `project_id` 分派、`ux.projects.v1` 回滚、changeset 与 029 附录 D。
+- **验收**：项目只接受 `kind='project'`，无任务 Assignment/执行/交付，不能结束；项目任务通过 Decision `admission` 受理且幂等，Mandate 收窄、不带项目 capability；项目 worker 的 `create-task`/`assign-worker` allow 与跨项目/缺 capability deny 均有测试；归档只写 `archivedAt`，任务可见性与 attention 不变，默认 active、archived/all 可查；未知/非项目/已归档目的地在接收前拒绝，项目不明确走扁平任务；旧 Ticket 读作未分配任务，`projects=off` 返回旧响应形状；`pnpm check` 全绿，`tests/projects.spec.ts`、`tests/projects-view.spec.ts`、`tests/project-tools.spec.ts`、`tests/dispatch-split.spec.ts`、`tests/http.spec.ts` 覆盖；独立 review 结论写 PR 评论。
+- **估时**：3 人日。**依赖**：029（设计契约）、PR #86（029 设计修正）。**回退**：`ux.projects.v1` 与 `GET tasks?projects=off`；无 schema 迁移，旧 JSON 字段可选。
+- **泳道**：Platform。
+
 ---
 
 ## 7. M4 多租户（最后一项，T4-01…06）

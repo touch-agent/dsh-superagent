@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { key, latestAssignment, latestReport, liveTicket, runningAssignment, spanId, threadKey, traceId, waitsForPerson } from '@superagent/kernel'
 import { depthOf } from '@superagent/kernel'
-import type { AssessmentOutcome, Assignment, EngineForExecutor, Execution, Executor, Mandate, PolicyEffect, Ticket, TicketInput, Trigger }
+import type { AssessmentOutcome, Assignment, CoordinationExecutor, EngineForExecutor, Execution, Executor, Mandate, PolicyEffect, Ticket, TicketInput, Trigger }
   from '@superagent/kernel'
 import type { Machine } from '../deployment.ts'
 import { runAsWorker, verifyDirectory } from '../infra/environment.ts'
@@ -84,7 +84,7 @@ export interface ExecutorHost {
   readonly context: Context
   /** Where the Executor reports what happened to Assignments and Inputs. */
   readonly engine: Pick<EngineForExecutor, 'assignmentStarted' | 'contextAssembled' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed' | 'report'
-    | 'assignmentInterrupted' | 'orphanChild'>
+    | 'assignmentInterrupted' | 'orphanChild' | 'projectInputsDelivered'>
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'set' | 'settings' | 'atomic' | 'afterCommit'>
   /** Durable effect queue through which launches and input deliveries run. */
   readonly effects: Pick<Effects, 'enqueue' | 'handle'>
@@ -243,7 +243,7 @@ export class WorkerSlots {
  * `agent/inbox/claimed`, `session/event` and `agent/error` events on the Cordis context, and reports status transitions back to Engine.
  * Runtime, Engine, worker tools, and management routes use this class to prepare, launch, deliver to, stop, and resume ticket assignments.
  */
-export class DshExecutor implements Executor {
+export class DshExecutor implements Executor, CoordinationExecutor {
   private readonly disposers: (() => void)[] = []
   private readonly slots: WorkerSlots
   /** Transient failure counts tried so far: keyed by `assignment.id` for worker turns and `launch:<assignment.id>` for launches. */
@@ -276,9 +276,48 @@ export class DshExecutor implements Executor {
       retry: [5000, 300_000] })
     // Failed input deliveries are recorded on the ticket itself rather than reported through the `delivery` effect health entry (`quiet: true`).
     host.effects.handle('delivery', payload => this.deliverQueued(payload.ticketId), { limit: () => host.paused() ? 0 : 4, quiet: true })
+    // A project's coordination Session holds no worker slot: it starts or receives its inputs in queue order, and a
+    // failure leaves the Inputs waiting instead of losing them.
+    host.effects.handle('coordination', ({ projectId }) => this.coordinate(projectId), { limit: () => host.paused() ? 0 : 1, quiet: true })
+  }
+  /** Starts or feeds one project's coordination Session with every waiting Input, then records them delivered. */
+  private async coordinate(projectId: string): Promise<void> {
+    const project = this.host.store.tickets.get(projectId)
+    if (!project || project.kind !== 'project' || !liveTicket(project) || project.archivedAt) return
+    const pending = project.undelivered.flatMap(id => project.inputs.find(input => input.id === id) ?? [])
+    if (!pending.length) return
+    if (!project.profile || !project.profile.selection.valid) {
+      throw new ProfileLaunchBlocked(`project ${projectId} has no available owner worker; repair its profile before it can create tasks`)
+    }
+    const directory = join(this.host.machine.stateDir, 'projects', projectId)
+    await mkdir(directory, { recursive: true })
+    await this.host.sessions.preflight(project)
+    const sessionId = workerSessionId(projectId)
+    await this.host.sessions.ensure(sessionId, directory, project.title, 'worker', project.profile)
+    const text = this.coordinationMessage(project, pending)
+    const requestId = key('coordination', projectId, ...pending.map(input => input.id))
+    await this.host.sessions.prompt(sessionId, requestId, text, 'queue')
+    this.host.engine.projectInputsDelivered(projectId, pending.map(input => input.id))
+  }
+  /** The coordination prompt: who the project is, what it may do, and each waiting Input without added requirements. */
+  private coordinationMessage(project: Ticket, inputs: readonly TicketInput[]): string {
+    const lines = inputs.flatMap(input => {
+      if (input.kind === 'trigger') {
+        const trigger = this.host.store.triggers.get(input.triggerId)
+        return [JSON.stringify({ kind: 'coordination_input', ...trigger ? triggerMessage(trigger, {}) : { trigger_id: input.triggerId },
+          ...input.note ? { routing_note: input.note } : {} })]
+      }
+      const text = inputMessage(input)
+      return text ? [text] : []
+    })
+    return [`Project coordination input for “${project.title}” (${project.id}).`, `Goal: ${project.goal ?? project.title}`,
+      'Decide the tasks this project needs. Use orchestrator_create_task for each request, with a stable idempotency_key for the same request. '
+      + 'Do not do task work yourself, do not change the project Mandate, and do nothing when a message needs no task.', ...lines].join('\n\n')
   }
   /** Populates a newly accepted ticket's `execution` attributes (worktree name, workspace directory, and assignment text). */
   prepare(ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>): Ticket {
+    // A project has no worktree or assignment text: its coordination Session reads the project brief and its Inputs.
+    if (ticket.kind === 'project') return ticket
     return { ...ticket, execution: ticketExecution(ticket, outcome, this.host.store.settings(), this.host.machine.stateDir) }
   }
   /**
@@ -310,11 +349,17 @@ export class DshExecutor implements Executor {
     }
   }
   /** Enqueues a `launch` effect for an accepted or resumed assignment; launches start in queue order as worker slots free up. */
-  start(ticket: Ticket, assignment: Assignment): void {
+  start(ticket: Ticket, assignment?: Assignment): void {
+    // A project has no Assignment: its coordination Session launches through the queue instead.
+    if (ticket.kind === 'project') { this.host.effects.enqueue('coordination', ticket.id, { projectId: ticket.id }); return }
+    if (!assignment) throw new TypeError('A task Ticket needs an Assignment to start')
     this.host.effects.enqueue('launch', assignment.id, { ticketId: ticket.id, assignmentId: assignment.id })
   }
-  /** Enqueues a `delivery` effect to steer pending inputs into `ticket`'s running worker session. */
-  deliver(ticket: Ticket, _assignment: Assignment): void { this.host.effects.enqueue('delivery', ticket.id, { ticketId: ticket.id }) }
+  /** Enqueues a `delivery` effect to steer pending inputs into `ticket`'s running worker session, or a project's coordination Session. */
+  deliver(ticket: Ticket, _assignment?: Assignment): void {
+    if (ticket.kind === 'project') { this.host.effects.enqueue('coordination', ticket.id, { projectId: ticket.id }); return }
+    this.host.effects.enqueue('delivery', ticket.id, { ticketId: ticket.id })
+  }
   /** Launches a queued assignment unless its ticket ended or a newer assignment replaced it meanwhile. */
   private async launchQueued({ ticketId, assignmentId }: { ticketId: string; assignmentId: string }): Promise<void> {
     const ticket = this.host.store.tickets.get(ticketId)

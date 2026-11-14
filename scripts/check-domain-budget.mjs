@@ -61,6 +61,7 @@ const DOMAIN = [
   'tests/dispatch.spec.ts',
   'tests/inline-work.spec.ts',
   'tests/lightweight.spec.ts',
+  'tests/projects.spec.ts',
   'tests/review-aggregate.spec.ts',
   'tests/stage.spec.ts',
   'tests/trace-stages.spec.ts',

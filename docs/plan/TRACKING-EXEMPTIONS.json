@@ -1,3 +1,9 @@
 {
-  "exemptions": []
+  "exemptions": [
+    {
+      "task": "T5-12",
+      "rule": "in-progress-without-pr",
+      "reason": "The data and dispatch layer is implemented and under review locally; its PR link is filled in when the PR opens."
+    }
+  ]
 }

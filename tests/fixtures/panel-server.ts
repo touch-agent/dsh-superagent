@@ -451,7 +451,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET overview': { answer: overviewView },
   'GET metrics': { answer: () => overviewView().metrics },
   'GET activity': { query: ['after', 'limit', 'level'], answer: () => ({ items: [], latest: 0, next: 0 }) },
-  'GET tasks': { answer: () => server.tasks },
+  'GET tasks': { query: ['projects'], answer: () => server.tasks },
   'GET goals': { answer: () => server.goals },
   'GET goals/:id': { answer: ({ params }) => {
     const goal = server.goals.goals.find(item => item.id === params.id)
@@ -480,6 +480,9 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     if (!task) return refuse(404, 'Ticket not found')
     return { task, children: task.children ?? [] }
   } },
+  'GET projects/:id': { query: ['depth'], answer: () => refuse(404, 'Project not found') },
+  'POST projects/:id/archive': { answer: () => ({ archived: true }) },
+  'POST projects/:id/restore': { answer: () => ({ archived: false }) },
   'GET search': { query: ['q'], answer: async ({ query }) => {
     const q = query.q ?? ''
     await server.searching?.(q)

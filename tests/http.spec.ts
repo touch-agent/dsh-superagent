@@ -319,3 +319,22 @@ it('serves profile management writes and maps a revision conflict to 409', async
   expect(await call('POST', 'profiles', { profile: { id: 'worker-docs' }, reason: 'create' }))
     .toMatchObject({ status: 409, body: { error: 'stale' } })
 })
+
+it('serves the project filter and project archive routes', async () => {
+  const archived: [string, boolean, unknown][] = []
+  const store = { tickets: { get: () => undefined, allList: () => [], list: () => [] }, triggers: { all: () => [] },
+    activity: { latestByTicket: () => [] }, spans: { byTraces: () => [] },
+    read: { firstTrigger: () => undefined, subscribedThreads: () => [] }, threads: { get: () => undefined },
+    settings: () => SettingsSchema.parse({}) }
+  const call = serve({ store, sources: { kind: () => undefined }, links: () => ({}),
+    engine: { archiveProject: (id: string, value: boolean, by: unknown) => { archived.push([id, value, by]); return { id } } } })
+  // The rollback flag restores the pre-project response shape.
+  const legacy = await call('GET', 'tasks?projects=off')
+  expect(legacy.status).toBe(200)
+  expect(legacy.body).not.toHaveProperty('projects')
+  expect(legacy.body).not.toHaveProperty('unassigned')
+  expect(await call('GET', 'projects/missing')).toEqual({ status: 404, body: { error: 'Project not found' } })
+  expect(await call('POST', 'projects/p1/archive')).toEqual({ status: 200, body: { archived: true } })
+  expect(await call('POST', 'projects/p1/restore')).toEqual({ status: 200, body: { archived: false } })
+  expect(archived).toEqual([['p1', true, { source: 'panel', id: 'local' }], ['p1', false, { source: 'panel', id: 'local' }]])
+})

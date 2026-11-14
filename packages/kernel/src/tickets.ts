@@ -2,10 +2,12 @@
 import { acknowledgementAction, withinActionLevel } from './action.ts'
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
-import { channelThread, childResolutionValid, childUnresolved, currentChildReport, depthOf, isChildTicket, latestAssignment,
-  liveTicket, readUntil, rootConsistent, rootTicketIdOf, runningAssignment, settled, threadKey, ticketForm, waitsForPerson } from './model.ts'
-import type { ActorRef, Assignment, ChannelRef, ChildReportDisposition, Delegation, Evaluation, Follow, Mandate, PendingEnd, PolicyEffect,
-  ReportState, ThreadRef, Ticket, TicketEndBy, TicketInput, TicketOutcome, Trigger, TriggerDisposition } from './model.ts'
+import { channelThread, childResolutionValid, childUnresolved, currentChildReport, depthOf, isChildTicket, isProjectArchived,
+  isProjectTicket, latestAssignment, liveTicket, permitsProject, readUntil, rootConsistent, rootTicketIdOf, runningAssignment, settled, threadKey,
+  ticketForm, waitsForPerson } from './model.ts'
+import type { ActorRef, AdmissionRecord, Assignment, ChannelRef, ChildReportDisposition, Decision, Delegation, Evaluation, Follow, Mandate,
+  PendingEnd, PolicyEffect, ProjectCapability, ReportState, ThreadRef, Ticket, TicketEndBy, TicketInput, TicketOutcome, Trigger, TriggerDisposition }
+  from './model.ts'
 import type { AssessmentOutcome, InlineResult, InlineStep } from './ports.ts'
 import { profileSpan } from './profile.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
@@ -24,6 +26,23 @@ const readBefore = (input: Extract<TicketInput, { kind: 'trigger' }>, until: str
   ? (input.deliveredAt && input.deliveredAt > input.at ? input.deliveredAt : input.at) <= until : !!input.readAt && input.readAt < until
 const STATUS_REQUEST = 'Report the current ticket status with orchestrator_report. This is a status-only request: do not resume implementation or perform external actions.'
 
+/**
+ * The first Input of a project's coordination Session: what the container is, what it may do, and the explicit boundary
+ * that it never executes task work, delivers a result or accepts one.
+ */
+function projectBrief(ticket: Ticket): string {
+  const capabilities = ticket.mandate?.capabilities ?? []
+  return [
+    `Project coordination session for “${ticket.title}” (${ticket.id}).`,
+    `Goal: ${ticket.goal ?? ''}`,
+    'This Ticket is a project container, not a task: do not execute task work, produce a deliverable or accept one.',
+    capabilities.length
+      ? `Capabilities granted: ${capabilities.join(', ')}. Use them only inside this project.`
+      : 'No project capability was granted: report the blocked request instead of creating or assigning tasks.',
+    'A person still reviews and approves every root task.',
+  ].join('\n')
+}
+
 /** The execution root: the directory holding the root Ticket's own directory. A child goes beside it, not inside its parent. */
 function childSiblingRoot(root: Ticket, parent: Ticket): string {
   const base = root.execution?.directory
@@ -34,12 +53,41 @@ function childSiblingRoot(root: Ticket, parent: Ticket): string {
   return parentCut >= 0 ? fallback.slice(0, parentCut) : fallback
 }
 
+/** What a project's coordination Session asks the admission seam to create inside its project. */
+export interface ProjectTaskRequest {
+  title: string
+  /** The task's own goal; defaults to its title. */
+  goal?: string
+  /** The narrowing this task adds to the project's work; the admission records it beside the project scope. */
+  scope?: string
+  /** The worker to own the task; defaults to the project's owner worker. */
+  ownerProfileId?: string
+  /** A stable key the requester reuses on retry, so a repeated request returns the same task. */
+  idempotencyKey: string
+  /** The coordination Input the request came from, for the admission audit. */
+  triggerId?: string
+  /** A short worktree name; derived from the title when absent. */
+  name?: string
+  /** A routing note from the project coordinator, kept in the task's execution text. */
+  note?: string
+}
+
+/** The actor that owns a project's coordination Session: the project's `worker-<id>` worker, never a task worker. */
+export const projectCoordinator = (projectId: string): ActorRef => ({ source: 'dsh-superagent', id: `worker-${projectId}` })
+
+/** A short, valid worktree name derived from a task title; tasks admitted without a name still get a stable directory. */
+function admissionName(title: string, id: string): string {
+  const words = title.toLowerCase().match(/[a-z][a-z0-9]*/g)?.slice(0, 4).join('-') ?? ''
+  return (words || 'project-task').slice(0, 48) + `-${id.slice(0, 8)}`
+}
+
 /**
  * Manages each ticket's lifecycle: creates the ticket for an accept decision with its Mandate, Subscriptions, and first
  * Assignment, binds and attaches Threads, adds Inputs, resumes, retries, restarts, and ends tickets, and drops Subscriptions.
  * Coordinates with Replies for the acknowledgement an accept carries, with Executor to start, deliver to, and stop assignments,
  * and with the inline executor to run a lightweight ticket's action sequence and record it in the ticket's trace.
- * Intake, Evals, Assignments, and Engine delegate ticket and subscription mutations here.
+ * Intake, Evals, Assignments, and Engine delegate ticket and subscription mutations here. Project Tickets are containers
+ * created by an accept, with a coordination Session and no Assignment; their owner worker admits tasks here.
  */
 export class Tickets extends EnginePart {
   /** The inline run each lightweight ticket is on, so a late callback from an earlier run is refused and its steps get unique refs. */
@@ -60,29 +108,207 @@ export class Tickets extends EnginePart {
     // Fall back to the last trigger for Evals recorded before `primary` existed.
     const primary = this.repo.triggers.get(evaluation.primary ?? triggerIds.at(-1)!)
     const origin = { triggerId: primary?.id ?? triggerIds[0]!, triggerIds }
-    let ticket: Ticket = { id, title: outcome.title, decisionId, mandate, form: outcome.form ?? 'tracked', channels: [], assignments: [],
-      inputs: [], undelivered: [], createdAt: at, updatedAt: at, origin }
+    const project = outcome.project
+    if (project && outcome.form === 'lightweight') throw new UserError('projectInvalid')
+    let ticket: Ticket = { id, title: outcome.title, decisionId, mandate, form: outcome.form ?? 'tracked', kind: project ? 'project' : 'task',
+      channels: [], assignments: [], inputs: [], undelivered: [], createdAt: at, updatedAt: at, origin,
+      ...(project ? { goal: project.goal.trim() } : {}) }
     for (const triggerId of triggerIds) {
       const channel = this.repo.triggers.get(triggerId)?.channel
       if (channel && !ticket.channels.some(item => sameChannel(item, channel))) ticket.channels.push(channel)
     }
     // A profile binds before execution is prepared, so a re-created execution never drops the snapshot. A profile
     // failure may leave the ticket legacy, but it must never fail the accept that created it.
-    try { ticket.profile = this.options.profile?.bindRoot(ticket) } catch { /* the ticket stays legacy */ }
+    try {
+      // A project must bind the owner worker its accept names; a missing profile is project-level attention, never a
+      // silent fallback to the default execution configuration.
+      ticket.profile = project
+        ? this.options.profile?.bindNamed?.(ticket, project.ownerProfileId, 'project owner')
+        : this.options.profile?.bindRoot(ticket)
+    } catch { /* the ticket stays legacy or without an owner */ }
     ticket = this.options.prepareTicket?.(ticket, outcome) ?? ticket
     const lightweight = ticketForm(ticket) === 'lightweight'
     // A lightweight ticket cannot wait for a Session that never starts, so the deployment must provide the inline path.
     if (lightweight && !this.options.inline) throw new TypeError('A lightweight Ticket needs an inline executor')
-    const assignment = lightweight ? undefined : this.newAssignment(ticket)
+    if (project) {
+      // The coordination Session's first Input, so the brief is auditable and delivered like every other Input.
+      const brief: TicketInput = { id: key('input', id, 'project-brief'), kind: 'text', at, text: projectBrief(ticket) }
+      ticket.inputs.push(brief)
+      ticket.undelivered.push(brief.id)
+    }
+    const assignment = project || lightweight ? undefined : this.newAssignment(ticket)
     this.repo.tickets.save(ticket)
     for (const triggerId of triggerIds) for (const ref of this.repo.triggers.get(triggerId)?.threads ?? []) this.subscribe(id, ref)
     if (outcome.acknowledgement && primary) this.replies.acknowledgeAccepted(id, primary, outcome.acknowledgement)
     const created = this.require(id)
     const from = primary ?? this.repo.triggers.get(created.origin.triggerId)
     if (from) this.stage(from, 'attach', { ref: id, data: { ticketId: id, created: true } })
-    if (lightweight) this.startInline(created, { ref: 'inline' })
+    if (project) this.options.coordination?.start(created)
+    else if (lightweight) this.startInline(created, { ref: 'inline' })
     else this.options.executor.start(created, assignment!)
     this.emit('ticket.created', { ticketId: id, decisionId, strength: mandate.strength })
+  }
+  /** The project a task operation names, or a refusal that keeps it out of projects. */
+  private projectFor(projectId: string): Ticket {
+    const project = this.require(projectId)
+    if (!isProjectTicket(project)) throw new UserError('notProject')
+    if (!project.mandate) throw new UserError('projectInvalid')
+    if (!liveTicket(project)) throw new UserError('ticketEnded')
+    return project
+  }
+  /** A project operation's authority check: live, unarchived, capable, and requested by its own coordination Session. */
+  private coordinationProject(projectId: string, capability: ProjectCapability, by: ActorRef): Ticket {
+    const project = this.projectFor(projectId)
+    if (isProjectArchived(project)) throw new UserError('projectArchived')
+    if (!permitsProject(project.mandate, capability)) throw new UserError('projectCapabilityMissing', { capability })
+    const coordinator = projectCoordinator(projectId)
+    if (by.source !== coordinator.source || by.id !== coordinator.id) throw new UserError('notProjectCoordinator')
+    return project
+  }
+  /**
+   * Admit a root task into a project from its coordination Session through the Decision admission seam.
+   *
+   * The project Mandate supplies strength, admission basis and its action ceiling; the new Decision records what was
+   * admitted, from which project and under which idempotency key, while the task receives its own Mandate whose scope
+   * narrows to it and which carries no project capabilities. It is not an Eval: no second assessment happens and no
+   * worker signs its own Decision. A repeated key returns the same task.
+   * @throws UserError when the project is unavailable, archived, misses `create-task`, the requester is another project's
+   * coordination Session, or the owner worker is unavailable.
+   */
+  admitProjectTask(projectId: string, request: ProjectTaskRequest, by: ActorRef, at = this.now()): Ticket {
+    const project = this.coordinationProject(projectId, 'create-task', by)
+    const title = request.title.trim().slice(0, 200)
+    const idempotencyKey = request.idempotencyKey.trim()
+    if (!title || !idempotencyKey) throw new TypeError('An admitted task needs a title and an idempotency key')
+    const id = key('ticket', 'project', projectId, 'task', idempotencyKey)
+    const existing = this.repo.tickets.get(id)
+    if (existing) return existing
+    const goal = request.goal?.trim() || title
+    const scope = request.scope?.trim() || goal
+    const ownerProfileId = request.ownerProfileId?.trim() || project.profile?.id
+    if (!ownerProfileId) throw new UserError('projectWorkerUnavailable')
+    let ticket: Ticket = {
+      id, title, kind: 'task', projectTicketId: projectId, goal,
+      mandate: {
+        // The project's admission basis and ceiling carry over; capabilities do not, since a task does not coordinate.
+        strength: project.mandate!.strength, policyVersion: project.mandate!.policyVersion, basis: project.mandate!.basis, actor: by,
+        scope: `${project.mandate!.scope}\nTask: ${scope}`,
+        ...project.mandate!.maxActionLevel ? { maxActionLevel: project.mandate!.maxActionLevel } : {},
+        ...project.mandate!.expiresAt ? { expiresAt: project.mandate!.expiresAt } : {},
+      },
+      form: 'tracked', channels: [...project.channels], assignments: [], inputs: [], undelivered: [], createdAt: at, updatedAt: at,
+      origin: { ...project.origin },
+    }
+    try {
+      ticket.profile = ownerProfileId === project.profile?.id
+        ? project.profile
+        : this.options.profile?.bindNamed?.(ticket, ownerProfileId, `task owner in project ${projectId}`)
+    } catch { /* the task is refused below when it has no usable owner */ }
+    if (!ticket.profile || !ticket.profile.selection.valid) throw new UserError('projectWorkerUnavailable')
+    const admissionOutcome: Extract<AssessmentOutcome, { kind: 'accept' }> = {
+      kind: 'accept', title, scope, reason: 'Admitted from a project', name: request.name?.trim() || admissionName(title, id),
+      ...(request.note?.trim() ? { note: request.note.trim() } : {}),
+    }
+    ticket = this.options.prepareTicket?.(ticket, admissionOutcome) ?? ticket
+    const assignment = this.newAssignment(ticket)
+    const admission: AdmissionRecord = {
+      id: key('admission', projectId, idempotencyKey), projectTicketId: projectId, requestedBy: by, ownerProfileId, idempotencyKey,
+      ...(request.triggerId ? { triggerId: request.triggerId } : {}), at,
+    }
+    const decisionId = key('decision', 'admission', projectId, idempotencyKey)
+    const trigger = this.source(project)
+    const taskMandate = ticket.mandate!
+    const decision: Decision = {
+      id: decisionId, evalId: key('eval', 'admission', projectId, idempotencyKey),
+      threadKey: trigger ? threadKey(trigger.threads[0]!) : `project:${projectId}`,
+      triggerIds: trigger ? [trigger.id] : [], policyVersion: taskMandate.policyVersion, at, kind: 'accept',
+      reason: [{ code: 'projectAdmission', values: { project: projectId, capability: 'create-task' } }],
+      strength: taskMandate.strength, ticketId: id, mandate: taskMandate, admission,
+    }
+    this.repo.decisions.save(decision)
+    // A project task's Ticket refers to the admission Decision; it is a root task and does not change the project's authority.
+    ticket.decisionId = decisionId
+    this.repo.tickets.save(ticket)
+    this.stageOf(ticket, 'admission', { ref: decisionId, at, data: { projectTicketId: projectId, admissionId: admission.id,
+      requestedBy: by.id, ownerProfileId } })
+    this.options.executor.start(ticket, assignment)
+    this.emit('ticket.created', { ticketId: id, decisionId, strength: taskMandate.strength })
+    this.emit('project.task.admitted', { projectId, ticketId: id, decisionId, requestedBy: by })
+    return this.require(id)
+  }
+  /**
+   * Change the owner worker of a project task that has not started. It rebinds the immutable snapshot; the task's own
+   * Mandate, scope and project link do not change.
+   * @throws UserError when the project is unavailable, misses `assign-worker`, the requester is another project's
+   * coordination Session, the task is not a root task of this project, it already started, or the worker is unavailable.
+   */
+  assignProjectTask(projectId: string, taskId: string, ownerProfileId: string, by: ActorRef, at = this.now()): Ticket {
+    this.coordinationProject(projectId, 'assign-worker', by)
+    const task = this.require(taskId)
+    if (isProjectTicket(task) || task.parentTicketId || task.projectTicketId !== projectId) throw new UserError('taskNotInProject')
+    if (!liveTicket(task)) throw new UserError('ticketEnded')
+    if (task.assignments.some(item => item.startedAt !== undefined || item.state !== 'pending')) throw new UserError('taskStarted')
+    const profileId = ownerProfileId.trim()
+    if (!profileId) throw new UserError('projectWorkerUnavailable')
+    let profile: Ticket['profile']
+    try { profile = this.options.profile?.bindNamed?.(task, profileId, `task owner in project ${projectId}`) } catch { /* refused below */ }
+    if (!profile || !profile.selection.valid) throw new UserError('projectWorkerUnavailable')
+    task.profile = profile
+    task.updatedAt = at
+    this.repo.tickets.save(task)
+    this.stageOf(task, 'admission', { ref: `assign:${at}`, at, data: { projectTicketId: projectId, ownerProfileId: profileId, by: by.id } })
+    this.emit('project.worker.changed', { projectId, ticketId: taskId, profileId, by })
+    return this.require(taskId)
+  }
+  /**
+   * Archive or restore a project. Archiving writes `archivedAt` only: it never ends the project, stops or hides its tasks,
+   * or clears their attention, so an archived project's to-do items stay countable and actionable. A repeat is idempotent.
+   */
+  archiveProject(projectId: string, archived: boolean, by: ActorRef, at = this.now(), reason?: string): Ticket {
+    const project = this.projectFor(projectId)
+    if (archived === isProjectArchived(project)) return project
+    if (archived) project.archivedAt = at
+    else delete project.archivedAt
+    project.updatedAt = at
+    this.repo.tickets.save(project)
+    this.stageOf(project, 'admission', { ref: `project:${archived ? 'archive' : 'restore'}:${at}`, at,
+      data: { projectTicketId: projectId, archived, by: by.id, ...(reason ? { reason } : {}) } })
+    this.emit('project.archived', { projectId, archived, by })
+    return this.require(projectId)
+  }
+  /**
+   * Dispatch a message to a project instead of creating a flat task: the Trigger becomes an Input of the project's
+   * coordination Session, which decides and creates its tasks. Only a live, unarchived project accepts new work; an
+   * archived project's existing tasks keep running but new dispatch is refused.
+   * @throws UserError when the project is unavailable, archived, or the Trigger is unknown.
+   */
+  dispatchToProject(projectId: string, triggerId: string, note?: string): Ticket {
+    const project = this.projectFor(projectId)
+    if (isProjectArchived(project)) throw new UserError('projectArchived')
+    const trigger = this.repo.triggers.get(triggerId)
+    if (!trigger) throw new UserError('unknownTrigger')
+    // The same attach contract as a task: subscriptions, fan-out ownership and one Input per message.
+    this.attach(projectId, trigger, note)
+    this.options.coordination?.deliver(this.require(projectId))
+    return this.require(projectId)
+  }
+  /**
+   * Record that a project's coordination Session received `inputIds`: they leave the waiting list and their trigger
+   * messages count as delivered. The Session took them, so a late or duplicate delivery cannot repeat them.
+   */
+  projectInputsDelivered(projectId: string, inputIds: readonly string[], at = this.now()): void {
+    const project = this.require(projectId)
+    if (!isProjectTicket(project)) return
+    const delivered = inputIds.filter(id => project.undelivered.includes(id))
+    if (!delivered.length) return
+    project.undelivered = project.undelivered.filter(id => !delivered.includes(id))
+    for (const input of project.inputs) {
+      if (!delivered.includes(input.id) || input.kind !== 'trigger') continue
+      input.deliveredTo = `coordinator-${projectId}`
+      input.deliveredAt = at
+    }
+    project.updatedAt = at
+    this.repo.tickets.save(project)
   }
   /** The default caps on a task tree: depth below the root, direct children of one node, and live children of one root. */
   static readonly MAX_DEPTH = 5
@@ -99,6 +325,8 @@ export class Tickets extends EnginePart {
   delegate(parentId: string, request: { goal: string; scope?: string; title?: string; name?: string; assignment?: string; replaces?: string },
     at = this.now()): Ticket {
     const parent = this.require(parentId)
+    // A project coordinates through the admission seam; it is not a task whose worker delegates execution.
+    if (isProjectTicket(parent)) throw new UserError('projectHasNoAssignment')
     const sessionId = `worker-${parentId}`
     if (!liveTicket(parent)) throw new UserError('parentUnavailable', { parent: parentId })
     if (ticketForm(parent) === 'lightweight') throw new UserError('lightweightCannotDelegate')
@@ -136,8 +364,9 @@ export class Tickets extends EnginePart {
       : request.name ? { name: request.name, directory: request.name, assignment: [goal, request.scope ? `Scope: ${request.scope}` : ''].filter(Boolean).join('\n') } : undefined
     const delegation: Delegation = { parentTicketId: parentId, rootTicketId: rootId, goal,
       ...(request.scope?.trim() ? { scope: request.scope.trim() } : {}), requestedBy: { ticketId: parentId, sessionId }, attempt: 1, createdAt: at }
-    const child: Ticket = { id, title, form: 'tracked', channels: [], assignments: [], inputs: [], undelivered: [],
+    const child: Ticket = { id, title, form: 'tracked', kind: 'task', channels: [], assignments: [], inputs: [], undelivered: [],
       createdAt: at, updatedAt: at, origin: { ...parent.origin }, parentTicketId: parentId, rootTicketId: rootId, delegation,
+      ...(parent.projectTicketId ? { projectTicketId: parent.projectTicketId } : {}),
       ...(childExecution ? { execution: childExecution } : {}) }
     if (request.assignment) child.execution = { ...(childExecution ?? { name: request.name ?? id, directory: request.name ?? id }), assignment: request.assignment }
     // A child has no profile choice of its own: it copies its parent's snapshot, which makes widening impossible.
@@ -646,7 +875,9 @@ export class Tickets extends EnginePart {
    * @throws UserError when the ticket is unknown.
    */
   stop(ticketId: string, reason?: string): Ticket {
-    this.assertRoot(this.require(ticketId))
+    const ticket = this.require(ticketId)
+    if (isProjectTicket(ticket)) throw new UserError('projectCannotEnd')
+    this.assertRoot(ticket)
     this.end(ticketId, 'human', 'stopped', this.now(), reason)
     return this.require(ticketId)
   }
@@ -656,6 +887,7 @@ export class Tickets extends EnginePart {
    */
   retry(ticketId: string): Ticket {
     const ticket = this.require(ticketId)
+    if (isProjectTicket(ticket)) throw new UserError('projectCannotEnd')
     this.assertRoot(ticket)
     const latest = latestAssignment(ticket)
     if (!canRetry(ticket) || !latest) throw new UserError('notRetryable')
@@ -842,6 +1074,8 @@ export class Tickets extends EnginePart {
    */
   end(ticketId: string, by: TicketEndBy, outcome: TicketOutcome, at = this.now(), reason?: string): void {
     const ticket = this.require(ticketId)
+    // A project container never ends: archiving it changes only the archive filter, and its tasks keep their own lifecycles.
+    if (isProjectTicket(ticket)) return
     this.assertRoot(ticket)
     if (!liveTicket(ticket)) return
     // Completed/merged/closed work waits for every child ticket's parent judgement; a dropped or stopped ticket cancels its subtree.

@@ -1,6 +1,6 @@
 /** The domain Engine: the single entry point of the core, and the role interfaces its callers receive. */
 import { UserError } from './errors.ts'
-import { isoTime, liveTicket } from './model.ts'
+import { isoTime, isProjectArchived, isProjectTicket, liveTicket } from './model.ts'
 import type { ActorRef, ChannelRef, ChildReportDisposition, Decision, PolicyEffect, ThreadRef, Ticket, Trigger } from './model.ts'
 import type { Candidate, InlineResult, InlineStep, Repositories } from './ports.ts'
 import type { ContextSnapshot } from './context.ts'
@@ -9,7 +9,7 @@ import { Assignments, type WorkerReport } from './assignments.ts'
 import { Evals, type Outcome } from './evals.ts'
 import { Intake, type ReceiveResult } from './intake.ts'
 import { Replies, type Reply, type ReplyRequest } from './replies.ts'
-import { Tickets } from './tickets.ts'
+import { Tickets, type ProjectTaskRequest } from './tickets.ts'
 
 export type { EngineOptions } from './part.ts'
 export type { WorkerReport } from './assignments.ts'
@@ -88,6 +88,8 @@ export class Engine {
     if (policy.paused) return
     for (const ticket of this.repo.tickets.active()) {
       if (!liveTicket(ticket) && ticket.undelivered.length) this.repo.atomic(() => { this.tickets.wake(ticket.id) })
+      // A project has no Assignment watchdog: an Input left waiting, such as after a restart, starts its coordination Session again.
+      if (isProjectTicket(ticket) && !isProjectArchived(ticket) && ticket.undelivered.length) this.options.coordination?.start(ticket)
     }
     for (const thread of this.repo.threads.active()) {
       if (thread.pending.length && !thread.evaluating) this.repo.atomic(() => { this.evals.start(thread.key, policy) })
@@ -128,6 +130,59 @@ export class Engine {
       this.tickets.wake(ticketId)
       return this.repo.tickets.get(ticketId)!
     })
+  }
+  /**
+   * Dispatch a message to a project instead of creating a flat task: the Trigger becomes an Input of the project's
+   * coordination Session, which decides what task it needs. The main Session chooses the project; the kernel never guesses
+   * one from a title.
+   * @throws UserError when the project is unknown, a task, ended, archived, or the Trigger is unknown.
+   */
+  dispatchToProject(projectId: string, triggerId: string, note?: string): Ticket {
+    return this.repo.atomic(() => {
+      // The destination is checked before the message: an archived project refuses work even when the Trigger is unknown.
+      const project = this.repo.tickets.get(projectId)
+      if (!project) throw new UserError('unknownTicket')
+      if (!isProjectTicket(project)) throw new UserError('notProject')
+      if (isProjectArchived(project)) throw new UserError('projectArchived')
+      const trigger = this.repo.triggers.get(triggerId)
+      if (!trigger) throw new UserError('unknownTrigger')
+      this.evals.withdraw(trigger)
+      this.tickets.dispatchToProject(projectId, triggerId, note)
+      this.evals.routed(triggerId, projectId)
+      return this.repo.tickets.get(projectId)!
+    })
+  }
+  /**
+   * A project's coordination Session admits a root task through the Decision admission seam: no Eval and no self-signed
+   * Mandate, only the capabilities its project Mandate already granted (see `Tickets.admitProjectTask`).
+   * @throws UserError when the project is unavailable or archived, lacks `create-task`, the requester is not that
+   * project's coordination Session, or the owner worker is unavailable.
+   */
+  admitProjectTask(projectId: string, request: ProjectTaskRequest, by: ActorRef): Ticket {
+    return this.repo.atomic(() => this.tickets.admitProjectTask(projectId, request, by))
+  }
+  /**
+   * A project's coordination Session changes a not-yet-started task's owner worker (see `Tickets.assignProjectTask`).
+   * @throws UserError when the project lacks `assign-worker`, the requester is not its coordination Session, the task is
+   * not its root task, it started, or the requested worker is unavailable.
+   */
+  assignProjectTask(projectId: string, taskId: string, ownerProfileId: string, by: ActorRef): Ticket {
+    return this.repo.atomic(() => this.tickets.assignProjectTask(projectId, taskId, ownerProfileId, by))
+  }
+  /**
+   * A person or the main Session archives or restores a project. Only `archivedAt` changes: its tasks keep running and
+   * their attention stays visible (see `Tickets.archiveProject`).
+   * @throws UserError when the ticket is unknown or not a project.
+   */
+  archiveProject(projectId: string, archived: boolean, by: ActorRef, reason?: string): Ticket {
+    return this.repo.atomic(() => this.tickets.archiveProject(projectId, archived, by, this.options.now?.() ?? new Date().toISOString(), reason))
+  }
+  /**
+   * A project coordination Session's fact that it received its waiting Inputs; a repeated report changes nothing.
+   * @throws UserError when the ticket is unknown.
+   */
+  projectInputsDelivered(projectId: string, inputIds: string[]): void {
+    this.repo.atomic(() => { this.tickets.projectInputsDelivered(projectId, inputIds) })
   }
   /**
    * Ask a running worker that waits in `waiting` state for its status; any other worker is left alone.
@@ -342,14 +397,16 @@ export class Engine {
 /** What Sources ask and tell the Engine. */
 export type EngineForSources = Pick<Engine, 'receive' | 'bindThread' | 'bindChannel' | 'threadClosed'>
 /** What the main Session asks of the Engine. */
-export type EngineForMainSession = Pick<Engine, 'candidate' | 'candidateDelivered' | 'decide' | 'attach' | 'reply' | 'requestStatus' | 'note' | 'bindChannel'>
+export type EngineForMainSession = Pick<Engine, 'candidate' | 'candidateDelivered' | 'decide' | 'attach' | 'dispatchToProject' | 'reply'
+  | 'requestStatus' | 'note' | 'bindChannel' | 'archiveProject'>
 /** What people ask of the Engine, through the panel or the main Session. */
-export type EngineForPeople = Pick<Engine, 'stopTicket' | 'retryTicket' | 'reviewTicket' | 'reevaluate' | 'unsubscribe' | 'dismiss'>
+export type EngineForPeople = Pick<Engine, 'stopTicket' | 'retryTicket' | 'reviewTicket' | 'reevaluate' | 'unsubscribe' | 'dismiss' | 'archiveProject'>
 /** What Settings tells the Engine. */
 export type EngineForSettings = Pick<Engine, 'policyChanged'>
 /** What the Executor tells the Engine, and what its workers ask of it. */
 export type EngineForExecutor = Pick<Engine, 'assignmentStarted' | 'contextAssembled' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed'
   | 'assignmentInterrupted' | 'report' | 'markUnrelated' | 'handback' | 'followForContext' | 'reply'
-  | 'delegate' | 'acceptChild' | 'returnChild' | 'cancelChild' | 'childDecision' | 'orphanChild'>
+  | 'delegate' | 'acceptChild' | 'returnChild' | 'cancelChild' | 'childDecision' | 'orphanChild'
+  | 'admitProjectTask' | 'assignProjectTask' | 'projectInputsDelivered'>
 /** What the inline executor tells the Engine: each action a lightweight ticket ran, and how its run ended. */
 export type EngineForInline = Pick<Engine, 'inlineAction' | 'inlineFinished'>

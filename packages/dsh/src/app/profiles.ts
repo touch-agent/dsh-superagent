@@ -359,6 +359,25 @@ export class Profiles {
     }
   }
   /**
+   * The snapshot a named worker Profile binds, for a project owner or a task's assigned worker. A missing, disabled or
+   * unusable Profile returns undefined instead of the legacy fallback: a project without its owner must fail closed and
+   * show project-level attention rather than silently run as someone else. It never changes a Mandate or Decision.
+   */
+  bindNamed(ticket: Pick<Ticket, 'id'>, profileId: string, reason?: string): ProfileSnapshot | undefined {
+    try {
+      if (!this.config().enabled) return undefined
+      const head = this.head(profileId)
+      if (!head || head.disabled) return undefined
+      const definition = this.revision(profileId, head.activeRevision)
+      if (!definition) return undefined
+      const snapshot = this.snapshot(definition, ticket.id, { by: 'code', source: 'manual',
+        reason: reason ?? `profile:${definition.id}@${definition.revision}` })
+      if (!snapshot.selection.valid) return undefined
+      this.host.store.set(KV.profiles.head(definition.id), { ...head, lastBoundAt: snapshot.boundAt })
+      return snapshot
+    } catch { return undefined }
+  }
+  /**
    * The snapshot a child copies from its parent. It is the parent's snapshot unchanged, so a child has no profile
    * parameter that could widen its work tools or change its model; the Session layer further removes child-only tools.
    */

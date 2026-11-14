@@ -5,6 +5,7 @@ import { CliError } from '../../infra/commands.ts'
 import { IM_WORDS } from '../../infra/text.ts'
 import { claimPull, readGithubThread, readPull } from '../../sources/github-pull.ts'
 import type { SourceContext } from '../../sources/host.ts'
+import { ticketCard } from '../cards.ts'
 import { readResource, type ResourceHost } from '../resources.ts'
 import type { Store } from '../store.ts'
 import { reportRelay, threadFollowedNotice } from '../notices.ts'
@@ -28,7 +29,7 @@ const DeliverableSchema = z.object({
 
 export interface ExecutorToolsHost {
   readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'
-    | 'delegate' | 'acceptChild' | 'returnChild' | 'cancelChild' | 'childDecision'>
+    | 'delegate' | 'acceptChild' | 'returnChild' | 'cancelChild' | 'childDecision' | 'admitProjectTask' | 'assignProjectTask'>
   readonly store: Pick<Store, 'tickets' | 'replyStatus' | 'atomic'>
   readonly sessions: Pick<Sessions, 'relay' | 'notify'>
   readonly resources: ResourceHost
@@ -56,7 +57,79 @@ async function followableGithubThread(host: ExecutorToolsHost, source: string, i
   }
 }
 
+/**
+ * A project's coordination tools: read the project and its messages, admit a root task through the Decision admission
+ * seam, and change a not-yet-started task's owner. It deliberately has no report, end, child or work tools: a project is a
+ * container, and each admitted task carries its own Mandate, deliverables and reports.
+ */
+function projectTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
+  const projectId = ticket.id
+  const actor = { source: 'dsh-superagent', id: `worker-${projectId}` }
+  return [
+    readTool('Read one page of a resource of this project that the resource parameter lists. Follow next_offset, and next_resource where a page names one.',
+      true, (resource, offset, limit, signal) => readResource(host.resources, resource, offset, limit, projectId, signal)),
+    tool({
+      name: 'orchestrator_create_task',
+      description: 'Admit one root task into this project through the Decision admission seam, under the project Mandate. Reuse the same idempotency_key when retrying the same request; a repeated key returns the same task. Refused without the project create-task capability.',
+      schema: z.object({
+        title: z.string().trim().min(1).max(200).describe('Short label of the task from the person\'s request.'),
+        goal: z.string().trim().min(1).max(2000).optional().describe('What the task must achieve; defaults to its title.'),
+        scope: z.string().trim().min(1).max(2000).optional().describe('The narrowing this task adds to the project scope.'),
+        owner_profile_id: z.string().trim().min(1).optional().describe('Worker to own the task; defaults to the project owner worker.'),
+        idempotency_key: z.string().trim().min(1).max(200).describe('Stable key for this request, reused on retry, such as the source message id and item index.'),
+        trigger_id: z.string().optional().describe('The coordination input the request came from, for the admission audit.'),
+        name: z.string().trim().min(1).max(64).optional().describe('Short worktree name; derived from the title when absent.'),
+        note: z.string().trim().max(2000).optional().describe('Routing note carried into the task, never extra requirements.'),
+      }).strict(),
+      execute: async args => {
+        const task = host.engine.admitProjectTask(projectId, { title: args.title, ...(args.goal ? { goal: args.goal } : {}),
+          ...(args.scope ? { scope: args.scope } : {}), ...(args.owner_profile_id ? { ownerProfileId: args.owner_profile_id } : {}),
+          idempotencyKey: args.idempotency_key, ...(args.trigger_id ? { triggerId: args.trigger_id } : {}),
+          ...(args.name ? { name: args.name } : {}), ...(args.note ? { note: args.note } : {}) }, actor)
+        return { delegated: true, project_id: projectId, ticket: ticketCard(task) }
+      },
+    }),
+    tool({
+      name: 'orchestrator_assign_worker',
+      description: 'Change the owner worker of a task in this project before it starts; the task\'s Mandate and project link do not change. Refused without the project assign-worker capability or once the task started.',
+      schema: z.object({
+        task_id: z.string().min(1).describe('The root task in this project.'),
+        owner_profile_id: z.string().trim().min(1).describe('The available worker Profile that takes the task.'),
+      }).strict(),
+      execute: async args => ({ assigned: true,
+        ticket: ticketCard(host.engine.assignProjectTask(projectId, args.task_id, args.owner_profile_id, actor)) }),
+    }),
+    tool({
+      name: 'orchestrator_thread_unrelated',
+      description: 'Stop following an attached thread that is not about this project; its own threads cannot be dropped.',
+      schema: z.object({
+        thread: z.string().min(1).describe('The thread key, such as github:12.'),
+        reason: z.string().trim().min(1).max(300).describe('One sentence on why the thread is not about this project.'),
+      }).strict(),
+      execute: async args => { host.engine.markUnrelated(projectId, args.thread, args.reason); return { removed: true, thread: args.thread } },
+    }),
+    tool({
+      name: 'orchestrator_thread_follow',
+      description: 'Follow a related thread for context only; a GitHub Thread must be an Issue or PR in the Source\'s configured repository.',
+      schema: z.object({ thread: z.string().describe('Thread key, such as github:123.'),
+        reason: z.string().trim().min(1).max(300).describe('How it relates, in one sentence.') }).strict(),
+      execute: async (args, signal) => {
+        const at = args.thread.indexOf(':')
+        if (at < 1 || at === args.thread.length - 1) throw new Error('A thread key is <source>:<id>, such as github:123')
+        const ref = { source: args.thread.slice(0, at), id: args.thread.slice(at + 1) }
+        await followableGithubThread(host, ref.source, ref.id, signal)
+        return host.store.atomic(() => {
+          const followed = host.engine.followForContext(projectId, ref)
+          if (followed) host.sessions.notify(...threadFollowedNotice(projectId, args.thread, args.reason))
+          return { followed, thread: args.thread }
+        })
+      },
+    }),
+  ]
+}
+
 export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
+  if (ticket.kind === 'project') return projectTools(host, ticket)
   const ticketId = ticket.id
   // A parent owner is this ticket's worker; the domain records that worker as the reviewer in every disposition.
   const actor = { source: 'dsh-superagent', id: `worker-${ticketId}` }

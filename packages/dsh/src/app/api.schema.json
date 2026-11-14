@@ -55,7 +55,29 @@
     "GET tasks": {
       "type": "object",
       "additionalProperties": false,
-      "properties": {}
+      "properties": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5,
+              "default": 1
+            },
+            "projects": {
+              "type": "string",
+              "enum": [
+                "active",
+                "archived",
+                "all",
+                "off"
+              ],
+              "default": "active"
+            }
+          }
+        }
+      }
     },
     "GET goals": {
       "type": "object",
@@ -402,10 +424,107 @@
               "minimum": 1,
               "maximum": 5,
               "default": 1
+            },
+            "projects": {
+              "type": "string",
+              "enum": [
+                "active",
+                "archived",
+                "all",
+                "off"
+              ],
+              "default": "active"
             }
           }
         }
       }
+    },
+    "GET projects/:id": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5,
+              "default": 1
+            },
+            "projects": {
+              "type": "string",
+              "enum": [
+                "active",
+                "archived",
+                "all",
+                "off"
+              ],
+              "default": "active"
+            }
+          }
+        }
+      },
+      "required": [
+        "params"
+      ]
+    },
+    "POST projects/:id/archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "required": [
+        "params"
+      ]
+    },
+    "POST projects/:id/restore": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "required": [
+        "params"
+      ]
     },
     "GET search": {
       "type": "object",
@@ -828,6 +947,9 @@
     "POST profiles/:id/rollback",
     "PUT profiles/config",
     "GET tasks/:id",
+    "GET projects/:id",
+    "POST projects/:id/archive",
+    "POST projects/:id/restore",
     "GET search",
     "GET sources",
     "GET settings",
