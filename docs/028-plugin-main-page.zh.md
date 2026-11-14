@@ -110,7 +110,8 @@ After：本分支构建，同一视口/主题/语言。
 | --- | --- | --- |
 | 点开 Superagent | [before-tasks.png](images/plugin-main-page/before-tasks.png)（任务页落地） | [after-conversation.png](images/plugin-main-page/after-conversation.png)（主对话 + 页头四图标） |
 | 任务页 | [before-tasks.png](images/plugin-main-page/before-tasks.png) | [after-tasks.png](images/plugin-main-page/after-tasks.png)（带返回主对话） |
-| 通知页 | [before-notifications.png](images/plugin-main-page/before-notifications.png) | [after-notifications.png](images/plugin-main-page/after-notifications.png) |
+| 通知抽屉（任务页上） | [before-notifications.png](images/plugin-main-page/before-notifications.png) | [after-notifications-drawer.png](images/plugin-main-page/after-notifications-drawer.png)（同一浮层仍保留） |
+| 通知整页（主对话页头图标） | —（基线没有整页） | [after-notifications.png](images/plugin-main-page/after-notifications.png) |
 | 设置页 | [before-settings.png](images/plugin-main-page/before-settings.png) | [after-settings.png](images/plugin-main-page/after-settings.png) |
 | 设置·显示里的开关细节 | [before-settings-switches.png](images/plugin-main-page/before-settings-switches.png) | [after-settings-switches.png](images/plugin-main-page/after-settings-switches.png) |
 
