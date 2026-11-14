@@ -521,22 +521,22 @@ const projects = [
   {
     id: 'a', name: 'A 系统开发', goal: '把内部工单系统迁到新架构，12 月中旬前完成切换。',
     owner: '开发负责人', ownerRev: 2, state: 'active',
-    taskIds: ['a1', 'a2', 'a3', 'a4'], lastActivity: '12 分钟前 · 支付接入已就绪', sources: ['对话', 'GitHub'],
+    taskIds: ['a1', 'a2', 'a3', 'a4'], lastActivity: '12 分钟前 · 支付接入已就绪', updatedAt: '2026-11-14T15:48:00+08:00', sources: ['对话', 'GitHub'],
   },
   {
     id: 'b', name: 'B 桌面机器人研究', goal: '做一台能在家里自主移动、避障和取物的桌面机器人原型。',
     owner: '硬件负责人', ownerRev: 1, state: 'active',
-    taskIds: ['b1', 'b2', 'b3', 'b4'], lastActivity: '今天 10:40 · 避障感知标记了阻塞', sources: ['对话'],
+    taskIds: ['b1', 'b2', 'b3', 'b4'], lastActivity: '今天 10:40 · 避障感知标记了阻塞', updatedAt: '2026-11-14T10:40:00+08:00', sources: ['对话'],
   },
   {
     id: 'c', name: 'C 旅行计划', goal: '十一月初去京都 5 天，先把机票、住处和每日路线定下来。',
     owner: '行程负责人', ownerRev: 1, state: 'active',
-    taskIds: ['c1', 'c2', 'c3'], lastActivity: '1 小时前 · 住处候选更新', sources: ['对话'],
+    taskIds: ['c1', 'c2', 'c3'], lastActivity: '1 小时前 · 住处候选更新', updatedAt: '2026-11-14T14:48:00+08:00', sources: ['对话'],
   },
   {
     id: 'd', name: 'D 旧站下线', goal: '把旧官网下线，保留归档和跳转。',
     owner: '默认执行配置', ownerRev: null, state: 'archived',
-    taskIds: ['d1', 'd2'], lastActivity: '9 月 28 日 · 已归档', sources: ['对话'],
+    taskIds: ['d1', 'd2'], lastActivity: '9 月 28 日 · 已归档', updatedAt: '2026-09-28T18:00:00+08:00', sources: ['对话'],
   },
 ]
 
@@ -571,12 +571,25 @@ const tasks = {
   a1b: {
     id: 'a1b', parentId: 'a1', projectId: 'a', title: '错误提示文案', status: 'waiting',
     owner: '文案负责人', ownerRev: 3, goal: '统一登录失败提示，给出下一步。',
-    lastEvent: '今天 08:20 · 已向开发负责人汇报', lastEventShort: '08:20', source: '子任务',
-    summary: '6 条登录失败提示已交；等开发负责人判断。',
+    children: ['a1b1'], lastEvent: '今天 08:20 · 已向开发负责人汇报', lastEventShort: '08:20', source: '子任务',
+    summary: '6 条登录失败提示已交；回调签名文案已由你接受；等开发负责人判断。',
     next: '等上级负责人验收；现在不需要你。',
     reports: [
       { who: '文案负责人', at: '今天 08:20', what: '汇报了初稿：6 条登录失败提示，含下一步建议。' },
       { who: '开发负责人', at: '今天 08:22', what: '还没有判断；等这一轮联调结束。' },
+    ],
+  },
+  a1b1: {
+    id: 'a1b1', parentId: 'a1b', projectId: 'a', title: '回调签名文案', status: 'done',
+    owner: '文案负责人', ownerRev: 3, goal: '把回调失败提示和签名错误说清楚。',
+    lastEvent: '今天 08:10 · 已由上级负责人接受', lastEventShort: '08:10', source: '子任务',
+    childAccepted: true,
+    summary: '回调签名相关 2 条提示已交；由文案负责人验收。',
+    next: '已由上级负责人接受；最终验收在根任务「登录改版」。',
+    deliverables: [{ name: '回调签名文案', meta: '文档 · 2 条提示 · 1 条示例' }],
+    reports: [
+      { who: '文案负责人', at: '今天 08:05', what: '汇报了回调签名提示的 2 条改法。' },
+      { who: '文案负责人', at: '今天 08:10', what: '接受了这条子任务；交给上级负责人。' },
     ],
   },
   a2: {
@@ -656,9 +669,19 @@ const tasks = {
     ],
   },
   b2: {
-    id: 'b2', projectId: 'b', title: '避障感知', status: 'blocked',
+    id: 'b2', projectId: 'b', title: '移动底盘', status: 'working',
+    owner: '硬件负责人', ownerRev: 1, goal: '把底盘、电机和避障装成一个能跑的整机。',
+    children: ['b2a'], lastEvent: '今天 10:20 · 底盘方案已定', lastEventShort: '10:20', source: '对话',
+    summary: '底盘方案已定；避障子任务在等激光雷达。',
+    next: '等避障子任务收尾；现在不需要你。',
+    reports: [
+      { who: '硬件负责人', at: '今天 10:20', what: '底盘方案已定；把避障感知拆成子任务。' },
+    ],
+  },
+  b2a: {
+    id: 'b2a', parentId: 'b2', projectId: 'b', title: '避障感知', status: 'blocked',
     owner: '硬件负责人', ownerRev: 1, goal: '在桌面范围内稳定识别桌沿和手。',
-    lastEvent: '今天 10:40 · 标记了阻塞', lastEventShort: '10:40', source: '对话',
+    lastEvent: '今天 10:40 · 标记了阻塞', lastEventShort: '10:40', source: '子任务',
     blocker: '等激光雷达到货；供应商预计 2 天。',
     summary: '避障方案已定，硬件没到，无法开始实测。',
     next: '等负责人处理；现在不需要你。',
@@ -757,11 +780,12 @@ const tasks = {
 const state = {
   screen: 'projects',
   projectId: null,
+  projectFrom: 'projects',
   taskId: null,
   taskFrom: null,
   filter: 'all',
   query: '',
-  expanded: { a1: true },
+  expanded: { a1: true, a1b: true, b2: true },
   allExpanded: false,
   drawer: false,
   modal: null,
@@ -778,13 +802,25 @@ const byId = id => tasks[id]
 const projectById = id => projects.find(p => p.id === id)
 const activeProjects = () => projects.filter(p => p.state === 'active')
 const projectRoots = p => p.taskIds.map(id => tasks[id]).filter(Boolean)
+const projectTasks = p => projectRoots(p).flatMap(t => [t, ...(t.children || []).map(id => tasks[id]).filter(Boolean)])
 const unassignedRoots = () => Object.values(tasks).filter(t => !t.parentId && !t.projectId)
 const rootTasks = () => [...activeProjects().flatMap(projectRoots), ...unassignedRoots()]
 const projectName = id => projectById(id)?.name || '未归入项目'
 
+// Mirrors the shipped attentionFor: a live root's own person stage counts; a blocked/failed root is a person
+// decision even if the worker is still around, while a blocked child with a living ancestor owner stays quiet.
+const ATTENTION_STATUS = new Set(['review', 'answer', 'delivery', 'blocked', 'failed'])
+const attentionKind = t => {
+  if (!t || t.ended || doneStatus(t)) return null
+  if (t.pending) return t.pending
+  if (t.status === 'delivery') return 'retry'
+  if (ATTENTION_STATUS.has(t.status)) return t.status === 'review' ? 'review' : t.status === 'answer' ? 'answer' : 'retry'
+  return null
+}
+const attentionRoots = list => list.filter(t => attentionKind(t))
 const PENDING_ORDER = { review: 0, answer: 1, retry: 2 }
-const pendingRoots = () => rootTasks().filter(t => t.pending)
-  .sort((a, b) => (PENDING_ORDER[a.pending] ?? 9) - (PENDING_ORDER[b.pending] ?? 9))
+const pendingRoots = () => attentionRoots(rootTasks())
+  .sort((a, b) => (PENDING_ORDER[attentionKind(a)] ?? 9) - (PENDING_ORDER[attentionKind(b)] ?? 9))
 const doneStatus = t => t.status === 'done' || t.status === 'stopped'
 
 const STATUS = {
@@ -816,18 +852,19 @@ const projectChip = p => {
 
 function projectCounts(p) {
   const roots = projectRoots(p)
+  const all = projectTasks(p)
   return {
     total: roots.length,
     done: roots.filter(t => t.status === 'done').length,
     open: roots.filter(t => t.status !== 'done' && t.status !== 'stopped').length,
-    attention: roots.filter(t => t.pending).length,
-    blocked: roots.filter(t => t.status === 'blocked').length,
-    failed: roots.filter(t => t.status === 'failed').length,
+    attention: attentionRoots(roots).length + (p.ownerUnavailable ? 1 : 0),
+    blocked: all.filter(t => t.status === 'blocked').length,
+    failed: all.filter(t => t.status === 'failed').length,
   }
 }
 
-function pendingTaskMeta(t) {
-  if (t.pending === 'review') return {
+function pendingTaskMeta(t, kind = attentionKind(t)) {
+  if (kind === 'review') return {
     tag: '验收', action: '去验收', modal: 'review',
     title: `「${t.title}」的交付已就绪`,
     what: t.summary,
@@ -835,7 +872,7 @@ function pendingTaskMeta(t) {
     consequence: '不处理会一直停在这里，负责人不会继续。',
     verb: '验收',
   }
-  if (t.pending === 'answer') return {
+  if (kind === 'answer') return {
     tag: '回答', action: '回答', modal: 'answer',
     title: `「${t.title}」需要你回答`,
     what: t.question,
@@ -843,12 +880,13 @@ function pendingTaskMeta(t) {
     consequence: '不回答，这个任务会一直停在这里。',
     verb: '回答',
   }
+  const blocked = t.status === 'blocked'
   return {
-    tag: '处理', action: '重试', modal: 'retry',
-    title: `「${t.title}」失败了，负责人已停止`,
-    what: t.failure,
+    tag: '处理', action: blocked ? '处理' : '重试', modal: 'retry',
+    title: blocked ? `「${t.title}」被阻塞，需要你决定` : `「${t.title}」失败了，负责人已停止`,
+    what: t.failure || t.blocker,
     next: '重试会重新开始；停止会结束这个任务。',
-    consequence: '不处理，任务会停在失败状态。',
+    consequence: blocked ? '不处理，任务会一直停在阻塞状态。' : '不处理，任务会停在失败状态。',
     verb: '处理',
   }
 }
@@ -873,16 +911,25 @@ const pct = (done, total) => total ? Math.round(done / total * 100) : 0
 function sortProjects(list) {
   return [...list].sort((a, b) => {
     const ca = projectCounts(a), cb = projectCounts(b)
-    return cb.attention - ca.attention || cb.blocked - ca.blocked || a.taskIds.length - b.taskIds.length
+    return cb.attention - ca.attention || cb.blocked - ca.blocked
+      || Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || a.name.localeCompare(b.name)
   })
+}
+
+function touchProject(id, text) {
+  const p = projectById(id)
+  if (!p) return
+  p.lastActivity = text
+  p.updatedAt = new Date().toISOString()
 }
 
 function focusRows(list, options = {}) {
   if (!list.length) return ''
   return list.map(t => {
-    const meta = pendingTaskMeta(t)
+    const kind = attentionKind(t)
+    const meta = pendingTaskMeta(t, kind)
     return `<div class="focus-row">
-      <span class="chip ${t.pending === 'retry' ? 'failed' : 'review'} mini">${meta.tag}</span>
+      <span class="chip ${kind === 'review' ? 'review' : kind === 'answer' ? 'answer' : 'blocked'} mini">${meta.tag}</span>
       <button class="link focus-task" type="button" data-open-task="${t.id}" data-from="${options.from || 'project'}">${esc(t.title)}</button>
       ${options.hideProject ? '' : `<span class="focus-project">${esc(projectName(t.projectId))}</span>`}
       <span class="time">${esc(t.attentionAt || t.lastEvent)}</span>
@@ -892,19 +939,24 @@ function focusRows(list, options = {}) {
 }
 
 function focusStrip(list = pendingRoots()) {
-  if (!list.length) return `<div class="focus empty">
+  const issues = activeProjects().filter(p => p.ownerUnavailable)
+  const total = list.length + issues.length
+  if (!total) return `<div class="focus empty">
     <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">0</span></div>
     <div class="focus-empty">现在没有等你处理的事。有新结果或需要你确认时会出现在这里。</div>
   </div>`
+  const issueRows = issues.map(p => `<div class="focus-row"><span class="chip review mini">处理</span><button class="link focus-task" type="button" data-open-project="${p.id}" data-project-from="projects">修「${esc(p.name)}」负责人配置</button><span class="focus-project">项目</span></div>`).join('')
+  const taskRows = focusRows(list.slice(0, Math.max(0, 4 - issues.length)), { from: 'projects' })
   return `<div class="focus">
-    <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">${list.length}</span><button class="focus-all" type="button" data-go="notices">全部 ${list.length}</button></div>
-    ${focusRows(list.slice(0, 4), { from: 'projects' })}
-    ${list.length > 4 ? `<div class="focus-row"><span class="focus-project">还有 ${list.length - 4} 条，打开全部查看。</span></div>` : ''}
+    <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">${total}</span><button class="focus-all" type="button" data-go="notices">全部 ${total}</button></div>
+    ${issueRows}${taskRows}
+    ${total > 4 ? `<div class="focus-row"><span class="focus-project">还有 ${total - 4} 条，打开全部查看。</span></div>` : ''}
   </div>`
 }
 
 function projectPendingLine(p) {
-  const pending = projectRoots(p).filter(t => t.pending)
+  if (p.ownerUnavailable) return `<div class="card-pending"><span class="label">待你</span><button class="link" type="button" data-modal="project-settings" data-project="${p.id}">修负责人配置「${esc(p.name)}」</button></div>`
+  const pending = attentionRoots(projectRoots(p))
   if (!pending.length) return ''
   return `<div class="card-pending"><span class="label">待你</span>${pending.slice(0, 2).map((t, i) => {
     const meta = pendingTaskMeta(t)
@@ -912,14 +964,14 @@ function projectPendingLine(p) {
   }).join('')}${pending.length > 2 ? `<span class="sep">·</span><span class="muted">还有 ${pending.length - 2} 条</span>` : ''}</div>`
 }
 
-function projectCard(p) {
+function projectCard(p, from = 'projects') {
   const counts = projectCounts(p)
-  const blocked = projectRoots(p).find(t => t.status === 'blocked')
-  return `<article class="project-card" data-open-project="${p.id}" data-attention="${counts.attention > 0}">
-    <div class="card-top"><button class="card-name" type="button" data-open-project="${p.id}" aria-label="打开项目 ${esc(p.name)}">${esc(p.name)}</button>${projectChip(p)}</div>
+  const blocked = projectTasks(p).find(t => t.status === 'blocked')
+  return `<article class="project-card" data-open-project="${p.id}" data-project-from="${from}" data-attention="${counts.attention > 0}">
+    <div class="card-top"><button class="card-name" type="button" data-open-project="${p.id}" data-project-from="${from}" aria-label="打开项目 ${esc(p.name)}">${esc(p.name)}</button>${projectChip(p)}</div>
     <p class="card-goal" title="${esc(p.goal)}">${esc(p.goal)}</p>
-    <div class="card-meta">${avatar(p.owner)}<span class="owner">${counts.total ? '负责人 ' : '负责人 '}${esc(projectOwner(p))}</span><span class="card-progress">${counts.done}/${counts.total} 顶层任务完成</span></div>
-    <div class="bar" aria-hidden="true"><i style="width:${pct(counts.done, counts.total)}%"></i></div>
+    <div class="card-meta">${avatar(p.owner)}<span class="owner" title="项目负责人只约束之后的新任务；已有任务按各自的配置执行">负责人 ${esc(projectOwner(p))}</span><span class="card-progress">${counts.total ? `${counts.done}/${counts.total} 顶层任务完成` : ''}</span></div>
+    ${counts.total ? `<div class="bar" aria-hidden="true"><i style="width:${pct(counts.done, counts.total)}%"></i></div>` : ''}
     ${projectPendingLine(p) || `<div class="card-note">${counts.total ? '现在不需要你 · 负责人推进中' : '还没有任务；先告诉小助第一件事'}</div>`}
     ${blocked ? `<div class="card-blocked" title="${esc(blocked.blocker)}">阻塞：${esc(blocked.blocker)}</div>` : ''}
     <div class="card-foot"><span class="last">${esc(p.lastActivity)}</span><span class="src">${p.sources.map(s => `<span class="src-chip">${esc(s)}</span>`).join('')}</span></div>
@@ -941,7 +993,7 @@ function projectsView() {
   const active = sortProjects(activeProjects())
   const archived = projects.filter(p => p.state === 'archived')
   return `<div class="page-head">
-    <div><h1 class="page-title">项目</h1><p class="page-sub">先看项目，再看每个项目里的任务。</p></div>
+    <div><h1 class="page-title">项目</h1><p class="page-sub">先看项目，再看每个项目里的任务。项目负责人只约束之后的新任务；已有任务按各自的配置执行。</p></div>
     <div class="page-actions">
       <button class="btn btn-ghost btn-sm wide-only" type="button" data-toast="原型：会回到主对话。">返回主对话</button>
       <button class="btn btn-ghost btn-sm" type="button" data-go="all">全部任务</button>
@@ -955,10 +1007,12 @@ function projectsView() {
 }
 
 function detailFocus(p) {
-  const list = projectRoots(p).filter(t => t.pending)
+  if (p.ownerUnavailable) return `<div class="note"><b>项目负责人配置不可用。</b><br>先修负责人配置，之后的新任务才会使用它；已有任务按各自的配置执行。</div>`
+  if (!p.taskIds.length) return `<div class="note"><b>项目已创建，还没有任务。</b><br>先告诉小助这个项目要推进的第一件事；新任务受理后会出现在这里。</div>`
+  const list = attentionRoots(projectRoots(p))
   if (!list.length) {
     if (p.state === 'archived') return `<div class="note">项目已归档；任务和交付物都保留，恢复后继续。</div>`
-    const blocked = projectRoots(p).filter(t => t.status === 'blocked')
+    const blocked = projectTasks(p).filter(t => t.status === 'blocked')
     if (blocked.length) {
       return `<div class="note"><b>有 ${blocked.length} 个任务被阻塞，负责人处理中。</b><br>${esc(blocked[0].blocker || '阻塞原因见任务行。')} 现在不需要你。</div>`
     }
@@ -976,7 +1030,7 @@ function chevron(open) {
 
 function taskMeta(t, child) {
   const parts = [`<span class="owner">${esc(taskOwner(t))}</span>`]
-  if (!child && t.children?.length) {
+  if (t.children?.length) {
     const done = t.children.map(id => byId(id)).filter(c => c && doneStatus(c)).length
     parts.push(`${t.children.length} 个子任务 · ${done} 个完成`)
   }
@@ -990,14 +1044,16 @@ function taskMeta(t, child) {
   return parts.join('<span class="dotsep">·</span>')
 }
 
-function treeRow(t, child = false) {
-  const hasChildren = !child && t.children?.length
+function treeRow(t, depth = 0) {
+  const child = depth > 0
+  const hasChildren = t.children?.length
   const open = !!state.expanded[t.id]
   const rowClass = [
     'tree-row', child ? 'child' : 'root',
-    t.pending ? 'pending' : '', doneStatus(t) ? 'done' : '',
+    attentionKind(t) ? 'pending' : '', doneStatus(t) ? 'done' : '',
   ].filter(Boolean).join(' ')
-  return `<div class="${rowClass}">
+  const indent = child ? ` style="padding-left:${21 + (depth - 1) * 18}px"` : ''
+  return `<div class="${rowClass}"${indent}>
     <button class="tree-toggle" type="button" ${hasChildren ? `data-action="toggle" data-task="${t.id}" aria-expanded="${open}" aria-label="${open ? '收起' : '展开'}子任务"` : 'disabled aria-hidden="true"'} >${hasChildren ? chevron(open) : ''}</button>
     <button class="tree-main" type="button" data-open-task="${t.id}" data-from="project">
       <span class="tree-title">${esc(t.title)}</span>
@@ -1006,10 +1062,11 @@ function treeRow(t, child = false) {
     ${chip(t.status)}
     <span class="tree-time">${esc(t.lastEventShort || '')}</span>
   </div>
-  ${open && hasChildren ? t.children.map(id => byId(id)).filter(Boolean).map(c => treeRow(c, true)).join('') : ''}`
+  ${open && hasChildren ? t.children.map(id => byId(id)).filter(Boolean).map(c => treeRow(c, depth + 1)).join('') : ''}`
 }
 
 function activitySection(p) {
+  if (!p.taskIds.length) return `<div class="section-head"><h3>最近活动</h3><span class="count">0</span></div><p class="body-text muted">刚建项目，还没有活动。第一件任务开始后，这里会记录结果和判断。</p>`
   const items = p.id === 'a' ? [
     ['刚刚', '登录改版', '错误提示文案已向开发负责人汇报'],
     ['12 分钟前', '支付接入', '支付负责人汇报了结果，等你验收'],
@@ -1023,10 +1080,10 @@ function activitySection(p) {
     ['1 小时前', '机票与日期', '交付已就绪，等你验收'],
     ['今天 09:30', '住处候选', '新增 2 个可取消候选'],
     ['昨天', '预算', '任务完成'],
-  ] : [
+  ] : p.id === 'd' ? [
     ['9 月 28 日', '跳转规则', '按你的要求停止'],
     ['9 月 26 日', '旧站归档', '任务完成'],
-  ]
+  ] : []
   return `<div class="section-head"><h3>最近活动</h3><span class="count">${items.length}</span></div>
   <ul class="activity-list">${items.map(([time, task, what]) => {
     const match = Object.values(tasks).find(t => t.title === task)
@@ -1042,10 +1099,13 @@ function projectView() {
   const done = roots.filter(t => doneStatus(t))
   const counts = projectCounts(p)
   const allOpen = roots.filter(t => t.children?.length).every(t => state.expanded[t.id]) && roots.some(t => t.children?.length)
-  return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>
+  const back = state.projectFrom === 'archived'
+    ? '<button class="detail-back" type="button" data-go="archived">‹ 已归档</button>'
+    : '<button class="detail-back" type="button" data-go="projects">‹ 项目</button>'
+  return `${back}
   <div class="detail-title-row"><h1 class="detail-title">${esc(p.name)}</h1>${projectChip(p)}</div>
   <p class="detail-goal">${esc(p.goal)}</p>
-  <div class="detail-meta">${avatar(p.owner)}<span>负责人 ${esc(projectOwner(p))}</span><span class="dotsep">·</span><span>${counts.total} 个顶层任务 · ${counts.done}/${counts.total} 完成</span><span class="dotsep">·</span><span>${p.state === 'archived' ? esc(p.lastActivity) : esc(p.lastActivity.split(' · ')[0]) + ' 更新'}</span><button class="btn btn-ghost btn-sm more" type="button" data-modal="project-settings" data-project="${p.id}">更多</button></div>
+  <div class="detail-meta">${avatar(p.owner)}<span>负责人 ${esc(projectOwner(p))}</span><span class="dotsep">·</span><span>${counts.total ? `${counts.total} 个顶层任务 · ${counts.done}/${counts.total} 完成` : '还没有任务'}</span><span class="dotsep">·</span><span>${p.state === 'archived' ? esc(p.lastActivity) : esc(p.lastActivity.split(' · ')[0]) + ' 更新'}</span><button class="btn btn-ghost btn-sm more" type="button" data-modal="project-settings" data-project="${p.id}">更多</button></div>
   ${detailFocus(p)}
   <div class="project-columns">
     <div class="project-main">
@@ -1063,7 +1123,7 @@ const FILTERS = [
 
 function filterRoots() {
   let list = rootTasks()
-  if (state.filter === 'attention') list = list.filter(t => t.pending)
+  if (state.filter === 'attention') list = list.filter(t => attentionKind(t))
   else if (state.filter === 'running') list = list.filter(t => t.status === 'working')
   else if (state.filter === 'blocked') list = list.filter(t => t.status === 'blocked')
   else if (state.filter === 'failed') list = list.filter(t => t.status === 'failed')
@@ -1073,7 +1133,7 @@ function filterRoots() {
 }
 
 function flatRow(t) {
-  return `<button class="flat-row ${t.pending ? 'pending' : ''}" type="button" data-open-task="${t.id}" data-from="all">
+  return `<button class="flat-row ${attentionKind(t) ? 'pending' : ''}" type="button" data-open-task="${t.id}" data-from="all">
     ${chip(t.status)}
     <span class="flat-main"><span class="flat-title">${esc(t.title)}</span><span class="flat-meta"><span>${esc(projectName(t.projectId))}</span><span class="dotsep">·</span><span>${esc(taskOwner(t))}</span></span></span>
     <span class="flat-time">${esc(t.lastEventShort || '')}</span>
@@ -1083,7 +1143,7 @@ function flatRow(t) {
 function allView() {
   const counts = {
     all: rootTasks().length,
-    attention: rootTasks().filter(t => t.pending).length,
+    attention: rootTasks().filter(t => attentionKind(t)).length,
     running: rootTasks().filter(t => t.status === 'working').length,
     blocked: rootTasks().filter(t => t.status === 'blocked').length,
     failed: rootTasks().filter(t => t.status === 'failed').length,
@@ -1109,7 +1169,7 @@ function unassignedView() {
     <button class="link ua-title" type="button" data-open-task="${t.id}" data-from="unassigned">${esc(t.title)}</button>
     <span class="ua-meta">${esc(t.owner)}</span>
     <button class="ua-action" type="button" data-modal="assign" data-task="${t.id}">归入项目</button>
-    ${t.pending === 'retry' ? `<button class="ua-action" type="button" data-modal="retry" data-task="${t.id}">重试</button>` : ''}
+    ${attentionKind(t) === 'retry' ? `<button class="ua-action" type="button" data-modal="retry" data-task="${t.id}">处理</button>` : ''}
   </div>`).join('')}</div>` : '<div class="empty-list">没有未归入的任务。现有任务都已经在项目里。</div>'}
   <div class="section" style="margin-top:14px"><p class="body-text muted">提示：项目由你或小助显式创建；系统不会按标题、来源或计划编号自动把任务归进项目。</p></div>`
 }
@@ -1119,13 +1179,13 @@ function archivedView() {
   return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>
   <h1 class="page-title">已归档</h1>
   <p class="page-sub">归档只把项目移出默认列表；任务、交付物和来源都还在。</p>
-  <div class="projects" style="margin-top:12px">${list.map(projectCard).join('')}</div>`
+  <div class="projects" style="margin-top:12px">${list.map(p => projectCard(p, 'archived')).join('')}</div>`
 }
 
 function taskBack(t) {
   if (t.parentId) {
     const parent = byId(t.parentId)
-    return `<button class="detail-back" type="button" data-open-task="${parent.id}" data-from="project">‹ ${esc(parent.title)}</button>`
+    return `<button class="detail-back" type="button" data-open-task="${parent.id}" data-from="${state.taskFrom || 'project'}">‹ ${esc(parent.title)}</button>`
   }
   if (state.taskFrom === 'all') return `<button class="detail-back" type="button" data-go="all">‹ 全部任务</button>`
   if (state.taskFrom === 'notices') return `<button class="detail-back" type="button" data-go="notices">‹ 待你处理</button>`
@@ -1203,12 +1263,12 @@ function ownerSection(t) {
 }
 
 function subtasksSection(t) {
-  if (t.parentId) return ''
   const children = (t.children || []).map(id => byId(id)).filter(Boolean)
+  if (t.parentId && !children.length) return ''
   if (doneStatus(t) && !children.length) return ''
   return `<div class="section">
     <div class="section-head2"><h3>子任务</h3><span class="count">${children.length}</span></div>
-    ${children.length ? children.map(c => `<button class="subtask-row" type="button" data-open-task="${c.id}" data-from="project">
+    ${children.length ? children.map(c => `<button class="subtask-row" type="button" data-open-task="${c.id}" data-from="${state.taskFrom || 'project'}">
       <span class="subtask-title">${esc(c.title)}</span>${chip(c.status)}<span class="subtask-owner">${esc(c.owner)}</span>
     </button>`).join('') : `<p class="body-text muted">没有拆子任务。需要拆解时，请负责人在执行中决定；视图不会自动造节点。</p>`}
     ${doneStatus(t) ? '' : `<button class="btn btn-outline btn-sm" type="button" data-modal="decompose" data-task="${t.id}">请负责人拆解</button>`}
@@ -1251,10 +1311,18 @@ function taskView() {
 
 function drawerContent() {
   const pending = pendingRoots()
-  if (!pending.length) return '<div class="drawer-empty">现在没有等你处理的事。<br>有新结果或需要你确认时会出现在这里。</div>'
+  const issueProjects = activeProjects().filter(p => p.ownerUnavailable)
+  if (!pending.length && !issueProjects.length) return '<div class="drawer-empty">现在没有等你处理的事。<br>有新结果或需要你确认时会出现在这里。</div>'
   const order = [...sortProjects(activeProjects()).map(p => p.id), null]
-  const groups = order.map(id => ({ id, tasks: pending.filter(t => (t.projectId || null) === id) })).filter(g => g.tasks.length)
-  return groups.map(g => `<div class="group-head"><span class="barline" aria-hidden="true"></span><span class="proj">${g.id ? esc(projectName(g.id)) : '未归入项目'}</span><span class="count">${g.tasks.length}</span></div>
+  const groups = order.map(id => ({ id, tasks: pending.filter(t => (t.projectId || null) === id) }))
+    .filter(g => g.tasks.length || (g.id && projectById(g.id)?.ownerUnavailable))
+  return groups.map(g => {
+    const p = g.id ? projectById(g.id) : null
+    const issue = p?.ownerUnavailable
+      ? `<article class="notice" data-kind="owner"><div class="notice-title">「${esc(p.name)}」的负责人配置不可用</div><div class="notice-what">配置的 profile 已停用或不存在；新任务不会静默回退。</div><div class="notice-consequence">修好后，之后的新任务才会使用；已有任务按各自的配置执行。</div><div class="notice-actions"><button class="btn btn-primary btn-sm" type="button" data-open-project="${p.id}" data-project-from="projects">查看项目</button></div></article>`
+      : ''
+    return `<div class="group-head"><span class="barline" aria-hidden="true"></span><span class="proj">${g.id ? esc(projectName(g.id)) : '未归入项目'}</span><span class="count">${g.tasks.length + (issue ? 1 : 0)}</span></div>
+    ${issue}
     ${g.tasks.map(t => {
       const meta = pendingTaskMeta(t)
       return `<article class="notice" data-kind="${t.pending}">
@@ -1264,7 +1332,8 @@ function drawerContent() {
         <div class="notice-consequence">${esc(meta.consequence)}</div>
         <div class="notice-actions"><button class="btn btn-primary btn-sm" type="button" data-modal="${meta.modal}" data-task="${t.id}">${meta.action}</button><button class="link" type="button" data-action="view-task" data-task="${t.id}">查看任务</button></div>
       </article>`
-    }).join('')}`).join('')
+    }).join('')}`
+  }).join('')
 }
 
 
@@ -1363,12 +1432,17 @@ function modalHtml() {
       `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="assign" data-task="${t.id}">归入项目</button>`)
   }
   if (m.type === 'project-settings' && p) {
+    const counts = projectCounts(p)
+    const blockedArchive = p.state === 'active' && (counts.open > 0 || counts.attention > 0)
+    const note = blockedArchive
+      ? `<p class="small">还有 ${counts.open} 个未结束任务 / ${counts.attention} 个待你处理；先处理或结束它们，再归档。归档不会隐藏待办。</p>`
+      : `<p class="small">换负责人不会改写已有任务；已有任务按各自的配置执行。</p>`
     return modalShell('项目设置', '项目只组织任务，不获得授权；负责人只影响之后的新任务。', `
       <div class="field"><label for="settings-name">项目名</label><input id="settings-name" value="${esc(p.name)}"></div>
       <div class="field"><label for="settings-goal">一句话目标</label><textarea id="settings-goal">${esc(p.goal)}</textarea></div>
       <div class="field"><label for="settings-owner">负责人</label><select id="settings-owner">${ownerOptions(p.owner)}</select></div>
-      <p class="small">换负责人不会改写已有任务；已有任务按各自的配置执行。</p>`,
-      `<button class="btn btn-outline" type="button" data-close="modal">取消</button>${p.state === 'active' ? `<button class="btn btn-danger" type="button" data-confirm="archive-project" data-project="${p.id}">归档项目</button>` : `<button class="btn btn-outline" type="button" data-confirm="restore-project" data-project="${p.id}">恢复项目</button>`}<button class="btn btn-primary" type="button" data-confirm="save-project" data-project="${p.id}">保存</button>`)
+      ${note}`,
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button>${p.state === 'active' ? `<button class="btn btn-danger" type="button" data-confirm="archive-project" data-project="${p.id}" ${blockedArchive ? 'disabled aria-disabled="true" title="还有未结束或待你处理的任务"' : ''}>归档项目</button>` : `<button class="btn btn-outline" type="button" data-confirm="restore-project" data-project="${p.id}">恢复项目</button>`}<button class="btn btn-primary" type="button" data-confirm="save-project" data-project="${p.id}">保存</button>`)
   }
   if (m.type === 'decompose' && t) {
     return modalShell(`请负责人拆解「${t.title}」`, '拆解由负责人决定；视图不会直接造子任务。', `
@@ -1478,7 +1552,7 @@ function renderAll(keepScroll = false) {
 
 function navigate(screen, opts = {}) {
   state.screen = screen
-  if (screen === 'project') state.projectId = opts.projectId || state.projectId
+  if (screen === 'project') { state.projectId = opts.projectId || state.projectId; state.projectFrom = opts.from || state.projectFrom || 'projects' }
   if (screen === 'task') {
     state.taskId = opts.taskId
     state.taskFrom = opts.from || null
@@ -1490,8 +1564,8 @@ function navigate(screen, opts = {}) {
   renderAll()
 }
 
-function openProject(id) {
-  navigate('project', { projectId: id })
+function openProject(id, from = 'projects') {
+  navigate('project', { projectId: id, from })
 }
 
 function openTask(id, from) {
@@ -1507,7 +1581,7 @@ function handleConfirm(action, taskId, projectId) {
     if (!name || !goal) { toast('项目名和一句话目标都要填。'); return }
     const profile = PROFILES.find(p => p.id === ownerId) || PROFILES[3]
     const id = `prj_${Date.now().toString(36)}`
-    projects.push({ id, name, goal, owner: profile.title, ownerRev: profile.rev, state: 'active', taskIds: [], lastActivity: '刚刚 · 项目已创建', sources: ['对话'] })
+    projects.push({ id, name, goal, owner: profile.title, ownerRev: profile.rev, state: 'active', taskIds: [], lastActivity: '刚刚 · 项目已创建', updatedAt: new Date().toISOString(), sources: ['对话'] })
     closeModal()
     navigate('project', { projectId: id })
     toast(`已创建「${name}」；告诉小助第一件要做的事。`)
@@ -1517,8 +1591,7 @@ function handleConfirm(action, taskId, projectId) {
     t.status = 'done'; t.pending = null; t.doneAt = '刚刚'; t.lastEvent = '刚刚 · 你验收了交付'; t.lastEventShort = '刚刚'
     t.next = '已结束。'
     ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: '验收通过；任务结束。' })
-    const p = t.projectId ? projectById(t.projectId) : null
-    if (p) p.lastActivity = `刚刚 · ${t.title}验收通过`
+    touchProject(t.projectId, `刚刚 · ${t.title}验收通过`)
     closeModal(); renderAll(); toast(`已验收「${t.title}」；任务结束。`)
     return
   }
@@ -1528,6 +1601,7 @@ function handleConfirm(action, taskId, projectId) {
     t.status = 'working'; t.pending = null; t.attentionAt = null; t.lastEvent = '刚刚 · 你退回了交付'; t.lastEventShort = '刚刚'
     t.next = '负责人会按你的退回说明修改，再交一次。'
     ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: `退回：${reason}` })
+    touchProject(t.projectId, `刚刚 · 退回了「${t.title}」`)
     closeModal(); renderAll(); toast(`已退回「${t.title}」；负责人会按说明修改。`)
     return
   }
@@ -1538,6 +1612,7 @@ function handleConfirm(action, taskId, projectId) {
     t.lastEvent = '刚刚 · 你回答了问题'; t.lastEventShort = '刚刚'
     t.next = '负责人会按你的回答继续；有结果再通知你。'
     ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: `回答：${answer}` })
+    touchProject(t.projectId, `刚刚 · 回答了「${t.title}」`)
     closeModal(); renderAll(); toast(`回答已发给负责人；「${t.title}」继续。`)
     return
   }
@@ -1546,6 +1621,7 @@ function handleConfirm(action, taskId, projectId) {
     t.lastEvent = '刚刚 · 你重试了任务'; t.lastEventShort = '刚刚'
     t.next = '负责人会重新开始；有结果或再次失败会通知你。'
     ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: '重试任务；负责人重新开始。' })
+    touchProject(t.projectId, `刚刚 · 重试了「${t.title}」`)
     closeModal(); renderAll(); toast(`已重试「${t.title}」；负责人会重新开始。`)
     return
   }
@@ -1554,6 +1630,7 @@ function handleConfirm(action, taskId, projectId) {
     t.lastEvent = '刚刚 · 你停止了任务'; t.lastEventShort = '刚刚'
     t.summary = '按你的要求停止；没有继续。'; t.next = '已停止。'
     ;(t.reports = t.reports || []).push({ who: '你', at: '刚刚', what: '停止任务；不再继续。' })
+    touchProject(t.projectId, `刚刚 · 停止了「${t.title}」`)
     closeModal(); renderAll(); toast(`已停止「${t.title}」。`)
     return
   }
@@ -1567,7 +1644,7 @@ function handleConfirm(action, taskId, projectId) {
     t.projectId = nextId
     const p = projectById(nextId)
     if (p && !p.taskIds.includes(t.id)) p.taskIds.push(t.id)
-    if (p) p.lastActivity = `刚刚 · 归入了「${t.title}」`
+    if (p) { p.lastActivity = `刚刚 · 归入了「${t.title}」`; p.updatedAt = new Date().toISOString() }
     closeModal(); renderAll(); toast(`已把「${t.title}」归入「${p?.name || '项目'}」。`)
     return
   }
@@ -1579,22 +1656,27 @@ function handleConfirm(action, taskId, projectId) {
     const ownerId = document.getElementById('settings-owner')?.value
     if (!name || !goal) { toast('项目名和一句话目标都要填。'); return }
     const profile = PROFILES.find(item => item.id === ownerId) || PROFILES[3]
-    p.name = name; p.goal = goal; p.owner = profile.title; p.ownerRev = profile.rev
+    p.name = name; p.goal = goal; p.owner = profile.title; p.ownerRev = profile.rev; p.updatedAt = new Date().toISOString()
     closeModal(); renderAll(); toast('项目设置已保存；负责人只影响之后的新任务。')
     return
   }
   if (action === 'archive-project' && projectId) {
     const p = projectById(projectId)
     if (!p) return
-    p.state = 'archived'; p.lastActivity = '刚刚 · 已归档'
+    const counts = projectCounts(p)
+    if (counts.open > 0 || counts.attention > 0) {
+      toast('还有未结束或待你处理的任务；先处理或结束它们，归档不会隐藏待办。')
+      closeModal(); renderAll(); return
+    }
+    p.state = 'archived'; p.lastActivity = '刚刚 · 已归档'; p.updatedAt = new Date().toISOString()
     closeModal(); navigate('projects'); toast(`已归档「${p.name}」；任务和交付物都还在。`)
     return
   }
   if (action === 'restore-project' && projectId) {
     const p = projectById(projectId)
     if (!p) return
-    p.state = 'active'; p.lastActivity = '刚刚 · 已恢复'
-    closeModal(); navigate('project', { projectId }); toast(`已恢复「${p.name}」。`)
+    p.state = 'active'; p.lastActivity = '刚刚 · 已恢复'; p.updatedAt = new Date().toISOString()
+    closeModal(); navigate('project', { projectId, from: 'projects' }); toast(`已恢复「${p.name}」。`)
     return
   }
   if (action === 'decompose' && t) {
@@ -1647,7 +1729,7 @@ document.addEventListener('click', event => {
     openModal(el.dataset.modal, el.dataset.task, el.dataset.project)
     return
   }
-  if (el.dataset.openProject) { event.preventDefault(); openProject(el.dataset.openProject); return }
+  if (el.dataset.openProject) { event.preventDefault(); openProject(el.dataset.openProject, el.dataset.projectFrom || 'projects'); return }
   if (el.dataset.openTask) { event.preventDefault(); openTask(el.dataset.openTask, el.dataset.from); return }
   if (el.dataset.filter) {
     event.preventDefault()
