@@ -261,6 +261,9 @@ body.layout-wide .project-columns { display: grid; grid-template-columns: minmax
 .filter:hover { background: #f3f3f1; }
 .filter[aria-pressed="true"] { background: #f1f1ef; border-color: #e3e3df; color: #1f1f1f; font-weight: 550; }
 .filter .n { color: #9a9a9a; margin-left: 3px; font-variant-numeric: tabular-nums; }
+.project-filter { display: flex; align-items: center; gap: 4px; margin: 2px 0 10px; }
+.project-filter .filter { border-color: var(--line); background: #fff; }
+.project-filter .filter[aria-pressed="true"] { background: #f1f1ef; }
 .search-wrap { flex: 1 1 160px; min-width: 120px; }
 .search { width: 100%; height: 28px; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 0 9px; font-size: 11.5px; color: #1f1f1f; outline: none; }
 .search:focus { border-color: #b9b9b3; }
@@ -461,7 +464,7 @@ body.clean .proto-guide { display: none; }
       <div class="msg-assistant">
         <div class="msg-name"><svg class="spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/></svg>小助</div>
         <p><b>A 系统开发</b>有 2 件在等你：<b>支付接入</b>等你验收，<b>数据迁移</b>等你确认历史订单保留年限。其余任务在正常推进。</p>
-        <p class="msg-quiet">负责人是开发负责人；支付接入由支付负责人执行，交付物和 2 条验收条件已经就绪。</p>
+        <p class="msg-quiet">项目负责 worker 是开发负责人；支付接入的任务负责人是支付负责人；交付物和 2 条验收条件已经就绪。</p>
         <div class="msg-actions">
           <button class="btn btn-outline btn-sm" type="button" data-open-task="a2">查看支付接入</button>
           <button class="btn btn-ghost btn-sm" type="button" data-go="notices">打开待办</button>
@@ -470,7 +473,7 @@ body.clean .proto-guide { display: none; }
       <div class="msg-user">先看项目，不要先给我一长串任务。</div>
       <div class="msg-assistant">
         <div class="msg-name"><svg class="spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/></svg>小助</div>
-        <p>可以。右侧「任务」默认就是项目列表；每个项目先显示目标、负责人和“有没有在等我”。点进去才是任务树。</p>
+        <p>可以。右侧「任务」默认就是项目列表；每个项目先显示目标、负责 worker 和“有没有在等我”。点进去才是任务树。</p>
         <p class="msg-quiet">项目不是一次任务；A 系统开发会一直在，直到你归档它。</p>
       </div>
     </div>
@@ -535,8 +538,8 @@ const projects = [
   },
   {
     id: 'd', name: 'D 旧站下线', goal: '把旧官网下线，保留归档和跳转。',
-    owner: '默认执行配置', ownerRev: null, state: 'archived',
-    taskIds: ['d1', 'd2'], lastActivity: '9 月 28 日 · 已归档', updatedAt: '2026-09-28T18:00:00+08:00', sources: ['对话'],
+    owner: '运维负责人', ownerRev: 1, state: 'archived',
+    taskIds: ['d1', 'd2'], lastActivity: '9 月 28 日 · 归档；跳转规则仍待验收', updatedAt: '2026-09-28T18:00:00+08:00', sources: ['对话'],
   },
 ]
 
@@ -765,15 +768,19 @@ const tasks = {
 
   d1: {
     id: 'd1', projectId: 'd', title: '旧站归档', status: 'done', doneAt: '9 月 26 日',
-    owner: '默认执行配置', ownerRev: null, goal: '把旧站内容打包归档。',
+    owner: '运维负责人', ownerRev: 1, goal: '把旧站内容打包归档。',
     lastEvent: '9 月 26 日 · 任务完成', lastEventShort: '9 月 26 日', source: '对话',
     summary: '旧站内容已归档到冷存储。', next: '已结束。',
   },
   d2: {
-    id: 'd2', projectId: 'd', title: '跳转规则', status: 'stopped',
-    owner: '默认执行配置', ownerRev: null, goal: '为旧链接配置跳转。',
-    lastEvent: '9 月 28 日 · 已停止', lastEventShort: '9 月 28 日', source: '对话',
-    summary: '按你的要求停止；没有继续。', next: '已停止。',
+    id: 'd2', projectId: 'd', title: '跳转规则', status: 'review', pending: 'review',
+    owner: '运维负责人', ownerRev: 1, goal: '为旧链接配置跳转。',
+    lastEvent: '9 月 28 日 · 交付已就绪，等你验收', lastEventShort: '9 月 28 日', source: '对话',
+    summary: '旧链接跳转规则已按清单配好；归档项目里这条仍等你验收。',
+    next: '等你验收；不处理会一直停在这里。',
+    deliverables: [{ name: 'redirects.csv', meta: '312 条旧链接 · 2 KB' }],
+    criteria: [{ kind: '规则', text: '312 条旧链接都返回目标页；没有 404。' }],
+    reports: [{ who: '运维负责人', at: '9 月 28 日', what: '交付跳转规则；项目先归档，待办不隐藏。' }],
   },
 }
 
@@ -804,8 +811,12 @@ const activeProjects = () => projects.filter(p => p.state === 'active')
 const projectRoots = p => p.taskIds.map(id => tasks[id]).filter(Boolean)
 const projectTasks = p => projectRoots(p).flatMap(t => [t, ...(t.children || []).map(id => tasks[id]).filter(Boolean)])
 const unassignedRoots = () => Object.values(tasks).filter(t => !t.parentId && !t.projectId)
-const rootTasks = () => [...activeProjects().flatMap(projectRoots), ...unassignedRoots()]
+const rootTasks = () => [...projects.flatMap(projectRoots), ...unassignedRoots()]
 const projectName = id => projectById(id)?.name || '未归入项目'
+const projectLabel = id => {
+  const p = projectById(id)
+  return p ? `${p.name}${p.state === 'archived' ? '（已归档）' : ''}` : '未归入项目'
+}
 
 // Mirrors the shipped attentionFor: a live root's own person stage counts; a blocked/failed root is a person
 // decision even if the worker is still around, while a blocked child with a living ancestor owner stays quiet.
@@ -928,10 +939,11 @@ function focusRows(list, options = {}) {
   return list.map(t => {
     const kind = attentionKind(t)
     const meta = pendingTaskMeta(t, kind)
+    const from = options.from === 'projects' && projectById(t.projectId)?.state === 'archived' ? 'archived' : (options.from || 'project')
     return `<div class="focus-row">
       <span class="chip ${kind === 'review' ? 'review' : kind === 'answer' ? 'answer' : 'blocked'} mini">${meta.tag}</span>
-      <button class="link focus-task" type="button" data-open-task="${t.id}" data-from="${options.from || 'project'}">${esc(t.title)}</button>
-      ${options.hideProject ? '' : `<span class="focus-project">${esc(projectName(t.projectId))}</span>`}
+      <button class="link focus-task" type="button" data-open-task="${t.id}" data-from="${from}">${esc(t.title)}</button>
+      ${options.hideProject ? '' : `<span class="focus-project">${esc(projectLabel(t.projectId))}</span>`}
       <span class="time">${esc(t.attentionAt || t.lastEvent)}</span>
       ${options.hideAction ? '' : `<button class="go" type="button" data-modal="${meta.modal}" data-task="${t.id}">${meta.action}</button>`}
     </div>`
@@ -939,13 +951,13 @@ function focusRows(list, options = {}) {
 }
 
 function focusStrip(list = pendingRoots()) {
-  const issues = activeProjects().filter(p => p.ownerUnavailable)
+  const issues = projects.filter(p => p.ownerUnavailable)
   const total = list.length + issues.length
   if (!total) return `<div class="focus empty">
     <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">0</span></div>
     <div class="focus-empty">现在没有等你处理的事。有新结果或需要你确认时会出现在这里。</div>
   </div>`
-  const issueRows = issues.map(p => `<div class="focus-row"><span class="chip review mini">处理</span><button class="link focus-task" type="button" data-open-project="${p.id}" data-project-from="projects">修「${esc(p.name)}」负责人配置</button><span class="focus-project">项目</span></div>`).join('')
+  const issueRows = issues.map(p => `<div class="focus-row"><span class="chip review mini">处理</span><button class="link focus-task" type="button" data-open-project="${p.id}" data-project-from="${p.state === 'archived' ? 'archived' : 'projects'}">修「${esc(p.name)}」负责 worker</button><span class="focus-project">${p.state === 'archived' ? '已归档' : '项目'}</span></div>`).join('')
   const taskRows = focusRows(list.slice(0, Math.max(0, 4 - issues.length)), { from: 'projects' })
   return `<div class="focus">
     <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">${total}</span><button class="focus-all" type="button" data-go="notices">全部 ${total}</button></div>
@@ -970,9 +982,9 @@ function projectCard(p, from = 'projects') {
   return `<article class="project-card" data-open-project="${p.id}" data-project-from="${from}" data-attention="${counts.attention > 0}">
     <div class="card-top"><button class="card-name" type="button" data-open-project="${p.id}" data-project-from="${from}" aria-label="打开项目 ${esc(p.name)}">${esc(p.name)}</button>${projectChip(p)}</div>
     <p class="card-goal" title="${esc(p.goal)}">${esc(p.goal)}</p>
-    <div class="card-meta">${avatar(p.owner)}<span class="owner" title="项目负责人只约束之后的新任务；已有任务按各自的配置执行">负责人 ${esc(projectOwner(p))}</span><span class="card-progress">${counts.total ? `${counts.done}/${counts.total} 顶层任务完成` : ''}</span></div>
+    <div class="card-meta">${avatar(p.owner)}<span class="owner" title="项目负责 worker 负责协调与拆任务；任务负责人是实际执行者">负责 worker ${esc(projectOwner(p))}</span><span class="card-progress">${counts.total ? `${counts.done}/${counts.total} 顶层任务完成` : ''}</span></div>
     ${counts.total ? `<div class="bar" aria-hidden="true"><i style="width:${pct(counts.done, counts.total)}%"></i></div>` : ''}
-    ${projectPendingLine(p) || `<div class="card-note">${counts.total ? '现在不需要你 · 负责人推进中' : '还没有任务；先告诉小助第一件事'}</div>`}
+    ${projectPendingLine(p) || `<div class="card-note">${counts.total ? '现在不需要你 · 负责 worker 推进中' : '还没有任务；先告诉小助第一件事'}</div>`}
     ${blocked ? `<div class="card-blocked" title="${esc(blocked.blocker)}">阻塞：${esc(blocked.blocker)}</div>` : ''}
     <div class="card-foot"><span class="last">${esc(p.lastActivity)}</span><span class="src">${p.sources.map(s => `<span class="src-chip">${esc(s)}</span>`).join('')}</span></div>
   </article>`
@@ -993,7 +1005,7 @@ function projectsView() {
   const active = sortProjects(activeProjects())
   const archived = projects.filter(p => p.state === 'archived')
   return `<div class="page-head">
-    <div><h1 class="page-title">项目</h1><p class="page-sub">先看项目，再看每个项目里的任务。项目负责人只约束之后的新任务；已有任务按各自的配置执行。</p></div>
+    <div><h1 class="page-title">项目</h1><p class="page-sub">项目由主会话识别，绑定负责 worker；负责 worker 协调并拆任务，任务负责人执行。归档只影响默认列表，不影响任务和待办。</p></div>
     <div class="page-actions">
       <button class="btn btn-ghost btn-sm wide-only" type="button" data-toast="原型：会回到主对话。">返回主对话</button>
       <button class="btn btn-ghost btn-sm" type="button" data-go="all">全部任务</button>
@@ -1001,22 +1013,25 @@ function projectsView() {
     </div>
   </div>
   ${focusStrip()}
+  <div class="project-filter" role="tablist" aria-label="项目归档过滤">
+    <button class="filter" type="button" role="tab" aria-pressed="true" data-go="projects">未归档 <span class="n">${active.length}</span></button>
+    <button class="filter" type="button" role="tab" aria-pressed="false" data-go="archived">已归档 <span class="n">${archived.length}</span></button>
+  </div>
   <div class="projects">${active.map(projectCard).join('')}</div>
-  ${unassignedSection()}
-  ${archived.length ? `<div class="archived-line"><button class="link" type="button" data-go="archived">已归档 ${archived.length} 个项目</button></div>` : ''}`
+  ${unassignedSection()}`
 }
 
 function detailFocus(p) {
-  if (p.ownerUnavailable) return `<div class="note"><b>项目负责人配置不可用。</b><br>先修负责人配置，之后的新任务才会使用它；已有任务按各自的配置执行。</div>`
-  if (!p.taskIds.length) return `<div class="note"><b>项目已创建，还没有任务。</b><br>先告诉小助这个项目要推进的第一件事；新任务受理后会出现在这里。</div>`
+  if (p.ownerUnavailable) return `<div class="note"><b>项目负责 worker 不可用。</b><br>先修负责 worker 配置，之后的新任务才会使用它；已有任务按各自的配置执行。</div>`
+  if (!p.taskIds.length) return `<div class="note"><b>项目已创建，还没有任务。</b><br>主会话识别到第一件事后会派给项目负责 worker；新任务受理后出现在这里。</div>`
   const list = attentionRoots(projectRoots(p))
   if (!list.length) {
-    if (p.state === 'archived') return `<div class="note">项目已归档；任务和交付物都保留，恢复后继续。</div>`
+    if (p.state === 'archived') return `<div class="note">项目已归档；任务、交付物和待办都保留，恢复后回到默认列表。</div>`
     const blocked = projectTasks(p).filter(t => t.status === 'blocked')
     if (blocked.length) {
       return `<div class="note"><b>有 ${blocked.length} 个任务被阻塞，负责人处理中。</b><br>${esc(blocked[0].blocker || '阻塞原因见任务行。')} 现在不需要你。</div>`
     }
-    return `<div class="note">现在不需要你。负责人会继续推进；有结果或需要你决定时会通知你。</div>`
+    return `<div class="note">现在不需要你。负责 worker 会继续推进；有结果或需要你决定时会通知你。</div>`
   }
   return `<div class="focus detail-focus">
     <div class="focus-head"><span class="focus-title">等你处理</span><span class="focus-count">${list.length}</span></div>
@@ -1081,7 +1096,7 @@ function activitySection(p) {
     ['今天 09:30', '住处候选', '新增 2 个可取消候选'],
     ['昨天', '预算', '任务完成'],
   ] : p.id === 'd' ? [
-    ['9 月 28 日', '跳转规则', '按你的要求停止'],
+    ['9 月 28 日', '跳转规则', '交付已就绪，等你验收'],
     ['9 月 26 日', '旧站归档', '任务完成'],
   ] : []
   return `<div class="section-head"><h3>最近活动</h3><span class="count">${items.length}</span></div>
@@ -1105,7 +1120,7 @@ function projectView() {
   return `${back}
   <div class="detail-title-row"><h1 class="detail-title">${esc(p.name)}</h1>${projectChip(p)}</div>
   <p class="detail-goal">${esc(p.goal)}</p>
-  <div class="detail-meta">${avatar(p.owner)}<span>负责人 ${esc(projectOwner(p))}</span><span class="dotsep">·</span><span>${counts.total ? `${counts.total} 个顶层任务 · ${counts.done}/${counts.total} 完成` : '还没有任务'}</span><span class="dotsep">·</span><span>${p.state === 'archived' ? esc(p.lastActivity) : esc(p.lastActivity.split(' · ')[0]) + ' 更新'}</span><button class="btn btn-ghost btn-sm more" type="button" data-modal="project-settings" data-project="${p.id}">更多</button></div>
+  <div class="detail-meta">${avatar(p.owner)}<span>负责 worker ${esc(projectOwner(p))}</span><span class="dotsep">·</span><span>${counts.total ? `${counts.total} 个顶层任务 · ${counts.done}/${counts.total} 完成` : '还没有任务'}</span><span class="dotsep">·</span><span>${p.state === 'archived' ? esc(p.lastActivity) : esc(p.lastActivity.split(' · ')[0]) + ' 更新'}</span><button class="btn btn-ghost btn-sm more" type="button" data-modal="project-settings" data-project="${p.id}">更多</button></div>
   ${detailFocus(p)}
   <div class="project-columns">
     <div class="project-main">
@@ -1135,7 +1150,7 @@ function filterRoots() {
 function flatRow(t) {
   return `<button class="flat-row ${attentionKind(t) ? 'pending' : ''}" type="button" data-open-task="${t.id}" data-from="all">
     ${chip(t.status)}
-    <span class="flat-main"><span class="flat-title">${esc(t.title)}</span><span class="flat-meta"><span>${esc(projectName(t.projectId))}</span><span class="dotsep">·</span><span>${esc(taskOwner(t))}</span></span></span>
+    <span class="flat-main"><span class="flat-title">${esc(t.title)}</span><span class="flat-meta"><span>${esc(projectLabel(t.projectId))}</span><span class="dotsep">·</span><span>${esc(taskOwner(t))}</span></span></span>
     <span class="flat-time">${esc(t.lastEventShort || '')}</span>
   </button>`
 }
@@ -1171,15 +1186,19 @@ function unassignedView() {
     <button class="ua-action" type="button" data-modal="assign" data-task="${t.id}">归入项目</button>
     ${attentionKind(t) === 'retry' ? `<button class="ua-action" type="button" data-modal="retry" data-task="${t.id}">处理</button>` : ''}
   </div>`).join('')}</div>` : '<div class="empty-list">没有未归入的任务。现有任务都已经在项目里。</div>'}
-  <div class="section" style="margin-top:14px"><p class="body-text muted">提示：项目由你或小助显式创建；系统不会按标题、来源或计划编号自动把任务归进项目。</p></div>`
+  <div class="section" style="margin-top:14px"><p class="body-text muted">提示：项目由主会话识别或你明确创建；系统不会按标题、来源或计划编号自动把任务归进项目。</p></div>`
 }
 
 function archivedView() {
   const list = projects.filter(p => p.state === 'archived')
   return `<button class="detail-back" type="button" data-go="projects">‹ 项目</button>
   <h1 class="page-title">已归档</h1>
-  <p class="page-sub">归档只把项目移出默认列表；任务、交付物和来源都还在。</p>
-  <div class="projects" style="margin-top:12px">${list.map(p => projectCard(p, 'archived')).join('')}</div>`
+  <p class="page-sub">归档只把项目移出默认列表；任务、交付物、来源和待办都还在。</p>
+  <div class="project-filter" role="tablist" aria-label="项目归档过滤">
+    <button class="filter" type="button" role="tab" aria-pressed="false" data-go="projects">未归档 <span class="n">${activeProjects().length}</span></button>
+    <button class="filter" type="button" role="tab" aria-pressed="true" data-go="archived">已归档 <span class="n">${list.length}</span></button>
+  </div>
+  <div class="projects">${list.map(p => projectCard(p, 'archived')).join('')}</div>`
 }
 
 function taskBack(t) {
@@ -1252,12 +1271,12 @@ function ownerSection(t) {
   return `<div class="section">
     <div class="section-head2"><h3>谁在做</h3></div>
     <div class="owner-grid">
-      <div class="owner-cell"><div class="k">执行负责人</div><div class="v">${avatar(t.owner)}<span>${esc(taskOwner(t))}</span></div></div>
-      ${parent ? `<div class="owner-cell"><div class="k">上级负责人</div><div class="v">${avatar(parent.owner)}<span>${esc(taskOwner(parent))}</span></div></div>`
-        : project ? `<div class="owner-cell"><div class="k">项目负责人</div><div class="v">${avatar(project.owner)}<span>${esc(projectOwner(project))}</span></div></div>`
+      <div class="owner-cell"><div class="k">任务负责人</div><div class="v">${avatar(t.owner)}<span>${esc(taskOwner(t))}</span></div></div>
+      ${parent ? `<div class="owner-cell"><div class="k">上级任务负责人</div><div class="v">${avatar(parent.owner)}<span>${esc(taskOwner(parent))}</span></div></div>`
+        : project ? `<div class="owner-cell"><div class="k">项目负责 worker</div><div class="v">${avatar(project.owner)}<span>${esc(projectOwner(project))}</span></div></div>`
         : `<div class="owner-cell"><div class="k">项目</div><div class="v"><span>未归入项目</span></div></div>`}
     </div>
-    ${project && !parent ? `<p class="subtask-note">项目负责人是之后新任务的默认配置；这个任务按自己的配置执行。</p>` : ''}
+    ${project && !parent ? `<p class="subtask-note">项目负责 worker 负责项目协调与拆任务；这个任务按自己的任务负责人执行。</p>` : ''}
     ${!t.ownerRev ? `<p class="subtask-note">历史任务没有负责人配置；按部署默认执行。</p>` : ''}
   </div>`
 }
@@ -1291,7 +1310,7 @@ function taskView() {
   return `${taskBack(t)}
   <div class="detail-title-row"><h1 class="detail-title">${esc(t.title)}</h1>${chip(t.status)}${parent ? '<span class="chip queued">子任务</span>' : ''}</div>
   <p class="detail-goal">${esc(t.goal || '')}</p>
-  <div class="detail-meta">${avatar(t.owner)}<span>执行负责人 ${esc(taskOwner(t))}</span><span class="dotsep">·</span><span>${esc(project ? projectName(project.id) : '未归入项目')}</span><span class="dotsep">·</span><span>${esc(t.source || '对话')}</span></div>
+  <div class="detail-meta">${avatar(t.owner)}<span>任务负责人 ${esc(taskOwner(t))}</span><span class="dotsep">·</span><span>${esc(project ? projectName(project.id) : '未归入项目')}</span><span class="dotsep">·</span><span>${esc(t.source || '对话')}</span></div>
   ${decisionFor(t)}
   ${resultSection(t)}
   ${!t.pending && !['blocked', 'waiting', 'done', 'stopped'].includes(t.status) ? `<div class="section"><div class="section-head2"><h3>下一步</h3></div><p class="body-text">${esc(t.next || '负责人会继续推进。')}</p></div>` : ''}
@@ -1313,15 +1332,16 @@ function drawerContent() {
   const pending = pendingRoots()
   const issueProjects = activeProjects().filter(p => p.ownerUnavailable)
   if (!pending.length && !issueProjects.length) return '<div class="drawer-empty">现在没有等你处理的事。<br>有新结果或需要你确认时会出现在这里。</div>'
-  const order = [...sortProjects(activeProjects()).map(p => p.id), null]
+  const pendingArchived = projects.filter(p => p.state === 'archived' && (attentionRoots(projectRoots(p)).length || p.ownerUnavailable))
+  const order = [...sortProjects(activeProjects()).map(p => p.id), ...pendingArchived.map(p => p.id), null]
   const groups = order.map(id => ({ id, tasks: pending.filter(t => (t.projectId || null) === id) }))
     .filter(g => g.tasks.length || (g.id && projectById(g.id)?.ownerUnavailable))
   return groups.map(g => {
     const p = g.id ? projectById(g.id) : null
     const issue = p?.ownerUnavailable
-      ? `<article class="notice" data-kind="owner"><div class="notice-title">「${esc(p.name)}」的负责人配置不可用</div><div class="notice-what">配置的 profile 已停用或不存在；新任务不会静默回退。</div><div class="notice-consequence">修好后，之后的新任务才会使用；已有任务按各自的配置执行。</div><div class="notice-actions"><button class="btn btn-primary btn-sm" type="button" data-open-project="${p.id}" data-project-from="projects">查看项目</button></div></article>`
+      ? `<article class="notice" data-kind="owner"><div class="notice-title">「${esc(p.name)}」的负责人配置不可用</div><div class="notice-what">配置的 profile 已停用或不存在；新任务不会静默回退。</div><div class="notice-consequence">修好后，之后的新任务才会使用；已有任务按各自的配置执行。</div><div class="notice-actions"><button class="btn btn-primary btn-sm" type="button" data-open-project="${p.id}" data-project-from="${p.state === 'archived' ? 'archived' : 'projects'}">查看项目</button></div></article>`
       : ''
-    return `<div class="group-head"><span class="barline" aria-hidden="true"></span><span class="proj">${g.id ? esc(projectName(g.id)) : '未归入项目'}</span><span class="count">${g.tasks.length + (issue ? 1 : 0)}</span></div>
+    return `<div class="group-head"><span class="barline" aria-hidden="true"></span><span class="proj">${g.id ? esc(projectLabel(g.id)) : '未归入项目'}</span><span class="count">${g.tasks.length + (issue ? 1 : 0)}</span></div>
     ${issue}
     ${g.tasks.map(t => {
       const meta = pendingTaskMeta(t)
@@ -1341,6 +1361,7 @@ const PROFILES = [
   { id: 'dev-owner', title: '开发负责人', rev: 2 },
   { id: 'hw-owner', title: '硬件负责人', rev: 1 },
   { id: 'travel-owner', title: '行程负责人', rev: 1 },
+  { id: 'ops-owner', title: '运维负责人', rev: 1 },
   { id: 'default', title: '默认执行配置', rev: null },
 ]
 
@@ -1384,11 +1405,11 @@ function modalHtml() {
     </div>`, '')
   }
   if (m.type === 'create-project') {
-    return modalShell('新建项目', '项目是一条持续的工作线；不是一次任务。', `
+    return modalShell('新建项目（人工补建）', '主路径是主会话识别项目并绑定负责 worker；这里用于人工补建/演示。', `
       <div class="field"><label for="project-name">项目名</label><input id="project-name" placeholder="例如 A 系统开发"></div>
       <div class="field"><label for="project-goal">一句话目标</label><textarea id="project-goal" placeholder="这个项目要做到什么？一句话就够。"></textarea></div>
-      <div class="field"><label for="project-owner">负责人（之后新任务的默认配置）</label><select id="project-owner">${ownerOptions('开发负责人')}</select></div>
-      <p class="small">项目不会获得授权，也不能批准；它只组织根任务。已有任务可以之后归入。</p>`,
+      <div class="field"><label for="project-owner">负责 worker（协调项目/拆任务，不是所有任务的执行者）</label><select id="project-owner">${ownerOptions('开发负责人')}</select></div>
+      <p class="small">项目是 Ticket 的容器层，不执行、不批准；负责 worker 可创建任务并指派其他 worker。已有任务可以之后归入。</p>`,
       `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="create-project">创建项目</button>`)
   }
   if (m.type === 'review' && t) {
@@ -1432,17 +1453,15 @@ function modalHtml() {
       `<button class="btn btn-outline" type="button" data-close="modal">取消</button><button class="btn btn-primary" type="button" data-confirm="assign" data-task="${t.id}">归入项目</button>`)
   }
   if (m.type === 'project-settings' && p) {
-    const counts = projectCounts(p)
-    const blockedArchive = p.state === 'active' && (counts.open > 0 || counts.attention > 0)
-    const note = blockedArchive
-      ? `<p class="small">还有 ${counts.open} 个未结束任务 / ${counts.attention} 个待你处理；先处理或结束它们，再归档。归档不会隐藏待办。</p>`
-      : `<p class="small">换负责人不会改写已有任务；已有任务按各自的配置执行。</p>`
-    return modalShell('项目设置', '项目只组织任务，不获得授权；负责人只影响之后的新任务。', `
+    const note = p.state === 'active'
+      ? `<p class="small">归档只把项目移出默认列表；任务、交付物和待办都保留。未结束任务不会因归档停止，归档项目的待办仍在“待你处理”。换负责 worker 只影响之后的新任务。</p>`
+      : `<p class="small">已归档；恢复后回到默认列表。任务、交付物和待办都保留。换负责 worker 只影响之后的新任务。</p>`
+    return modalShell('项目设置', '项目只组织任务，不获得授权；负责 worker 负责协调与拆任务，不是所有任务的执行者。', `
       <div class="field"><label for="settings-name">项目名</label><input id="settings-name" value="${esc(p.name)}"></div>
       <div class="field"><label for="settings-goal">一句话目标</label><textarea id="settings-goal">${esc(p.goal)}</textarea></div>
-      <div class="field"><label for="settings-owner">负责人</label><select id="settings-owner">${ownerOptions(p.owner)}</select></div>
+      <div class="field"><label for="settings-owner">负责 worker</label><select id="settings-owner">${ownerOptions(p.owner)}</select></div>
       ${note}`,
-      `<button class="btn btn-outline" type="button" data-close="modal">取消</button>${p.state === 'active' ? `<button class="btn btn-danger" type="button" data-confirm="archive-project" data-project="${p.id}" ${blockedArchive ? 'disabled aria-disabled="true" title="还有未结束或待你处理的任务"' : ''}>归档项目</button>` : `<button class="btn btn-outline" type="button" data-confirm="restore-project" data-project="${p.id}">恢复项目</button>`}<button class="btn btn-primary" type="button" data-confirm="save-project" data-project="${p.id}">保存</button>`)
+      `<button class="btn btn-outline" type="button" data-close="modal">取消</button>${p.state === 'active' ? `<button class="btn btn-danger" type="button" data-confirm="archive-project" data-project="${p.id}">归档项目</button>` : `<button class="btn btn-outline" type="button" data-confirm="restore-project" data-project="${p.id}">恢复项目</button>`}<button class="btn btn-primary" type="button" data-confirm="save-project" data-project="${p.id}">保存</button>`)
   }
   if (m.type === 'decompose' && t) {
     return modalShell(`请负责人拆解「${t.title}」`, '拆解由负责人决定；视图不会直接造子任务。', `
@@ -1484,7 +1503,7 @@ function toast(message) {
 }
 
 function updateFab() {
-  const n = pendingRoots().length + activeProjects().filter(p => p.ownerUnavailable).length
+  const n = pendingRoots().length + projects.filter(p => p.ownerUnavailable).length
   const fab = document.getElementById('notice-fab')
   fab.hidden = n === 0 || state.screen === 'projects'
   document.getElementById('fab-label').textContent = n ? `${n} 条待处理` : '没有待处理'
@@ -1494,7 +1513,7 @@ function updateFab() {
 }
 
 function renderDrawer() {
-  const n = pendingRoots().length + activeProjects().filter(p => p.ownerUnavailable).length
+  const n = pendingRoots().length + projects.filter(p => p.ownerUnavailable).length
   document.getElementById('drawer-count').textContent = String(n)
   document.getElementById('drawer-body').innerHTML = drawerContent()
 }
@@ -1657,19 +1676,14 @@ function handleConfirm(action, taskId, projectId) {
     if (!name || !goal) { toast('项目名和一句话目标都要填。'); return }
     const profile = PROFILES.find(item => item.id === ownerId) || PROFILES[3]
     p.name = name; p.goal = goal; p.owner = profile.title; p.ownerRev = profile.rev; p.updatedAt = new Date().toISOString()
-    closeModal(); renderAll(); toast('项目设置已保存；负责人只影响之后的新任务。')
+    closeModal(); renderAll(); toast('项目设置已保存；负责 worker 只影响之后的新任务。')
     return
   }
   if (action === 'archive-project' && projectId) {
     const p = projectById(projectId)
     if (!p) return
-    const counts = projectCounts(p)
-    if (counts.open > 0 || counts.attention > 0) {
-      toast('还有未结束或待你处理的任务；先处理或结束它们，归档不会隐藏待办。')
-      closeModal(); renderAll(); return
-    }
     p.state = 'archived'; p.lastActivity = '刚刚 · 已归档'; p.updatedAt = new Date().toISOString()
-    closeModal(); navigate('projects'); toast(`已归档「${p.name}」；任务和交付物都还在。`)
+    closeModal(); navigate('projects'); toast(`已归档「${p.name}」；任务、交付物和待办都还在，可在已归档查看。`)
     return
   }
   if (action === 'restore-project' && projectId) {
