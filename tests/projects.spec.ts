@@ -184,6 +184,9 @@ describe('project tickets and hierarchy', () => {
     const limited = harness()
     const project = limited.repo.tickets.get(limited.project({ capabilities: ['create-task'] }).ticketId!)!
     const task = limited.engine.admitProjectTask(project.id, { title: 'Task', idempotencyKey: 't1' }, coordinator(project.id))
+    // create-task may use the project owner, but choosing another owner is an assignment and needs assign-worker.
+    expect(() => limited.engine.admitProjectTask(project.id, { title: 'Other owner', ownerProfileId: 'other-worker',
+      idempotencyKey: 't2' }, coordinator(project.id))).toThrow(expect.objectContaining({ code: 'projectCapabilityMissing' }))
     expect(() => limited.engine.assignProjectTask(project.id, task.id, ownerProfile, coordinator(project.id)))
       .toThrow(expect.objectContaining({ code: 'projectCapabilityMissing' }))
     const other = limited.repo.tickets.get(limited.accept({ project: { goal: 'Other project', ownerProfileId: ownerProfile,
@@ -193,6 +196,17 @@ describe('project tickets and hierarchy', () => {
       .toThrow(expect.objectContaining({ code: 'taskNotInProject' }))
     expect(() => limited.engine.assignProjectTask(project.id, task.id, 'missing-profile', coordinator(project.id)))
       .toThrow(expect.objectContaining({ code: 'projectCapabilityMissing' }))
+  })
+
+  it('lets assign-worker choose a different owner for a new task', () => {
+    const h = harness({ profile: { bindRoot: () => snapshot(ownerProfile), bindChild: parent => parent.profile,
+      bindNamed: (_ticket, id) => snapshot(id) } })
+    const project = h.repo.tickets.get(h.project({ capabilities: ['create-task', 'assign-worker'] }).ticketId!)!
+    const task = h.engine.admitProjectTask(project.id, { title: 'Assigned at creation', ownerProfileId: 'other-worker',
+      idempotencyKey: 't1' }, coordinator(project.id))
+    expect(task.profile).toMatchObject({ id: 'other-worker' })
+    const changed = h.engine.assignProjectTask(project.id, task.id, 'third-worker', coordinator(project.id))
+    expect(changed.profile).toMatchObject({ id: 'third-worker' })
   })
 
   it('assigns a worker only before the task starts', () => {

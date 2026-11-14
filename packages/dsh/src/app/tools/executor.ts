@@ -70,7 +70,7 @@ function projectTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
       true, (resource, offset, limit, signal) => readResource(host.resources, resource, offset, limit, projectId, signal)),
     tool({
       name: 'orchestrator_create_task',
-      description: 'Admit one root task into this project through the Decision admission seam, under the project Mandate. Reuse the same idempotency_key when retrying the same request; a repeated key returns the same task. Refused without the project create-task capability.',
+      description: 'Admit one root task into this project through the Decision admission seam, under the project Mandate. Reuse the same idempotency_key when retrying the same request; a repeated key returns the same task. Refused without the project create-task capability; choosing an owner other than the project worker also needs assign-worker.',
       schema: z.object({
         title: z.string().trim().min(1).max(200).describe('Short label of the task from the person\'s request.'),
         goal: z.string().trim().min(1).max(2000).optional().describe('What the task must achieve; defaults to its title.'),

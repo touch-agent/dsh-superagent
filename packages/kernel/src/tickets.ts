@@ -191,7 +191,12 @@ export class Tickets extends EnginePart {
     if (existing) return existing
     const goal = request.goal?.trim() || title
     const scope = request.scope?.trim() || goal
-    const ownerProfileId = request.ownerProfileId?.trim() || project.profile?.id
+    const requestedOwner = request.ownerProfileId?.trim()
+    // Choosing an owner other than the project worker is an assignment, not part of create-task. Without
+    // assign-worker the task may only default to the project worker; the project scope is never widened.
+    if (requestedOwner && requestedOwner !== project.profile?.id && !permitsProject(project.mandate!, 'assign-worker'))
+      throw new UserError('projectCapabilityMissing', { capability: 'assign-worker' })
+    const ownerProfileId = requestedOwner || project.profile?.id
     if (!ownerProfileId) throw new UserError('projectWorkerUnavailable')
     let ticket: Ticket = {
       id, title, kind: 'task', projectTicketId: projectId, goal,
