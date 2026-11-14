@@ -45,8 +45,8 @@ export interface ProjectAttentionView {
 /** One project Ticket as the project list and detail read it. */
 export interface ProjectView {
   id: string
-  /** The project Ticket's title; no fallback derives a name from tasks or plan ids. */
-  title?: string
+  /** The project Ticket's name; no fallback derives a name from tasks or plan ids. */
+  name?: string
   goal?: string
   owner?: ProjectOwnerView
   state?: 'active' | 'archived'
@@ -109,7 +109,7 @@ export interface ProjectIssueItem {
 }
 
 /** The project Ticket's title; no fallback derives a name from tasks or plan ids. */
-export const projectTitle = (project: ProjectView): string => project.title ?? ''
+export const projectTitle = (project: ProjectView): string => project.name ?? ''
 
 export const projectBoard = (board: TaskBoardView): ProjectBoardView => board as ProjectBoardView
 

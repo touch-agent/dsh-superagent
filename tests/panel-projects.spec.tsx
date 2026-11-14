@@ -51,11 +51,11 @@ function fixtures(): { board: ProjectBoardView; child: TaskView; unowned: TaskVi
     lastEventAt: '2026-09-25T09:00:00Z', childSummary: zero(), goal: goalFixture('free-1', { statement: '清理临时文件' }) }
   const unassigned: TaskView = { ...base, id: 'free-2', title: '整理临时目录', form: 'tracked', status: 'working', attention: false,
     lastEventAt: '2026-09-25T10:00:00Z', childSummary: zero(), goal: goalFixture('free-2', { statement: '整理临时目录' }) }
-  const pay: ProjectView = { id: 'p-pay', title: '支付接入', goal: '先让支付回调稳定', owner: { profile: { id: 'worker-pay', revision: 2 } },
+  const pay: ProjectView = { id: 'p-pay', name: '支付接入', goal: '先让支付回调稳定', owner: { profile: { id: 'worker-pay', revision: 2 } },
     lastActivityAt: '2026-09-24T09:00:00Z', tasks: [pay1, pay2] }
-  const old: ProjectView = { id: 'p-old', title: '旧站下线', goal: '把旧站流量切走', owner: { profile: { id: 'worker-old', revision: 1 } },
+  const old: ProjectView = { id: 'p-old', name: '旧站下线', goal: '把旧站流量切走', owner: { profile: { id: 'worker-old', revision: 1 } },
     archivedAt: '2026-09-21T00:00:00Z', lastActivityAt: '2026-09-20T09:00:00Z', tasks: [old1] }
-  const unknown: ProjectView = { id: 'p-free', title: '杂项', tasks: [unowned] }
+  const unknown: ProjectView = { id: 'p-free', name: '杂项', tasks: [unowned] }
   const board: ProjectBoardView = { ...taskBoardView(), projects: [pay, old, unknown], unassigned: [unassigned],
     tasks: [pay1, pay2, old1, unowned, unassigned] }
   return { board, child, unowned }

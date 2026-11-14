@@ -639,7 +639,7 @@ A 系统开发                                  [更多]
 
 | 视图字段 | 来源 | 说明 |
 | --- | --- | --- |
-| `project.id/title/goal` | `Ticket`（`kind='project'`）的 `id/title/goal` | 项目就是 Ticket；`goal` 是新增的可选字段，项目卡片/详情的一句话目标；`origin` 只是来源，不当目标。 |
+| `project.id/name/goal` | `Ticket`（`kind='project'`）的 `id/title/goal` | 项目就是 Ticket；`goal` 是新增的可选字段，项目卡片/详情的一句话目标；`origin` 只是来源，不当目标。 |
 | `project.state` | `Ticket.archivedAt` | 有值 = archived；缺省 = active；可恢复。 |
 | `project.owner` | 项目 `Ticket.profile` + profiles | 显示 worker/title + revision；空/停用 → 项目级 attention；不静默回退默认配置。 |
 | `project.tasks` | `GET tasks` 根 `TaskView` where `projectTicketId=project.id && TaskView.kind !== 'review'` | 任务仍是根；子任务在 `TaskView.children`；review 行不计入项目任务。 |
