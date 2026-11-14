@@ -111,12 +111,14 @@ it('puts the four destinations in the main Conversation header, and only there',
   other.dispose()
 })
 
-it('keeps the host New Session shortcut only when the app shell does not own the main-Session entrance', () => {
+it('keeps the host New Session shortcut only when the conversation home does not own the entrance', () => {
   const before = fixture([])
   expect(before.entries.map(entry => entry.options.name)).toContain('conversation.hero.options')
-  // With the plugin as the main page, the card inside the panel is the one entrance; the host-side copy is not registered.
+  expect(before.entries.map(entry => entry.options.id)).not.toContain('system-conversation-actions')
+  // With the conversation home on, the header contribution is the entrance; the host-side copy is not registered.
   const after = fixture([], { appShell: true })
   expect(after.entries.map(entry => entry.options.name)).not.toContain('conversation.hero.options')
+  expect(after.entries.map(entry => entry.options.id)).toContain('system-conversation-actions')
   expect(after.entries.map(entry => entry.options.name)).toContain('sidebar.panellist')
 })
 
