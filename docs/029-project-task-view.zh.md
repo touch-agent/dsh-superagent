@@ -710,7 +710,7 @@ interface TaskView {
 - **归档**：`archiveProject` 只写/删 `archivedAt`，幂等；项目不结束、不产生交付物，`stopTicket`/`retry` 对项目返回 `projectCannotEnd`。任务与 attention 不因归档消失；默认 `projects=active`，可用 `archived`/`all` 查看已归档，`off` 回滚为旧响应形状。
 - **读取投影**：`GET tasks` 的 `tasks` 仍是根任务，项目只在 `projects`，没有项目的根任务在 `unassigned`；项目任务按 `projectTicketId` 分组，非法/失效链接留在 `unassigned` 并带 `projectBroken`；子任务仍通过 `GET tasks/:id` 展开。新增 `GET projects/:id`、`POST projects/:id/archive`、`POST projects/:id/restore`。
 - **回滚**：服务端 `GET tasks?projects=off` 返回旧响应形状；客户端开关 `ux.projects.v1`（`features.ts` 的 `PROJECTS`）供后续 UI 接入，本项目未改面板。
-- **测试**：`tests/projects.spec.ts`（层级、受理 seam 与幂等、人工受理归入项目、allow/deny/跨项目、归档、派发、缺 owner、迁移读取）、`tests/projects-view.spec.ts`（投影、过滤、计数、坏链接、回滚形状、详情）、`tests/project-tools.spec.ts`（项目/任务工具面）、`tests/dispatch-split.spec.ts` 的项目派发用例、`tests/http.spec.ts` 的项目路由与 `projects=off`。
+- **测试**：`tests/projects.spec.ts`（17 项：层级、受理 seam 与幂等、人工受理归入项目、allow/deny/跨项目、归档、派发、缺 owner、迁移读取）、`tests/projects-view.spec.ts`（4 项：投影、过滤、计数、坏链接、回滚形状、详情）、`tests/project-tools.spec.ts`（2 项：项目/任务工具面）、`tests/dispatch-split.spec.ts` 的项目派发用例、`tests/http.spec.ts` 的项目路由与 `projects=off`。
 
 ### D.2 与设计稿的偏差 / 尚未实现
 
