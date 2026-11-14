@@ -1,9 +1,3 @@
 {
-  "exemptions": [
-    {
-      "task": "T5-11",
-      "rule": "in-progress-without-pr",
-      "reason": "Implementation and evidence are in progress; the PR link will replace this exemption before the ticket reports ready."
-    }
-  ]
+  "exemptions": []
 }
