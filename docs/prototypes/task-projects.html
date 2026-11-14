@@ -1688,6 +1688,11 @@ document.addEventListener('keydown', event => {
     openProject(event.target.dataset.openProject)
     return
   }
+  if ((event.key === 'Enter' || event.key === ' ') && event.target.matches?.('[data-open-task]')) {
+    event.preventDefault()
+    openTask(event.target.dataset.openTask, event.target.dataset.from || 'project')
+    return
+  }
 })
 
 document.addEventListener('input', event => {
