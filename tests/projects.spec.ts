@@ -308,7 +308,8 @@ describe('project dispatch and archive', () => {
     const project = h.repo.tickets.get(h.project().ticketId!)!
     const task = h.engine.admitProjectTask(project.id, { title: 'Task', scope: 'narrow', idempotencyKey: 't1' }, coordinator(project.id))
     expect(task.mandate).toMatchObject({ strength: project.mandate!.strength, maxActionLevel: project.mandate!.maxActionLevel,
-      basis: project.mandate!.basis, actor: coordinator(project.id) })
+      basis: project.mandate!.basis, actor: project.mandate!.actor })
+    expect(task.mandate!.actor).not.toEqual(coordinator(project.id))
     expect(task.mandate!.scope.startsWith(project.mandate!.scope)).toBe(true)
     expect(h.repo.decisions.get(task.decisionId!)?.admission?.idempotencyKey).toBe('t1')
   })

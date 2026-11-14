@@ -202,7 +202,7 @@ export class Tickets extends EnginePart {
       id, title, kind: 'task', projectTicketId: projectId, goal,
       mandate: {
         // The project's admission basis and ceiling carry over; capabilities do not, since a task does not coordinate.
-        strength: project.mandate!.strength, policyVersion: project.mandate!.policyVersion, basis: project.mandate!.basis, actor: by,
+        strength: project.mandate!.strength, policyVersion: project.mandate!.policyVersion, basis: project.mandate!.basis, actor: project.mandate!.actor,
         scope: `${project.mandate!.scope}\nTask: ${scope}`,
         ...project.mandate!.maxActionLevel ? { maxActionLevel: project.mandate!.maxActionLevel } : {},
         ...project.mandate!.expiresAt ? { expiresAt: project.mandate!.expiresAt } : {},
