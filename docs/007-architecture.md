@@ -661,8 +661,8 @@ over 500 ms and the ten slowest tests (file and name), so the growth can be foun
 not raise either ceiling.
 
 On 2026-11-13 the list held 313 tests. On 2026-11-15, with the 029 project suite added, it held 332 tests in 16 files;
-five runs measured 392/377/424/425/375 ms (392 ms median, 5.1× headroom). The final follow-up added two
-human project-link tests (334 tests; 359/367/382/376/355 ms, 367 ms median, 5.4× headroom). On an idle development machine a three-run sample was
+five runs measured 392/377/424/425/375 ms (392 ms median, 5.1× headroom). The final follow-ups added a human project-link test and an owner-capability test (335 tests;
+378/364/363/388/376 ms, 376 ms median, 5.3× headroom). On an idle development machine a three-run sample was
 555/470/504 ms (504 ms median, about 4× headroom). The five-run protocol on the same development
 machine, under heavy unrelated system load (load average around 17), produced
 799/1,078/1,105/765/935 ms — a 935 ms median and 2.1× headroom. CI is tighter within a run but varies between
