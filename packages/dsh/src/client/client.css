@@ -731,3 +731,19 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-conversation-home-card { padding: 24px; }
 }
 
+/* Right-sidebar tabs: the main Conversation keeps the content column; these pages stack in the narrow pane. */
+.dt-side-page { padding: 12px 14px 28px; }
+.dt-side-page > .dt-column { max-width: none; padding-bottom: 16px; gap: 16px; }
+.dt-side-back { display: flex; align-items: center; margin: 0 0 -4px -8px; }
+.dt-side-main { gap: 16px; }
+.dt-side-page .dt-tasks-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.dt-side-page .dt-tasks-aside { min-width: 0; }
+.dt-side-page .dt-settings { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.dt-side-page .dt-settings-nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+.dt-side-page .dt-settings-nav-group { flex-direction: row; flex-wrap: wrap; }
+.dt-side-page .dt-settings-nav-group + .dt-settings-nav-group { margin-top: 0; }
+.dt-side-page .dt-settings-nav-title { display: none; }
+.dt-side-page .dt-list > .dt-ticket { grid-template-columns: minmax(0, 1fr); }
+.dt-side-page .dt-ticket-stage { align-self: auto; padding: 0 0 4px; border-right: 0; }
+.dt-side-page .dt-page-title h2 { font-size: 16px; line-height: 24px; }
+.dt-side-page .dt-page-lead { max-width: none; }

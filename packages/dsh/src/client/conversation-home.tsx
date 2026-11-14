@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ActivityFeedClient } from './activity-feed.ts'
+import type { AuxKind } from './auxiliary.ts'
 import { useActivityFeed } from './activity-feed.ts'
 import { useAttention } from './attention.ts'
 import { Button, Icon } from './controls.tsx'
@@ -72,10 +73,10 @@ export function ConversationHome({ onBrowse }: { onBrowse: (route: Route) => voi
   </div>
 }
 
-/** The main Session's header utilities: the four Superagent destinations, each opening one auxiliary panel page. */
+/** The main Session's header utilities: the four Superagent destinations, each opening one host right-sidebar tab. */
 export function ConversationActions({ t, sessionId, master, attention, activity, onOpen }: { t: T
   sessionId: string; master: MasterStore; attention: Parameters<typeof useAttention>[0]
-  activity: ActivityFeedClient; onOpen: (route: Route) => void }) {
+  activity: ActivityFeedClient; onOpen: (kind: AuxKind) => void }) {
   const identity = useMaster(master)
   if (!appShell() || !identity.masterId || identity.masterId !== sessionId) return null
   // The badge hooks bind only on the main Session, not on every Session header.
@@ -83,23 +84,23 @@ export function ConversationActions({ t, sessionId, master, attention, activity,
 }
 
 function MainActions({ t, attention, activity, onOpen }: { t: T; attention: Parameters<typeof useAttention>[0]
-  activity: ActivityFeedClient; onOpen: (route: Route) => void }) {
+  activity: ActivityFeedClient; onOpen: (kind: AuxKind) => void }) {
   const waiting = useAttention(attention)
   const feed = useActivityFeed(activity)
   return <div className="dt-header-actions" role="group" aria-label={t('headerActionsLabel')}>
     <Button className="dt-header-action" variant="ghost" size="sm" icon={<Icon name="queue" />}
-      aria-label={t('tab.tasks')} title={t('headerTasksHint')} onClick={() => onOpen({ page: 'tasks' })}>
+      aria-label={t('tab.tasks')} title={t('headerTasksHint')} onClick={() => onOpen('tasks')}>
       {waiting > 0 && <span className="dt-header-action-badge" aria-hidden="true">{waiting > 99 ? '99+' : waiting}</span>}
     </Button>
     <Button className="dt-header-action" variant="ghost" size="sm" icon={<Icon name="bell" />}
       aria-label={t('tab.notifications')}
       title={feed.unread > 0 ? `${t('tab.notifications')} · ${t('headerActivityDot')}` : t('headerNoticesHint')}
-      onClick={() => onOpen({ page: 'notifications' })}>
+      onClick={() => onOpen('notifications')}>
       {feed.unread > 0 && <span className="dt-header-action-dot" aria-hidden="true" />}
     </Button>
     {filesPage() && <Button className="dt-header-action" variant="ghost" size="sm" icon={<Icon name="inbox" />}
-      aria-label={t('tab.files')} title={t('headerFilesHint')} onClick={() => onOpen({ page: 'files' })} />}
+      aria-label={t('tab.files')} title={t('headerFilesHint')} onClick={() => onOpen('files')} />}
     <Button className="dt-header-action" variant="ghost" size="sm" icon={<Icon name="settings" />}
-      aria-label={t('tab.settings')} title={t('headerSettingsHint')} onClick={() => onOpen(settingsRoute('display'))} />
+      aria-label={t('tab.settings')} title={t('headerSettingsHint')} onClick={() => onOpen('settings')} />
   </div>
 }

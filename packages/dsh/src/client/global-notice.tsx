@@ -27,7 +27,9 @@ export function NoticeFab({ t, unread, latest, onOpen, covered = false }: { t: T
   </button>
 }
 
-export function GlobalNoticeButton({ t, call, onOpenPanel }: { t: T; call: Call; onOpenPanel: () => void }) {
+export function GlobalNoticeButton({ t, call, onOpenPanel, onOpenSide }: { t: T; call: Call; onOpenPanel: () => void
+  /** Open the host right-sidebar Notifications tab; false means this host has no such surface. */
+  onOpenSide?: () => boolean }) {
   const enabled = noticeButton()
   const [data, setData] = useState<OverviewView>()
   const [read, setRead] = useState<ReadonlySet<string>>(readNotices)
@@ -60,7 +62,7 @@ export function GlobalNoticeButton({ t, call, onOpenPanel }: { t: T; call: Call;
   const open = () => {
     setRead(readNotices())
     if (openNoticeDrawer()) setCovered(true)
-    else onOpenPanel()
+    else if (!onOpenSide?.()) onOpenPanel()
   }
   return <NoticeFab t={t} unread={unread} latest={latest} onOpen={open} covered={covered} />
 }
