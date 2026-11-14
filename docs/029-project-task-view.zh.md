@@ -721,4 +721,5 @@ interface TaskView {
 5. **`TaskView` 新增可选字段，旧客户端可忽略**；`ProjectView`/`unassigned`/`totals.projects` 在无项目或 `projects=off` 时省略，保持旧响应形状。未做数据库 schema 迁移：Ticket 以 JSON 持久化，新字段为可选。
 6. **归档只改变项目读取过滤与新建任务/派发**；归档项目的历史任务仍可读取、计数和审批，协调 Session 不再自动接收新 input。
 7. **项目协调需要启用 Agent Profiles 并有一个可用的 owner Profile**。Profiles 关闭或 owner 不可用时，项目仍可创建、读取和归档，但协调 Session 不启动、项目级 attention 指向 worker，`create-task`/`assign-worker` 返回 `projectWorkerUnavailable`；这是有意的非静默回退，不在项目里偷偷使用默认执行配置。
-8. **受理 Decision 不新增 Eval**。`Decision.evalId` 是必填字段，受理 seam 写入确定性的 admission 键，但仓库里没有对应 Eval；区分与审计以 `Decision.admission`、`Decision.reason.code='projectAdmission'` 和项目 Mandate 为准，不把该 id 当作可回放的 Eval。
+8. **没有项目改名或更换项目负责 worker 的写入口**。项目在 accept 时绑定 owner Profile 快照，之后只能归档/恢复；附录 B 的「改名/换负责 worker」写路径留给后续管理动作，避免本数据层单在没有 UI 和审计设计时改动已绑定快照。
+9. **受理 Decision 不新增 Eval**。`Decision.evalId` 是必填字段，受理 seam 写入确定性的 admission 键，但仓库里没有对应 Eval；区分与审计以 `Decision.admission`、`Decision.reason.code='projectAdmission'` 和项目 Mandate 为准，不把该 id 当作可回放的 Eval。
