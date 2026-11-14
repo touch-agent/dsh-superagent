@@ -7,7 +7,7 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import type { ActivityStatus } from '../app/activity.ts'
 import type { TaskBoardView, TaskGraphBranch, TaskMilestone, TaskNode, TaskView } from '../app/tasks.ts'
 import { Button, Dot, Icon, Pill, SegmentedTabs, Tag, type DotState, type TagTone } from './controls.tsx'
-import { firstUse, masterCard, taskHierarchy, taskViewV1 } from './features.ts'
+import { appShell, firstUse, masterCard, taskHierarchy, taskViewV1 } from './features.ts'
 import { EmptyExamples, FirstUseNotes } from './first-use.tsx'
 import { usePanel, usePanelData } from './provider.tsx'
 import type { Route } from './route.ts'
@@ -439,6 +439,35 @@ export function TasksTitle({ t }: { t: T }) {
   return <span className="dt-events-chip">{t('tasksTab')}</span>
 }
 
+/**
+ * The app shell's right-hand summary: the same `attention` flag the task rows and notices read, with the one decision
+ * a person owes. It is a projection of `GET tasks`; the button applies the existing "waiting for you" filter instead of
+ * introducing a second inbox or a write path.
+ */
+function AttentionSummary({ tasks, onOpen, onShowAll }: { tasks: readonly TaskView[]; onOpen: (id: string) => void
+  onShowAll: () => void }) {
+  const { t } = usePanel()
+  const waiting = tasks.filter(task => task.attention)
+  return <section className="dt-attention" aria-labelledby="dt-attention-title">
+    <div className="dt-attention-head">
+      <h2 id="dt-attention-title">{t('attentionTitle')}</h2>
+      <span className="dt-attention-count" aria-label={t('attentionTitle')}>{waiting.length}</span>
+    </div>
+    <p className="dt-hint">{t('attentionIntro')}</p>
+    {waiting.length === 0 ? <p className="dt-attention-empty">{t('attentionEmpty')}</p> : <ul className="dt-attention-list">
+      {waiting.slice(0, 4).map(task => <li key={task.id}>
+        <button type="button" className="dt-attention-row" onClick={() => onOpen(task.id)}>
+          <span className="dt-attention-title">{task.title}</span>
+          <span className="dt-attention-why">{task.goal.decision ? valueLabel(t, 'stage', task.goal.decision.kind)
+            : t('tasksAttention')}</span>
+        </button>
+      </li>)}
+    </ul>}
+    {waiting.length > 0 && <Button variant="ghost" size="sm" icon={<Icon name="chevron-right" size={13} />}
+      onClick={onShowAll}>{t('attentionViewAll')}</Button>}
+  </section>
+}
+
 export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNode {
   const { t, call, navigate, openSession } = usePanel()
   const { state } = usePanelData()
@@ -450,6 +479,7 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
   const [detailId, setDetailId] = useState<string>()
   const flag = taskViewV1()
   const hierarchy = taskHierarchy()
+  const shell = appShell()
   const views = flag ? ['list', 'tickets', ...VIEWS] as const : VIEWS
   const [view, setView] = useState<TasksView>(flag ? 'list' : 'tree')
   const id = useId()
@@ -459,39 +489,53 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
   const selectRoot = (ticket: string) => store.select(selected === ticket ? undefined : { kind: 'ticket', id: ticket, rootId: ticket })
   const selectChild = (root: string, ticket: string) => store.select(selected === ticket ? undefined
     : { kind: 'ticket', id: ticket, rootId: root } satisfies TaskSelection)
+  const scrollToTop = () => { const scroller = document.querySelector<HTMLElement>('.dt-page'); if (scroller) scroller.scrollTop = 0 }
   const openDetail = (ticket: string) => {
     const root = data?.tasks.find(item => item.id === ticket)?.id ?? rootId ?? ticket
     store.select({ kind: 'ticket', id: ticket, rootId: root })
     store.ensureDetail(ticket)
     setDetailId(ticket)
+    scrollToTop()
   }
   const detailTask = detailId ? store.taskOf(detailId) : undefined
   if (!data) return <LoadState error={snapshot.error} loading={!snapshot.ready || snapshot.loading} />
   return <>
     {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
-    {masterCard() && <MasterCard masterId={state?.masterId} paused={!!state?.paused} running={state?.load.running ?? 0}
+    {!shell && masterCard() && <MasterCard masterId={state?.masterId} paused={!!state?.paused} running={state?.load.running ?? 0}
       attention={data.tasks.filter(task => task.attention).length} onOpen={openSession} />}
-    <FirstUseNotes />
-    <p className="dt-hint dt-task-intro">{view === 'list' ? t('tasksListIntro')
-      : view === 'tickets' ? t('tasksTicketsIntro') : t('tasksIntro')}</p>
-    {view !== 'list' && view !== 'tickets' && <Hint>{t('tasksPlanFallback')}</Hint>}
-    <div className="dt-task-views">
-      <SegmentedTabs label={t('tasksViewLabel')} value={view} onChange={value => setView(value)}
-        items={views.map(value => ({ value, label: t(`tasksView.${value}`), id: `${id}-${value}`, panelId: `${id}-panel` }))} />
-      <span className="dt-hint">{t('tasksGenerated', { time: when(data.generatedAt, t('lang')) })}</span>
+    {!shell && <FirstUseNotes />}
+    <div className={shell ? 'dt-tasks-layout' : 'dt-tasks-flow'}>
+      <div className="dt-tasks-primary">
+        {shell && !detailId && <FirstUseNotes />}
+        <p className="dt-hint dt-task-intro">{view === 'list' ? t('tasksListIntro')
+          : view === 'tickets' ? t('tasksTicketsIntro') : t('tasksIntro')}</p>
+        {view !== 'list' && view !== 'tickets' && <Hint>{t('tasksPlanFallback')}</Hint>}
+        <div className="dt-task-views">
+          <SegmentedTabs label={t('tasksViewLabel')} value={view} onChange={value => { setView(value); setDetailId(undefined) }}
+            items={views.map(value => ({ value, label: t(`tasksView.${value}`), id: `${id}-${value}`, panelId: `${id}-panel` }))} />
+          <span className="dt-hint">{t('tasksGenerated', { time: when(data.generatedAt, t('lang')) })}</span>
+        </div>
+        {detailTask && hierarchy ? <TaskDetail task={detailTask} store={store} onBack={() => setDetailId(undefined)}
+          onOpenTicket={ticket => navigate({ page: 'execution', id: ticket })} /> : <>
+          {view === 'list' && <TaskFilters t={t} value={filter} onChange={setFilter} tasks={data.tasks} />}
+          <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${view}`}>
+            {data.totals.tickets === 0 ? (firstUse() ? <EmptyExamples masterId={state?.masterId} onAsk={openSession} />
+              : <p className="dt-hint">{t('tasksEmpty')}</p>)
+              : view === 'list' ? <TaskList tasks={data.tasks} t={t} filter={filter} selected={selected} expanded={rootId}
+                childrenOf={ticket => store.detailOf(ticket)?.children ?? []} onSelect={selectRoot} onSelectChild={selectChild}
+                onOpenTask={ticket => navigate({ page: 'execution', id: ticket })} onOpenDetail={hierarchy ? openDetail : undefined}
+                empty={t('tasksEmpty')} />
+                : view === 'tickets' ? <TicketTree roots={data.tasks} client={store} />
+                  : view === 'tree' ? <TreeView board={data} /> : <GraphView board={data} />}
+          </div>
+        </>}
+      </div>
+      {shell && <aside className="dt-tasks-aside">
+        <AttentionSummary tasks={data.tasks} onOpen={ticket => { if (hierarchy) openDetail(ticket)
+          else navigate({ page: 'execution', id: ticket }) }} onShowAll={() => {
+          setView('list'); setDetailId(undefined); setFilter('attention'); scrollToTop()
+        }} />
+      </aside>}
     </div>
-    {detailTask && hierarchy ? <TaskDetail task={detailTask} store={store} onBack={() => setDetailId(undefined)}
-      onOpenTicket={ticket => navigate({ page: 'execution', id: ticket })} /> : <>
-    {view === 'list' && <TaskFilters t={t} value={filter} onChange={setFilter} tasks={data.tasks} />}
-    <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${view}`}>
-      {data.totals.tickets === 0 ? (firstUse() ? <EmptyExamples masterId={state?.masterId} onAsk={openSession} />
-        : <p className="dt-hint">{t('tasksEmpty')}</p>)
-        : view === 'list' ? <TaskList tasks={data.tasks} t={t} filter={filter} selected={selected} expanded={rootId}
-          childrenOf={ticket => store.detailOf(ticket)?.children ?? []} onSelect={selectRoot} onSelectChild={selectChild}
-          onOpenTask={ticket => navigate({ page: 'execution', id: ticket })} onOpenDetail={hierarchy ? openDetail : undefined}
-          empty={t('tasksEmpty')} />
-        : view === 'tickets' ? <TicketTree roots={data.tasks} client={store} />
-          : view === 'tree' ? <TreeView board={data} /> : <GraphView board={data} />}
-    </div></>}
   </>
 }

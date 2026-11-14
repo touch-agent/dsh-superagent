@@ -691,4 +691,43 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 }
 /* Hide the floating entry while the drawer it opened covers the same corner; it returns on close with focus. */
 .dt-notice-fab[data-covered='true'] { opacity: 0; pointer-events: none; }
+/* Plugin as the main page: the home is the host's main Conversation, with the four destinations in its header. */
+.dt-conversation-bar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.dt-conversation-home { display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 40px 28px; }
+.dt-conversation-home-card { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; width: min(560px, 100%); box-sizing: border-box; padding: 32px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 20px; background: var(--dsw-alias-bg-layer-2); }
+.dt-conversation-home-mark { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 14px; background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-label-primary-foreground); }
+.dt-conversation-home-card h1 { margin: 0; font-size: 22px; line-height: 30px; font-weight: 600; }
+.dt-conversation-home-copy { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 22px; }
+.dt-conversation-home-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dt-conversation-home-browse { display: flex; flex-direction: column; gap: 8px; width: 100%; padding-top: 4px; border-top: 0.5px solid var(--dsw-alias-border-l3); }
+.dt-conversation-home-browse .dt-hint { margin: 12px 0 0; }
+.dt-conversation-home-card > .dt-hint { margin: 0; }
+.dt-header-actions { display: flex; align-items: center; gap: 2px; margin-left: 4px; }
+.dt-header-action { position: relative; width: 30px; height: 30px; padding: 0; border-radius: 8px; color: var(--dsw-alias-label-secondary); }
+.dt-header-action:hover:not(:disabled) { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.dt-header-action-badge { position: absolute; top: 0; right: 1px; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--dsw-alias-state-warn-primary, #d97706); color: var(--dsw-alias-label-inverse); font-size: 9px; line-height: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dt-header-action-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-state-warn-primary, #d97706); }
+/* Tasks destination: the list keeps the reading width while the waiting-on-you summary uses the second column. */
+.dt-tasks-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; }
+.dt-tasks-primary { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.dt-tasks-aside { min-width: 0; }
+.dt-attention { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 16px; background: var(--dsw-alias-bg-layer-2); }
+.dt-attention-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dt-attention-head h2 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; }
+.dt-attention-count { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; background: var(--dsw-alias-bg-warning, #d97706); color: var(--dsw-alias-label-inverse); font-size: 12px; line-height: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dt-attention .dt-hint { margin: 0; }
+.dt-attention-empty { margin: 4px 0; padding: 12px 0; color: var(--dsw-alias-label-caption); font-size: 13px; line-height: 20px; }
+.dt-attention-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0; padding: 0; list-style: none; }
+.dt-attention-row { display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; width: 100%; padding: 10px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 10px; background: var(--dsw-alias-bg-layer-1); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dt-attention-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dt-attention-row:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dt-attention-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; }
+.dt-attention-why { color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
+@media (max-width: 1080px) {
+.dt-tasks-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+.dt-conversation-home { padding: 24px 16px; }
+.dt-conversation-home-card { padding: 24px; }
+}
 

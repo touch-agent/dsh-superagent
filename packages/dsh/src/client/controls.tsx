@@ -81,7 +81,7 @@ function walk<V extends string>(event: KeyboardEvent, values: readonly V[], valu
   const list = event.currentTarget as HTMLElement
   requestAnimationFrame(() => list.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus())
 }
-interface TabItem<V extends string> { value: V; label: string; id: string; panelId: string }
+interface TabItem<V extends string> { value: V; label: string; id: string; panelId: string; icon?: IconName }
 /** Page-level tab bar that re-emits `onChange` when clicking the active tab so callers can reset to the tab root. */
 export function SegmentedTabs<V extends string>({ items, value, onChange, label, className }: {
   items: readonly TabItem<V>[]; value: V; onChange: (next: V) => void; label: string; className?: string
@@ -110,7 +110,8 @@ export function SegmentedTabs<V extends string>({ items, value, onChange, label,
       items.map(item => item.value), focusable ?? value, onChange)}>
     {items.map(item => <button key={item.value} type="button" role="tab" id={item.id} aria-controls={item.panelId}
       aria-selected={item.value === value}
-      tabIndex={item.value === focusable ? 0 : -1} className="dt-tab" onClick={() => onChange(item.value)}>{item.label}</button>)}
+      tabIndex={item.value === focusable ? 0 : -1} className="dt-tab" onClick={() => onChange(item.value)}>
+      {item.icon && <Icon name={item.icon} size={14} />}{item.label}</button>)}
   </div>
 }
 export function SegmentedControl<V extends string>({ options, value, onChange, label, disabled, className }: {

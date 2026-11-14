@@ -8,10 +8,11 @@ import { server } from './fixtures/panel-server.ts'
 
 usePanel()
 afterEach(() => localStorage.clear())
-/** The batch-3 defaults: nav four, card, floating entry and Files are on; the earlier specs pin them off. */
+/** The batch-3 defaults: nav four, card, floating entry and Files are on; the later conversation-home route is off. */
 function newDefaults() {
   for (const flag of ['ux.navFour.v1', 'ux.masterCard.v1', 'ux.noticeButton.v1', 'ux.filesPage.v1',
     'ux.opsInSettings.v1', 'ux.taskDetail.v2', 'ux.firstUse.v1']) localStorage.removeItem(flag)
+  localStorage.setItem('ux.appShell.v1', 'off')
 }
 const navTabs = () => all('.dt-column > .dt-tabs [role="tab"]').map(item => item.textContent)
 const card = () => document.querySelector<HTMLElement>('.dt-master-card')
@@ -29,15 +30,16 @@ it('opens on the task view with the main-Agent card and exactly four first-level
   expect(document.querySelector('#dt-tab-tasks')?.getAttribute('aria-selected')).toBe('true')
 })
 
-it('offers one main-Session action on the task page, and the header action elsewhere', async () => {
+it('offers one main-Session action: the card on Tasks, the header shortcut on other pages', async () => {
   newDefaults()
   await mount()
   const labels = () => all('button').map(item => item.textContent?.trim())
-  // The card's entrance replaces the header shortcut while the card is on screen; two buttons would be one action twice.
+  // The card replaces the header shortcut on Tasks; another entry there would duplicate one action.
   expect(labels().filter(label => label === zh.masterOpen)).toHaveLength(1)
   expect(labels().filter(label => label === zh.openMaster)).toHaveLength(0)
   await click(zh['tab.notifications'])
   expect(card()).toBeNull()
+  expect(labels().filter(label => label === zh.masterOpen)).toHaveLength(0)
   expect(labels().filter(label => label === zh.openMaster)).toHaveLength(1)
 })
 

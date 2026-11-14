@@ -1,12 +1,13 @@
-/** Root panel shell: header with global search and glossary, top-level navigation tabs, and active route view. */
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+/** Root panel: the conversation-home bridge or the auxiliary page, its navigation and the active route view. */
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { SearchView } from './api.ts'
 import type { ThreadFilter } from '../app/api.ts'
 import { Button, Dot, Icon, Input, Modal, SegmentedTabs } from './controls.tsx'
 import type { DeploymentForm } from './deployment.tsx'
 import { EvalStatus } from './eval.tsx'
 import { ExecutionStatus } from './execution.tsx'
-import { masterCard, noticeButton, opsInSettings } from './features.ts'
+import { appShell, masterCard, noticeButton, opsInSettings } from './features.ts'
+import { ConversationHome } from './conversation-home.tsx'
 import { BUILD, buildMismatch, reloadClient } from './build.ts'
 import { ticketMark } from './marks.ts'
 import { GLOSSARY, GLOSSARY_VALUES, en, zh, type DshSuperagentKey } from './locales.ts'
@@ -15,13 +16,13 @@ import { FilesPage } from './files-page.tsx'
 import { NotificationsPage } from './notifications-page.tsx'
 import { OverviewPage } from './overview.tsx'
 import { PanelProvider, usePanel, usePanelData } from './provider.tsx'
-import { PANEL_NAVIGATE } from './panel.ts'
+import { PANEL_NAVIGATE, markPanelPage, panelWantsHome, requestPanelHome } from './panel.ts'
 import { homeRoute, initialLocation, isOpsTab, lastSettingsGroup, parseRoute, remember, routeLabel, settingsRoute, visibleTabs, type Location,
   type Route, type SettingsGroup, type Tab } from './route.ts'
 import { SettingsPage } from './settings.tsx'
 import { SourceStatus } from './source.tsx'
 import { TasksPage } from './tasks.tsx'
-import type { TasksViewClient } from './tasks-view.ts'
+import { TasksViewClient } from './tasks-view.ts'
 import { actorName, errorText, reasonLabel, valueLabel, type T, readableMarkers } from './text.ts'
 import { ThreadPage } from './thread.tsx'
 import { TicketPage } from './ticket.tsx'
@@ -137,7 +138,7 @@ function Header({ masterId, hideMaster = false }: { masterId: string | undefined
     call('GET search', { query: { q: text } }).then(value => { if (request === latest.current) setResult({ query: text, value }) },
       failure => { if (request === latest.current) notify(errorText(failure)) })
   }
-  return <header className="dt-head">
+  return <div className="dt-head">
     <div className="dt-head-title"><h1 className="dt-title">{t('title')}</h1></div>
     <div className="dt-toolbar">
       <form ref={search} className="dt-search" role="search" onSubmit={submit} onKeyDown={event => { if (event.key === 'Escape') show() }}>
@@ -156,15 +157,18 @@ function Header({ masterId, hideMaster = false }: { masterId: string | undefined
         onClick={() => { if (masterId) openSession(masterId).catch(failure => notify(errorText(failure))) }}>{t('openMaster')}</Button>}
     </div>
     <Glossary open={glossary} onClose={() => setGlossary(false)} />
-  </header>
+  </div>
 }
 
-function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { route: Route; openTab: (tab: Tab) => void
-  deploymentForm: DeploymentForm; pageId: string; tabPrefix: string; tasks?: TasksViewClient }) {
-  const { t } = usePanel()
+function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks, conversation = false, onBackHome }: { route: Route; openTab: (tab: Tab) => void
+  deploymentForm: DeploymentForm; pageId: string; tabPrefix: string; tasks?: TasksViewClient; conversation?: boolean; onBackHome?: () => void }) {
+  const { t, call } = usePanel()
   const { state, error, reload } = usePanelData()
   const consolidated = opsInSettings()
   const tabs = visibleTabs()
+  // The conversation home and the auxiliary pages share one task snapshot; a caller that already owns one keeps disposal.
+  const store = useMemo(() => tasks ?? new TasksViewClient(call), [tasks, call])
+  useEffect(() => () => { if (!tasks) store.dispose() }, [store, tasks])
   // A record detail reached by a direct link (a task, a message) keeps no tab selected; an operations list opens Settings.
   const selected: Tab = consolidated && isOpsTab(route.page) ? (route.id === undefined ? 'settings' : route.page) : route.page
   // Keep the active tab scrolled into view on narrow screens when routes change via links.
@@ -177,9 +181,9 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
   const page = (() => {
     switch (route.page) {
       case 'overview': return <OverviewPage />
-      case 'tasks': return <TasksPage tasks={tasks} />
-      case 'notifications': return <NotificationsPage tasks={tasks} />
-      case 'files': return <FilesPage tasks={tasks} />
+      case 'tasks': return <TasksPage tasks={store} />
+      case 'notifications': return <NotificationsPage tasks={store} />
+      case 'files': return <FilesPage tasks={store} />
       case 'source': return consolidated ? settings('source') : <SourceStatus />
       case 'trigger': return route.id !== undefined ? <ThreadPage key={route.id} id={route.id} target={route.query?.trigger} />
         : consolidated ? settings('trigger', {}, route.query?.filter ?? 'subscribed')
@@ -197,22 +201,33 @@ function Pages({ route, openTab, deploymentForm, pageId, tabPrefix, tasks }: { r
           {...state ? { state } : {}} deploymentForm={deploymentForm} />
     }
   })()
-  // The main-Agent card already carries the entrance on its own page; keeping the header shortcut there too would
-  // render the same action twice. Every other page keeps the header action as the single entry.
-  const cardHere = masterCard() && route.page === 'tasks'
+  const nav = <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={selected} onChange={openTab}
+    items={tabs.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId }))} />
+  const banners = <>
+    {buildMismatch(BUILD, state?.build) && <div className="dt-banner dt-build-mismatch" role="status">
+      <span className="dt-banner-label">{t('buildMismatchTitle')}</span>{' '}
+      {t('buildMismatchDetail', { client: BUILD.buildId, server: state!.build.buildId })}
+      <div className="dt-banner-actions">
+        <Button variant="outline" size="sm" onClick={() => { void reloadClient() }}>{t('buildReload')}</Button>
+      </div>
+    </div>}
+    {error && state && <p className="dt-error" role="status">{error.message}</p>}
+  </>
+  // Return to the conversation by making the panel's home the next view; that view opens the main Session itself, so
+  // this path cannot race a second open of the same Session.
+  const back = () => { requestPanelHome(); onBackHome?.() }
+  // The card holds the entrance on the fallback task page; the conversation bar owns it on every auxiliary page.
+  const cardHere = !conversation && masterCard() && route.page === 'tasks'
   return <div className="dt-page">
     <div className="dt-column">
-      <Header masterId={state?.masterId} hideMaster={cardHere} />
-      {buildMismatch(BUILD, state?.build) && <div className="dt-banner dt-build-mismatch" role="status">
-        <span className="dt-banner-label">{t('buildMismatchTitle')}</span>{' '}
-        {t('buildMismatchDetail', { client: BUILD.buildId, server: state!.build.buildId })}
-        <div className="dt-banner-actions">
-          <Button variant="outline" size="sm" onClick={() => { void reloadClient() }}>{t('buildReload')}</Button>
-        </div>
+      {conversation && <div className="dt-conversation-bar">
+        <Button variant="ghost" size="sm" icon={<Icon name="chevron-left" size={14} />} disabled={!state?.masterId}
+          onClick={back}>{t('backToConversation')}</Button>
+        <span className="dt-hint">{t('backToConversationHint')}</span>
       </div>}
-      {error && state && <p className="dt-error" role="status">{error.message}</p>}
-      <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={selected} onChange={openTab}
-        items={tabs.map(value => ({ value, label: t(`tab.${value}`), id: `${tabPrefix}-${value}`, panelId: pageId }))} />
+      <Header masterId={state?.masterId} hideMaster={conversation || cardHere} />
+      {banners}
+      {nav}
       <main id={pageId} role="tabpanel" className="dt-main"
         {...tabs.includes(selected) ? { 'aria-labelledby': `${tabPrefix}-${selected}` } : { 'aria-label': t(`tab.${selected}`) }}>{page}</main>
     </div>
@@ -238,16 +253,24 @@ export function App({ t, openSession, deploymentForm, embedded = false, tasks, s
     if (embedded) return
     const onNavigate = (event: Event) => {
       const route = parseRoute((event as CustomEvent<unknown>).detail)
-      if (route) navigate(route)
+      if (route) { setWantsHome(false); navigate(route) }
     }
     window.addEventListener(PANEL_NAVIGATE, onNavigate)
     return () => window.removeEventListener(PANEL_NAVIGATE, onNavigate)
   }, [navigate, embedded])
   const pageId = embedded ? 'dt-page-status' : 'dt-page'
   const tabPrefix = embedded ? 'dt-page-status-tab' : 'dt-tab'
+  const conversation = !embedded && appShell()
+  // The intent is read once per mount; a header action or a page opened while mounted overrides it.
+  const [wantsHome, setWantsHome] = useState(() => !embedded && panelWantsHome())
+  const home = conversation && wantsHome
+  const browse = useCallback((route: Route) => { markPanelPage(); setWantsHome(false); navigate(route) }, [navigate])
+  // Leaving the panel to the host, another plugin or the conversation makes the next Superagent selection start at home.
+  useEffect(() => () => { if (!embedded) requestPanelHome() }, [embedded])
   return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? homeRoute())}>
     <NotificationHost shellNotice={shellNotice}>
-      <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} pageId={pageId} tabPrefix={tabPrefix} tasks={tasks} />
+      {home ? <ConversationHome onBrowse={browse} /> : <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm}
+        pageId={pageId} tabPrefix={tabPrefix} tasks={tasks} conversation={conversation} onBackHome={() => setWantsHome(true)} />}
     </NotificationHost>
   </PanelProvider>
 }
