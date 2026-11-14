@@ -567,7 +567,8 @@ A 系统开发                                  [更多]
 - Review：[PR #86 review comment](https://github.com/touch-agent/dsh-superagent/pull/86#pullrequestreview-5903016804)（对 `4af0c72`；结论最初为 not ready）。
 - 四问结论：项目/负责人首屏基本清楚，但项目负责人被误读成执行人；下钻到第二层自然，第三层是死路；待处理动作基本可操作，但根 blocked 的归属与“退回”现有 API 声明有冲突；数据/接口/宿主边界诚实，Q4 是本 PR 最强部分。
 - 处置：项目负责人的“只约束新任务”说明加到页头/卡片 tooltip/设置框；根 blocked 仍是人的待处理，B 的阻塞改挂到子任务 `避障感知`（祖先负责人可处理，不打扰人）；项目树/任务详情改为递归，补三层 fixture；新项目不再复用 D 的活动，空项目不显示 0/0；归档有未结束/待人任务时禁止；归档列表返回保留来源；排序改用 `updatedAt`；项目级负责人不可用补进计数/首屏/抽屉（无 fixture，注入验证）。
-- 第二轮自查：上述阻断项均已在原型/文档修订，交互用 CDP 实际点过；没有把“退回”或页内回答写成现有 API，也没有把项目负责人写成执行人。仍未解决的限制见 §9。
+- 复审：[follow-up review](https://github.com/touch-agent/dsh-superagent/pull/86#pullrequestreview-5903147567)（`43c342d`，COMMENTED，不是 approval）结论 **ready for human review**：三条阻断均已修复；仍有一个非阻断计数 bug（注入项目级负责人不可用时，首屏/FAB/抽屉头只数任务级，组计数却含项目级），已在本轮补上 `updateFab`/`renderDrawer` 的项目级 issue 计数，注入验证 5/5/5；另两个口径点（全部任务“有阻塞 0”与 B 卡“有阻塞 1”、附录 A 的 `counts.blocked` 定义）已在副标题/字段定义里说明。
+- 自查：上述修订均用 CDP 实际点过；没有把“退回”或页内回答写成现有 API，也没有把项目负责人写成执行人。仍未解决的限制见 §9。
 
 ### 8.3 已知限制
 
@@ -596,7 +597,7 @@ A 系统开发                                  [更多]
 | `project.owner` | `Project.ownerProfileId` → `GET profiles` head | 显示 title + 当前 revision；空 = 默认执行配置；不可用 → 项目级 attention。 |
 | `project.tasks` | `GET tasks` 的根 `TaskView` + placement.projectId | 只含根；子 Ticket 在 `TaskView.children`。 |
 | `project.counts.attention` | 根 `TaskView.attention` + 项目级 owner 问题 | 只计人；子等待父不计。 |
-| `project.counts.blocked` | 根 `TaskView.status === 'blocked'`（或 childSummary 汇总） | owner 可处理的阻塞；不与 attention 混。 |
+| `project.counts.blocked` | 根+子 `TaskView.status === 'blocked'` 的汇总 | 所有阻塞，含 owner 可处理的子任务；根 blocked 会同时进 `attention` 和阻塞行，两者独立，不把根阻塞从阻塞行删掉。 |
 | `project.counts.done` | 根 `ended.outcome` completed/merged，或 `status done` | 不计 dropped/stopped 为完成。 |
 | `project.lastActivityAt` | 根 `updatedAt`/activity 最新 | 只读；不新增活动表。 |
 | `task.projectId/projectName` | placement | 子任务读时从根继承；review 从被审任务。 |

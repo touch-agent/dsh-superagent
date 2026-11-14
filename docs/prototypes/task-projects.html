@@ -1153,7 +1153,7 @@ function allView() {
   <h1 class="page-title">全部任务</h1>
   <p class="page-sub">跨项目的顶层任务扁平列表；子任务在项目详情展开，筛选只统计顶层任务。用于查找和迁移，日常先看项目。</p>
   <div class="filters">
-    ${FILTERS.map(([key, label]) => `<button class="filter" type="button" data-filter="${key}" aria-pressed="${state.filter === key}">${label}<span class="n">${counts[key]}</span></button>`).join('')}
+    ${FILTERS.map(([key, label]) => `<button class="filter" type="button" data-filter="${key}" aria-pressed="${state.filter === key}"${key === 'blocked' || key === 'failed' ? ' title="只统计顶层任务；子任务在项目详情展开查看"' : ''}>${label}<span class="n">${counts[key]}</span></button>`).join('')}
     <span class="search-wrap"><input class="search" id="task-search" type="search" placeholder="搜索任务、负责人或项目" value="${esc(state.query)}"></span>
   </div>
   <div class="flat-list">${list.length ? list.map(flatRow).join('') : '<div class="empty-list">没有匹配的任务。试试清空搜索或切换筛选。</div>'}</div>`
@@ -1484,7 +1484,7 @@ function toast(message) {
 }
 
 function updateFab() {
-  const n = pendingRoots().length
+  const n = pendingRoots().length + activeProjects().filter(p => p.ownerUnavailable).length
   const fab = document.getElementById('notice-fab')
   fab.hidden = n === 0 || state.screen === 'projects'
   document.getElementById('fab-label').textContent = n ? `${n} 条待处理` : '没有待处理'
@@ -1494,7 +1494,7 @@ function updateFab() {
 }
 
 function renderDrawer() {
-  const n = pendingRoots().length
+  const n = pendingRoots().length + activeProjects().filter(p => p.ownerUnavailable).length
   document.getElementById('drawer-count').textContent = String(n)
   document.getElementById('drawer-body').innerHTML = drawerContent()
 }
