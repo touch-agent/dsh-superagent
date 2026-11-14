@@ -54,6 +54,9 @@ it('keeps one main-Session action across entries and task detail', async () => {
   expect(document.querySelector('.dt-task-detail')).not.toBeNull()
   expect(document.querySelector('.dt-app-shell')).not.toBeNull()
   expect(labels().filter(label => label === zh.masterOpen)).toHaveLength(1)
+  // Changing the task view leaves the detail and returns to the chosen view.
+  await click(zh['tasksView.tree'])
+  expect(document.querySelector('.dt-task-detail')).toBeNull()
 })
 
 it('opens the waiting task from the summary and applies the existing waiting filter', async () => {

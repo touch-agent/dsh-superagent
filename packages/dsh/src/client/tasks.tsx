@@ -489,11 +489,13 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
   const selectRoot = (ticket: string) => store.select(selected === ticket ? undefined : { kind: 'ticket', id: ticket, rootId: ticket })
   const selectChild = (root: string, ticket: string) => store.select(selected === ticket ? undefined
     : { kind: 'ticket', id: ticket, rootId: root } satisfies TaskSelection)
+  const scrollToTop = () => { const scroller = document.querySelector<HTMLElement>('.dt-page'); if (scroller) scroller.scrollTop = 0 }
   const openDetail = (ticket: string) => {
     const root = data?.tasks.find(item => item.id === ticket)?.id ?? rootId ?? ticket
     store.select({ kind: 'ticket', id: ticket, rootId: root })
     store.ensureDetail(ticket)
     setDetailId(ticket)
+    scrollToTop()
   }
   const detailTask = detailId ? store.taskOf(detailId) : undefined
   if (!data) return <LoadState error={snapshot.error} loading={!snapshot.ready || snapshot.loading} />
@@ -501,14 +503,15 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
     {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
     {!shell && masterCard() && <MasterCard masterId={state?.masterId} paused={!!state?.paused} running={state?.load.running ?? 0}
       attention={data.tasks.filter(task => task.attention).length} onOpen={openSession} />}
-    <FirstUseNotes />
+    {!shell && <FirstUseNotes />}
     <div className={shell ? 'dt-tasks-layout' : 'dt-tasks-flow'}>
       <div className="dt-tasks-primary">
+        {shell && !detailId && <FirstUseNotes />}
         <p className="dt-hint dt-task-intro">{view === 'list' ? t('tasksListIntro')
           : view === 'tickets' ? t('tasksTicketsIntro') : t('tasksIntro')}</p>
         {view !== 'list' && view !== 'tickets' && <Hint>{t('tasksPlanFallback')}</Hint>}
         <div className="dt-task-views">
-          <SegmentedTabs label={t('tasksViewLabel')} value={view} onChange={value => setView(value)}
+          <SegmentedTabs label={t('tasksViewLabel')} value={view} onChange={value => { setView(value); setDetailId(undefined) }}
             items={views.map(value => ({ value, label: t(`tasksView.${value}`), id: `${id}-${value}`, panelId: `${id}-panel` }))} />
           <span className="dt-hint">{t('tasksGenerated', { time: when(data.generatedAt, t('lang')) })}</span>
         </div>
@@ -530,7 +533,7 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
       {shell && <aside className="dt-tasks-aside">
         <AttentionSummary tasks={data.tasks} onOpen={ticket => { if (hierarchy) openDetail(ticket)
           else navigate({ page: 'execution', id: ticket }) }} onShowAll={() => {
-          setView('list'); setDetailId(undefined); setFilter('attention')
+          setView('list'); setDetailId(undefined); setFilter('attention'); scrollToTop()
         }} />
       </aside>}
     </div>

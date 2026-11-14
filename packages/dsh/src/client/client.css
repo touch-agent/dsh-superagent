@@ -705,7 +705,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-page .dt-app-tabs .dt-tab:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
 .dt-shell-tools { display: flex; flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
 .dt-shell-tools .dt-search { width: 240px; }
-.dt-app-main { box-sizing: border-box; flex: 1 1 auto; width: 100%; min-width: 0; padding: 24px 28px 56px; }
+.dt-app-main { box-sizing: border-box; flex: 1 1 auto; width: 100%; min-width: 0; padding: 24px 28px 96px; }
 .dt-app-main > .dt-main { max-width: none; }
 /* Tasks destination: the list keeps the reading width while the waiting-on-you summary uses the second column. */
 .dt-tasks-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; }
@@ -729,7 +729,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 @media (max-width: 720px) {
 .dt-page.dt-app-shell .dt-master-card { padding: 14px 16px 8px; }
 .dt-app-navrow { padding: 0 16px 10px; }
-.dt-app-main { padding: 16px 16px 48px; }
+.dt-app-main { padding: 16px 16px 96px; }
 .dt-shell-tools .dt-search { width: 100%; }
 }
 

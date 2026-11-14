@@ -509,7 +509,7 @@ const TEXT = {
   filesOpen: ['打开', 'Open'],
   navFourSection: ['四项主导航', 'Four-entry navigation'],
   navFourSetting: ['使用「任务 / 通知 / 文件 / 设置」四项', 'Use Tasks / Notices / Files / Settings'],
-  navFourHint: ['插件面板内只留四项一级入口；概览收进任务与设置，右栏重复的事件/任务标签也收起。宿主自己的「新建会话」「插件」行和工作区区域不归插件控制，仍然存在（见 026 的限制清单）。刷新后生效。',
+  navFourHint: ['插件面板内只留四项一级入口；概览收进任务与设置，右栏重复的事件/任务标签也收起。宿主自己的「新会话」「插件」行和工作区区域不归插件控制，仍然存在（见 026 的限制清单）。刷新后生效。',
     'The plugin panel keeps four first-level entries; Overview folds into Tasks and Settings, and the duplicate Events/Tasks right tabs are removed. The host\'s own New Session, Plugins and workspace rows are outside plugin control and remain (see the limit list in doc 026). Takes effect after refresh.'],
   navFourDisabled: ['这个部署已关闭四项导航；概览、任务、设置和原有右栏标签保持原样。', 'This deployment disabled the four-entry navigation; Overview, Tasks, Settings and the right tabs stay as before.'],
   appShellSection: ['插件即主页面', 'Plugin as the main page'],
