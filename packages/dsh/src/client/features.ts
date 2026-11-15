@@ -34,6 +34,8 @@ export const MASTER_CARD = 'ux.masterCard.v1'
 export const NOTICE_BUTTON = 'ux.noticeButton.v1'
 /** UX batch 3's Files page; off removes the nav entry and keeps the richer task detail unchanged. */
 export const FILES_PAGE = 'ux.filesPage.v1'
+/** The 2026-11-15 project layer: project cards, archive filter, drill-down and task/subtask detail; off keeps the flat list. */
+export const PROJECT_VIEW = 'ux.projects.v1'
 /**
  * The 2026-11-14 route: selecting Superagent opens the host's main Conversation, and tasks, notices, files and settings
  * live in that Conversation's header. It depends on the four-entry navigation; off restores the batch-3 panel exactly.
@@ -98,6 +100,8 @@ export const navFour = (): boolean => featureEnabled(NAV_FOUR)
 export const masterCard = (): boolean => featureEnabled(MASTER_CARD)
 export const noticeButton = (): boolean => featureEnabled(NOTICE_BUTTON)
 export const filesPage = (): boolean => featureEnabled(FILES_PAGE)
+/** The project layer is read-only and falls back to the existing flat list when off or when the host sends no projects. */
+export const projectView = (): boolean => featureEnabled(PROJECT_VIEW)
 /** The plugin-as-main-page shell; it needs the four-entry navigation, so turning that off also turns this off. */
 export const appShell = (): boolean => featureEnabled(APP_SHELL) && navFour()
 
