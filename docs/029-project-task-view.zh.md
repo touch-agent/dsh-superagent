@@ -22,7 +22,7 @@
 - 服务端项目投影、`GET projects/:id`、归档/恢复路由与 `projects=active|archived|all|off` 过滤；项目/任务归属由服务端数据提供，客户端不建第二套 store。
 - 通知中心按项目重组的写路径未改；待处理条已在项目页按项目/任务分层。
 
-**已修复（本单，2026-11-15）：重启后看不出项目层，「没变化」的原因与空态。**
+**已修复（[PR #89](https://github.com/touch-agent/dsh-superagent/pull/89)，2026-11-15）：重启后看不出项目层，「没变化」的原因与空态。**
 
 - **原因（有数据与代码证据，不是猜测）：** 面板开关 `ux.projects.v1` 缺省为开（`featureEnabled` 把缺失/不可读读作 on，Settings › Display 可关，`off` 时面板改发 `projects=off`）；面板确实请求了项目投影——本单改为显式 `GET tasks?projects=active`，不再只依赖服务端默认值。但对本地 `~/.dsh/state/superagent/orchestrator.sqlite` 的只读聚合是 **95 个 Ticket、0 个 `kind='project'`、0 个 `parentTicketId`**：旧数据全是平铺任务。服务端 `taskBoard` 在 `projects.length === 0` 时提前返回旧响应形状，客户端 `hasProjects` 因此为 false，整页回退平面列表——空项目态根本没有机会渲染。这就是「没看出来变化」的准确原因，不是 UI 没接上，也不是开关默认关闭。
 - **服务端：** `projects=active|archived|all` 现在总是返回 `projects`（可为 `[]`）、`unassigned` 和 `totals.projects/archivedProjects/unassigned`；只有部署回滚 `projects=off` 仍返回旧形状。旧客户端忽略新增字段，回滚语义不变。
