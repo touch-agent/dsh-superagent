@@ -174,6 +174,27 @@ it('shows the empty project guidance and the flat all-tasks fallback', async () 
   expect(document.querySelector('.dt-project-flat')).not.toBeNull()
 })
 
+it('shows the project-view empty state for old flat data instead of looking like the flat list', async () => {
+  const base = taskBoardView()
+  const legacy = { ...base.tasks[0]!, id: 'legacy-1', title: '旧数据里的平铺任务' }
+  server.tasks = { ...base, projects: [], unassigned: [legacy], tasks: [legacy],
+    totals: { ...base.totals, projects: 0, archivedProjects: 0, unassigned: 1 } } as ProjectBoardView
+  await openTasks()
+  expect(document.querySelector('[data-projects-empty]')).not.toBeNull()
+  expect(document.querySelector('[data-project-view]')).not.toBeNull()
+  expect(text()).toContain(zh['projectsEmptyTitle'])
+  expect(text()).toContain(zh['projectsEmptyBody'])
+  expect(text()).toContain(zh['projectsEmptyViewNote'])
+  expect(text()).toContain(zh['projectsEmptyCreateHint'])
+  expect(text()).toContain(zh['projectsUnassignedCount'].replace('{count}', '1'))
+  // Old flat rows are not silently re-rendered as the project page; they stay behind All tasks and the unassigned entry.
+  expect(all('.dt-tasks-item')).toHaveLength(0)
+  await click(all('button').find(button => button.textContent?.trim() === zh['projectsEmptyConversation'])!)
+  expect(server.opened).toContain('master')
+  await click(all('button').find(button => button.textContent?.trim() === zh['projectsEmptyAllTasks'])!)
+  expect(document.querySelector('.dt-project-flat')).not.toBeNull()
+})
+
 it('falls back to the existing flat list when the flag is off or the host sends no project projection', async () => {
   initialise()
   localStorage.setItem('ux.projects.v1', 'off')

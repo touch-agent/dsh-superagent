@@ -142,7 +142,9 @@ export class TasksViewClient {
     if (this.snapshot.loading) return
     this.publish({ ...this.snapshot, loading: true })
     try {
-      const data = await this.call('GET tasks', projectView() ? {} : { query: { projects: 'off' } })
+      // Ask for the project projection explicitly, so an empty project board still returns its fields; the rollback
+      // (`projects=off`) remains the only request that gets the pre-project shape.
+      const data = await this.call('GET tasks', { query: { projects: projectView() ? 'active' : 'off' } })
       this.publish({ ...this.snapshot, data, ready: true, loading: false, error: undefined })
       // A board poll can change a selected Ticket's children or review revision; refresh the selected detail and the root
       // whose child layer is open, keeping the cached rows visible while the request runs.

@@ -143,9 +143,11 @@ function UnassignedStrip({ count, t, onOpen }: { count: number; t: T; onOpen: ()
 }
 
 function EmptyProjects({ t, onOpenConversation, onOpenAll }: { t: T; onOpenConversation?: () => void; onOpenAll: () => void }) {
-  return <section className="dt-project-empty">
+  return <section className="dt-project-empty" data-projects-empty="true">
     <h3>{t('projectsEmptyTitle')}</h3>
     <p>{t('projectsEmptyBody')}</p>
+    <p className="dt-hint">{t('projectsEmptyViewNote')}</p>
+    <p className="dt-hint">{t('projectsEmptyCreateHint')}</p>
     <div className="dt-actions">
       {onOpenConversation && <Button variant="primary" icon={<Icon name="message" size={14} />} onClick={onOpenConversation}>
         {t('projectsEmptyConversation')}</Button>}
@@ -174,11 +176,15 @@ function ProjectList({ board, profiles, t, extraArchived, loadingArchived, onLoa
   const pending = attentionItems([...projects, ...extraArchived], board)
   const issues = projectIssueItems([...projects, ...extraArchived])
   const unassigned = unassignedTasks(board)
-  const shown = projects.length === 0 && extraArchived.length === 0 && unassigned.length === 0
+  // The archived count can name projects the default board does not carry; wait for that read before calling it empty.
+  const archivePending = archivedCount > 0 && archivedProjects.length === 0
+  // No project at all is its own state, even when old flat tasks exist: they become "not in a project" work, and the
+  // page must still say it is the project view rather than silently looking like the old flat list.
+  const noProjects = projects.length === 0 && extraArchived.length === 0 && !loadingArchived && !archivePending
   // Archived pending work must stay in "waiting for you" even while the default list shows active projects only.
   useEffect(() => { if (archivedCount > 0 && archivedProjects.length === 0) onLoadArchived() },
     [archivedCount, archivedProjects.length, onLoadArchived])
-  return <section className="dt-projects">
+  return <section className="dt-projects" data-project-view="true">
     <header className="dt-projects-head">
       <div>
         <h2 className="dt-projects-heading">{t('projectsHeading')}</h2>
@@ -196,7 +202,11 @@ function ProjectList({ board, profiles, t, extraArchived, loadingArchived, onLoa
       <button type="button" className="dt-textlink dt-project-archive-entry" onClick={() => chooseArchived(!archived)}>
         {archived ? t('projectsBackToActive') : t('projectsViewArchived', { count: archivedCount })}</button>
     </div>
-    {shown ? <EmptyProjects t={t} onOpenConversation={onOpenConversation} onOpenAll={onOpenAll} /> : <>
+    {noProjects ? <>
+      <EmptyProjects t={t} onOpenConversation={onOpenConversation} onOpenAll={onOpenAll} />
+      {unassigned.length > 0 && <UnassignedStrip count={unassigned.length} t={t} onOpen={onOpenUnassigned} />}
+    </> : (loadingArchived || archivePending) && projects.length === 0 && extraArchived.length === 0
+      ? <p className="dt-project-filter-empty">{t('loading')}</p> : <>
       <ProjectPending items={pending} issues={issues} t={t} expanded={expanded} onToggle={() => setExpanded(!expanded)}
         onOpenProject={onOpenProject} onOpenTask={onOpenTask} />
       {sorted.length ? <div className="dt-project-grid">{sorted.map(project => <ProjectCard key={project.id} project={project}

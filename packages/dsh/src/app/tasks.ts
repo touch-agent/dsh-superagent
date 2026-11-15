@@ -756,8 +756,9 @@ export function taskBoard(host: ViewHost, now = new Date(), options: { projects?
     totals: { milestones: milestones.length, tasks: milestones.reduce((sum, milestone) => sum + milestone.children.length, 0),
       tickets: roots.length, open: roots.filter(liveTicket).length, attention: tasks.filter(task => task.attention).length,
       ...children ? { children } : {} } }
-  // `off` is the deployment rollback: the response keeps the pre-project shape, with no project fields.
-  if (projectFilter === 'off' || !projects.length) return base
+  // `off` is the deployment rollback: the response keeps the pre-project shape, with no project fields. A live projection
+  // is sent even with no projects, so the panel can tell an empty project board from an older host that sends no field.
+  if (projectFilter === 'off') return base
   const byProject = new Map<string, Ticket[]>()
   const unassignedRoots: Ticket[] = []
   for (const root of roots) {

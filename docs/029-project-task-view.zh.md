@@ -22,7 +22,24 @@
 - 服务端项目投影、`GET projects/:id`、归档/恢复路由与 `projects=active|archived|all|off` 过滤；项目/任务归属由服务端数据提供，客户端不建第二套 store。
 - 通知中心按项目重组的写路径未改；待处理条已在项目页按项目/任务分层。
 
-**真实应用截图（PR #87；1440×900、浅色、zh-CN、DPR=1）：**
+**已修复（本单，2026-11-15）：重启后看不出项目层，「没变化」的原因与空态。**
+
+- **原因（有数据与代码证据，不是猜测）：** 面板开关 `ux.projects.v1` 缺省为开（`featureEnabled` 把缺失/不可读读作 on，Settings › Display 可关，`off` 时面板改发 `projects=off`）；面板确实请求了项目投影——本单改为显式 `GET tasks?projects=active`，不再只依赖服务端默认值。但对本地 `~/.dsh/state/superagent/orchestrator.sqlite` 的只读聚合是 **95 个 Ticket、0 个 `kind='project'`、0 个 `parentTicketId`**：旧数据全是平铺任务。服务端 `taskBoard` 在 `projects.length === 0` 时提前返回旧响应形状，客户端 `hasProjects` 因此为 false，整页回退平面列表——空项目态根本没有机会渲染。这就是「没看出来变化」的准确原因，不是 UI 没接上，也不是开关默认关闭。
+- **服务端：** `projects=active|archived|all` 现在总是返回 `projects`（可为 `[]`）、`unassigned` 和 `totals.projects/archivedProjects/unassigned`；只有部署回滚 `projects=off` 仍返回旧形状。旧客户端忽略新增字段，回滚语义不变。
+- **客户端空态：** 没有任何项目时，任务页仍进入项目视图并显示明确空态：「还没有项目」「当前是项目视图：按项目分组；旧的平铺任务在『全部任务』里，不会被隐藏」、创建入口说明（主对话说明目标 → 主会话建项目并绑定负责 worker）和「去主对话创建项目」按钮；旧平铺任务以「未归入项目 N」条带呈现，不再看起来与旧列表相同。没有项目但有旧任务时也走这个空态（此前空态还要求 `unassigned` 同时为空，所以旧数据永远看不到）。
+- **真实链路：** `tests/project-e2e.spec.ts` 通过真实 Runtime 走完整路径：主会话 `orchestrator_route` accept 项目（owner `worker-default`、协调 Session）→ 协调 Session `orchestrator_create_task` 受理并指派另一个 worker（`worker-docs`）→ 主会话归档 → `GET tasks` 默认不再列出、`projects=archived` 列出、`GET projects/:id?depth=2` 下钻到任务 → 恢复后回到默认列表；任务与 attention 不因归档消失。不是向 `GET tasks` 注入响应。
+- **真实数据截图：** 见下表；空态 Before/After 使用同一份旧数据形状（只有平铺任务、没有项目），Before 是 main 构建的服务端（无项目时省略投影）与面板，After 是修复后的构建；有项目/归档视图的数据由上述真实 accept/admission/archive 路径写入临时状态目录，不是浏览器注入。
+
+| 场景 | Before（main `ad1702e`，无项目投影） | After（本单修复后） |
+| --- | --- | --- |
+| 无项目、只有旧平铺任务 | 见 [before-empty-flat.png](images/task-projects/empty-state/before-empty-flat.png)：与旧平铺列表无异 | 见 [after-empty-project-view.png](images/task-projects/empty-state/after-empty-project-view.png)：项目视图空态、创建说明与「未归入项目」 |
+| 有项目 | 基线无项目层 | 见 [after-project-list.png](images/task-projects/empty-state/after-project-list.png)：真实项目的项目卡、负责 worker、任务与下钻 |
+| 已归档 | 基线无归档概念 | 见 [after-archived-view.png](images/task-projects/empty-state/after-archived-view.png)：未归档/已归档切换与归档项目 |
+| 项目详情 | 基线无项目详情 | 见 [after-project-detail.png](images/task-projects/empty-state/after-project-detail.png)：负责 worker、顶层任务与最近活动 |
+
+> 截图统一 1440×900、浅色、zh-CN、DPR=1。Before/After 的数据都是真实 Ticket 记录（无项目旧数据 / 真实项目链路写入），不是 `GET tasks` fixture；截图里不含飞书私有内容。
+
+**真实应用截图（PR #87 历史记录；1440×900、浅色、zh-CN、DPR=1）：**
 
 基线是 main `b6a41d7` 构建的应用（平面任务列表），After 是本分支构建的应用；两边使用同一组合成 `GET tasks`/`GET profiles` fixture（任务名、项目名、人员均为合成，无飞书私有内容），通过真实 DSH Web 面板截取，不是原型截图。归档/详情在基线没有等价界面，因此 Before 复用同一张平面列表基线并明确标注。
 
@@ -33,7 +50,7 @@
 | 项目详情/任务树 | 基线无项目详情；复用 [before-tasks.png](images/task-projects/implementation/before-tasks.png) | [after-project-detail.png](images/task-projects/implementation/after-project-detail.png)：项目头、负责 worker、任务树、子任务进度、最近活动 |
 | 子任务详情 | 基线无项目子任务详情；复用 [before-tasks.png](images/task-projects/implementation/before-tasks.png) | [after-task-detail.png](images/task-projects/implementation/after-task-detail.png)：面包屑、负责 worker、交付物；[after-task-detail-history.png](images/task-projects/implementation/after-task-detail-history.png)：阻塞/向上汇报/汇报历史 |
 
-**截图限制：** 服务端项目投影已由 PR #88 提供，但本节截图仍通过浏览器注入契约响应验证 UI；它证明客户端渲染和交互，不证明真实项目 Ticket 的创建、归档或权限链路。数据层合入后仍需用真实项目数据复拍一次。
+**截图限制（PR #87 历史记录）：** 服务端项目投影已由 PR #88 提供，但这一组截图仍通过浏览器注入契约响应验证 UI；它证明客户端渲染和交互，不证明真实项目 Ticket 的创建、归档或权限链路。真实数据复拍见本节上方的「已修复」表。
 
 ## 0. 结论摘要
 
@@ -46,7 +63,7 @@
 | 5 | **创建路径是「主会话识别项目 → 绑定项目负责 worker → 该 worker 拆任务/指派 worker」。** 主会话识别到同一项目的新需求，直接派给该项目负责 worker；项目 owner 可自己干（任务 owner=自己）或指派其他 worker。 | review 明确项目由主会话识别，并给 worker 创建任务/指派 worker 的权限。原设计「必须先改创建流程」把因果关系说反了：这条路径本身就是设计。 | 新增 worker 能力 `create-task`、`assign-worker`，受项目 Mandate 的 capability/scope 约束；视图不直接造 Ticket。 |
 | 6 | **项目有 active/archived；默认只显示未归档，已归档可查看。** 归档不取消任务、不隐藏待办；有未结束/待人任务时也可归档。 | review 要求「用户明确说明或手动归档；界面优先显示未归档，也可以查看已归档」。上一版的归档拦截会让用户无法按自己的意愿归档。 | 项目列表加 `未归档 / 已归档` 过滤；归档项目从默认列表移出，但任务仍在「全部任务」、待人项仍在「待你处理」。 |
 | 7 | **「待你处理」仍只指真正需要人的根任务动作，项目/归档不改变这个语义。** 根任务（包括项目任务）的 review/answer/delivery/blocked/failed 是人的事；子任务等父 owner 不是。 | 现有 `attentionFor` 的保守语义是对的；项目是组织层，不能把子任务的父审升级成人，也不能因为归档把待办藏掉。 | 项目卡、任务行、通知抽屉读同一投影；归档项目的待办在抽屉/首屏带「已归档」标记，不被过滤。 |
-| 8 | **迁移结论：现有 92 个 Ticket 仍是任务，不自动长出项目；项目只能由主会话/人明确建立，再把已有任务归入。** 真实数据 0 个项目、0 个 `parentTicketId`、0 个 profile 快照。 | 标题/计划编号/来源不是项目信号；review 也要求项目由主会话识别，不是按标题猜。 | P0 先加字段并映射旧数据；P1 建项目/绑定 worker；P2 项目任务与 worker 能力；不自动归组。 |
+| 8 | **迁移结论：现有 95 个 Ticket 仍是任务，不自动长出项目；项目只能由主会话/人明确建立，再把已有任务归入。** 真实数据 0 个项目、0 个 `parentTicketId`、0 个 profile 快照。 | 标题/计划编号/来源不是项目信号；review 也要求项目由主会话识别，不是按标题猜。 | P0 先加字段并映射旧数据；P1 建项目/绑定 worker；P2 项目任务与 worker 能力；不自动归组。 |
 | 9 | **不假装拥有宿主能力。** 项目页仍在插件右侧栏任务页/面板回退页；不改宿主导航/侧栏/通知中心；不预填宿主输入框；不做多人/跨设备。 | 公开扩展点仍是 `sidebar.right.pane.tab`、页头入口、`openSession`、插件自己的抽屉/管理 API。 | 新任务/拆解通过主对话；项目页只做定位、读取和已有动作。 |
 
 ## 1. 现状与证据
@@ -76,6 +93,8 @@
 | 标题带 `T<数字>-<数字>` | 35 | 计划编号只是标题标签 |
 | Mandate scope 带计划编号 | 40 | 同上，不是父子关系 |
 | `Ticket.profile` 非空 | **0** | 历史 Ticket 都走默认执行配置 |
+
+**2026-11-15 本单复核（同一只读聚合）：** Ticket 总数 **95**，`kind='project'` **0**，`parentTicketId` 非空 **0**，open **2**，`attention` 非空 **0**，`profile` 非空 **0**。即：合并项目层后旧数据仍全是平铺任务，这也是「重启后没变化」的数据侧证据（投影逻辑见 §0.1）。
 
 这组数字直接支持工单里的判断：**层级设计存在，但真实数据几乎不产生层级任务。** 原因不是 UI 没画树，而是创建路径和项目容器都缺位（见 §2、§6）。
 
@@ -152,7 +171,7 @@
 ### 2.4 不破坏现有接口与数据
 
 - **旧 Ticket 不变语义：** 缺省 `kind='task'`、`projectTicketId` 为空；旧根任务仍走原有 Decision/Mandate/Attention/结束。
-- **`GET tasks` 兼容：** `tasks` 仍返回根任务；项目 Ticket 作为 `kind='project'` 从 `tasks` 排除，只出现在新 `projects`；任务即使带 `projectTicketId` 也仍是根，旧扁平列表不丢任务。
+- **`GET tasks` 兼容：** `tasks` 仍返回根任务；项目 Ticket 作为 `kind='project'` 从 `tasks` 排除，只出现在新 `projects`；任务即使带 `projectTicketId` 也仍是根，旧扁平列表不丢任务。`projects=active|archived|all` 在没有任何项目时返回 `projects: []`（以及空的 `unassigned` 与零计数），只有 `projects=off` 才省略这些字段；这样面板能区分「没有项目」与「旧服务端没有投影」，空态才有机会渲染。
 - **`GET tasks/:id` 兼容：** `task`/`children` 不变；`TaskView` 现有 `kind: 'ticket' | 'review'` **保持不变**，只加可选 `ticketKind?: 'task' | 'subtask'`（派生层级）与 `projectTicketId`；不复用/覆盖 `kind`，避免 review 行渲染被破坏。
 - **`GET overview` 兼容：** 通知只加可选 `projectTicketId`/`projectName`；不新增通知持久化。
 - **项目 Ticket 不出现在旧客户端：** 旧客户端忽略 `projects`；`GET tasks` 过滤 `kind='project'`，不会把项目当任务渲染。
@@ -739,7 +758,7 @@ interface TaskView {
 - **归档**：`archiveProject` 只写/删 `archivedAt`，幂等；项目不结束、不产生交付物，`stopTicket`/`retry` 对项目返回 `projectCannotEnd`。任务与 attention 不因归档消失；默认 `projects=active`，可用 `archived`/`all` 查看已归档，`off` 回滚为旧响应形状。
 - **读取投影**：`GET tasks` 的 `tasks` 仍是根任务，项目只在 `projects`，没有项目的根任务在 `unassigned`；项目任务按 `projectTicketId` 分组，非法/失效链接留在 `unassigned` 并带 `projectBroken`；子任务仍通过 `GET tasks/:id` 展开。新增 `GET projects/:id`、`POST projects/:id/archive`、`POST projects/:id/restore`。
 - **回滚**：服务端 `GET tasks?projects=off` 返回旧响应形状；客户端开关 `ux.projects.v1`（`features.ts` 的 `PROJECT_VIEW`）已接入面板；关闭时面板按平面列表渲染，并在 `GET tasks` 上发送 `projects=off` 取回旧响应形状。
-- **测试**：`tests/projects.spec.ts`（17 项：层级、受理 seam 与幂等、人工受理归入项目、allow/deny/跨项目、归档、派发、缺 owner、迁移读取）、`tests/projects-view.spec.ts`（4 项：投影、过滤、计数、坏链接、回滚形状、详情）、`tests/project-tools.spec.ts`（2 项：项目/任务工具面）、`tests/dispatch-split.spec.ts` 的项目派发用例、`tests/http.spec.ts` 的项目路由与 `projects=off`。
+- **测试**：`tests/projects.spec.ts`（17 项：层级、受理 seam 与幂等、人工受理归入项目、allow/deny/跨项目、归档、派发、缺 owner、迁移读取）、`tests/projects-view.spec.ts`（5 项：投影、空投影、过滤、计数、坏链接、回滚形状、详情）、`tests/project-tools.spec.ts`（2 项：项目/任务工具面）、`tests/project-e2e.spec.ts`（真实 Runtime 的建项目→受理并指派任务→归档→两视图与下钻）、`tests/panel-projects.spec.tsx`（旧平铺数据下的项目视图空态、创建入口与全部任务回退）、`tests/dispatch-split.spec.ts` 的项目派发用例、`tests/http.spec.ts` 的项目路由与 `projects=off`。全量 `pnpm test` 通过（1994 项；本机 shell 导出的 `GIT_CONFIG_GLOBAL` 会让 `runtime.spec.ts` 的环境恢复断言误报，需 `env -u GIT_CONFIG_GLOBAL pnpm test`，与本单改动无关）。
 
 ### D.2 与设计稿的偏差 / 尚未实现
 
@@ -747,7 +766,7 @@ interface TaskView {
 2. **没有「把已有任务归入/移出项目」的写入口**。本单只在受理时写入 `projectTicketId`（项目协调自动受理或人工/主会话 accept）及子任务继承；存量任务保持 `unassigned`。设计附录 B 的「任务归入/移出」写路径留给后续 UI/管理动作，避免在本数据层单里引入未定义的权限与审计。
 3. **没有独立 `POST tasks` 建任务路由**。协调 Session 通过 `orchestrator_create_task` 工具走 kernel 受理 seam；人工仍走既有 accept，并可在项目上下文里带 `projectTicketId` 归入项目；面板项目页/项目卡/归档过滤由 PR #87 接入，没有新增独立建任务弹窗。
 4. **项目不建工作目录/worktree**，协调 Session 目录为 `projects/<id>`；这是与任务执行隔离的部署选择，不改任务 worker 的目录规则。
-5. **`TaskView` 新增可选字段，旧客户端可忽略**；`ProjectView`/`unassigned`/`totals.projects` 在无项目或 `projects=off` 时省略，保持旧响应形状。未做数据库 schema 迁移：Ticket 以 JSON 持久化，新字段为可选。
+5. **`TaskView` 新增可选字段，旧客户端可忽略**；`ProjectView`/`unassigned`/`totals.projects` 只在 `projects=off` 时省略（回滚形状）；无项目时返回空数组与零计数，客户端据此显示空项目态而不是回退平铺列表。未做数据库 schema 迁移：Ticket 以 JSON 持久化，新字段为可选。
 6. **归档只改变项目读取过滤与新建任务/派发**；归档项目的历史任务仍可读取、计数和审批，协调 Session 不再自动接收新 input。
 7. **项目协调需要启用 Agent Profiles 并有一个可用的 owner Profile**。Profiles 关闭或 owner 不可用时，项目仍可创建、读取和归档，但协调 Session 不启动、项目级 attention 指向 worker，`create-task`/`assign-worker` 返回 `projectWorkerUnavailable`；这是有意的非静默回退，不在项目里偷偷使用默认执行配置。
 8. **没有项目改名或更换项目负责 worker 的写入口**。项目在 accept 时绑定 owner Profile 快照，之后只能归档/恢复；附录 B 的「改名/换负责 worker」写路径留给后续管理动作，避免本数据层单在没有 UI 和审计设计时改动已绑定快照。
