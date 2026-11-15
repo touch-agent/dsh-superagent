@@ -117,6 +117,11 @@ export interface ProfileBinder {
   bindRoot(ticket: Ticket): ProfileSnapshot | undefined
   /** Copy a parent's snapshot to its child, never widening its work tools or changing its model policy. */
   bindChild(parent: Ticket, child: Ticket): ProfileSnapshot | undefined
+  /**
+   * Resolve a named profile for a project owner worker or a task it assigns. A missing, retired or disabled profile
+   * returns undefined, so the caller can refuse or record attention instead of silently falling back to a default.
+   */
+  bindNamed?(ticket: Pick<Ticket, 'id'>, profileId: string, reason?: string): ProfileSnapshot | undefined
 }
 
 /**

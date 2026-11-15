@@ -314,9 +314,14 @@ export class Evals extends EnginePart {
   /** Record an accept with the Mandate the Eval gives, and have Tickets create its ticket. */
   private accept(thread: Thread, evaluation: Evaluation, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>): Decision {
     const at = this.now()
+    if (outcome.project && outcome.form === 'lightweight') throw new UserError('projectInvalid')
+    if (outcome.project && (!outcome.project.goal.trim() || !outcome.project.ownerProfileId.trim())) throw new UserError('projectInvalid')
     const basis = { ...evaluation.basis, ...(outcome.rules ? { rules: outcome.rules } : {}) }
     const { strength, policyVersion, actor } = evaluation
-    const mandate: Mandate = { strength, policyVersion, basis, actor, scope: outcome.scope, ...this.policy().mandateLimits(at) }
+    const mandate: Mandate = { strength, policyVersion, basis, actor, scope: outcome.scope, ...this.policy().mandateLimits(at),
+      // A project defaults to both coordination capabilities; an explicit empty list is the human-accept fallback.
+      ...(outcome.project ? { capabilities: outcome.project.capabilities
+        ? [...new Set(outcome.project.capabilities)] : ['create-task', 'assign-worker'] } : {}) }
     const ticketId = key('ticket', evaluation.id)
     const audit = outcome.audit ? { audit: outcome.audit } : {}
     const decision = this.finish(thread, evaluation, { kind: 'accept', reason: reasonOf(outcome.reason), ...audit, mandate, ticketId })

@@ -17,7 +17,7 @@ import { initializeRoleModel } from './role-models.ts'
 import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import { ProfileLaunchBlocked, runEffective, type Profiles } from './profiles.ts'
-import { CHILD_DENIED, SUBAGENT_CONTROL, WORK_TOOLS } from './work-tools.ts'
+import { CHILD_DENIED, PROJECT_TOOLS, SUBAGENT_CONTROL, WORK_TOOLS } from './work-tools.ts'
 import type { Store } from './store.ts'
 import { KV } from '../kv.ts'
 import type { RegisterTool, Tool } from './tools/tool.ts'
@@ -373,7 +373,8 @@ export class Sessions {
     const legacy = this.host.profiles.config().resolve === 'legacy'
     const snapshot = legacy ? undefined : (ticket?.parentTicketId
       ? store.tickets.get(ticket.rootTicketId ?? ticket.parentTicketId)?.profile ?? ticket.profile : ticket?.profile)
-    const names = legacy || !ticket ? WORK_TOOLS.filter(name => !child || !CHILD_DENIED.has(name))
+    const names = ticket?.kind === 'project' ? PROJECT_TOOLS
+      : legacy || !ticket ? WORK_TOOLS.filter(name => !child || !CHILD_DENIED.has(name))
       : snapshot?.selection.valid === false ? []
       : snapshot ? profileWorkTools(ticket, id => store.tickets.get(id))
       : WORK_TOOLS

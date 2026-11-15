@@ -5,62 +5,14 @@
  * reads as unknown instead of being filled from a title, a plan id or a Session.
  */
 import type { ApiResponse } from '../app/api.ts'
-import type { TaskBoardView, TaskView } from '../app/tasks.ts'
+import type { ProjectAttentionView, ProjectView, TaskBoardView, TaskView } from '../app/tasks.ts'
 import { when, type T } from './text.ts'
 
-/** The optional fields the project projection adds to the existing board; absent on a host that has not upgraded. */
-export interface ProjectBoardView extends Omit<TaskBoardView, 'totals'> {
-  projects?: ProjectView[]
-  /** Root Tickets with no project; the server may send this, otherwise it is derived from `projectTicketId`. */
-  unassigned?: TaskView[]
-  /** Project counts the server sums with the same filter as `projects`; absent on a board without the layer. */
-  totals: TaskBoardView['totals'] & { projects?: number; archivedProjects?: number; unassigned?: number }
-}
-
-/** The project Ticket's bound owner profile snapshot; its title comes only from the read-only profile registry. */
-export interface ProjectOwnerView {
-  profile?: { id: string; revision: number }
-}
-
-/** Counts the server may project; a missing value is derived from the project's top-level tasks. */
-export interface ProjectCountsView {
-  tasks?: number
-  open?: number
-  working?: number
-  waiting?: number
-  review?: number
-  done?: number
-  attention?: number
-  blocked?: number
-  failed?: number
-}
+/** The board with the project layer's optional additions; the server's contract is the single source of these fields. */
+export type ProjectBoardView = TaskBoardView
 
 /** Why a project itself needs a person, as the server derives it from the bound worker and Mandate. */
-export interface ProjectAttentionView {
-  kind: 'worker' | 'capability' | 'question'
-  detail?: string
-  at?: string
-}
-
-/** One project Ticket as the project list and detail read it. */
-export interface ProjectView {
-  id: string
-  /** The project Ticket's name; no fallback derives a name from tasks or plan ids. */
-  name?: string
-  goal?: string
-  owner?: ProjectOwnerView
-  state?: 'active' | 'archived'
-  archivedAt?: string
-  archived?: boolean
-  createdAt?: string
-  updatedAt?: string
-  /** A project-level problem (worker, capability or question), counted once on top of task attention. */
-  attention?: ProjectAttentionView
-  counts?: ProjectCountsView
-  lastActivityAt?: string
-  /** Top-level tasks; the server excludes review rows and children load through `GET tasks/:id`. */
-  tasks?: TaskView[]
-}
+export type { ProjectAttentionView, ProjectView } from '../app/tasks.ts'
 
 /** The hierarchy fields a TaskView carries after the project layer is enabled. */
 export interface ProjectTaskFields {
@@ -116,8 +68,7 @@ export const projectBoard = (board: TaskBoardView): ProjectBoardView => board as
 /** Whether the server sent the project projection at all; absent means an older host, not an empty project list. */
 export const hasProjects = (board: TaskBoardView): boolean => Array.isArray(projectBoard(board).projects)
 
-export const isArchived = (project: ProjectView): boolean => project.archivedAt !== undefined || project.archived === true
-  || project.state === 'archived'
+export const isArchived = (project: ProjectView): boolean => project.state === 'archived' || project.archivedAt !== undefined
 
 /** The project's top-level tasks; when the server omitted them, contract `projectTicketId` is the only fallback. */
 export function tasksOfProject(project: ProjectView, board: TaskBoardView): TaskView[] {

@@ -6,8 +6,8 @@
  */
 import { createHash } from 'node:crypto'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { UserError, reasonText, threadKey, type AssessmentOutcome, type Decision, type ReceiveResult, type Ticket, type Trigger,
-  type TriggerDisposition } from '@superagent/kernel'
+import { UserError, isProjectArchived, isProjectTicket, reasonText, threadKey, type AssessmentOutcome, type Decision, type ReceiveResult,
+  type Ticket, type Trigger, type TriggerDisposition } from '@superagent/kernel'
 import type { DispatchMode } from '../policy.ts'
 import { conversationTrigger } from '../sources/conversation.ts'
 
@@ -25,6 +25,8 @@ export interface DispatchItemInput {
   ticketId?: string
   note?: string
   name?: string
+  /** Route this item to a project's coordination Session instead of starting a flat task. */
+  projectId?: string
   /** Set only for one read-only repository lookup the inline executor can finish; omitted means tracked. */
   form?: 'lightweight'
 }
@@ -36,9 +38,13 @@ export interface DispatchInput extends DispatchItemInput {
 export interface DispatchConfigView { mode: DispatchMode; maxTickets: number }
 export interface DispatchHost {
   engine: { receive(trigger: Trigger): ReceiveResult; decide(triggerId: string, outcome: AssessmentOutcome): Decision;
-    attach(ticketId: string, triggerId: string, note?: string): Ticket }
+    attach(ticketId: string, triggerId: string, note?: string): Ticket
+    /** A host without project coordination refuses project dispatch rather than creating a flat task silently. */
+    dispatchToProject?(projectId: string, triggerId: string, note?: string): Ticket }
   disposition(triggerId: string): TriggerDisposition | undefined
   ticket(id: string): Ticket | undefined
+  /** The project a dispatch names, read before receiving so an unavailable one is refused without changing the thread. */
+  project?(id: string): Ticket | undefined
   /** The Thread a message's Triggers share, read before receiving a split so a reachable ticket is never mutated by a refused dispatch. */
   thread?(key: string): { subscriptions: readonly string[]; context?: readonly string[] } | undefined
   config?(): DispatchConfigView
@@ -48,6 +54,8 @@ export interface DispatchItemResult {
   triggerId: string
   title: string
   ticketId?: string
+  /** The project this item was dispatched to, whose coordination Session decides its tasks. */
+  projectId?: string
   attached?: boolean
   duplicate?: boolean
   refused?: string
@@ -61,6 +69,7 @@ interface PlannedItem {
   name: string
   acknowledgement?: string
   ticketId?: string
+  projectId?: string
   note?: string
   form?: 'lightweight'
 }
@@ -92,12 +101,21 @@ function titleFrom(text: string): string {
 }
 const receipt = (title: string, source: string): string => CJK.test(source) ? `已拆成任务：${title}。` : `Split into a task: ${title}.`
 /** The identity of an item: its target ticket, title and scope, so the same request to two tickets is not merged. */
-const intentText = (item: PlannedItem): string => `${item.title}\n${item.scope}${item.ticketId ? `\n${item.ticketId}` : ''}`
+const intentText = (item: PlannedItem): string => `${item.title}\n${item.scope}${item.ticketId ? `\n${item.ticketId}` : ''}${item.projectId ? `\n${item.projectId}` : ''}`
 const intentKey = (item: PlannedItem): string => createHash('sha256').update(intentText(item)).digest('hex').slice(0, 12)
 const sameIntent = (item: PlannedItem): string => intentText(item).toLowerCase().replace(/\s+/gu, ' ').trim()
 /** Whether a Thread already reached a ticket that decides it, rather than one that only follows it for context. */
 const reachedThread = (thread: { subscriptions: readonly string[]; context?: readonly string[] } | undefined): boolean =>
   !!thread?.subscriptions.some(ticketId => !thread.context?.includes(ticketId))
+/** Why a named project cannot receive work, read before receiving so a refused dispatch changes no thread. */
+function projectProblem(host: DispatchHost, id: string): string | undefined {
+  if (!host.engine.dispatchToProject) return 'Project dispatch is not available in this host.'
+  const project = host.project?.(id) ?? host.ticket(id)
+  if (!project || !isProjectTicket(project)) return 'The named project is not a known project ticket.'
+  if (project.ended) return 'The named project has ended and cannot receive work.'
+  if (isProjectArchived(project)) return 'The named project is archived; restore it before dispatching work to it.'
+  return undefined
+}
 
 /**
  * The latest message in the main Session must be the person's, not a notice or relay the plugin delivered; otherwise the
@@ -152,11 +170,13 @@ function plannedItem(input: DispatchItemInput, source: string): PlannedItem | un
   const title = clean(input.title)
   const scope = clean(input.scope)
   const ticketId = clean(input.ticketId) || undefined
-  if (!title && !scope && !ticketId) return undefined
+  const projectId = clean(input.projectId) || undefined
+  if (!title && !scope && !ticketId && !projectId) return undefined
   const label = title || titleFrom(scope) || titleFrom(source) || 'Existing ticket'
   return { title: cut(label, 200), scope: cut(scope || title || source || label, SCOPE_CHARS), name: worktreeName(clean(input.name) || label),
     ...input.acknowledgement?.trim() ? { acknowledgement: input.acknowledgement.trim() } : {},
-    ...ticketId ? { ticketId } : {}, ...input.note?.trim() ? { note: input.note.trim() } : {},
+    ...ticketId ? { ticketId } : {}, ...projectId ? { projectId } : {},
+    ...input.note?.trim() ? { note: input.note.trim() } : {},
     ...input.form === 'lightweight' ? { form: 'lightweight' } : {} }
 }
 
@@ -182,14 +202,18 @@ function singleItem(input: DispatchInput, text: string, fresh: readonly PlannedI
   // A combined fallback is one ticket: keep the lightweight form only when the whole item is one lookup.
   const forms = [...fresh, ...(input.items ?? [])]
   const form = forms.length > 1 ? undefined : input.form === 'lightweight' ? 'lightweight' : forms[0]?.form
+  const projects = [...new Set([clean(input.projectId), ...forms.map(item => clean(item.projectId))].filter(Boolean))]
+  // A combined ticket cannot live in two projects; refuse rather than silently dropping one destination.
+  if (projects.length > 1) return { refused: 'A combined dispatch cannot route to more than one project; split the request or name one project.' }
+  const projectId = clean(input.projectId) || (projects.length === 1 ? projects[0] : undefined)
   return { title: cut(title, 200), scope: cut(scope, SCOPE_CHARS), name: worktreeName(name),
-    ...acknowledgement ? { acknowledgement } : {}, ...form ? { form } : {} }
+    ...acknowledgement ? { acknowledgement } : {}, ...form ? { form } : {}, ...projectId ? { projectId } : {} }
 }
 
 /** Builds the tickets one message becomes, by the configured mode, and never loses work to a failed or over-wide split. */
 function planDispatch(input: DispatchInput, text: string, config: DispatchConfigView): Plan | { refused: string } {
   // The single mode keeps the tool's original contract: the main Session names what it dispatches.
-  if (config.mode === 'single' && !input.title && !input.scope && !input.items?.length) {
+  if (config.mode === 'single' && !input.title && !input.scope && !input.items?.length && !input.projectId) {
     return { refused: 'A new dispatch needs a title and a scope; only an attach to an existing ticket omits them.' }
   }
   const fallback = (parsed?: readonly PlannedItem[]): Plan | { refused: string } => {
@@ -244,6 +268,29 @@ function planDispatch(input: DispatchInput, text: string, config: DispatchConfig
 export function dispatchConversation(agent: ConversationAgent, host: DispatchHost, input: DispatchInput): DispatchResult {
   const message = latestPersonMessage(agent)
   if (!message) return { refused: 'The latest message is not text the person wrote, so there is no request to dispatch.' }
+  // Attaching to a ticket and routing to a project are different destinations; a silent preference would misroute work.
+  if (input.ticketId && input.projectId) return { refused: 'A dispatch names either a ticket to attach to or a project to route, not both.' }
+  // A whole-message project dispatch sends the request to the project's coordination Session and starts no flat task.
+  if (input.projectId) {
+    const problem = projectProblem(host, input.projectId)
+    if (problem) return { refused: problem }
+    const trigger = conversationTrigger({ messageId: message.id, text: message.text, at: message.at, sessionId: agent.id })
+    if (host.disposition(trigger.id)) return { triggerId: trigger.id, duplicate: true }
+    if (reachedThread(host.thread?.(threadKey(trigger.threads[0]!)))) {
+      return { refused: 'This message already reached a ticket; attach the new request to that ticket or send it in a new message.' }
+    }
+    const received = host.engine.receive(trigger)
+    if (received === 'filtered') return { refused: 'The conversation Source is off, so the request was not received.' }
+    if (received === 'duplicate') return { triggerId: trigger.id, duplicate: true }
+    try {
+      const project = host.engine.dispatchToProject!(input.projectId, trigger.id, input.note)
+      return { triggerId: trigger.id, duplicate: false, ticket: project, items: [{ triggerId: trigger.id, title: input.title ?? titleFrom(message.text),
+        ticketId: project.id, projectId: project.id }] }
+    } catch (error) {
+      if (error instanceof UserError) return { refused: error.message }
+      throw error
+    }
+  }
   // A whole-message attach keeps the original trigger id and the message text; it neither splits nor creates work.
   if (input.ticketId) {
     const trigger = conversationTrigger({ messageId: message.id, text: message.text, at: message.at, sessionId: agent.id })
@@ -269,6 +316,14 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
   const config = host.config?.() ?? DEFAULT_CONFIG
   const plan = planDispatch(input, message.text, config)
   if ('refused' in plan) return plan
+  // Refuse conflicting or unavailable destinations before receiving anything, so a refused plan changes no thread.
+  for (const item of plan.items) {
+    if (item.ticketId && item.projectId) return { refused: 'A dispatch item names either a ticket to attach to or a project to route, not both.' }
+    if (item.projectId) {
+      const problem = projectProblem(host, item.projectId)
+      if (problem) return { refused: problem }
+    }
+  }
   const results: DispatchItemResult[] = []
   const tickets: Ticket[] = []
   const triggerIds: string[] = []
@@ -297,6 +352,12 @@ export function dispatchConversation(agent: ConversationAgent, host: DispatchHos
     if (received === 'filtered') { results.push({ ...head, refused: 'The conversation Source is off, so the request was not received.' }); continue }
     if (host.disposition(trigger.id)?.decisionId || received === 'duplicate') { results.push({ ...head, duplicate: true }); continue }
     try {
+      if (item.projectId) {
+        const project = host.engine.dispatchToProject!(item.projectId, trigger.id, item.note ?? input.note)
+        tickets.push(project)
+        results.push({ ...head, ticketId: project.id, projectId: project.id })
+        continue
+      }
       if (item.ticketId) {
         const ticket = host.engine.attach(item.ticketId, trigger.id, item.note ?? input.note)
         tickets.push(ticket)

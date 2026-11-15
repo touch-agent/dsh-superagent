@@ -176,6 +176,8 @@ function statusOf(event: ActivityRecord['event'], decision: Decision | undefined
     case 'ticket.child.reported': case 'ticket.child.reviewed': return ticket ? activityStatusOf(ticket) : 'working'
     case 'ticket.end.pending': return 'working'
     case 'ticket.child.orphaned': return 'blocked'
+    case 'project.task.admitted': case 'project.worker.changed': return 'queued'
+    case 'project.archived': return 'idle'
   }
 }
 
@@ -194,6 +196,8 @@ function subjectOf(event: DomainEvent): ActivitySubject | undefined {
     case 'ticket.child.reported': case 'ticket.child.reviewed': return { kind: 'ticket', id: event.data.ticketId }
     case 'ticket.end.pending': return { kind: 'ticket', id: event.data.ticketId }
     case 'ticket.child.orphaned': return { kind: 'ticket', id: event.data.ticketId }
+    case 'project.task.admitted': case 'project.worker.changed': return { kind: 'ticket', id: event.data.ticketId }
+    case 'project.archived': return { kind: 'ticket', id: event.data.projectId }
   }
 }
 
@@ -273,6 +277,12 @@ export function gradeEvent(event: DomainEvent, ticket: Ticket | undefined, trigg
     case 'ticket.child.orphaned':
       return { ...base, level: 'notice', ticket: taskTicket(event.data.parentTicketId), summary: `Child Ticket ${event.data.ticketId} orphaned: ${event.data.reason}`,
         detail: { childTicketId: event.data.ticketId, reason: event.data.reason } }
+    case 'project.task.admitted':
+      return { ...base, level: 'feed', ticket: event.data.ticketId, summary: `Project ${event.data.projectId} admitted Ticket ${event.data.ticketId}` }
+    case 'project.worker.changed':
+      return { ...base, level: 'quiet', ticket: event.data.ticketId, summary: `Project ${event.data.projectId} assigned Ticket ${event.data.ticketId} to ${event.data.profileId}` }
+    case 'project.archived':
+      return { ...base, level: 'feed', ticket: event.data.projectId, summary: `Project ${event.data.projectId} ${event.data.archived ? 'archived' : 'restored'}` }
   }
 }
 

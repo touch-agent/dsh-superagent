@@ -36,6 +36,13 @@ export const REASONS = {
   acceptanceNoRule: 'No acceptance rule was named; a person must confirm the result',
   acceptanceUnknownRule: 'The kernel cannot judge the acceptance rule “{rule}”',
   acceptanceWindowMissing: 'The acceptance rule “{rule}” needs a positive window in hours',
+  projectAdmission: 'Admitted from project {project} under its {capability} capability',
+  projectArchived: 'The project is archived; restore it before new work',
+  projectCapabilityMissing: 'The project Mandate does not grant {capability}',
+  projectWorkerUnavailable: 'The project owner worker or the requested worker profile is unavailable',
+  projectOwnerRequired: 'A project must bind an available owner worker profile',
+  projectHasNoAssignment: 'A project container has no task assignment and produces no deliverable',
+  taskStarted: 'The task already started; only a task that has not started can change owner',
 } as const
 export type ReasonCode = keyof typeof REASONS
 /** Reason code and template values; `triggerId` identifies the trigger in a batch that the reason applies to. */

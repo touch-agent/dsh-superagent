@@ -6,6 +6,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import type { TaskBoardView, TaskDetailView, TaskView } from '../app/tasks.ts'
 import type { Call } from './api.ts'
+import { projectView } from './features.ts'
 
 const POLL_MS = 5_000
 
@@ -141,7 +142,7 @@ export class TasksViewClient {
     if (this.snapshot.loading) return
     this.publish({ ...this.snapshot, loading: true })
     try {
-      const data = await this.call('GET tasks')
+      const data = await this.call('GET tasks', projectView() ? {} : { query: { projects: 'off' } })
       this.publish({ ...this.snapshot, data, ready: true, loading: false, error: undefined })
       // A board poll can change a selected Ticket's children or review revision; refresh the selected detail and the root
       // whose child layer is open, keeping the cached rows visible while the request runs.
