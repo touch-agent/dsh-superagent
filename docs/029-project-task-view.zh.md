@@ -1,6 +1,6 @@
 # 029 项目任务视图：项目、层级、负责人与待处理
 
-> 状态：**设计已定稿；P0 数据与派发层（[PR #88](https://github.com/touch-agent/dsh-superagent/pull/88)）与客户端项目视图（[PR #87](https://github.com/touch-agent/dsh-superagent/pull/87)）均已实现，面板 UI 受 `ux.projects.v1` 控制。** 本文档仍是字段与接口契约；实现记录、偏差与未完成项见附录 D。
+> 状态：**设计已定稿；P0 数据与派发层（[PR #88](https://github.com/touch-agent/dsh-superagent/pull/88)）与客户端项目视图（[PR #87](https://github.com/touch-agent/dsh-superagent/pull/87)）均已合并；无项目空态与真实链路修复见 [PR #89](https://github.com/touch-agent/dsh-superagent/pull/89)，面板 UI 受 `ux.projects.v1` 控制。** 本文档仍是字段与接口契约；实现记录、偏差与未完成项见附录 D。
 >
 > 输入：工单 `717a055c…`（「重设计任务视图」）、触发 `f37bfc2c…`，以及 2026-11-14 人工 review 对 #86 的三条意见（项目/任务/子任务都是 Ticket；项目由主会话识别并绑定负责 worker；项目可归档、默认看未归档）。基线：`touch-agent/dsh-superagent` main `46e1089`。
 >
