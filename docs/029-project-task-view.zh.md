@@ -37,7 +37,7 @@
 | 已归档 | 基线无归档概念 | 见 [after-archived-view.png](images/task-projects/empty-state/after-archived-view.png)：未归档/已归档切换与归档项目 |
 | 项目详情 | 基线无项目详情 | 见 [after-project-detail.png](images/task-projects/empty-state/after-project-detail.png)：负责 worker、顶层任务与最近活动 |
 
-> 截图统一 1440×900、浅色、zh-CN、DPR=1。Before/After 的数据都是真实 Ticket 记录（无项目旧数据 / 真实项目链路写入），不是 `GET tasks` fixture；截图里不含飞书私有内容。
+> 截图以 1440×900 视口、浅色、zh-CN、DPR=1 截取；为避免暴露本地工作区与会话名，发布前裁掉了宿主左侧栏（成品 1160×900），面板内容未改。Before/After 的数据都是真实 Ticket 记录（无项目旧数据 / 另一次真实 accept、admission、archive 运行写入临时状态目录，项目名与 E2E fixture 不同），不是浏览器注入的 `GET tasks` 响应；截图里不含飞书对话或人员内容。
 
 **真实应用截图（PR #87 历史记录；1440×900、浅色、zh-CN、DPR=1）：**
 
