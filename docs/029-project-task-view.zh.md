@@ -434,9 +434,9 @@ A 系统开发                                  [更多]
 | 重试 | `POST tickets/:id/retry` | 确认后新 attempt；失败保留通知并显示原因。 |
 | 停止 | `POST tickets/:id/stop` | 确认；按现有规则结束任务/子任务链。 |
 | 回答 | 现在打开来源线程/触发页；没有 `POST tickets/:id/answer` | 一期定位到可回答处并复制建议句；后续加 answer API 再升级。 |
-| 归入项目/建项目 | 本设计新增写路径（未实现） | 建项目/归入只写 Ticket 字段；失败回滚，不乐观删除。 |
+| 归入项目/建项目 | 受理时已实现；已有任务移入仍未实现 | 建项目/归入只写 Ticket 字段；失败回滚，不乐观删除。 |
 | 换项目负责 worker | 本设计新增写路径（未实现） | 只影响未来任务；已有任务不变；成功 toast 说明影响范围。 |
-| 归档/恢复项目 | 本设计新增写路径（未实现） | 写 `archivedAt`；归档不取消任务、不隐藏待办；恢复回到列表。 |
+| 归档/恢复项目 | 已实现（API，`POST projects/:id/archive\|restore`） | 写 `archivedAt`；归档不取消任务、不隐藏待办；恢复回到列表。 |
 
 **动作后反馈：** 成功 toast + 三处计数同步；任务结束时项目卡进度更新、待办少一条。失败保留条目、显示具体错误和重试入口；不把失败当成功。批量 `全部 N` 打开抽屉逐条处理；v1 不做“一键全部批准”。
 
@@ -726,7 +726,7 @@ interface TaskView {
 
 ## 附录 D：数据与派发层实现状态（2026-11-15）
 
-> 状态：**P0 数据与派发层已实现；项目任务视图的面板 UI 未实现。** 本 PR 只动 kernel/dsh 的数据、投影、HTTP、工具与会话分派，不改面板组件，不写真实项目数据，不做自动迁移。
+> 状态：**P0 数据与派发层已实现（PR #88），项目任务视图的面板 UI 已实现（PR #87），两者在本 PR 合并。** 本附录记录数据、投影、HTTP、工具与会话分派；面板组件、项目页和截图见 §0.1 与 #87。不写真实项目数据，不做自动迁移。
 
 ### D.1 已实现
 
@@ -745,7 +745,7 @@ interface TaskView {
 
 1. **视图字段名按附录 B 对齐**：`ProjectView.name`、`TaskView.ticketKind: 'task' | 'subtask'`；项目本身不进 `TaskView`，项目详情与看板都排除 review 行。`ProjectView.owner` 复用现有 `TaskActorView`（`role: 'owner'` + `profile.id/revision`），不含设计稿的显示标题；`ProfileSnapshot` 不保存显示名，面板可另行解析。额外提供 `coordinator.sessionId`、`counts.working/review` 与 `attention`，均为只读派生字段。
 2. **没有「把已有任务归入/移出项目」的写入口**。本单只在受理时写入 `projectTicketId`（项目协调自动受理或人工/主会话 accept）及子任务继承；存量任务保持 `unassigned`。设计附录 B 的「任务归入/移出」写路径留给后续 UI/管理动作，避免在本数据层单里引入未定义的权限与审计。
-3. **没有独立 `POST tasks` 建任务路由**。协调 Session 通过 `orchestrator_create_task` 工具走 kernel 受理 seam；人工仍走既有 accept，并可在项目上下文里带 `projectTicketId` 归入项目。面板 UI 未接入，因此没有新增项目页、弹窗、项目卡或归档交互。
+3. **没有独立 `POST tasks` 建任务路由**。协调 Session 通过 `orchestrator_create_task` 工具走 kernel 受理 seam；人工仍走既有 accept，并可在项目上下文里带 `projectTicketId` 归入项目；面板项目页/项目卡/归档过滤由 PR #87 接入，没有新增独立建任务弹窗。
 4. **项目不建工作目录/worktree**，协调 Session 目录为 `projects/<id>`；这是与任务执行隔离的部署选择，不改任务 worker 的目录规则。
 5. **`TaskView` 新增可选字段，旧客户端可忽略**；`ProjectView`/`unassigned`/`totals.projects` 在无项目或 `projects=off` 时省略，保持旧响应形状。未做数据库 schema 迁移：Ticket 以 JSON 持久化，新字段为可选。
 6. **归档只改变项目读取过滤与新建任务/派发**；归档项目的历史任务仍可读取、计数和审批，协调 Session 不再自动接收新 input。
