@@ -1,10 +1,39 @@
 # 029 项目任务视图：项目、层级、负责人与待处理
 
-> 状态：**设计已定稿；P0 数据与派发层已实现（见附录 D），面板 UI 未实现**。本文档仍是字段与接口契约；实现记录、偏差与未完成项见附录 D。历史说明：本单最初只交付设计文档、可点击 HTML 原型、同视口截图与迁移可行性说明；后续数据层单按本设计落地，不改面板 UI。
+> 状态：**设计已定稿；P0 数据与派发层（[PR #88](https://github.com/touch-agent/dsh-superagent/pull/88)）与客户端项目视图（[PR #87](https://github.com/touch-agent/dsh-superagent/pull/87)）均已实现，面板 UI 受 `ux.projects.v1` 控制。** 本文档仍是字段与接口契约；实现记录、偏差与未完成项见附录 D。
 >
 > 输入：工单 `717a055c…`（「重设计任务视图」）、触发 `f37bfc2c…`，以及 2026-11-14 人工 review 对 #86 的三条意见（项目/任务/子任务都是 Ticket；项目由主会话识别并绑定负责 worker；项目可归档、默认看未归档）。基线：`touch-agent/dsh-superagent` main `46e1089`。
 >
 > 关系：承接任务视图架构提案（`docs/tasks-view-architecture.zh.md`）和 [021](021-ux-redesign.zh.md)、[023](023-ux-first-batch.zh.md)、[024](024-ux-second-batch.zh.md)、[026](026-ux-third-batch.zh.md)、[028](028-plugin-main-page.zh.md)。本版按 review 把「项目」从 Ticket 之上的 KV 覆盖层改为 **Ticket 的一种层级**，并把创建路径改为「主会话识别项目 → 项目负责 worker → 任务」。
+
+## 0.1 实现状态（2026-11-15）
+
+**已实现（PR #87，客户端）：**
+
+- `GET tasks` 返回 `projects` 时，任务页默认显示项目列表：项目名、一句话目标、负责 worker、顶层进度、待处理/阻塞和最近活动；`projects` 缺失时仍走原平面列表。
+- 未归档/已归档过滤、归档数量和“查看已归档/查看未归档”；归档项目的任务仍出现在“全部任务”，待人项仍出现在“等你处理”并标“已归档”。默认板只带未归档项目时，归档视图通过同一条 `GET tasks?projects=archived` 读取，不新增项目存储。
+- 项目 → 任务 → 子任务下钻：项目详情含任务树、负责人、状态、子任务展开和最近活动；任务/子任务详情含项目面包屑、负责 worker、交付物、阻塞和汇报历史；返回保留来源。
+- 项目级 worker/权限/问题与任务级待人分开计数和展示；缺 goal、缺 owner、缺父任务或项目消失时显示未知/引导，不猜项目、负责人或层级。
+- `ux.projects.v1` 关闭，或服务端没有 `projects` 字段时，UI 与当前 main 的平面列表一致。
+
+**已实现（PR #88，数据与派发层）：**
+
+- 项目 Ticket、`kind`/`projectTicketId`/`archivedAt`/`goal`、项目协调 Session、`create-task`/`assign-worker`、归档/恢复和 §2.5 受理 seam。
+- 服务端项目投影、`GET projects/:id`、归档/恢复路由与 `projects=active|archived|all|off` 过滤；项目/任务归属由服务端数据提供，客户端不建第二套 store。
+- 通知中心按项目重组的写路径未改；待处理条已在项目页按项目/任务分层。
+
+**真实应用截图（PR #87；1440×900、浅色、zh-CN、DPR=1）：**
+
+基线是 main `b6a41d7` 构建的应用（平面任务列表），After 是本分支构建的应用；两边使用同一组合成 `GET tasks`/`GET profiles` fixture（任务名、项目名、人员均为合成，无飞书私有内容），通过真实 DSH Web 面板截取，不是原型截图。归档/详情在基线没有等价界面，因此 Before 复用同一张平面列表基线并明确标注。
+
+| 场景 | Before（main `b6a41d7`） | After（本分支） |
+| --- | --- | --- |
+| 项目列表 | [before-tasks.png](images/task-projects/implementation/before-tasks.png)：平面任务列表，无项目层 | [after-projects.png](images/task-projects/implementation/after-projects.png)：项目卡、负责 worker、进度、待人/阻塞、最近活动 |
+| 归档视图 | 基线无归档概念；复用 [before-tasks.png](images/task-projects/implementation/before-tasks.png) | [after-archived.png](images/task-projects/implementation/after-archived.png)：未归档 2 / 已归档 1，归档项目任务与待人项保留 |
+| 项目详情/任务树 | 基线无项目详情；复用 [before-tasks.png](images/task-projects/implementation/before-tasks.png) | [after-project-detail.png](images/task-projects/implementation/after-project-detail.png)：项目头、负责 worker、任务树、子任务进度、最近活动 |
+| 子任务详情 | 基线无项目子任务详情；复用 [before-tasks.png](images/task-projects/implementation/before-tasks.png) | [after-task-detail.png](images/task-projects/implementation/after-task-detail.png)：面包屑、负责 worker、交付物；[after-task-detail-history.png](images/task-projects/implementation/after-task-detail-history.png)：阻塞/向上汇报/汇报历史 |
+
+**截图限制：** 服务端项目投影已由 PR #88 提供，但本节截图仍通过浏览器注入契约响应验证 UI；它证明客户端渲染和交互，不证明真实项目 Ticket 的创建、归档或权限链路。数据层合入后仍需用真实项目数据复拍一次。
 
 ## 0. 结论摘要
 
@@ -709,7 +738,7 @@ interface TaskView {
 - **受理 seam**：`admitProjectTask` 为每个任务签发一条 `kind='accept'` 的 Decision，`Decision.admission` 记录 `projectTicketId`、`requestedBy`、`ownerProfileId`、`idempotencyKey`；任务 Mandate 继承项目的 strength/basis/ceiling，scope 收窄为「项目 scope + 任务 scope」，actor 是项目受理者（不是协调 worker），不带项目 capability；`Decision.admission.requestedBy` 单独记录发起请求的协调 worker。重复的 `idempotencyKey` 返回同一任务。capability 为空时协调 Session 不能自动受理；普通人工 accept 仍可创建任务，并可在项目上下文里带 `projectTicketId` 归入项目，只写归属、不改变任务 Mandate/owner，已归档或未知项目拒绝。
 - **归档**：`archiveProject` 只写/删 `archivedAt`，幂等；项目不结束、不产生交付物，`stopTicket`/`retry` 对项目返回 `projectCannotEnd`。任务与 attention 不因归档消失；默认 `projects=active`，可用 `archived`/`all` 查看已归档，`off` 回滚为旧响应形状。
 - **读取投影**：`GET tasks` 的 `tasks` 仍是根任务，项目只在 `projects`，没有项目的根任务在 `unassigned`；项目任务按 `projectTicketId` 分组，非法/失效链接留在 `unassigned` 并带 `projectBroken`；子任务仍通过 `GET tasks/:id` 展开。新增 `GET projects/:id`、`POST projects/:id/archive`、`POST projects/:id/restore`。
-- **回滚**：服务端 `GET tasks?projects=off` 返回旧响应形状；客户端开关 `ux.projects.v1`（`features.ts` 的 `PROJECTS`）供后续 UI 接入，本项目未改面板。
+- **回滚**：服务端 `GET tasks?projects=off` 返回旧响应形状；客户端开关 `ux.projects.v1`（`features.ts` 的 `PROJECT_VIEW`）已接入面板；关闭时面板按平面列表渲染，并在 `GET tasks` 上发送 `projects=off` 取回旧响应形状。
 - **测试**：`tests/projects.spec.ts`（17 项：层级、受理 seam 与幂等、人工受理归入项目、allow/deny/跨项目、归档、派发、缺 owner、迁移读取）、`tests/projects-view.spec.ts`（4 项：投影、过滤、计数、坏链接、回滚形状、详情）、`tests/project-tools.spec.ts`（2 项：项目/任务工具面）、`tests/dispatch-split.spec.ts` 的项目派发用例、`tests/http.spec.ts` 的项目路由与 `projects=off`。
 
 ### D.2 与设计稿的偏差 / 尚未实现

@@ -689,6 +689,8 @@ function projectAttentionOf(project: Ticket): ProjectAttentionView | undefined {
 function projectView(project: Ticket, tasks: readonly TaskView[]): ProjectView {
   const statuses = tasks.map(task => task.status)
   const count = (status: ActivityStatus) => statuses.filter(item => item === status).length
+  // The design counts blocked/failed roots and their direct children, so a child blocker reaches the project card.
+  const childCount = (status: 'blocked' | 'failed') => tasks.reduce((sum, task) => sum + (task.childSummary?.[status] ?? 0), 0)
   const attention = projectAttentionOf(project)
   const latest = tasks.flatMap(task => task.lastEventAt ? [task.lastEventAt] : []).sort().at(-1)
   const updated = Date.parse(project.updatedAt)
@@ -703,7 +705,8 @@ function projectView(project: Ticket, tasks: readonly TaskView[]): ProjectView {
     tasks: [...tasks],
     counts: { tasks: tasks.length, open: statuses.filter(status => status !== 'done').length,
       attention: tasks.filter(task => task.attention).length, working: count('working') + count('queued'),
-      review: count('review'), blocked: count('blocked'), failed: count('failed'), done: count('done') },
+      review: count('review'), blocked: count('blocked') + childCount('blocked'),
+      failed: count('failed') + childCount('failed'), done: count('done') },
     ...lastActivityAt ? { lastActivityAt } : {},
   }
 }

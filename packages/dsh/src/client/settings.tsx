@@ -5,7 +5,7 @@ import type { TicketFilter } from '../app/api.ts'
 import { Button, Icon, InfoTip, Switch, type IconName } from './controls.tsx'
 import { BUILD, buildMismatch, reloadClient } from './build.ts'
 import { APP_SHELL, ERROR_AGGREGATE, EVENTS_AUTO_OPEN, FILES_PAGE, FIRST_USE, MASTER_CARD, NAV_FOUR, NOTICE_BUTTON, NOTIFY_DRAWER,
-  NOTIFY_OVERLAY, OPS_IN_SETTINGS, TASK_DETAIL_V2, TASK_HIERARCHY, autoOpenPreference, featureEnabled, notifyAutoDismiss,
+  NOTIFY_OVERLAY, OPS_IN_SETTINGS, PROJECT_VIEW, TASK_DETAIL_V2, TASK_HIERARCHY, autoOpenPreference, featureEnabled, notifyAutoDismiss,
   opsInSettings, restoreFirstUse, setAutoOpenPreference, setFeature, setNotifyAutoDismiss } from './features.ts'
 import { Hint } from './widgets.tsx'
 import { DeploymentPage, type DeploymentForm } from './deployment.tsx'
@@ -49,6 +49,7 @@ function DisplaySettings() {
   const [autoDismiss, setAutoDismiss] = useState(notifyAutoDismiss)
   const [drawer, setDrawer] = useState(() => featureEnabled(NOTIFY_DRAWER))
   const [hierarchy, setHierarchy] = useState(() => featureEnabled(TASK_HIERARCHY))
+  const [projects, setProjects] = useState(() => featureEnabled(PROJECT_VIEW))
   const [aggregate, setAggregate] = useState(() => featureEnabled(ERROR_AGGREGATE))
   const [consolidated, setConsolidated] = useState(() => featureEnabled(OPS_IN_SETTINGS))
   const [detail, setDetail] = useState(() => featureEnabled(TASK_DETAIL_V2))
@@ -100,6 +101,15 @@ function DisplaySettings() {
           setFeature(TASK_HIERARCHY, next) }} />
       </div>
       <Hint>{hierarchy ? t('taskHierarchyHint') : t('taskHierarchyDisabled')}</Hint>
+    </div>
+    <div className="dt-form dt-block">
+      <h2 className="dt-block-title">{t('projectsSection')}<InfoTip text={t('projectsHint')} /></h2>
+      <div className="dt-switch-row">
+        <div className="dt-field-head">{t('projectsSetting')}<InfoTip text={t('projectsHint')} /></div>
+        <Switch checked={projects} label={t('projectsSetting')} onChange={next => { setProjects(next)
+          setFeature(PROJECT_VIEW, next) }} />
+      </div>
+      <Hint>{projects ? t('projectsHint') : t('projectsDisabled')}</Hint>
     </div>
     <div className="dt-form dt-block">
       <h2 className="dt-block-title">{t('errorAggregateSection')}<InfoTip text={t('errorAggregateHint')} /></h2>

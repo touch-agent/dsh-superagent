@@ -7,13 +7,15 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import type { ActivityStatus } from '../app/activity.ts'
 import type { TaskBoardView, TaskGraphBranch, TaskMilestone, TaskNode, TaskView } from '../app/tasks.ts'
 import { Button, Dot, Icon, Pill, SegmentedTabs, Tag, type DotState, type TagTone } from './controls.tsx'
-import { appShell, firstUse, masterCard, taskHierarchy, taskViewV1 } from './features.ts'
+import { appShell, firstUse, masterCard, projectView, taskHierarchy, taskViewV1 } from './features.ts'
 import { EmptyExamples, FirstUseNotes } from './first-use.tsx'
 import { usePanel, usePanelData } from './provider.tsx'
 import type { Route } from './route.ts'
 import { duration, fullTime, localized, valueLabel, when, type T } from './text.ts'
 import { TaskDetail } from './task-detail.tsx'
 import { TasksViewClient, useTasksView, type TaskSelection } from './tasks-view.ts'
+import { hasProjects, type ProjectBoardView } from './projects.ts'
+import { ProjectsPageBody } from './projects.tsx'
 import { MasterCard } from './master-card.tsx'
 import { Hint, LoadState, Section } from './widgets.tsx'
 
@@ -468,6 +470,16 @@ function AttentionSummary({ tasks, onOpen, onShowAll }: { tasks: readonly TaskVi
   </section>
 }
 
+/** The flat list the project layer keeps for "all tasks" and "unassigned"; it is the same TaskList the rollback uses. */
+function ProjectFlatList({ tasks, t, onOpenTask }: { tasks: readonly TaskView[]; t: T; onOpenTask: (id: string) => void }) {
+  const [filter, setFilter] = useState<TaskFilter>('all')
+  return <>
+    <TaskFilters t={t} value={filter} onChange={setFilter} tasks={tasks} />
+    <TaskList tasks={tasks} t={t} filter={filter} onSelect={onOpenTask} onSelectChild={(_root, id) => onOpenTask(id)}
+      onOpenDetail={onOpenTask} empty={t('projectsNoTasksHint')} />
+  </>
+}
+
 export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNode {
   const { t, call, navigate, openSession } = usePanel()
   const { state } = usePanelData()
@@ -499,6 +511,23 @@ export function TasksPage({ tasks }: { tasks?: TasksViewClient } = {}): ReactNod
   }
   const detailTask = detailId ? store.taskOf(detailId) : undefined
   if (!data) return <LoadState error={snapshot.error} loading={!snapshot.ready || snapshot.loading} />
+  // The project layer is opt-in and only exists when the host sends its projection; otherwise the flat list below is the
+  // fallback, so an older server and a rollback both keep every Ticket visible.
+  if (taskViewV1() && projectView() && hasProjects(data)) return <>
+    {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
+    {!shell && masterCard() && <MasterCard masterId={state?.masterId} paused={!!state?.paused} running={state?.load.running ?? 0}
+      attention={data.tasks.filter(task => task.attention).length} onOpen={openSession} />}
+    {!shell && <FirstUseNotes />}
+    <div className={shell ? 'dt-tasks-layout' : 'dt-tasks-flow'}>
+      <div className="dt-tasks-primary">
+        {shell && <FirstUseNotes />}
+        <ProjectsPageBody board={data as ProjectBoardView} store={store} t={t}
+          onOpenTicket={ticket => navigate({ page: 'execution', id: ticket })}
+          onOpenConversation={state?.masterId ? () => { void openSession(state.masterId) } : undefined}
+          renderFlat={(items, openTask) => <ProjectFlatList tasks={items} t={t} onOpenTask={openTask} />} />
+      </div>
+    </div>
+  </>
   return <>
     {snapshot.error && <LoadState error={snapshot.error} loading={false} />}
     {!shell && masterCard() && <MasterCard masterId={state?.masterId} paused={!!state?.paused} running={state?.load.running ?? 0}
