@@ -69,6 +69,18 @@ describe('project board projection', () => {
     expect(legacy.tasks.map(task => task.id).sort()).toEqual(['t1', 't2', 't3', 't4'])
   })
 
+  it('sends an empty project projection when no project exists, so the panel can show its empty state', () => {
+    const store = new Store(join(directory, 'projects-empty.sqlite'))
+    // Old data: every Ticket is a flat task with no kind and no project link.
+    seed(store, [ticket({ id: 't1', title: 'Old task one' }), ticket({ id: 't2', title: 'Old task two' })])
+    const board = taskBoard(host(store), new Date('2026-09-22T12:00:00Z'))
+    expect(board.projects).toEqual([])
+    expect(board.unassigned?.map(task => task.id).sort()).toEqual(['t1', 't2'])
+    expect(board.totals).toMatchObject({ tickets: 2, projects: 0, archivedProjects: 0, unassigned: 2 })
+    // The rollback keeps the old shape: absent, not empty, so an older client can still tell the two apart.
+    expect(taskBoard(host(store), new Date('2026-09-22T12:00:00Z'), { projects: 'off' }).projects).toBeUndefined()
+  })
+
   it('reads one project with its task hierarchy and refuses to read a task as a project', () => {
     const store = new Store(join(directory, 'projects-detail.sqlite'))
     const p1 = projectTicket({ id: 'p1', title: 'Project one' })
